@@ -130,6 +130,24 @@ async def test_message_push_tool_covers_success_failure_and_fallbacks():
     )
     assert "未注册" in await tool.execute(channel="qq", chat_id=1, message="x")
 
+    async def qq_text(chat_id: str, message: str) -> None:
+        sent["text"].append((chat_id, f"qq:{message}"))
+
+    async def qq_236_image(chat_id: str, path: str) -> None:
+        sent["image"].append((chat_id, f"qq_236:{path}"))
+
+    tool.register_channel("qq", text=qq_text)
+    tool.register_channel("qq_2365524513", image=qq_236_image)
+    routed = await tool.execute(
+        channel="qq",
+        chat_id="1049511700",
+        image="/tmp/generated.png",
+        current_channel="qq_2365524513",
+        current_chat_id="1049511700",
+    )
+    assert "图片已发送" in routed
+    assert sent["image"][-1] == ("1049511700", "qq_236:/tmp/generated.png")
+
     tool.register_channel("limited", text=text)
     limited = await tool.execute(
         channel="limited", chat_id=1, file="/tmp/a.txt", image="/tmp/a.png"

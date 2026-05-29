@@ -28,7 +28,15 @@ export interface MessageRow {
   content: string;
   tool_chain: unknown;
   extra: Record<string, unknown>;
+  media?: string[];
+  attachment_summaries?: string[];
+  attachment_type?: string;
+  file_id?: string;
+  file_name?: string;
+  file_size?: number | null;
+  file_url?: string;
   ts: string;
+  timestamp?: string;
 }
 
 export interface ProactiveOverview {

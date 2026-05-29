@@ -75,6 +75,7 @@ class AppRuntime:
         self.memory_runtime = None
         self.presence = None
         self.proactive_loop = None
+        self.group_memory_loop = None
         self.peer_process_manager = None
         self.peer_poller = None
         self.dashboard_server = None
@@ -119,6 +120,8 @@ class AppRuntime:
                 push_tool=self.push_tool,
                 http_resources=self.http_resources,
                 event_bus=event_bus,
+                vl_provider=getattr(self.core, "vl_provider", None),
+                vl_model=getattr(self.config, "vl_model", ""),
                 bot_commands=(
                     plugin_manager.telegram_bot_commands
                     if plugin_manager
@@ -164,6 +167,12 @@ class AppRuntime:
             self.tasks.extend(proactive_tasks)
             if self.proactive_loop is not None:
                 self.ipc.set_proactive_loop(self.proactive_loop)
+            group_memory_tasks, self.group_memory_loop = _build_group_memory_tasks(
+                self.config,
+                self.workspace,
+                self.session_manager._store,
+            )
+            self.tasks.extend(group_memory_tasks)
 
             self._started = True
         except Exception:
@@ -205,6 +214,10 @@ class AppRuntime:
                     "memory_runtime.aclose",
                     self.memory_runtime.aclose if self.memory_runtime else _noop_async,
                 ),
+                (
+                    "group_memory.stop",
+                    _group_memory_stop(self.group_memory_loop),
+                ),
                 ("http_resources.aclose", self.http_resources.aclose),
             )
         finally:
@@ -213,3 +226,33 @@ class AppRuntime:
 
 def build_app_runtime(config: Config, workspace: Path | None = None) -> AppRuntime:
     return AppRuntime(config, workspace or (Path.home() / ".akashic" / "workspace"))
+
+
+def _build_group_memory_tasks(
+    config: Config,
+    workspace: Path,
+    session_store,
+) -> tuple[list[Awaitable[None]], object | None]:
+    qq = getattr(getattr(config, "channels", None), "qq", None)
+    groups = [
+        str(getattr(group, "group_id", "")).strip()
+        for group in (getattr(qq, "groups", []) or [])
+        if bool(getattr(group, "observe_only", False))
+    ]
+    groups = [g for g in groups if g]
+    if not groups:
+        return [], None
+    from group_memory import GroupMemoryService
+    from group_memory.service import GroupMemoryLoop
+
+    service = GroupMemoryService.from_workspace(workspace, session_store=session_store)
+    loop = GroupMemoryLoop(service=service, group_ids=groups)
+    return [loop.run()], loop
+
+
+def _group_memory_stop(loop: object | None):
+    async def _stop() -> None:
+        if loop is not None and hasattr(loop, "stop"):
+            loop.stop()
+
+    return _stop

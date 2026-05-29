@@ -623,8 +623,10 @@ class SessionStore:
         }
         if tool_chain is not None:
             row["tool_chain"] = tool_chain
+        row["extra"] = extra or {}
         if extra:
             row.update(extra)
+            row["extra"] = extra
         return row
 
     def fetch_session_messages(self, session_key: str) -> list[dict[str, Any]]:
@@ -1025,11 +1027,14 @@ class SessionStore:
             "role": row["role"],
             "content": row["content"] or "",
             "timestamp": row["ts"],
+            "ts": row["ts"],
         }
         tool_chain = row["tool_chain"]
         if tool_chain:
             message["tool_chain"] = json.loads(tool_chain)
         extra = json.loads(row["extra"] or "{}")
+        message["extra"] = extra
         if extra:
             message.update(extra)
+            message["extra"] = extra
         return message

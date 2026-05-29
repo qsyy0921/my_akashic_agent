@@ -1018,10 +1018,30 @@ textarea:focus {
 
 .content-preview {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.content-preview-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+}
+
+.attachment-pill {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: #276489;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.3;
 }
 
 .table-actions {
@@ -1224,6 +1244,112 @@ textarea:focus {
   background: rgba(20, 20, 19, 0.06);
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.attachment-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.attachment-meta,
+.attachment-summaries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment-link-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attachment-link,
+.attachment-file-link,
+.attachment-open-link {
+  color: var(--accent);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.attachment-link:hover,
+.attachment-file-link:hover,
+.attachment-open-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.attachment-open-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  overflow-wrap: anywhere;
+}
+
+.attachment-summary {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.attachment-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  overflow: hidden;
+}
+
+.attachment-card.image {
+  display: grid;
+  color: var(--text-soft);
+  text-decoration: none;
+}
+
+.attachment-card.image img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: contain;
+  background: var(--bg-soft);
+}
+
+.attachment-card.image span {
+  padding: 8px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.attachment-card.file {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.attachment-frame {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
 }
 
 .detail-grid {

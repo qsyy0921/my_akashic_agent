@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import importlib
+import json
 import sys
 import types
 from pathlib import Path
@@ -20,6 +22,7 @@ from bus.events_lifecycle import (
     ToolCallStarted,
     TurnStarted,
 )
+from core.net.http import HttpRequester, RequestBudget, RetryPolicy
 
 
 class _Bus:
@@ -35,18 +38,48 @@ class _Bus:
 
 
 class _SessionManager:
-    def __init__(self) -> None:
+    def __init__(self, workspace: Path | None = None) -> None:
         self.sessions = {}
         self.saved = []
+        if workspace is not None:
+            self.workspace = workspace
 
     def get_or_create(self, key: str):
-        return self.sessions.setdefault(key, SimpleNamespace(key=key, metadata={}))
+        return self.sessions.setdefault(
+            key,
+            SimpleNamespace(
+                key=key,
+                metadata={},
+                messages=[],
+                add_message=lambda role, content, media=None, **kwargs: self.sessions[
+                    key
+                ].messages.append(
+                    {
+                        "role": role,
+                        "content": content,
+                        "media": media,
+                        **kwargs,
+                    }
+                ),
+            ),
+        )
 
     async def save_async(self, session) -> None:
         self.saved.append(session.key)
 
     def get_channel_metadata(self, channel: str):
         return []
+
+
+def _http_requester(handler) -> HttpRequester:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return HttpRequester(
+        client=client,
+        retry_policy=RetryPolicy(max_attempts=1),
+        default_timeout_s=1.0,
+        default_budget=RequestBudget(total_timeout_s=2.0),
+        sleep=lambda _: asyncio.sleep(0),
+    )
 
 
 def _import_cli_tui(monkeypatch: pytest.MonkeyPatch):
@@ -306,6 +339,130 @@ def _import_telegram_channel(monkeypatch: pytest.MonkeyPatch):
     return importlib.import_module("infra.channels.telegram_channel")
 
 
+@pytest.mark.asyncio
+async def test_feishu_webhook_channel_sends_signed_text():
+    from infra.channels.feishu_channel import FeishuWebhookChannel
+
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            request=request,
+            json={"code": 0, "msg": "success"},
+        )
+
+    requester = _http_requester(handler)
+    channel = FeishuWebhookChannel(
+        webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/test",
+        secret="secret",
+        requester=requester,
+    )
+
+    try:
+        await channel.send("default", "hello feishu")
+    finally:
+        await requester.client.aclose()
+
+    assert seen["url"] == "https://open.feishu.cn/open-apis/bot/v2/hook/test"
+    assert seen["body"]["msg_type"] == "text"
+    assert seen["body"]["content"] == {"text": "hello feishu"}
+    assert seen["body"]["timestamp"]
+    assert seen["body"]["sign"]
+
+
+@pytest.mark.asyncio
+async def test_feishu_webhook_channel_raises_on_api_error():
+    from infra.channels.feishu_channel import FeishuWebhookChannel
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={"code": 19021, "msg": "invalid webhook"},
+        )
+
+    requester = _http_requester(handler)
+    channel = FeishuWebhookChannel(
+        webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/test",
+        requester=requester,
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="invalid webhook"):
+            await channel.send("default", "hello")
+    finally:
+        await requester.client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_wechat_webhook_channel_sends_text_with_mentions():
+    from infra.channels.wechat_channel import WechatWebhookChannel
+
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            request=request,
+            json={"errcode": 0, "errmsg": "ok"},
+        )
+
+    requester = _http_requester(handler)
+    channel = WechatWebhookChannel(
+        webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+        mentioned_list=["@all"],
+        mentioned_mobile_list=["13800138000"],
+        requester=requester,
+    )
+
+    try:
+        await channel.send("default", "hello wechat")
+    finally:
+        await requester.client.aclose()
+
+    assert (
+        seen["url"]
+        == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    )
+    assert seen["body"] == {
+        "msgtype": "text",
+        "text": {
+            "content": "hello wechat",
+            "mentioned_list": ["@all"],
+            "mentioned_mobile_list": ["13800138000"],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_wechat_webhook_channel_raises_on_api_error():
+    from infra.channels.wechat_channel import WechatWebhookChannel
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={"errcode": 93000, "errmsg": "invalid webhook"},
+        )
+
+    requester = _http_requester(handler)
+    channel = WechatWebhookChannel(
+        webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+        requester=requester,
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="invalid webhook"):
+            await channel.send("default", "hello")
+    finally:
+        await requester.client.aclose()
+
+
 def _import_qq_channel(monkeypatch: pytest.MonkeyPatch):
     ncatbot_core = types.ModuleType("ncatbot.core")
     ncatbot_core_adapter = types.ModuleType("ncatbot.core.adapter")
@@ -335,11 +492,16 @@ def _import_qq_channel(monkeypatch: pytest.MonkeyPatch):
         async def send_private_image(self, user_id, image):
             self.calls.append(("private_image", user_id, image))
 
+        async def get_group_file_url(self, group_id, file_id):
+            self.calls.append(("get_group_file_url", group_id, file_id))
+            return f"https://files.example/{file_id}"
+
     class BotClient:
         def __init__(self):
             self.api = _Api()
             self.private_handler = None
             self.group_handler = None
+            self.notice_handler = None
             self.startup_handler = None
 
         def on_private_message(self):
@@ -352,6 +514,13 @@ def _import_qq_channel(monkeypatch: pytest.MonkeyPatch):
         def on_group_message(self):
             def _wrap(fn):
                 self.group_handler = fn
+                return fn
+
+            return _wrap
+
+        def on_notice(self):
+            def _wrap(fn):
+                self.notice_handler = fn
                 return fn
 
             return _wrap
@@ -437,6 +606,19 @@ def test_qq_channel_ws_timeout_patch_is_best_effort(
     monkeypatch.delitem(sys.modules, "ncatbot.core.adapter.adapter", raising=False)
 
     mod._patch_ncatbot_ws_open_timeout(7.5)
+
+
+def test_qq_resolves_relative_attachment_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mod = _import_qq_channel(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    image = Path("ws") / "uploads" / "a.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"png")
+
+    assert mod._resolve_existing_local_path(str(image), Path("ws")) == image.resolve()
 
 
 @pytest.mark.asyncio
@@ -1035,6 +1217,308 @@ async def test_qq_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         await mod.QQChannel._run_on_bot_loop(channel, pending)
     pending.close()
     await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_qq_group_observe_only_records_without_agent_reply(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    requester = SimpleNamespace(get=AsyncMock())
+    group_filter = SimpleNamespace(should_process=AsyncMock(return_value=True))
+    group_cfg = SimpleNamespace(
+        group_id="100",
+        allow_from=[],
+        require_at=False,
+        observe_only=True,
+    )
+    channel = mod.QQChannel(
+        "42",
+        bus,
+        session_manager,
+        groups=[group_cfg],
+        group_filter=group_filter,
+        http_requester=requester,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+    await channel._bot.group_handler(
+        SimpleNamespace(
+            group_id="100",
+            user_id="9",
+            raw_message="群里普通消息",
+            message_id=123,
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+    group_filter.should_process.assert_not_called()
+    session = session_manager.sessions["qq:gqq:100"]
+    assert session.metadata["observe_only"] is True
+    assert session.messages[0]["role"] == "user"
+    assert session.messages[0]["content"] == "[QQ群 100 | 9] 群里普通消息"
+    assert session.messages[0]["observe_only"] is True
+    assert session.messages[0]["platform_message_id"] == "123"
+    assert session_manager.saved == ["qq:gqq:100"]
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_uses_custom_channel_name(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="hello 236")
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.outbound[0][0] == "qq_2365524513"
+    assert len(bus.inbound) == 1
+    assert bus.inbound[0].channel == "qq_2365524513"
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_ignores_recent_private_outbound_echo(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    mod.shared_private_outbound_guard.clear()
+    bus = _Bus()
+    session_manager = _SessionManager()
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    mod.shared_private_outbound_guard.record(
+        "1049511700", "2365524513", "Akashic 刚发出的回复"
+    )
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="Akashic 刚发出的回复")
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_requires_prefix_for_peer_bot_private_message(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        bot_peer_ids=["1049511700"],
+        peer_trigger_prefixes=["/ask"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="帮我生成一张图")
+    )
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="/ask 帮我生成一张图")
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert len(bus.inbound) == 1
+    assert bus.inbound[0].content == "帮我生成一张图"
+
+
+@pytest.mark.asyncio
+async def test_qq_group_observe_only_describes_images(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from PIL import Image
+
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager(tmp_path)
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(buf, format="PNG")
+
+    async def _request_get(url, **kwargs):
+        return SimpleNamespace(
+            headers={"content-type": "image/png"},
+            content=buf.getvalue(),
+            raise_for_status=lambda: None,
+        )
+
+    class _VLProvider:
+        async def chat(self, **kwargs):
+            return SimpleNamespace(content="图里是红色测试图片。", thinking="")
+
+    requester = SimpleNamespace(get=AsyncMock(side_effect=_request_get))
+    group_cfg = SimpleNamespace(
+        group_id="100",
+        allow_from=[],
+        require_at=False,
+        observe_only=True,
+    )
+    channel = mod.QQChannel(
+        "42",
+        bus,
+        session_manager,
+        groups=[group_cfg],
+        http_requester=requester,
+        vl_provider=_VLProvider(),
+        vl_model="vl",
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+    await channel._bot.group_handler(
+        SimpleNamespace(
+            group_id="100",
+            user_id="9",
+            raw_message="看看 [CQ:image,url=http://x/a.png]",
+            message_id=123,
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    session = session_manager.sessions["qq:gqq:100"]
+    assert "[图片1识别] 图里是红色测试图片。" in session.messages[0]["content"]
+    assert session.messages[0]["attachment_summaries"]
+    assert session.messages[0]["media"]
+
+
+@pytest.mark.asyncio
+async def test_qq_group_upload_notice_records_file_preview(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager(tmp_path)
+
+    async def _request_get(url, **kwargs):
+        return SimpleNamespace(
+            headers={"content-type": "text/plain"},
+            content="装机清单：CPU 7800X3D，显卡 5070。".encode("utf-8"),
+            raise_for_status=lambda: None,
+        )
+
+    requester = SimpleNamespace(get=AsyncMock(side_effect=_request_get))
+    group_cfg = SimpleNamespace(
+        group_id="100",
+        allow_from=[],
+        require_at=False,
+        observe_only=True,
+    )
+    channel = mod.QQChannel(
+        "42",
+        bus,
+        session_manager,
+        groups=[group_cfg],
+        http_requester=requester,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    async def _drain(coro):
+        return await coro
+
+    channel._run_on_bot_loop = AsyncMock(side_effect=_drain)
+    await channel._bot.notice_handler(
+        SimpleNamespace(
+            notice_type="group_upload",
+            group_id="100",
+            user_id="9",
+            file={"id": "file-1", "name": "build.txt", "size": 32, "busid": "1"},
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    session = session_manager.sessions["qq:gqq:100"]
+    msg = session.messages[0]
+    assert "[群文件] build.txt" in msg["content"]
+    assert "文本预览：装机清单" in msg["content"]
+    assert msg["file_id"] == "file-1"
+    assert msg["media"]
 
 
 @pytest.mark.asyncio

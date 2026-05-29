@@ -16,6 +16,8 @@ class MessagePushTool(Tool):
     description = (
         "向指定渠道的用户主动发送消息、文件或图片。"
         "需要提供渠道名（如 telegram、qq）和目标 chat_id。"
+        "在当前对话内回复 QQ 多账号消息时，优先使用当前会话渠道；"
+        "例如当前渠道是 qq_2365524513 时，不要退回通用 qq。"
         "message/file/image 三者至少提供一个。"
     )
     parameters = {
@@ -77,8 +79,13 @@ class MessagePushTool(Tool):
         )
 
     async def execute(self, **kwargs: Any) -> str:
-        channel: str = kwargs["channel"]
         chat_id: str = str(kwargs["chat_id"])
+        channel: str = self._resolve_channel(
+            requested=str(kwargs["channel"]),
+            chat_id=chat_id,
+            current_channel=str(kwargs.get("current_channel", "")),
+            current_chat_id=str(kwargs.get("current_chat_id", "")),
+        )
         message: str | None = kwargs.get("message")
         file: str | None = kwargs.get("file")
         image: str | None = kwargs.get("image")
@@ -125,3 +132,25 @@ class MessagePushTool(Tool):
             return f"发送失败：{e}"
 
         return "；".join(results) if results else f"渠道 {channel!r} 没有可用的 sender"
+
+    @staticmethod
+    def _resolve_channel(
+        *,
+        requested: str,
+        chat_id: str,
+        current_channel: str,
+        current_chat_id: str,
+    ) -> str:
+        requested = str(requested or "").strip()
+        current_channel = str(current_channel or "").strip()
+        if (
+            requested == "qq"
+            and current_channel.startswith("qq_")
+            and str(chat_id) == str(current_chat_id)
+        ):
+            logger.info(
+                "[message_push] corrected qq channel to current multi-account channel %s",
+                current_channel,
+            )
+            return current_channel
+        return requested

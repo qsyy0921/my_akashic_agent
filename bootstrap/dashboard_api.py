@@ -6,6 +6,7 @@ from pathlib import Path, PureWindowsPath
 import importlib.util
 import logging
 import json
+import mimetypes
 import re
 import sqlite3
 import sys
@@ -65,6 +66,14 @@ class _DashboardAccessLogFilter(logging.Filter):
         record.levelno = logging.DEBUG
         record.levelname = "DEBUG"
         return True
+
+
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
 
 
 def _install_dashboard_access_log_filter() -> None:
@@ -818,6 +827,20 @@ def create_dashboard_app(
             if panels:
                 result.append({"id": plugin_dir.name, "panels": panels})
         return result
+
+    @app.get("/api/dashboard/attachments")
+    def get_dashboard_attachment(path: str = Query(..., min_length=1)) -> FileResponse:
+        uploads_root = (workspace / "uploads").resolve()
+        try:
+            candidate = Path(path).expanduser().resolve()
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail="附件路径无效") from exc
+        if not _is_relative_to(candidate, uploads_root):
+            raise HTTPException(status_code=403, detail="附件不在工作区 uploads 目录内")
+        if not candidate.is_file():
+            raise HTTPException(status_code=404, detail="附件不存在")
+        media_type, _ = mimetypes.guess_type(candidate.name)
+        return FileResponse(candidate, media_type=media_type or "application/octet-stream")
 
     @app.get("/plugins/{plugin_id}/{panel_name}.js")
     def get_plugin_panel_js(plugin_id: str, panel_name: str) -> FileResponse:

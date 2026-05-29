@@ -90,6 +90,12 @@ class IPCServerChannel:
         self._proactive_loop = proactive_loop
         logger.info("[cli] ProactiveLoop attached")
 
+    async def send(self, chat_id: str, message: str) -> None:
+        writer = self._writers.get(chat_id)
+        if writer is None or writer.is_closing():
+            raise RuntimeError(f"cli session not connected: {chat_id}")
+        await self._write_assistant_message(writer, message, metadata={})
+
     async def _handle_connection(
         self,
         reader: asyncio.StreamReader,
@@ -167,16 +173,29 @@ class IPCServerChannel:
     async def _on_response(self, msg: OutboundMessage) -> None:
         writer = self._writers.get(msg.chat_id)
         if writer and not writer.is_closing():
-            payload = (
-                json.dumps(
-                    {
-                        "type": "assistant",
-                        "content": msg.content,
-                        "metadata": msg.metadata or {},
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
+            await self._write_assistant_message(
+                writer,
+                msg.content,
+                metadata=msg.metadata or {},
             )
-            writer.write(payload.encode("utf-8"))
-            await writer.drain()
+
+    @staticmethod
+    async def _write_assistant_message(
+        writer: asyncio.StreamWriter,
+        content: str,
+        *,
+        metadata: dict,
+    ) -> None:
+        payload = (
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "content": content,
+                    "metadata": metadata,
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+        writer.write(payload.encode("utf-8"))
+        await writer.drain()

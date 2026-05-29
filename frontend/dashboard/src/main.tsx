@@ -807,6 +807,52 @@ function SortHead(props: { label: string; active: boolean; order: SortOrder; onC
   return <button className={`table-sort-btn ${props.active ? "active" : ""}`} type="button" onClick={props.onClick}><span>{props.label}</span><span className="table-sort-arrow">{props.active ? props.order === "asc" ? "↑" : "↓" : ""}</span></button>;
 }
 
+function messageTimestamp(message: MessageRow): string {
+  return message.ts || message.timestamp || "";
+}
+
+function messageMedia(message: MessageRow): string[] {
+  return Array.isArray(message.media)
+    ? message.media.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function messageAttachmentSummaries(message: MessageRow): string[] {
+  return Array.isArray(message.attachment_summaries)
+    ? message.attachment_summaries.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function attachmentUrl(path: string): string {
+  return `/api/dashboard/attachments?path=${encodeURIComponent(path)}`;
+}
+
+function attachmentName(path: string): string {
+  const normalized = path.replaceAll("\\", "/");
+  return normalized.split("/").pop() || "attachment";
+}
+
+function isImageAttachment(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(path);
+}
+
+function isInlineDocument(path: string): boolean {
+  return /\.(txt|md|csv|json|log|toml|ya?ml|pdf)$/i.test(path);
+}
+
+function formatFileSize(value: unknown): string {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size < 0) return "大小未知";
+  const units = ["B", "KB", "MB", "GB"];
+  let current = size;
+  let unit = units[0];
+  for (unit of units) {
+    if (current < 1024 || unit === units[units.length - 1]) break;
+    current /= 1024;
+  }
+  return unit === "B" ? `${Math.round(current)}B` : `${current.toFixed(1)}${unit}`;
+}
+
 function Rows(props: {
   viewMode: ViewMode;
   messages: MessageRow[];
@@ -853,15 +899,18 @@ function Rows(props: {
       <div />
     </div>)}</>;
   }
-  return <>{props.messages.map((item) => <div key={item.id} className={`table-row mode-messages ${props.activeMessage?.id === item.id ? "active" : ""} ${props.selectedMessageIds.has(item.id) ? "selected" : ""}`} onClick={() => props.onSelectMessage(item)}>
-    <label className="checkbox-cell" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={props.selectedMessageIds.has(item.id)} onChange={(event) => toggleSet(item.id, event.target.checked, props.selectedMessageIds, props.setSelectedMessageIds)} /></label>
-    <div className="cell-session mono" title={item.session_key}>{formatSessionKeyForTable(item.session_key)}</div>
-    <div className="cell-seq mono">#{item.seq}</div>
-    <div className="content-preview">{stripMarkdown(item.content)}</div>
-    <div className="cell-time mono">{shortTs(item.ts)}</div>
-    <div><span className={`role-pill ${roleClass(item.role)}`}>{item.role}</span></div>
-    <div />
-  </div>)}</>;
+  return <>{props.messages.map((item) => {
+    const mediaCount = messageMedia(item).length;
+    return <div key={item.id} className={`table-row mode-messages ${props.activeMessage?.id === item.id ? "active" : ""} ${props.selectedMessageIds.has(item.id) ? "selected" : ""}`} onClick={() => props.onSelectMessage(item)}>
+      <label className="checkbox-cell" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={props.selectedMessageIds.has(item.id)} onChange={(event) => toggleSet(item.id, event.target.checked, props.selectedMessageIds, props.setSelectedMessageIds)} /></label>
+      <div className="cell-session mono" title={item.session_key}>{formatSessionKeyForTable(item.session_key)}</div>
+      <div className="cell-seq mono">#{item.seq}</div>
+      <div className="content-preview"><span className="content-preview-text">{stripMarkdown(item.content)}</span>{mediaCount > 0 && <span className="attachment-pill">附件 {mediaCount}</span>}</div>
+      <div className="cell-time mono">{shortTs(messageTimestamp(item))}</div>
+      <div><span className={`role-pill ${roleClass(item.role)}`}>{item.role}</span></div>
+      <div />
+    </div>;
+  })}</>;
 }
 
 function DetailPane(props: {
@@ -900,10 +949,11 @@ function DetailPane(props: {
       <div className="detail-toolbar"><div><div className="detail-title">消息详情</div><div className="detail-subtext">{message.session_key} · #{message.seq}</div></div></div>
       <div className="detail-grid">
         {detailRow("role", <span className={`role-pill ${roleClass(message.role)}`}>{message.role}</span>)}
-        {detailRow("time", <code>{message.ts}</code>)}
+        {detailRow("time", <code>{messageTimestamp(message)}</code>)}
         {detailRow("id", <code>{message.id}</code>)}
       </div>
       <div className="detail-block"><div className="detail-label">Content</div><div className="detail-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }} /></div>
+      <MessageAttachmentBlock message={message} />
       <div className="detail-block"><div className="detail-label">Extra</div><JsonTreeBlock data={message.extra} /></div>
       <div className="detail-block"><div className="detail-label">Tool Chain</div><JsonTreeBlock data={message.tool_chain} /></div>
     </div>;
@@ -929,6 +979,53 @@ function EmptyDetail(props: { text: string }): React.ReactElement {
 
 function detailRow(label: string, value: React.ReactNode): React.ReactElement {
   return <div className="detail-row"><div className="detail-row-label">{label}</div><div className="detail-row-val">{value}</div></div>;
+}
+
+function MessageAttachmentBlock(props: { message: MessageRow }): React.ReactElement | null {
+  const media = messageMedia(props.message);
+  const summaries = messageAttachmentSummaries(props.message);
+  const hasFileMeta = Boolean(props.message.file_name || props.message.file_url || props.message.attachment_type);
+  if (!media.length && !summaries.length && !hasFileMeta) {
+    return null;
+  }
+  return <div className="detail-block">
+    <div className="detail-label">Attachments</div>
+    <div className="attachment-panel">
+      {hasFileMeta && <div className="attachment-meta">
+        {props.message.file_name && <span className="detail-chip">{props.message.file_name}</span>}
+        {props.message.file_size !== undefined && props.message.file_size !== null && <span className="detail-chip">{formatFileSize(props.message.file_size)}</span>}
+        {props.message.file_url && <a className="attachment-link" href={props.message.file_url} target="_blank" rel="noreferrer">原始文件链接</a>}
+      </div>}
+      {media.length > 0 && <div className="attachment-link-list">
+        {media.map((path, index) => {
+          const url = attachmentUrl(path);
+          const name = attachmentName(path);
+          return <a key={`${path}-link-${index}`} className="attachment-open-link" href={url} target="_blank" rel="noreferrer">
+            查看附件 {index + 1}: {name}
+          </a>;
+        })}
+      </div>}
+      {summaries.length > 0 && <div className="attachment-summaries">
+        {summaries.map((summary, index) => <div key={`${summary}-${index}`} className="attachment-summary">{summary}</div>)}
+      </div>}
+      {media.length > 0 && <div className="attachment-grid">
+        {media.map((path, index) => {
+          const url = attachmentUrl(path);
+          const name = attachmentName(path);
+          if (isImageAttachment(path)) {
+            return <a key={`${path}-${index}`} className="attachment-card image" href={url} target="_blank" rel="noreferrer" title={name}>
+              <img src={url} alt={name} loading="lazy" />
+              <span>{name}</span>
+            </a>;
+          }
+          return <div key={`${path}-${index}`} className="attachment-card file">
+            <a className="attachment-file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+            {isInlineDocument(path) && <iframe className="attachment-frame" src={url} title={name} />}
+          </div>;
+        })}
+      </div>}
+    </div>
+  </div>;
 }
 
 function JsonTreeBlock(props: { data: unknown }): React.ReactElement {

@@ -381,7 +381,10 @@ def test_list_sessions_with_filters(tmp_path) -> None:
             params={"sort_by": "seq", "sort_order": "asc"},
         )
         assert messages_resp.status_code == 200
-        assert messages_resp.json()["items"][0]["seq"] == 0
+        first_message = messages_resp.json()["items"][0]
+        assert first_message["seq"] == 0
+        assert first_message["ts"] == "2026-04-19T09:01:00+08:00"
+        assert first_message["timestamp"] == first_message["ts"]
 
 
 def test_update_and_delete_session(tmp_path) -> None:
@@ -547,6 +550,30 @@ def test_list_update_and_batch_delete_messages(tmp_path) -> None:
         )
         assert remain_resp.status_code == 200
         assert remain_resp.json()["total"] == 1
+
+
+def test_dashboard_attachment_endpoint_serves_workspace_uploads(tmp_path) -> None:
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    attachment = uploads / "note.txt"
+    attachment.write_text("qq group file preview", encoding="utf-8")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        ok_resp = client.get(
+            "/api/dashboard/attachments",
+            params={"path": str(attachment)},
+        )
+        denied_resp = client.get(
+            "/api/dashboard/attachments",
+            params={"path": str(outside)},
+        )
+
+    assert ok_resp.status_code == 200
+    assert ok_resp.text == "qq group file preview"
+    assert denied_resp.status_code == 403
 
 
 def test_list_memory_items_with_filters(tmp_path) -> None:

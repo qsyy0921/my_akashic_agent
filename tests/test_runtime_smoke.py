@@ -20,6 +20,7 @@ from agent.config import (
     QQChannelConfig,
     QQGroupConfig,
     TelegramChannelConfig,
+    FeishuWebhookChannelConfig,
     load_config,
 )
 from agent.memory import DEFAULT_SELF_MD
@@ -300,6 +301,7 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
 
     fake_ipc_server = types.ModuleType("infra.channels.ipc_server")
     fake_telegram_channel = types.ModuleType("infra.channels.telegram_channel")
+    fake_feishu_channel = types.ModuleType("infra.channels.feishu_channel")
     fake_qq_channel = types.ModuleType("infra.channels.qq_channel")
     fake_qqbot_channel = types.ModuleType("infra.channels.qqbot_channel")
 
@@ -313,6 +315,9 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
 
         async def stop(self) -> None:
             starts.append("ipc.stop")
+
+        async def send(self, *args, **kwargs):
+            return None
 
     class _TelegramChannel:
         def __init__(self, **kwargs):
@@ -355,6 +360,19 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
         async def send_image(self, *args, **kwargs):
             return None
 
+    class _FeishuWebhookChannel:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def start(self) -> None:
+            starts.append("feishu")
+
+        async def stop(self) -> None:
+            starts.append("feishu.stop")
+
+        async def send(self, *args, **kwargs):
+            return None
+
     class _QQBotChannel:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -373,10 +391,12 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
 
     fake_ipc_server.IPCServerChannel = _IPCServerChannel  # type: ignore[attr-defined]
     fake_telegram_channel.TelegramChannel = _TelegramChannel  # type: ignore[attr-defined]
+    fake_feishu_channel.FeishuWebhookChannel = _FeishuWebhookChannel  # type: ignore[attr-defined]
     fake_qq_channel.QQChannel = _QQChannel  # type: ignore[attr-defined]
     fake_qqbot_channel.QQBotChannel = _QQBotChannel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "infra.channels.ipc_server", fake_ipc_server)
     monkeypatch.setitem(sys.modules, "infra.channels.telegram_channel", fake_telegram_channel)
+    monkeypatch.setitem(sys.modules, "infra.channels.feishu_channel", fake_feishu_channel)
     monkeypatch.setitem(sys.modules, "infra.channels.qq_channel", fake_qq_channel)
     monkeypatch.setitem(sys.modules, "infra.channels.qqbot_channel", fake_qqbot_channel)
 
@@ -391,6 +411,10 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
         system_prompt="s",
         channels=ChannelsConfig(
             telegram=TelegramChannelConfig(token="tg-token", allow_from=["1"]),
+            feishu=FeishuWebhookChannelConfig(
+                webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/test",
+                secret="secret",
+            ),
             qq=QQChannelConfig(
                 bot_uin="10001",
                 allow_from=["2"],
@@ -425,14 +449,17 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
     assert tg is not None
     assert qq is not None
     assert qqbot is not None
-    assert starts == ["ipc", "telegram", "qq", "qqbot"]
+    assert starts == ["ipc", "telegram", "feishu", "qq", "qqbot"]
     assert registrations == [
+        ("cli", ["text"]),
         ("telegram", ["file", "image", "stream_text", "text"]),
+        ("feishu", ["stream_text", "text"]),
         ("qq", ["file", "image", "text"]),
         ("qqbot", ["stream_text", "text"]),
     ]
     assert tg.kwargs["event_bus"] is event_bus
     assert tg.kwargs["interrupt_controller"] is controller
+    assert registrations[2] == ("feishu", ["stream_text", "text"])
     assert qq.kwargs["interrupt_controller"] is controller
     assert qqbot.kwargs["event_bus"] is event_bus
     assert qqbot.kwargs["interrupt_controller"] is controller
@@ -457,6 +484,9 @@ async def test_start_channels_skips_unfilled_optional_channels(monkeypatch, tmp_
         async def stop(self) -> None:
             starts.append("ipc.stop")
 
+        async def send(self, *args, **kwargs):
+            return None
+
     class _TelegramChannel:
         async def start(self) -> None:
             starts.append("telegram")
@@ -474,7 +504,8 @@ async def test_start_channels_skips_unfilled_optional_channels(monkeypatch, tmp_
 
     class _PushTool:
         def register_channel(self, name: str, **kwargs) -> None:
-            raise AssertionError(f"unexpected channel registration: {name}")
+            if name != "cli" or sorted(kwargs) != ["text"]:
+                raise AssertionError(f"unexpected channel registration: {name}")
 
     config = Config(
         provider="openai",

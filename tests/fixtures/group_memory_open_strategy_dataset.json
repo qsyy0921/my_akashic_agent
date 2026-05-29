@@ -1,0 +1,38 @@
+{
+  "name": "open_strategy_qq_mini",
+  "license": "CC0-1.0",
+  "description": "Small offline open fixture for group-memory RAG tests. The messages are synthetic game-guide style records so tests do not depend on network access or copyrighted wiki excerpts.",
+  "group_id": "284331268",
+  "messages": [
+    {
+      "sender_id": "user_a",
+      "content": "Boss A P2 先清左边小怪，别贪输出，不然奶压力会爆。"
+    },
+    {
+      "sender_id": "user_b",
+      "content": "我实测 Boss A 二阶段先清左边小怪很稳，远程顺手打断。"
+    },
+    {
+      "sender_id": "user_c",
+      "content": "Boss A 新版本小怪刷新改了，旧打法可能要重测。"
+    },
+    {
+      "sender_id": "user_d",
+      "content": "Build B 配装优先堆暴击，武器词条带攻速会更顺。"
+    }
+  ],
+  "questions": [
+    {
+      "query": "Boss A 二阶段怎么打",
+      "expected_topic": "boss a",
+      "expected_status": "disputed",
+      "expected_evidence_count": 3
+    },
+    {
+      "query": "Build B 配装",
+      "expected_topic": "Build B 配装",
+      "expected_status": "pending",
+      "expected_evidence_count": 1
+    }
+  ]
+}

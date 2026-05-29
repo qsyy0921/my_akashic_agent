@@ -297,6 +297,7 @@ def test_config_load_accepts_dev_model_alias(tmp_path: Path):
 
 
 def test_config_load_skips_unfilled_channels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     cfg_path = tmp_path / "config.toml"
     _write_toml(
         cfg_path,
@@ -381,6 +382,105 @@ def test_config_load_reads_fitbit_integration_block(tmp_path: Path):
     assert cfg.fitbit.enabled is True
 
 
+def test_config_load_reads_chatgpt_proxy_integration_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "integrations": {
+                "chatgpt_proxy": {
+                    "enabled": True,
+                    "base_url": "${CHATGPT_PROXY_BASE_URL}",
+                    "api_key": "${CHATGPT_PROXY_API_KEY}",
+                    "image_model": "gpt-image-test",
+                    "image_path": "/v1/images/generations",
+                    "response_format": "url",
+                    "output_dir": "images",
+                }
+            },
+        },
+    )
+    monkeypatch.setenv("CHATGPT_PROXY_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("CHATGPT_PROXY_API_KEY", "proxy-key")
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.chatgpt_proxy.enabled is True
+    assert cfg.chatgpt_proxy.base_url == "http://127.0.0.1:8000"
+    assert cfg.chatgpt_proxy.api_key == "proxy-key"
+    assert cfg.chatgpt_proxy.image_model == "gpt-image-test"
+    assert cfg.chatgpt_proxy.image_path == "/v1/images/generations"
+    assert cfg.chatgpt_proxy.response_format == "url"
+    assert cfg.chatgpt_proxy.output_dir == "images"
+
+
+def test_config_load_reads_ragflow_integration_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "integrations": {
+                "ragflow": {
+                    "enabled": True,
+                    "base_url": "http://127.0.0.1:9380",
+                    "api_key": "${RAGFLOW_API_KEY}",
+                    "proxy_url": "http://127.0.0.1:7897",
+                    "default_dataset_ids": "ds1,ds2",
+                    "default_keyword": True,
+                    "default_use_kg": True,
+                    "default_top_k": 12,
+                    "default_page_size": 6,
+                    "default_similarity_threshold": 0.25,
+                    "default_vector_similarity_weight": 0.45,
+                    "request_timeout_seconds": 70,
+                }
+            },
+        },
+    )
+    monkeypatch.setenv("RAGFLOW_API_KEY", "ragflow-key")
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.ragflow.enabled is True
+    assert cfg.ragflow.base_url == "http://127.0.0.1:9380"
+    assert cfg.ragflow.api_key == "ragflow-key"
+    assert cfg.ragflow.proxy_url == "http://127.0.0.1:7897"
+    assert cfg.ragflow.default_dataset_ids == ["ds1", "ds2"]
+    assert cfg.ragflow.default_keyword is True
+    assert cfg.ragflow.default_use_kg is True
+    assert cfg.ragflow.default_top_k == 12
+    assert cfg.ragflow.default_page_size == 6
+    assert cfg.ragflow.default_similarity_threshold == 0.25
+    assert cfg.ragflow.default_vector_similarity_weight == 0.45
+    assert cfg.ragflow.request_timeout_seconds == 70
+
+
 def test_config_load_reads_toml_layout(tmp_path: Path):
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text(
@@ -452,6 +552,169 @@ def test_config_load_reads_qq_websocket_timeout(tmp_path: Path):
 
     assert cfg.channels.qq is not None
     assert cfg.channels.qq.websocket_open_timeout_seconds == 9.5
+
+
+def test_config_load_reads_qq_secondary_accounts(tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "channels": {
+                "qq": {
+                    "bot_uin": "1049511700",
+                    "allow_from": ["1049511700"],
+                    "channel_name": "qq",
+                    "websocket_uri": "ws://localhost:3001",
+                    "accounts": [
+                        {
+                            "bot_uin": "2365524513",
+                            "allow_from": ["1049511700"],
+                            "channel_name": "qq_2365524513",
+                            "websocket_uri": "ws://localhost:3002",
+                        }
+                    ],
+                },
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.channels.qq is not None
+    assert cfg.channels.qq.bot_uin == "1049511700"
+    assert cfg.channels.qq.channel_name == "qq"
+    assert cfg.channels.qq.websocket_uri == "ws://localhost:3001"
+    assert len(cfg.channels.qq_accounts) == 1
+    account = cfg.channels.qq_accounts[0]
+    assert account.bot_uin == "2365524513"
+    assert account.allow_from == ["1049511700"]
+    assert account.channel_name == "qq_2365524513"
+    assert account.websocket_uri == "ws://localhost:3002"
+
+
+def test_channel_config_resolves_env_placeholders(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "channels": {
+                "telegram": {
+                    "token": "${TELEGRAM_BOT_TOKEN}",
+                    "allow_from": ["${TELEGRAM_ALLOW_FROM}"],
+                },
+                "feishu": {
+                    "webhook_url": "${FEISHU_WEBHOOK_URL}",
+                    "secret": "${FEISHU_WEBHOOK_SECRET}",
+                    "channel_name": "feishu_work",
+                },
+                "wechat": {
+                    "webhook_url": "${WECHAT_WEBHOOK_URL}",
+                    "mentioned_list": ["${WECHAT_MENTIONED_LIST}"],
+                    "mentioned_mobile_list": ["${WECHAT_MENTIONED_MOBILE_LIST}"],
+                    "channel_name": "wechat_work",
+                },
+                "qq": {
+                    "bot_uin": "${QQ_BOT_UIN}",
+                    "allow_from": ["${QQ_ALLOW_FROM}"],
+                    "groups": [
+                        {
+                            "group_id": "${QQ_GROUP_ID}",
+                            "allow_from": ["${QQ_GROUP_ALLOW_FROM}"],
+                            "observe_only": True,
+                        }
+                    ],
+                },
+                "qqbot": {
+                    "app_id": "${QQBOT_APP_ID}",
+                    "client_secret": "${QQBOT_SECRET}",
+                    "allow_from": ["${QQBOT_ALLOW_FROM}"],
+                    "groups": [
+                        {
+                            "group_openid": "${QQBOT_GROUP_OPENID}",
+                            "allow_from": ["${QQBOT_GROUP_ALLOW_FROM}"],
+                        }
+                    ],
+                },
+            },
+        },
+    )
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tg-token")
+    monkeypatch.setenv("TELEGRAM_ALLOW_FROM", "alice,123")
+    monkeypatch.setenv(
+        "FEISHU_WEBHOOK_URL",
+        "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+    )
+    monkeypatch.setenv("FEISHU_WEBHOOK_SECRET", "fs-secret")
+    monkeypatch.setenv(
+        "WECHAT_WEBHOOK_URL",
+        "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+    )
+    monkeypatch.setenv("WECHAT_MENTIONED_LIST", "@all,user1")
+    monkeypatch.setenv("WECHAT_MENTIONED_MOBILE_LIST", "13800138000")
+    monkeypatch.setenv("QQ_BOT_UIN", "10001")
+    monkeypatch.setenv("QQ_ALLOW_FROM", "42,43")
+    monkeypatch.setenv("QQ_GROUP_ID", "20002")
+    monkeypatch.setenv("QQ_GROUP_ALLOW_FROM", "44")
+    monkeypatch.setenv("QQBOT_APP_ID", "app")
+    monkeypatch.setenv("QQBOT_SECRET", "secret")
+    monkeypatch.setenv("QQBOT_ALLOW_FROM", "openid-1,openid-2")
+    monkeypatch.setenv("QQBOT_GROUP_OPENID", "group-openid")
+    monkeypatch.setenv("QQBOT_GROUP_ALLOW_FROM", "member-openid")
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.channels.telegram is not None
+    assert cfg.channels.telegram.token == "tg-token"
+    assert cfg.channels.telegram.allow_from == ["alice", "123"]
+    assert cfg.channels.feishu is not None
+    assert (
+        cfg.channels.feishu.webhook_url
+        == "https://open.feishu.cn/open-apis/bot/v2/hook/test"
+    )
+    assert cfg.channels.feishu.secret == "fs-secret"
+    assert cfg.channels.feishu.channel_name == "feishu_work"
+    assert cfg.channels.wechat is not None
+    assert (
+        cfg.channels.wechat.webhook_url
+        == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    )
+    assert cfg.channels.wechat.mentioned_list == ["@all", "user1"]
+    assert cfg.channels.wechat.mentioned_mobile_list == ["13800138000"]
+    assert cfg.channels.wechat.channel_name == "wechat_work"
+    assert cfg.channels.qq is not None
+    assert cfg.channels.qq.bot_uin == "10001"
+    assert cfg.channels.qq.allow_from == ["42", "43"]
+    assert cfg.channels.qq.groups[0].group_id == "20002"
+    assert cfg.channels.qq.groups[0].allow_from == ["44"]
+    assert cfg.channels.qq.groups[0].observe_only is True
+    assert cfg.channels.qqbot is not None
+    assert cfg.channels.qqbot.app_id == "app"
+    assert cfg.channels.qqbot.client_secret == "secret"
+    assert cfg.channels.qqbot.allow_from == ["openid-1", "openid-2"]
+    assert cfg.channels.qqbot.groups[0].group_openid == "group-openid"
+    assert cfg.channels.qqbot.groups[0].allow_from == ["member-openid"]
 
 
 def test_build_registered_tools_respects_toolset_order_and_subset(monkeypatch, tmp_path: Path):

@@ -8,6 +8,7 @@ import logging
 import asyncio
 import html
 import json
+from contextlib import suppress
 from collections.abc import Coroutine
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +57,8 @@ _REPLY_LIVE_TAIL = 1100
 _TOOL_PREVIEW_LIMIT = 80
 _LIVE_STREAM_MIN_INTERVAL_S = 2.5
 _LIVE_STREAM_MIN_CHARS = 200
+_START_MAX_ATTEMPTS = 5
+_START_RETRY_DELAY_S = 3.0
 
 
 @dataclass
@@ -80,6 +83,7 @@ class TelegramChannel:
         interrupt_controller: InterruptController | None = None,
         channel_name: str = _CHANNEL,
     ) -> None:
+        self._token = token
         self._bus = bus
         self._session_manager = session_manager
         self._interrupt_controller = interrupt_controller
@@ -94,21 +98,9 @@ class TelegramChannel:
             metadata_key="username",
             normalizer=lambda value: value.lower(),
         )
-        self._app = Application.builder().token(token).build()
+        self._app = self._build_application()
         self._bot_commands = bot_commands or []
-        self._app.add_handler(CommandHandler("stop", self._on_stop_command))
-        self._app.add_handler(
-            MessageHandler(filters.COMMAND, self._on_command)
-        )
-        self._app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message)
-        )
-        self._app.add_handler(
-            MessageHandler(filters.PHOTO & ~filters.COMMAND, self._on_photo)
-        )
-        self._app.add_handler(
-            MessageHandler(filters.Document.ALL & ~filters.COMMAND, self._on_document)
-        )
+        self._install_handlers()
         bus.subscribe_outbound(self._channel, self._on_response)
         if event_bus is not None:
             event_bus.on(TurnStarted, self._on_turn_started)
@@ -128,6 +120,38 @@ class TelegramChannel:
         self._tool_lines: dict[str, list[_ToolLiveLine]] = {}
         self._live_tasks: set[asyncio.Task[None]] = set()
         self._live_tasks_by_session: dict[str, set[asyncio.Task[None]]] = {}
+
+    def _build_application(self) -> Application:
+        builder = Application.builder().token(self._token)
+        for name in (
+            "connect_timeout",
+            "read_timeout",
+            "write_timeout",
+            "pool_timeout",
+            "get_updates_connect_timeout",
+            "get_updates_read_timeout",
+            "get_updates_write_timeout",
+            "get_updates_pool_timeout",
+        ):
+            method = getattr(builder, name, None)
+            if method is not None:
+                builder = method(30.0)
+        return builder.build()
+
+    def _install_handlers(self) -> None:
+        self._app.add_handler(CommandHandler("stop", self._on_stop_command))
+        self._app.add_handler(
+            MessageHandler(filters.COMMAND, self._on_command)
+        )
+        self._app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message)
+        )
+        self._app.add_handler(
+            MessageHandler(filters.PHOTO & ~filters.COMMAND, self._on_photo)
+        )
+        self._app.add_handler(
+            MessageHandler(filters.Document.ALL & ~filters.COMMAND, self._on_document)
+        )
 
     @property
     def bot(self):
@@ -165,7 +189,7 @@ class TelegramChannel:
 
     async def start(self) -> None:
         self._rebuild_user_map()
-        await self._app.initialize()
+        await self._initialize_with_retries()
         await self._app.start()
         await self._register_bot_commands()
         updater = self._app.updater
@@ -176,6 +200,32 @@ class TelegramChannel:
             error_callback=self._on_polling_error,
         )
         logger.info(f"TelegramChannel 已启动  已知用户: {len(self.user_map)}")
+
+    async def _initialize_with_retries(self) -> None:
+        last_error: Exception | None = None
+        for attempt in range(1, _START_MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                self._app = self._build_application()
+                self._install_handlers()
+            try:
+                await self._app.initialize()
+                return
+            except NetworkError as e:
+                last_error = e
+                if attempt >= _START_MAX_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "[telegram] 初始化失败，%.0fs 后重试 (%s/%s): %s",
+                    _START_RETRY_DELAY_S,
+                    attempt,
+                    _START_MAX_ATTEMPTS,
+                    e,
+                )
+                with suppress(Exception):
+                    await self._app.shutdown()
+                await asyncio.sleep(_START_RETRY_DELAY_S)
+        if last_error is not None:
+            raise last_error
 
     async def stop(self) -> None:
         if self._polling_conflict_task and not self._polling_conflict_task.done():
