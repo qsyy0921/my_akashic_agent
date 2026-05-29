@@ -22,6 +22,7 @@ func RegisterRoutes(
 	sender inport.MessageSender,
 	imageJobs inport.ImageJobManager,
 	outbox inport.OutboxManager,
+	mediaAssets inport.MediaAssetManager,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
@@ -32,6 +33,8 @@ func RegisterRoutes(
 	mux.Handle("/v1/image-jobs/", ImageJobStateHandler(imageJobs))
 	mux.Handle("/v1/outbox", OutboxListHandler(outbox))
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
+	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
+	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
 }
 
 func HealthHandler() http.Handler {
@@ -271,6 +274,92 @@ func parseOutboxPath(path string) (string, string) {
 	return eventID, action
 }
 
+func MediaAssetsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 200)
+			items, err := mediaAssets.List(r.Context(), limit)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{
+				Code: types.ErrorCodeOK,
+				Data: items,
+			})
+		case http.MethodPost:
+			var request dto.RegisterMediaAssetRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			cmd, err := toRegisterMediaAssetCommand(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			asset, err := mediaAssets.Register(r.Context(), cmd)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{
+				Code: types.ErrorCodeOK,
+				Data: asset,
+			})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func MediaAssetStateHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assetID, action := parseMediaAssetPath(r.URL.Path)
+		if assetID == "" {
+			http.Error(w, "media asset id required", http.StatusBadRequest)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if action == "content" {
+			http.Error(w, "media asset content route is not enabled", http.StatusNotImplemented)
+			return
+		}
+		if action != "" {
+			http.Error(w, "unknown media asset action", http.StatusNotFound)
+			return
+		}
+		asset, err := mediaAssets.Get(r.Context(), assetID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: asset,
+		})
+	})
+}
+
+func parseMediaAssetPath(path string) (string, string) {
+	rest := strings.TrimPrefix(path, "/v1/media-assets/")
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		return "", ""
+	}
+	parts := strings.Split(rest, "/")
+	assetID := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+	return assetID, action
+}
+
 func ImageJobsHandler(imageJobs inport.ImageJobManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -486,6 +575,39 @@ func toCreateImageJobCommand(request dto.CreateImageJobRequest) (command.CreateI
 		MaxAttempts: request.MaxAttempts,
 		Timestamp:   timestamp,
 		Metadata:    request.Metadata,
+	}, nil
+}
+
+func toRegisterMediaAssetCommand(request dto.RegisterMediaAssetRequest) (command.RegisterMediaAssetCommand, error) {
+	timestamp := time.Now().UTC()
+	if request.Timestamp != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, request.Timestamp)
+		if err != nil {
+			return command.RegisterMediaAssetCommand{}, err
+		}
+		timestamp = parsed
+	}
+
+	return command.RegisterMediaAssetCommand{
+		AssetID: request.AssetID,
+		Channel: command.ChannelCommand{
+			Kind:             request.Channel.RoutePlatform(),
+			AccountID:        request.Channel.AccountID,
+			ConversationID:   request.Channel.ConversationID,
+			ConversationType: request.Channel.ConversationType,
+		},
+		SourceMessageID: request.SourceMessageID,
+		SenderID:        request.SenderID,
+		Kind:            request.Kind,
+		URL:             request.URL,
+		MimeType:        request.MimeType,
+		Name:            request.Name,
+		SizeBytes:       request.SizeBytes,
+		ContentHash:     request.ContentHash,
+		Retention:       request.Retention,
+		Index:           request.Index,
+		Timestamp:       timestamp,
+		Metadata:        request.Metadata,
 	}, nil
 }
 

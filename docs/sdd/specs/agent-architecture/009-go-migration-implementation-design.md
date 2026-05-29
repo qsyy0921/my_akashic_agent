@@ -44,6 +44,11 @@ have a rollback path.
 
 ## Target Go Bounded Contexts
 
+Per ADR-0003, every Go service owns its own DDD + hexagonal layout. The current
+migration keeps one deployable service under `services/message-gateway` and
+models outbox, media registry, routing, audit, and job control as bounded
+contexts inside that service until they justify independent deployment.
+
 ```text
 services/message-gateway
 ├── api

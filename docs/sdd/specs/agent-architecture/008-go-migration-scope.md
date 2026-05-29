@@ -5,6 +5,11 @@
 Accepted as the full migration target. Individual cutovers still require their
 own review record and tests.
 
+ADR-0003 sets the granularity rule: all Go code lives under `services/`, each
+Go service owns its own DDD + hexagonal layers, and the current implementation
+keeps infrastructure contexts in `services/message-gateway` until a split is
+operationally justified.
+
 ## Context
 
 The project should not use Go only for the visible message gateway. Go should

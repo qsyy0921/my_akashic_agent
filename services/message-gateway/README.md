@@ -97,6 +97,19 @@ delivery status, attempts, retry, and dead-letter transitions in Go, while the
 actual QQ/Telegram SDK send path remains on the Python compatibility layer until
 the platform adapter cutover is reviewed.
 
+Register and query media/file metadata:
+
+```text
+POST /v1/media-assets
+GET  /v1/media-assets?limit=50
+GET  /v1/media-assets/{asset_id}
+GET  /v1/media-assets/{asset_id}/content
+```
+
+The first media registry slice is metadata-only. The `/content` route returns
+`501 Not Implemented` until workspace path validation and controlled asset
+access are reviewed and tested.
+
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:
 

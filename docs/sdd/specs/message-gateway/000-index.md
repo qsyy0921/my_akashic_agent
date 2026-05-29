@@ -25,4 +25,6 @@ execution.
 - `005-go-package-structure.md`: Go module package layout and dependency rules.
 - `006-outbox-delivery-retry.md`: Go-owned outbound delivery state, retry, and
   dead-letter contract.
+- `007-media-file-registry.md`: Go-owned QQ/TG media/file asset ids, metadata,
+  retention, and safe dashboard access rules.
 - Agent architecture boundary specs live under `../agent-architecture/`.

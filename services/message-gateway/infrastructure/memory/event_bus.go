@@ -22,6 +22,8 @@ type Store struct {
 	outbox       map[string]model.OutboxDelivery
 	outboxOrder  []string
 	outboxQueue  []string
+	mediaAssets  map[string]model.MediaAsset
+	mediaOrder   []string
 }
 
 type ObservedEvent struct {
@@ -36,9 +38,10 @@ type AuditEvent struct {
 
 func NewStore() *Store {
 	return &Store{
-		nonces:    make(map[string]time.Time),
-		imageJobs: make(map[string]model.ImageJob),
-		outbox:    make(map[string]model.OutboxDelivery),
+		nonces:      make(map[string]time.Time),
+		imageJobs:   make(map[string]model.ImageJob),
+		outbox:      make(map[string]model.OutboxDelivery),
+		mediaAssets: make(map[string]model.MediaAsset),
 	}
 }
 
@@ -188,6 +191,50 @@ func (s *Store) EnqueueOutboxDelivery(_ context.Context, delivery model.OutboxDe
 	return nil
 }
 
+func (s *Store) SaveMediaAsset(_ context.Context, asset model.MediaAsset) error {
+	if err := asset.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.mediaAssets[asset.AssetID]; !exists {
+		s.mediaOrder = append(s.mediaOrder, asset.AssetID)
+	}
+	s.mediaAssets[asset.AssetID] = asset
+	return nil
+}
+
+func (s *Store) FindMediaAsset(_ context.Context, assetID string) (model.MediaAsset, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	asset, ok := s.mediaAssets[assetID]
+	return asset, ok, nil
+}
+
+func (s *Store) ListMediaAssets(_ context.Context, limit int) ([]model.MediaAsset, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	start := len(s.mediaOrder) - limit
+	if start < 0 {
+		start = 0
+	}
+	items := make([]model.MediaAsset, 0, len(s.mediaOrder)-start)
+	for i := len(s.mediaOrder) - 1; i >= start; i-- {
+		assetID := s.mediaOrder[i]
+		if asset, ok := s.mediaAssets[assetID]; ok {
+			items = append(items, asset)
+		}
+	}
+	return items, nil
+}
+
 func (s *Store) RecentlySent(botID string, conversationID string, contentHash string, window time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -326,4 +373,17 @@ func (s *Store) OutboxQueue() []string {
 	queue := make([]string, len(s.outboxQueue))
 	copy(queue, s.outboxQueue)
 	return queue
+}
+
+func (s *Store) MediaAssets() []model.MediaAsset {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]model.MediaAsset, 0, len(s.mediaOrder))
+	for _, assetID := range s.mediaOrder {
+		if asset, ok := s.mediaAssets[assetID]; ok {
+			items = append(items, asset)
+		}
+	}
+	return items
 }

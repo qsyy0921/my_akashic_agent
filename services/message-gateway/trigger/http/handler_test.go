@@ -27,9 +27,10 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:private:1049511700:msg-1",
@@ -83,9 +84,10 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:group:27234224:msg-1",
@@ -151,9 +153,10 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
 
 	body := map[string]any{
 		"event_id": "outbox-http-1",
@@ -211,5 +214,78 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte("outbox-http-1")) {
 		t.Fatalf("list response missing delivery: %s", response.Body.String())
+	}
+}
+
+func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
+
+	body := map[string]any{
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "27234224",
+			"conversation_type": "group",
+		},
+		"source_message_id": "qq:gqq:27234224:498",
+		"sender_id":         "2948770636",
+		"kind":              "image",
+		"url":               "https://example.invalid/qq-image.png",
+		"mime_type":         "image/png",
+		"name":              "qq-image.png",
+		"index":             1,
+		"timestamp":         time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected media asset accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1")) {
+		t.Fatalf("register response missing generated asset id: %s", response.Body.String())
+	}
+
+	assetID := "asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1"
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/"+assetID, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected get 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"account_id":"1049511700"`)) {
+		t.Fatalf("get response missing account id: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets?limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("qq-image.png")) {
+		t.Fatalf("list response missing file name: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/"+assetID+"/content", nil))
+	if response.Code != http.StatusNotImplemented {
+		t.Fatalf("content route must not be enabled yet, got %d: %s", response.Code, response.Body.String())
 	}
 }

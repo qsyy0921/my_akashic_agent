@@ -37,3 +37,5 @@ Current architecture review sequence:
 - `2026-05-30-phase2-3-go-shadow-audit-jsonl.md`
 - `2026-05-30-compat-channel-media-group-memory.md`
 - `2026-05-30-phase4-1-go-outbox-control-plane.md`
+- `2026-05-30-media-registry-sdd-design-review.md`
+- `2026-05-30-phase5-1-go-media-registry-metadata.md`
