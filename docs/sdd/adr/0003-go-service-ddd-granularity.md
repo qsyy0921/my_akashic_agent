@@ -38,7 +38,7 @@ services/<service-name>/
 The current implementation remains a single Go service:
 
 ```text
-services/agent-gateway
+services/agent-runtime
 ```
 
 Within this service, message routing, loop guard, outbox, shadow audit, image
@@ -61,7 +61,7 @@ until they show independent deployment or persistence needs.
   scaling, persistence, or operational lifecycle reason.
 - Shared code must remain minimal and generic; business types stay inside the
   owning service.
-- If `services/agent-gateway` becomes too broad, split by bounded context:
+- If `services/agent-runtime` becomes too broad, split by bounded context:
   `job-service`, `scheduler-service`, or `asset-service`.
 
 ## Consequences
@@ -74,6 +74,6 @@ Positive:
 
 Negative:
 
-- `agent-gateway` will temporarily host several infrastructure contexts.
+- `agent-runtime` will temporarily host several infrastructure contexts.
 - Cross-context naming discipline is required until independent services are
   justified.
