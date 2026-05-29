@@ -83,6 +83,16 @@ With this environment variable set, `/v1/media-assets` and automatic attachment
 registration use the file-backed media registry. Use `memory` only for
 development runs where restart recovery is not required.
 
+Persist outbound send ledger records across runtime restarts:
+
+```powershell
+$env:AKASHIC_SEND_LEDGER_DSN = "E:\agent\akashic\.akashic-workspace\runtime\send-ledger.json"
+```
+
+With this environment variable set, outbound sends and inbound echo checks share
+the same file-backed ledger. Use `memory` only for development runs where recent
+echo detection does not need restart recovery.
+
 ## HTTP Contracts
 
 Health:
@@ -156,6 +166,19 @@ POST /v1/jobs/{job_id}/cancel
 
 The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
 workers still execute image generation, RAG, and memory extraction.
+
+Record and query recent bot sends:
+
+```text
+POST /v1/send-ledger/records
+GET  /v1/send-ledger/records?from_bot_id=1049511700&conversation_id=2365524513&limit=50
+GET  /v1/send-ledger/recent?from_bot_id=1049511700&conversation_id=2365524513&content=hello&window_seconds=60
+```
+
+`POST /v1/send-ledger/records` accepts either `content` or `content_hash`. When
+only `content` is provided, Go computes the same normalized content hash used by
+the loop guard. Python compatibility senders should call this endpoint after a
+successful QQ/Telegram send until platform dispatch is fully cut over to Go.
 
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:

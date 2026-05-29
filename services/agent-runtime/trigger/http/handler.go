@@ -28,6 +28,7 @@ func RegisterRoutes(
 	outbox inport.OutboxManager,
 	mediaAssets inport.MediaAssetManager,
 	agentJobs inport.AgentJobManager,
+	sendLedger inport.SendLedgerManager,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
@@ -43,6 +44,8 @@ func RegisterRoutes(
 	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
 	mux.Handle("/v1/jobs/", AgentJobStateHandler(agentJobs))
+	mux.Handle("/v1/send-ledger/records", SendLedgerRecordsHandler(sendLedger))
+	mux.Handle("/v1/send-ledger/recent", SendLedgerRecentHandler(sendLedger))
 }
 
 func HealthHandler() http.Handler {
@@ -172,6 +175,82 @@ func SendHandler(sender inport.MessageSender) http.Handler {
 		}
 
 		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK})
+	})
+}
+
+func SendLedgerRecordsHandler(sendLedger inport.SendLedgerManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sendLedger == nil {
+			http.Error(w, "send ledger disabled", http.StatusNotImplemented)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			items, err := sendLedger.List(r.Context(), query.SendRecordFilter{
+				Limit:          parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+				FromBotID:      r.URL.Query().Get("from_bot_id"),
+				ConversationID: r.URL.Query().Get("conversation_id"),
+				ContentHash:    r.URL.Query().Get("content_hash"),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+		case http.MethodPost:
+			var request dto.RecordSendRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			timestamp, err := parseOptionalTimestamp(request.Timestamp)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			record, err := sendLedger.Record(r.Context(), command.RecordSendCommand{
+				FromBotID:      request.FromBotID,
+				ConversationID: request.ConversationID,
+				Content:        request.Content,
+				ContentHash:    request.ContentHash,
+				Timestamp:      timestamp,
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func SendLedgerRecentHandler(sendLedger inport.SendLedgerManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sendLedger == nil {
+			http.Error(w, "send ledger disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		windowSeconds := parsePositiveInt(r.URL.Query().Get("window_seconds"), 15, 86400)
+		recent, err := sendLedger.RecentlySent(r.Context(), command.CheckRecentSendCommand{
+			FromBotID:      r.URL.Query().Get("from_bot_id"),
+			ConversationID: r.URL.Query().Get("conversation_id"),
+			Content:        r.URL.Query().Get("content"),
+			ContentHash:    r.URL.Query().Get("content_hash"),
+			Window:         time.Duration(windowSeconds) * time.Second,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: recent})
 	})
 }
 

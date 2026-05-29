@@ -347,6 +347,31 @@ func (s *Store) RecentlySent(botID string, conversationID string, contentHash st
 	return false
 }
 
+func (s *Store) ListSentRecords(_ context.Context, filter query.SendRecordFilter) ([]model.SendRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.SendRecord, 0, limit)
+	for i := len(s.sendRecords) - 1; i >= 0 && len(items) < limit; i-- {
+		record := s.sendRecords[i]
+		if filter.FromBotID != "" && record.FromBotID != filter.FromBotID {
+			continue
+		}
+		if filter.ConversationID != "" && record.ConversationID != filter.ConversationID {
+			continue
+		}
+		if filter.ContentHash != "" && record.ContentHash != filter.ContentHash {
+			continue
+		}
+		items = append(items, record)
+	}
+	return items, nil
+}
+
 func (s *Store) RecordNonce(_ context.Context, nonce string, seenAt time.Time) error {
 	if nonce == "" {
 		return nil

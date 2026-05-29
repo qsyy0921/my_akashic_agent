@@ -85,6 +85,7 @@ Inbound ports:
 - `OutboxManager`
 - `MediaAssetManager`
 - `JobManager`
+- `SendLedgerManager`
 - `RoutingManager`
 - `SchedulerManager`
 
@@ -99,6 +100,7 @@ Outbound ports:
 - `JobRepository`
 - `JobQueue`
 - `AuditLog`
+- `SendLedger`
 - `RoutingRepository`
 - `Clock`
 
@@ -179,6 +181,8 @@ Acceptance:
 
 Deliverables:
 
+- Go send ledger control plane with durable `RecordSent`, `RecentlySent`, and
+  read-only diagnostics.
 - Go `DeliveryAdapter` implementations for NapCat and Telegram.
 - Python returns `AgentDecision` to Go.
 - Go dispatches text/files/images and records receipts.

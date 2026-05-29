@@ -16,6 +16,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
+	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
 
@@ -48,17 +49,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("init media asset repository: %v", err)
 	}
+	sendLedgerRepository, err := newSendLedgerRepository()
+	if err != nil {
+		log.Fatalf("init send ledger repository: %v", err)
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
 		auditLog,
-		store,
+		sendLedgerRepository,
 		store,
 		classifier,
 		loopGuard,
 		mediaAssetRepository,
 	)
-	sender := appservice.NewMessageSendService(store, store, store, store)
+	sender := appservice.NewMessageSendService(store, sendLedgerRepository, store, store)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaContentReader, err := newMediaAssetContentReader()
@@ -67,10 +72,11 @@ func main() {
 	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
 	agentJobs := appservice.NewAgentJobService(agentJobRepository)
+	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -111,6 +117,20 @@ func newMediaAssetRepository() (outport.MediaAssetRepository, error) {
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_MEDIA_ASSETS_PATH")); path != "" {
 		return mediaassetstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newSendLedgerRepository() (outport.SendLedger, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_SEND_LEDGER_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return sendledgerstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_SEND_LEDGER_PATH")); path != "" {
+		return sendledgerstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

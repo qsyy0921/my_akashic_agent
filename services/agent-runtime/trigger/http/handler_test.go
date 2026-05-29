@@ -35,7 +35,7 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:private:1049511700:msg-1",
@@ -104,7 +104,7 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:group:27234224:msg-1",
@@ -174,7 +174,7 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
 
 	body := map[string]any{
 		"event_id": "outbox-http-1",
@@ -261,7 +261,7 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
 
 	body := map[string]any{
 		"channel": map[string]any{
@@ -353,7 +353,7 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
 
 	body := map[string]any{
 		"job_id":   "job-http-1",
@@ -406,5 +406,63 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"succeeded"`)) {
 		t.Fatalf("succeeded response missing status: %s", response.Body.String())
+	}
+}
+
+func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	sendLedger := appservice.NewSendLedgerService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger)
+
+	body := map[string]any{
+		"from_bot_id":     "1049511700",
+		"conversation_id": "2365524513",
+		"content":         "image generated",
+		"timestamp":       time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/send-ledger/records", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected send ledger accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"from_bot_id":"1049511700"`)) {
+		t.Fatalf("record response missing bot id: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/send-ledger/recent?from_bot_id=1049511700&conversation_id=2365524513&content=image+generated&window_seconds=60", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected recent 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"recent":true`)) {
+		t.Fatalf("recent response did not detect echo: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/send-ledger/records?from_bot_id=1049511700&conversation_id=2365524513&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"conversation_id":"2365524513"`)) {
+		t.Fatalf("list response missing conversation id: %s", response.Body.String())
 	}
 }
