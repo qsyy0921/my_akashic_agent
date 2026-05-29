@@ -87,11 +87,11 @@ func (s *MediaAssetService) Get(ctx context.Context, assetID string) (query.Medi
 	return assembler.ToMediaAssetView(asset), nil
 }
 
-func (s *MediaAssetService) List(ctx context.Context, limit int) ([]query.MediaAssetView, error) {
+func (s *MediaAssetService) List(ctx context.Context, filter query.MediaAssetFilter) ([]query.MediaAssetView, error) {
 	if s == nil || s.repository == nil {
 		return nil, errors.New("media asset service requires repository")
 	}
-	items, err := s.repository.ListMediaAssets(ctx, limit)
+	items, err := s.repository.ListMediaAssets(ctx, filter)
 	if err != nil {
 		return nil, err
 	}

@@ -76,6 +76,16 @@ Query recent assets:
 GET /v1/media-assets?limit=50
 ```
 
+Optional filters:
+
+- `channel_kind`
+- `account_id`
+- `conversation_id`
+- `conversation_type`
+- `source_message_id`
+- `source_message_id_suffix`
+- `asset_kind`
+
 Query one asset:
 
 ```text
@@ -114,6 +124,20 @@ fetch remote platform URLs directly, and must preserve the upstream content type
 and content disposition when Go returns bytes. Shadow audit attachment metadata
 adds `content_url` when an `asset_id` is present, and dashboard panels should
 prefer `content_url` over raw `url`.
+
+The primary message dashboard also enriches message rows from the Go registry.
+When a stored message contains local `media` paths and platform metadata such as
+`platform_message_id`, the Python dashboard queries:
+
+```text
+GET /v1/media-assets?channel_kind=qq&conversation_id=...&conversation_type=...&source_message_id_suffix=...
+```
+
+The response is copied into `message.media_assets` with same-origin
+`content_url` values. React attachment rendering prefers `media_assets` and uses
+legacy `/api/dashboard/attachments?path=...` only as a fallback when Go has no
+registered asset. This keeps the long-term UI contract asset-id based while
+preserving old messages during migration.
 
 ## Asset ID
 
@@ -156,6 +180,10 @@ Akashic asset id remains the primary contract.
 - Shadow audit dashboard emits same-origin `content_url` links for asset ids.
 - Dashboard media proxy forwards bytes from Go content routes and maps upstream
   content errors without exposing local file paths.
+- Primary dashboard message rows expose `media_assets` when Go can resolve the
+  message's platform id to registered media assets.
+- Go media asset list supports route/source filters so callers do not scan local
+  filesystem paths or depend on raw platform URLs.
 
 ## Migration Plan
 

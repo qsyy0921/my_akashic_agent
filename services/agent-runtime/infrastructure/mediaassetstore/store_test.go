@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	store "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 )
@@ -42,7 +43,7 @@ func TestMediaAssetStorePersistsAssetsAcrossRestarts(t *testing.T) {
 	if stored.Name != "a.png" {
 		t.Fatalf("expected name to persist, got %s", stored.Name)
 	}
-	items, err := reloaded.ListMediaAssets(ctx, 10)
+	items, err := reloaded.ListMediaAssets(ctx, query.MediaAssetFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}
@@ -51,6 +52,19 @@ func TestMediaAssetStorePersistsAssetsAcrossRestarts(t *testing.T) {
 	}
 	if items[0].AssetID != "asset:b" {
 		t.Fatalf("expected newest insertion first, got %+v", items)
+	}
+	filtered, err := reloaded.ListMediaAssets(ctx, query.MediaAssetFilter{
+		Limit:                 10,
+		ChannelKind:           "qq",
+		ConversationID:        "27234224",
+		ConversationType:      "group",
+		SourceMessageIDSuffix: "498",
+	})
+	if err != nil {
+		t.Fatalf("list filtered assets: %v", err)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("expected both persisted assets to match filters, got %+v", filtered)
 	}
 }
 
@@ -87,7 +101,7 @@ func TestMediaAssetStorePersistsUpdatedAsset(t *testing.T) {
 	if stored.Name != "after.png" {
 		t.Fatalf("expected updated name, got %s", stored.Name)
 	}
-	items, err := reloaded.ListMediaAssets(ctx, 10)
+	items, err := reloaded.ListMediaAssets(ctx, query.MediaAssetFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}

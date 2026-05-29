@@ -1,4 +1,4 @@
-﻿package service_test
+package service_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 )
@@ -83,7 +84,7 @@ func TestMediaAssetServiceListsNewestFirst(t *testing.T) {
 		}
 	}
 
-	items, err := service.List(ctx, 10)
+	items, err := service.List(ctx, query.MediaAssetFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("list media assets: %v", err)
 	}
@@ -95,3 +96,50 @@ func TestMediaAssetServiceListsNewestFirst(t *testing.T) {
 	}
 }
 
+func TestMediaAssetServiceFiltersByRouteAndSourceSuffix(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetService(store)
+	now := time.Date(2026, 5, 30, 5, 0, 0, 0, time.UTC)
+
+	for _, item := range []struct {
+		id             string
+		conversationID string
+		sourceID       string
+	}{
+		{id: "asset:match", conversationID: "3219982", sourceID: "qq:1049511700:group:3219982:646258796"},
+		{id: "asset:other-source", conversationID: "3219982", sourceID: "qq:1049511700:group:3219982:000000"},
+		{id: "asset:other-conversation", conversationID: "27234224", sourceID: "qq:1049511700:group:27234224:646258796"},
+	} {
+		_, err := service.Register(ctx, command.RegisterMediaAssetCommand{
+			AssetID: item.id,
+			Channel: command.ChannelCommand{
+				Kind:             "qq",
+				AccountID:        "1049511700",
+				ConversationID:   item.conversationID,
+				ConversationType: "group",
+			},
+			SourceMessageID: item.sourceID,
+			SenderID:        "2948770636",
+			Kind:            "image",
+			Name:            item.id + ".png",
+			Timestamp:       now,
+		})
+		if err != nil {
+			t.Fatalf("register %s: %v", item.id, err)
+		}
+	}
+
+	items, err := service.List(ctx, query.MediaAssetFilter{
+		Limit:                 10,
+		ConversationID:        "3219982",
+		ConversationType:      "group",
+		SourceMessageIDSuffix: "646258796",
+	})
+	if err != nil {
+		t.Fatalf("list filtered media assets: %v", err)
+	}
+	if len(items) != 1 || items[0].AssetID != "asset:match" {
+		t.Fatalf("unexpected filtered items: %+v", items)
+	}
+}

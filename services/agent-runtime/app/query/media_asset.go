@@ -1,4 +1,15 @@
-﻿package query
+package query
+
+type MediaAssetFilter struct {
+	Limit                 int
+	ChannelKind           string
+	AccountID             string
+	ConversationID        string
+	ConversationType      string
+	SourceMessageID       string
+	SourceMessageIDSuffix string
+	Kind                  string
+}
 
 type MediaAssetChannelView struct {
 	Kind             string `json:"kind"`
@@ -23,4 +34,3 @@ type MediaAssetView struct {
 	UpdatedAt       string                `json:"updated_at"`
 	Metadata        map[string]string     `json:"metadata,omitempty"`
 }
-

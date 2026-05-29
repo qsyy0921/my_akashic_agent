@@ -174,7 +174,11 @@ func mediaAssetFromAttachment(envelope model.MessageEnvelope, attachment model.A
 		"source_event_id": envelope.EventID,
 	}
 	for key, value := range envelope.Metadata {
-		if key == "shadow_mode" || key == "observe_only" || key == "session_key" {
+		if key == "shadow_mode" ||
+			key == "observe_only" ||
+			key == "session_key" ||
+			key == "session_message_id" ||
+			key == "platform_message_id" {
 			metadata[key] = value
 		}
 	}

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import json
 import sqlite3
 import threading
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient as _RawTestClient
 
@@ -576,6 +578,73 @@ def test_dashboard_attachment_endpoint_serves_workspace_uploads(tmp_path) -> Non
     assert denied_resp.status_code == 403
 
 
+def test_dashboard_messages_are_enriched_with_runtime_media_assets(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = SessionStore(tmp_path / "sessions.db")
+    store.create_session(key="qq:gqq:3219982")
+    store.insert_message(
+        "qq:gqq:3219982",
+        role="user",
+        content="[图片 x 1]",
+        ts="2026-05-30T07:01:36+08:00",
+        seq=646,
+        extra={
+            "chat_type": "group",
+            "group_id": "3219982",
+            "platform_message_id": "646258796",
+            "media": [str(tmp_path / "uploads" / "qq-image.jpg")],
+        },
+    )
+    store.close()
+
+    calls: list[dict[str, list[str]]] = []
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        assert parsed.path == "/v1/media-assets"
+        query = parse_qs(parsed.query)
+        calls.append(query)
+        assert query["channel_kind"] == ["qq"]
+        assert query["conversation_id"] == ["3219982"]
+        assert query["conversation_type"] == ["group"]
+        assert query["source_message_id_suffix"] == ["646258796"]
+        return _fake_urlopen_response(
+            {
+                "code": "OK",
+                "data": [
+                    {
+                        "asset_id": "asset:qq:image:3219982:x:1",
+                        "kind": "image",
+                        "mime_type": "image/jpeg",
+                        "name": "qq-image.jpg",
+                        "source_message_id": "qq:1049511700:group:3219982:646258796",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/messages",
+            params={"session_key": "qq:gqq:3219982", "page_size": 5},
+        )
+        detail_response = client.get("/api/dashboard/messages/qq:gqq:3219982:646")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["media_assets"][0]["content_url"] == (
+        "/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
+    assert detail_response.status_code == 200
+    assert detail_response.json()["media_assets"][0]["name"] == "qq-image.jpg"
+    assert calls
+
+
 def test_list_memory_items_with_filters(tmp_path) -> None:
     _seed_workspace(tmp_path)
     with TestClient(create_dashboard_app(tmp_path)) as client:
@@ -971,3 +1040,19 @@ def test_memory_engine_plugins_only_expose_active_engine_panels(tmp_path) -> Non
         }
         assert client.get("/plugins/default_memory/dashboard_panel_inspector.js").status_code == 200
         assert client.get("/plugins/cross_memory/dashboard_panel_inspector.js").status_code == 404
+
+
+def _fake_urlopen_response(payload: dict[str, object]):
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return raw
+
+    return _Resp()

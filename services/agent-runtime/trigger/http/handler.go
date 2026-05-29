@@ -286,8 +286,7 @@ func MediaAssetsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 200)
-			items, err := mediaAssets.List(r.Context(), limit)
+			items, err := mediaAssets.List(r.Context(), mediaAssetFilterFromQuery(r))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -320,6 +319,29 @@ func MediaAssetsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+}
+
+func mediaAssetFilterFromQuery(r *http.Request) query.MediaAssetFilter {
+	values := r.URL.Query()
+	return query.MediaAssetFilter{
+		Limit:                 parsePositiveInt(values.Get("limit"), 50, 200),
+		ChannelKind:           firstQueryValue(values.Get("channel_kind"), values.Get("kind")),
+		AccountID:             values.Get("account_id"),
+		ConversationID:        values.Get("conversation_id"),
+		ConversationType:      values.Get("conversation_type"),
+		SourceMessageID:       values.Get("source_message_id"),
+		SourceMessageIDSuffix: values.Get("source_message_id_suffix"),
+		Kind:                  values.Get("asset_kind"),
+	}
+}
+
+func firstQueryValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func MediaAssetStateHandler(mediaAssets inport.MediaAssetManager) http.Handler {

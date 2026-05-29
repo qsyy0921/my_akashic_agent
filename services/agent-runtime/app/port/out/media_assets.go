@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
@@ -17,7 +18,7 @@ var (
 type MediaAssetRepository interface {
 	SaveMediaAsset(ctx context.Context, asset model.MediaAsset) error
 	FindMediaAsset(ctx context.Context, assetID string) (model.MediaAsset, bool, error)
-	ListMediaAssets(ctx context.Context, limit int) ([]model.MediaAsset, error)
+	ListMediaAssets(ctx context.Context, filter query.MediaAssetFilter) ([]model.MediaAsset, error)
 }
 
 type MediaAssetContent struct {

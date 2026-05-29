@@ -312,6 +312,18 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/v1/media-assets?channel_kind=qq&conversation_id=27234224&conversation_type=group&source_message_id_suffix=498&limit=10", nil),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected filtered list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("qq-image.txt")) {
+		t.Fatalf("filtered list response missing file name: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/"+assetID+"/content", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected content 200, got %d: %s", response.Code, response.Body.String())

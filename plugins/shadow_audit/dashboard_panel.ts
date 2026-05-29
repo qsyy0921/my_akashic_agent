@@ -162,11 +162,11 @@ window.AkashicDashboard.registerPlugin({
     }
     const data = await api<ShadowAuditResponse>(`/api/dashboard/shadow-audit/observed?${params.toString()}`);
     return {
-      items: data.items || [],
+      items: (data.items || []) as unknown as Record<string, unknown>[],
       total: data.total || 0,
     };
   },
-  fetchDetail(item: ShadowAuditRecord): Promise<ShadowAuditRecord> {
+  fetchDetail(item: Record<string, unknown>): Promise<Record<string, unknown>> {
     return Promise.resolve(item);
   },
   renderFilters(container: HTMLElement, dispatch: PluginDispatch): void {
@@ -188,7 +188,7 @@ window.AkashicDashboard.registerPlugin({
     if (source) source.value = String(dispatch.filters.source || "auto");
     _wireFilters(container, dispatch);
   },
-  renderDetail(item: ShadowAuditRecord | null, container: HTMLElement): void {
+  renderDetail(item: Record<string, unknown> | null, container: HTMLElement): void {
     if (!item) {
       container.innerHTML = `
         <div class="detail-empty">
@@ -198,43 +198,44 @@ window.AkashicDashboard.registerPlugin({
       `;
       return;
     }
+    const record = item as unknown as ShadowAuditRecord;
     container.innerHTML = `
       <div class="detail-wrap">
         <div class="detail-toolbar">
           <div>
             <div class="detail-title">Shadow Event</div>
-            <div class="detail-subtext">${escapeHtml(item.event_id || "")}</div>
+            <div class="detail-subtext">${escapeHtml(record.event_id || "")}</div>
           </div>
         </div>
         <div class="detail-grid">
           <div class="detail-row">
             <div class="detail-row-label">route</div>
-            <div class="detail-row-val"><code>${escapeHtml(_route(item))}</code></div>
+            <div class="detail-row-val"><code>${escapeHtml(_route(record))}</code></div>
           </div>
           <div class="detail-row">
             <div class="detail-row-label">sender</div>
-            <div class="detail-row-val"><code>${escapeHtml(item.sender_id || "")}</code></div>
+            <div class="detail-row-val"><code>${escapeHtml(record.sender_id || "")}</code></div>
           </div>
           <div class="detail-row">
             <div class="detail-row-label">decision</div>
-            <div class="detail-row-val"><span class="shadow-source-pill ${_sourceClass(item)}">${escapeHtml(_decision(item))}</span></div>
+            <div class="detail-row-val"><span class="shadow-source-pill ${_sourceClass(record)}">${escapeHtml(_decision(record))}</span></div>
           </div>
           <div class="detail-row">
             <div class="detail-row-label">source</div>
-            <div class="detail-row-val"><code>${escapeHtml(item.source || "")}</code></div>
+            <div class="detail-row-val"><code>${escapeHtml(record.source || "")}</code></div>
           </div>
         </div>
         <div class="detail-block">
           <div class="detail-label">Content</div>
-          <div class="detail-content">${escapeHtml(item.content || "")}</div>
+          <div class="detail-content">${escapeHtml(record.content || "")}</div>
         </div>
         <div class="detail-block">
           <div class="detail-label">Attachments</div>
-          ${_renderAttachments(item)}
+          ${_renderAttachments(record)}
         </div>
         <div class="detail-block">
           <div class="detail-label">Metadata</div>
-          ${jvPlaceholder(item.metadata || {})}
+          ${jvPlaceholder(record.metadata || {})}
         </div>
       </div>
     `;
@@ -244,3 +245,5 @@ window.AkashicDashboard.registerPlugin({
     "shadow-route": (_value: unknown, row: Record<string, unknown>) => _route(row as unknown as ShadowAuditRecord),
   },
 });
+
+export {};

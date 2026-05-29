@@ -51,3 +51,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-2-go-shadow-media-registration.md`
 - `2026-05-30-phase8-3-go-media-registry-persistence.md`
 - `2026-05-30-phase8-4-dashboard-media-links.md`
+- `2026-05-30-phase8-5-dashboard-message-media-assets.md`

@@ -18,6 +18,7 @@ import { attachJsonViewers, installDashboardGlobals, jvPlaceholder, loadPluginAs
 import { PluginDetail } from "./PluginDetail";
 import type {
   DashboardColumn,
+  MessageMediaAsset,
   MessageRow,
   PageResult,
   PluginBatchAction,
@@ -817,6 +818,12 @@ function messageMedia(message: MessageRow): string[] {
     : [];
 }
 
+function messageMediaAssets(message: MessageRow): MessageMediaAsset[] {
+  return Array.isArray(message.media_assets)
+    ? message.media_assets.filter((item): item is MessageMediaAsset => Boolean(item && typeof item.asset_id === "string" && item.asset_id.trim().length > 0))
+    : [];
+}
+
 function messageAttachmentSummaries(message: MessageRow): string[] {
   return Array.isArray(message.attachment_summaries)
     ? message.attachment_summaries.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
@@ -832,12 +839,28 @@ function attachmentName(path: string): string {
   return normalized.split("/").pop() || "attachment";
 }
 
+function mediaAssetUrl(asset: MessageMediaAsset): string {
+  return asset.content_url || asset.url || "";
+}
+
+function mediaAssetName(asset: MessageMediaAsset, index: number): string {
+  return asset.name || asset.asset_id || `attachment-${index + 1}`;
+}
+
 function isImageAttachment(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|bmp)$/i.test(path);
 }
 
+function isImageMediaAsset(asset: MessageMediaAsset): boolean {
+  return String(asset.mime_type || "").toLowerCase().startsWith("image/") || isImageAttachment(asset.name || asset.url || "");
+}
+
 function isInlineDocument(path: string): boolean {
   return /\.(txt|md|csv|json|log|toml|ya?ml|pdf)$/i.test(path);
+}
+
+function isInlineMediaAsset(asset: MessageMediaAsset): boolean {
+  return isInlineDocument(asset.name || asset.url || "");
 }
 
 function formatFileSize(value: unknown): string {
@@ -900,7 +923,7 @@ function Rows(props: {
     </div>)}</>;
   }
   return <>{props.messages.map((item) => {
-    const mediaCount = messageMedia(item).length;
+    const mediaCount = Math.max(messageMedia(item).length, messageMediaAssets(item).length);
     return <div key={item.id} className={`table-row mode-messages ${props.activeMessage?.id === item.id ? "active" : ""} ${props.selectedMessageIds.has(item.id) ? "selected" : ""}`} onClick={() => props.onSelectMessage(item)}>
       <label className="checkbox-cell" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={props.selectedMessageIds.has(item.id)} onChange={(event) => toggleSet(item.id, event.target.checked, props.selectedMessageIds, props.setSelectedMessageIds)} /></label>
       <div className="cell-session mono" title={item.session_key}>{formatSessionKeyForTable(item.session_key)}</div>
@@ -983,11 +1006,13 @@ function detailRow(label: string, value: React.ReactNode): React.ReactElement {
 
 function MessageAttachmentBlock(props: { message: MessageRow }): React.ReactElement | null {
   const media = messageMedia(props.message);
+  const assets = messageMediaAssets(props.message);
   const summaries = messageAttachmentSummaries(props.message);
   const hasFileMeta = Boolean(props.message.file_name || props.message.file_url || props.message.attachment_type);
-  if (!media.length && !summaries.length && !hasFileMeta) {
+  if (!media.length && !assets.length && !summaries.length && !hasFileMeta) {
     return null;
   }
+  const legacyMedia = assets.length ? [] : media;
   return <div className="detail-block">
     <div className="detail-label">Attachments</div>
     <div className="attachment-panel">
@@ -996,8 +1021,18 @@ function MessageAttachmentBlock(props: { message: MessageRow }): React.ReactElem
         {props.message.file_size !== undefined && props.message.file_size !== null && <span className="detail-chip">{formatFileSize(props.message.file_size)}</span>}
         {props.message.file_url && <a className="attachment-link" href={props.message.file_url} target="_blank" rel="noreferrer">原始文件链接</a>}
       </div>}
-      {media.length > 0 && <div className="attachment-link-list">
-        {media.map((path, index) => {
+      {assets.length > 0 && <div className="attachment-link-list">
+        {assets.map((asset, index) => {
+          const url = mediaAssetUrl(asset);
+          const name = mediaAssetName(asset, index);
+          if (!url) return null;
+          return <a key={`${asset.asset_id}-link-${index}`} className="attachment-open-link" href={url} target="_blank" rel="noreferrer">
+            查看附件 {index + 1}: {name}
+          </a>;
+        })}
+      </div>}
+      {legacyMedia.length > 0 && <div className="attachment-link-list">
+        {legacyMedia.map((path, index) => {
           const url = attachmentUrl(path);
           const name = attachmentName(path);
           return <a key={`${path}-link-${index}`} className="attachment-open-link" href={url} target="_blank" rel="noreferrer">
@@ -1008,8 +1043,25 @@ function MessageAttachmentBlock(props: { message: MessageRow }): React.ReactElem
       {summaries.length > 0 && <div className="attachment-summaries">
         {summaries.map((summary, index) => <div key={`${summary}-${index}`} className="attachment-summary">{summary}</div>)}
       </div>}
-      {media.length > 0 && <div className="attachment-grid">
-        {media.map((path, index) => {
+      {assets.length > 0 && <div className="attachment-grid">
+        {assets.map((asset, index) => {
+          const url = mediaAssetUrl(asset);
+          const name = mediaAssetName(asset, index);
+          if (!url) return null;
+          if (isImageMediaAsset(asset)) {
+            return <a key={`${asset.asset_id}-${index}`} className="attachment-card image" href={url} target="_blank" rel="noreferrer" title={name}>
+              <img src={url} alt={name} loading="lazy" />
+              <span>{name}</span>
+            </a>;
+          }
+          return <div key={`${asset.asset_id}-${index}`} className="attachment-card file">
+            <a className="attachment-file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+            {isInlineMediaAsset(asset) && <iframe className="attachment-frame" src={url} title={name} />}
+          </div>;
+        })}
+      </div>}
+      {legacyMedia.length > 0 && <div className="attachment-grid">
+        {legacyMedia.map((path, index) => {
           const url = attachmentUrl(path);
           const name = attachmentName(path);
           if (isImageAttachment(path)) {

@@ -159,12 +159,13 @@
       `;
         return;
       }
+      const job = item;
       container.innerHTML = `
       <div class="agent-job-detail">
         <div class="agent-job-detail-toolbar">
           <div>
-            <div class="detail-title">${escapeHtml(item.job_id || "-")}</div>
-            <div class="detail-subtext">${escapeHtml(item.job_type || "-")} \xB7 ${escapeHtml(item.status || "-")}</div>
+            <div class="detail-title">${escapeHtml(job.job_id || "-")}</div>
+            <div class="detail-subtext">${escapeHtml(job.job_type || "-")} \xB7 ${escapeHtml(job.status || "-")}</div>
           </div>
           <div class="agent-job-detail-actions">
             <button class="primary" type="button" data-agent-job-refresh-run>\u91CD\u8BD5</button>
@@ -177,56 +178,56 @@
           <div class="agent-job-grid">
             <div>
               <div class="agent-job-label">Route</div>
-              <div class="agent-job-value mono"><code>${escapeHtml(_jobRoute(item))}</code></div>
+              <div class="agent-job-value mono"><code>${escapeHtml(_jobRoute(job))}</code></div>
             </div>
             <div>
               <div class="agent-job-label">Attempts</div>
-              <div class="agent-job-value">${escapeHtml(String(item.attempts || 0))}/${escapeHtml(String(item.max_attempts || 0))}</div>
+              <div class="agent-job-value">${escapeHtml(String(job.attempts || 0))}/${escapeHtml(String(job.max_attempts || 0))}</div>
             </div>
             <div>
               <div class="agent-job-label">Lease</div>
-              <div class="agent-job-value mono">${escapeHtml(item.lease_owner || "-")}</div>
+              <div class="agent-job-value mono">${escapeHtml(job.lease_owner || "-")}</div>
             </div>
             <div>
               <div class="agent-job-label">Expires</div>
-              <div class="agent-job-value">${escapeHtml(item.lease_expires_at || "-")}</div>
+              <div class="agent-job-value">${escapeHtml(job.lease_expires_at || "-")}</div>
             </div>
             <div>
               <div class="agent-job-label">Updated</div>
-              <div class="agent-job-value mono">${escapeHtml(item.updated_at || "-")}</div>
+              <div class="agent-job-value mono">${escapeHtml(job.updated_at || "-")}</div>
             </div>
             <div>
               <div class="agent-job-label">Created</div>
-              <div class="agent-job-value mono">${escapeHtml(item.created_at || "-")}</div>
+              <div class="agent-job-value mono">${escapeHtml(job.created_at || "-")}</div>
             </div>
           </div>
         </div>
 
         <div class="agent-job-section">
           <div class="detail-label">Payload</div>
-          <pre class="agent-job-json">${escapeHtml(_formatJson(item.payload || {}))}</pre>
+          <pre class="agent-job-json">${escapeHtml(_formatJson(job.payload || {}))}</pre>
         </div>
 
         <div class="agent-job-section">
           <div class="detail-label">Metadata</div>
-          <pre class="agent-job-json">${escapeHtml(_formatJson(item.metadata || {}))}</pre>
+          <pre class="agent-job-json">${escapeHtml(_formatJson(job.metadata || {}))}</pre>
         </div>
 
         <div class="agent-job-section">
           <div class="detail-label">Result</div>
-          <pre class="agent-job-json">${escapeHtml(_formatJson(item.result || {}))}</pre>
+          <pre class="agent-job-json">${escapeHtml(_formatJson(job.result || {}))}</pre>
         </div>
 
         <div class="agent-job-section">
           <div class="detail-label">Error</div>
-          <div class="agent-job-error">${escapeHtml(item.error_message || "-")}</div>
+          <div class="agent-job-error">${escapeHtml(job.error_message || "-")}</div>
         </div>
       </div>
     `;
       const actionResult = container.querySelector("[data-agent-job-action-result]");
       const retryButton = container.querySelector("[data-agent-job-refresh-run]");
       const cancelButton = container.querySelector("[data-agent-job-refresh-cancel]");
-      const jobId = String(item.job_id || "");
+      const jobId = String(job.job_id || "");
       if (actionResult) actionResult.textContent = "";
       if (retryButton) {
         retryButton.addEventListener("click", async () => {

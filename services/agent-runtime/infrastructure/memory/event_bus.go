@@ -1,7 +1,8 @@
-﻿package memory
+package memory
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,25 +219,47 @@ func (s *Store) FindMediaAsset(_ context.Context, assetID string) (model.MediaAs
 	return asset, ok, nil
 }
 
-func (s *Store) ListMediaAssets(_ context.Context, limit int) ([]model.MediaAsset, error) {
+func (s *Store) ListMediaAssets(_ context.Context, filter query.MediaAssetFilter) ([]model.MediaAsset, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	limit := filter.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	start := len(s.mediaOrder) - limit
-	if start < 0 {
-		start = 0
-	}
-	items := make([]model.MediaAsset, 0, len(s.mediaOrder)-start)
-	for i := len(s.mediaOrder) - 1; i >= start; i-- {
+	items := make([]model.MediaAsset, 0, limit)
+	for i := len(s.mediaOrder) - 1; i >= 0 && len(items) < limit; i-- {
 		assetID := s.mediaOrder[i]
-		if asset, ok := s.mediaAssets[assetID]; ok {
+		if asset, ok := s.mediaAssets[assetID]; ok && matchesMediaAssetFilter(asset, filter) {
 			items = append(items, asset)
 		}
 	}
 	return items, nil
+}
+
+func matchesMediaAssetFilter(asset model.MediaAsset, filter query.MediaAssetFilter) bool {
+	if filter.ChannelKind != "" && string(asset.Channel.Kind) != filter.ChannelKind {
+		return false
+	}
+	if filter.AccountID != "" && asset.Channel.AccountID != filter.AccountID {
+		return false
+	}
+	if filter.ConversationID != "" && asset.Channel.ConversationID != filter.ConversationID {
+		return false
+	}
+	if filter.ConversationType != "" && string(asset.Channel.ConversationType) != filter.ConversationType {
+		return false
+	}
+	if filter.SourceMessageID != "" && asset.SourceMessageID != filter.SourceMessageID {
+		return false
+	}
+	if filter.SourceMessageIDSuffix != "" && !strings.HasSuffix(asset.SourceMessageID, ":"+filter.SourceMessageIDSuffix) && asset.SourceMessageID != filter.SourceMessageIDSuffix {
+		return false
+	}
+	if filter.Kind != "" && string(asset.Kind) != filter.Kind {
+		return false
+	}
+	return true
 }
 
 func (s *Store) SaveAgentJob(_ context.Context, job model.AgentJob) error {
@@ -472,4 +495,3 @@ func (s *Store) AgentJobs() []model.AgentJob {
 	}
 	return items
 }
-

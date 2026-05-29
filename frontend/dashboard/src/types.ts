@@ -29,6 +29,7 @@ export interface MessageRow {
   tool_chain: unknown;
   extra: Record<string, unknown>;
   media?: string[];
+  media_assets?: MessageMediaAsset[];
   attachment_summaries?: string[];
   attachment_type?: string;
   file_id?: string;
@@ -37,6 +38,17 @@ export interface MessageRow {
   file_url?: string;
   ts: string;
   timestamp?: string;
+}
+
+export interface MessageMediaAsset {
+  asset_id: string;
+  content_url?: string;
+  url?: string;
+  kind?: string;
+  mime_type?: string;
+  name?: string;
+  size_bytes?: number;
+  source_message_id?: string;
 }
 
 export interface ProactiveOverview {

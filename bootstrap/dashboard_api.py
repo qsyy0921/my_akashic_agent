@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 from datetime import timedelta
 from types import ModuleType
-from typing import Any, Protocol, cast
+from typing import Any, Mapping, Protocol, cast
 
 import subprocess
 
@@ -99,6 +99,144 @@ def _agent_runtime_base_url() -> str:
         or os.environ.get("AKASHIC_AGENT_GATEWAY_URL", "")
         or _DEFAULT_AGENT_RUNTIME_BASE_URL
     ).strip().rstrip("/")
+
+
+def _media_asset_content_url(asset_id: str) -> str:
+    encoded = urllib.parse.quote(asset_id, safe="")
+    return f"/api/dashboard/media-assets/content?asset_id={encoded}"
+
+
+def _enrich_messages_with_media_assets(messages: list[dict[str, Any]]) -> None:
+    cache: dict[tuple[tuple[str, str], ...], list[dict[str, Any]]] = {}
+    for message in messages:
+        if not _message_media_paths(message):
+            continue
+        params = _media_asset_lookup_params(message)
+        if not params:
+            continue
+        cache_key = tuple(sorted(params.items()))
+        if cache_key not in cache:
+            cache[cache_key] = _fetch_media_assets_from_runtime(params)
+        assets = cache[cache_key]
+        if assets:
+            message["media_assets"] = assets
+
+
+def _message_media_paths(message: Mapping[str, Any]) -> list[str]:
+    media = message.get("media")
+    if not isinstance(media, list):
+        extra = message.get("extra")
+        if isinstance(extra, Mapping):
+            media = extra.get("media")
+    if not isinstance(media, list):
+        return []
+    return [
+        str(item).strip()
+        for item in media
+        if isinstance(item, str) and str(item).strip()
+    ]
+
+
+def _media_asset_lookup_params(message: Mapping[str, Any]) -> dict[str, str]:
+    extra = message.get("extra")
+    extra_map = cast(Mapping[str, Any], extra) if isinstance(extra, Mapping) else {}
+    source_message_id = _first_text(
+        extra_map.get("source_event_id"),
+        extra_map.get("event_id"),
+    )
+    source_suffix = _first_text(
+        extra_map.get("platform_message_id"),
+        extra_map.get("message_id"),
+        extra_map.get("raw_message_id"),
+    )
+    if not source_message_id and not source_suffix:
+        return {}
+
+    session_key = _first_text(message.get("session_key"))
+    channel_kind, chat_id = _split_dashboard_session_key(session_key)
+    conversation_type = _conversation_type_from_message(chat_id, extra_map)
+    conversation_id = _conversation_id_from_message(chat_id, conversation_type, extra_map)
+    params: dict[str, str] = {"limit": "20"}
+    if channel_kind:
+        params["channel_kind"] = channel_kind
+    if conversation_id:
+        params["conversation_id"] = conversation_id
+    if conversation_type:
+        params["conversation_type"] = conversation_type
+    if source_message_id:
+        params["source_message_id"] = source_message_id
+    elif source_suffix:
+        params["source_message_id_suffix"] = source_suffix
+    return params
+
+
+def _fetch_media_assets_from_runtime(params: Mapping[str, str]) -> list[dict[str, Any]]:
+    base_url = _agent_runtime_base_url()
+    if not base_url:
+        return []
+    url = f"{base_url}/v1/media-assets?{urllib.parse.urlencode(params)}"
+    try:
+        with urllib.request.urlopen(
+            url,
+            timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    data = payload.get("data") if isinstance(payload, Mapping) else payload
+    if not isinstance(data, list):
+        return []
+    assets: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, Mapping):
+            continue
+        asset = dict(item)
+        asset_id = _first_text(asset.get("asset_id"), asset.get("id"))
+        if asset_id and not _first_text(asset.get("content_url")):
+            asset["content_url"] = _media_asset_content_url(asset_id)
+        assets.append(asset)
+    return assets
+
+
+def _split_dashboard_session_key(session_key: str) -> tuple[str, str]:
+    channel, sep, rest = session_key.partition(":")
+    if not sep:
+        return session_key, session_key
+    return channel, rest
+
+
+def _conversation_type_from_message(
+    chat_id: str,
+    extra: Mapping[str, Any],
+) -> str:
+    chat_type = _first_text(extra.get("chat_type"))
+    if chat_type in {"private", "group"}:
+        return chat_type
+    if chat_id.startswith("gqq:") or chat_id.startswith("-"):
+        return "group"
+    return "private"
+
+
+def _conversation_id_from_message(
+    chat_id: str,
+    conversation_type: str,
+    extra: Mapping[str, Any],
+) -> str:
+    if conversation_type == "group":
+        group_id = _first_text(extra.get("group_id"))
+        if group_id:
+            return group_id
+        if chat_id.startswith("gqq:"):
+            return chat_id[len("gqq:") :]
+    return chat_id
+
+
+def _first_text(*values: object) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 
 class SessionUpdatePayload(BaseModel):
@@ -986,6 +1124,7 @@ def create_dashboard_app(
             sort_by=sort_by,
             sort_order=sort_order,
         )
+        _enrich_messages_with_media_assets(items)
         return {
             "items": items,
             "total": total,
@@ -1162,6 +1301,7 @@ def create_dashboard_app(
             sort_by=sort_by,
             sort_order=sort_order,
         )
+        _enrich_messages_with_media_assets(items)
         return {
             "items": items,
             "total": total,
@@ -1174,6 +1314,7 @@ def create_dashboard_app(
         message = store.get_message(message_id)
         if message is None:
             raise HTTPException(status_code=404, detail="message 不存在")
+        _enrich_messages_with_media_assets([message])
         return message
 
     @app.patch("/api/dashboard/messages/{message_id:path}")
