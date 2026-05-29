@@ -1,4 +1,4 @@
-﻿package service_test
+package service_test
 
 import (
 	"context"
@@ -117,15 +117,70 @@ func TestMessageIngestServiceShadowIngestDoesNotPublishAgentInbound(t *testing.T
 	}
 }
 
+func TestMessageIngestServiceShadowIngestRegistersAttachments(t *testing.T) {
+	store := memory.NewStore()
+	service := newIngestService(store)
+
+	_, err := service.ShadowIngest(context.Background(), command.IngestMessageCommand{
+		EventID: "qq:1049511700:group:27234224:msg-498",
+		Channel: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		Sender: command.SenderCommand{
+			ID:   "2948770636",
+			Kind: string(model.SenderKindHuman),
+		},
+		Content: "/image evidence",
+		Attachments: []command.AttachmentCommand{{
+			ID:        "asset:qq:image:27234224:msg-498:1",
+			Kind:      "image",
+			URL:       "E:/agent/akashic/.akashic-workspace/uploads/qq-image.png",
+			MimeType:  "image/png",
+			Name:      "qq-image.png",
+			SizeBytes: 123,
+		}},
+		Timestamp: time.Now().UTC(),
+		Metadata: map[string]string{
+			"shadow_mode":  "true",
+			"observe_only": "true",
+			"session_key":  "qq:gqq:27234224",
+		},
+	})
+	if err != nil {
+		t.Fatalf("shadow ingest returned error: %v", err)
+	}
+
+	assets := store.MediaAssets()
+	if len(assets) != 1 {
+		t.Fatalf("expected 1 media asset, got %d", len(assets))
+	}
+	asset := assets[0]
+	if asset.AssetID != "asset:qq:image:27234224:msg-498:1" {
+		t.Fatalf("unexpected asset id: %s", asset.AssetID)
+	}
+	if asset.SourceMessageID != "qq:1049511700:group:27234224:msg-498" {
+		t.Fatalf("unexpected source message id: %s", asset.SourceMessageID)
+	}
+	if asset.Channel.AccountID != "1049511700" {
+		t.Fatalf("unexpected account id: %s", asset.Channel.AccountID)
+	}
+	if asset.Metadata["registered_from"] != "message_ingest" {
+		t.Fatalf("missing registration metadata: %+v", asset.Metadata)
+	}
+}
+
 func newIngestService(store *memory.Store) *appservice.MessageIngestService {
 	botIDs := []string{"1049511700", "2365524513"}
-	return appservice.NewMessageIngestService(
+	return appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
 		store,
 		store,
 		store,
 		domainservice.NewProvenanceClassifier(botIDs),
 		domainservice.NewLoopGuard(botIDs, 15*time.Second, 6),
+		store,
 	)
 }
-

@@ -44,13 +44,14 @@ func main() {
 		log.Fatalf("init agent job repository: %v", err)
 	}
 
-	ingestor := appservice.NewMessageIngestService(
+	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
 		auditLog,
 		store,
 		store,
 		classifier,
 		loopGuard,
+		store,
 	)
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)

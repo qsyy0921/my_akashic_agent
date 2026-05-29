@@ -125,6 +125,10 @@ local runs allow Akashic workspace upload directories under the repository root.
 Remote platform URLs must be mirrored into a safe root before the content route
 will serve them.
 
+Normalized inbound messages and shadow-observed messages also register their
+attachments into the media registry automatically. Attachment-provided ids are
+preserved as stable `asset_id` values, and duplicate delivery is idempotent.
+
 Create and lease generic agent jobs:
 
 ```text

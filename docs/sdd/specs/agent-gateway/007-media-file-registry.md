@@ -15,6 +15,11 @@ controlled dashboard access.
 Raw platform URLs, CQ codes, or local file paths should not become the durable
 contract between QQ/NapCat, Python agent logic, and dashboard UI.
 
+After the content route is enabled, observed message attachments must be
+registered by the Go runtime during message ingest. Otherwise the dashboard can
+observe attachments in `/v1/shadow/observed`, but it cannot reliably resolve the
+same file through the Go media registry.
+
 ## Decision
 
 Add a Go-owned `MediaAsset` aggregate and registry API.
@@ -36,6 +41,19 @@ The registry stores metadata first:
 
 Binary download and OCR/vision summaries are later workers. The first registry
 slice must not block inbound message ingestion on network downloads.
+
+Message ingest registers every envelope attachment as a `MediaAsset`:
+
+- source message id is the envelope `event_id`
+- sender id is the envelope sender id
+- channel route is copied from the envelope
+- attachment id is used as the stable asset id when present
+- generated asset id is used only when the platform/compat layer did not supply
+  an id
+- metadata records `registered_from=message_ingest`
+
+Registration is idempotent. Existing asset ids are not overwritten by later
+duplicate message delivery.
 
 ## HTTP Contract
 
@@ -106,12 +124,14 @@ Akashic asset id remains the primary contract.
 - Content route returns bytes for safe local files.
 - Content route returns `403` for paths outside allowed roots.
 - Content route returns `404` for missing or unsupported local content.
+- Shadow message ingest automatically registers attachments into the media
+  registry.
 
 ## Migration Plan
 
 1. Add Go domain/app/API/media registry with in-memory store.
 2. Add JSONL or SQLite persistence.
 3. Mirror Python-captured QQ attachments to `/v1/media-assets` in shadow mode.
-4. Add dashboard panel/link rendering through Go metadata.
-5. Add controlled bytes endpoint.
+4. Add controlled bytes endpoint.
+5. Add dashboard panel/link rendering through Go metadata.
 6. Pass asset ids into Python vision/RAG workers.

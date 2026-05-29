@@ -19,13 +19,14 @@ import (
 
 func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	store := memory.NewStore()
-	ingestor := appservice.NewMessageIngestService(
+	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
 		store,
 		store,
 		store,
 		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
 		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+		store,
 	)
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
@@ -48,7 +49,15 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 			"id":   "1049511700",
 			"kind": "human",
 		},
-		"content":   "/ask hello",
+		"content": "/ask hello",
+		"attachments": []map[string]any{{
+			"id":         "asset:qq:image:1049511700:msg-1:1",
+			"kind":       "image",
+			"url":        "E:/agent/akashic/.akashic-workspace/uploads/qq-image.png",
+			"mime_type":  "image/png",
+			"name":       "qq-image.png",
+			"size_bytes": 123,
+		}},
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 		"metadata":  map[string]string{"shadow_mode": "true"},
 	}
@@ -72,6 +81,9 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	}
 	if len(store.Audits()) != 1 {
 		t.Fatalf("expected 1 audit event, got %d", len(store.Audits()))
+	}
+	if len(store.MediaAssets()) != 1 {
+		t.Fatalf("expected 1 media asset, got %d", len(store.MediaAssets()))
 	}
 }
 
