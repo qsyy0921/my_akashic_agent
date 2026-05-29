@@ -1191,6 +1191,60 @@ def test_bootstrap_disables_group_memory_loop_when_agent_runtime_enabled(
     assert knowledge_worker is not None
 
 
+def test_bootstrap_runtime_worker_entry_points_are_first_class(
+    tmp_path: Path,
+):
+    from bootstrap.app import (
+        _build_agent_runtime_knowledge_worker_tasks,
+        _build_agent_gateway_knowledge_worker_tasks,
+    )
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        Config,
+        ChannelsConfig,
+        QQChannelConfig,
+        QQGroupConfig,
+    )
+
+    config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            qq=QQChannelConfig(
+                bot_uin="1049511700",
+                groups=[QQGroupConfig(group_id="284331268", observe_only=True)],
+            )
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            request_timeout_seconds=5,
+            knowledge_job_interval_seconds=60,
+        ),
+    )
+
+    runtime_tasks, runtime_worker = _build_agent_runtime_knowledge_worker_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    legacy_tasks, legacy_worker = _build_agent_gateway_knowledge_worker_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    for task in runtime_tasks:
+        task.close()
+    for task in legacy_tasks:
+        task.close()
+    assert len(runtime_tasks) == 1
+    assert len(legacy_tasks) == 1
+    assert runtime_worker is not None
+    assert legacy_worker is not None
+
+
 def test_bootstrap_skips_knowledge_worker_when_agent_gateway_base_url_empty(
     tmp_path: Path,
 ):
