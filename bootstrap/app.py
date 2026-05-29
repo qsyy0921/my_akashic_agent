@@ -271,7 +271,7 @@ def _build_group_memory_tasks(
     workspace: Path,
     session_store,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    if bool(getattr(getattr(config, "agent_gateway", None), "enabled", False)):
+    if _is_agent_runtime_enabled(config):
         return [], None
     groups = sorted(_observe_only_qq_group_accounts(config))
     if not groups:
@@ -293,7 +293,7 @@ def _build_agent_gateway_image_worker_tasks(
     workspace: Path,
     http_resources: SharedHttpResources,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = getattr(config, "agent_runtime", None) or getattr(config, "agent_gateway", None)
+    agent_gateway = _get_agent_runtime_config(config)
     chatgpt_proxy = getattr(config, "chatgpt_proxy", None)
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
@@ -332,7 +332,7 @@ def _build_agent_gateway_knowledge_worker_tasks(
     workspace: Path,
     session_store,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = getattr(config, "agent_runtime", None) or getattr(config, "agent_gateway", None)
+    agent_gateway = _get_agent_runtime_config(config)
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
     if not str(getattr(agent_gateway, "base_url", "")).strip():
@@ -388,6 +388,18 @@ def _build_agent_gateway_knowledge_worker_tasks(
         ),
     )
     return [worker.run()], worker
+
+
+def _get_agent_runtime_config(config: Config):
+    return (
+        getattr(config, "agent_runtime", None)
+        or getattr(config, "agent_gateway", None)
+        or {}
+    )
+
+
+def _is_agent_runtime_enabled(config: Config) -> bool:
+    return bool(getattr(_get_agent_runtime_config(config), "enabled", False))
 
 
 def _observe_only_qq_group_accounts(config: Config) -> dict[str, str]:

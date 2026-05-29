@@ -1127,6 +1127,70 @@ def test_bootstrap_disables_group_memory_loop_when_agent_gateway_enabled(
     assert knowledge_worker is not None
 
 
+def test_bootstrap_disables_group_memory_loop_when_agent_runtime_enabled(
+    tmp_path: Path,
+):
+    from bootstrap.app import (
+        _build_agent_gateway_knowledge_worker_tasks,
+        _build_group_memory_tasks,
+    )
+    from agent.config import Config
+
+    _write_toml(
+        tmp_path / "config.toml",
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "channels": {
+                "qq": {
+                    "bot_uin": "1049511700",
+                    "groups": [
+                        {
+                            "group_id": "284331268",
+                            "observe_only": True,
+                        }
+                    ],
+                },
+            },
+            "integrations": {
+                "agent_runtime": {
+                    "enabled": True,
+                    "base_url": "http://127.0.0.1:8780",
+                    "request_timeout_seconds": 5,
+                    "knowledge_job_interval_seconds": 60,
+                }
+            },
+        },
+    )
+    cfg = Config.load(tmp_path / "config.toml")
+
+    legacy_tasks, legacy_loop = _build_group_memory_tasks(
+        cfg,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    assert legacy_tasks == []
+    assert legacy_loop is None
+
+    knowledge_tasks, knowledge_worker = _build_agent_gateway_knowledge_worker_tasks(
+        cfg,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    for task in knowledge_tasks:
+        task.close()
+    assert len(knowledge_tasks) == 1
+    assert knowledge_worker is not None
+
+
 def test_bootstrap_skips_knowledge_worker_when_agent_gateway_base_url_empty(
     tmp_path: Path,
 ):
