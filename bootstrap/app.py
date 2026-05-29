@@ -77,6 +77,7 @@ class AppRuntime:
         self.proactive_loop = None
         self.group_memory_loop = None
         self.agent_gateway_image_worker = None
+        self.agent_gateway_knowledge_worker = None
         self.peer_process_manager = None
         self.peer_poller = None
         self.dashboard_server = None
@@ -174,6 +175,14 @@ class AppRuntime:
                 self.session_manager._store,
             )
             self.tasks.extend(group_memory_tasks)
+            knowledge_worker_tasks, self.agent_gateway_knowledge_worker = (
+                _build_agent_gateway_knowledge_worker_tasks(
+                    self.config,
+                    self.workspace,
+                    self.session_manager._store,
+                )
+            )
+            self.tasks.extend(knowledge_worker_tasks)
             image_worker_tasks, self.agent_gateway_image_worker = (
                 _build_agent_gateway_image_worker_tasks(
                     self.config,
@@ -231,6 +240,10 @@ class AppRuntime:
                     "agent_gateway_image_worker.stop",
                     _loop_stop(self.agent_gateway_image_worker),
                 ),
+                (
+                    "agent_gateway_knowledge_worker.stop",
+                    _loop_stop(self.agent_gateway_knowledge_worker),
+                ),
                 ("http_resources.aclose", self.http_resources.aclose),
             )
         finally:
@@ -246,13 +259,9 @@ def _build_group_memory_tasks(
     workspace: Path,
     session_store,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    qq = getattr(getattr(config, "channels", None), "qq", None)
-    groups = [
-        str(getattr(group, "group_id", "")).strip()
-        for group in (getattr(qq, "groups", []) or [])
-        if bool(getattr(group, "observe_only", False))
-    ]
-    groups = [g for g in groups if g]
+    if bool(getattr(getattr(config, "agent_gateway", None), "enabled", False)):
+        return [], None
+    groups = sorted(_observe_only_qq_group_accounts(config))
     if not groups:
         return [], None
     from group_memory import GroupMemoryService
@@ -303,6 +312,89 @@ def _build_agent_gateway_image_worker_tasks(
         ),
     )
     return [worker.run()], worker
+
+
+def _build_agent_gateway_knowledge_worker_tasks(
+    config: Config,
+    workspace: Path,
+    session_store,
+) -> tuple[list[Awaitable[None]], object | None]:
+    agent_gateway = getattr(config, "agent_gateway", None)
+    if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
+        return [], None
+    group_accounts = _observe_only_qq_group_accounts(config)
+    if not group_accounts:
+        return [], None
+
+    from agent.tools.ragflow import RAGFlowIndexQQGroupTool
+    from group_memory import GroupMemoryService
+    from integrations.agent_gateway import AgentGatewayClient
+    from integrations.agent_gateway_knowledge_worker import AgentGatewayKnowledgeWorker
+    from integrations.ragflow import RAGFlowClient
+
+    ragflow = getattr(config, "ragflow", None)
+    ragflow_indexer = None
+    ragflow_dataset_ids: list[str] = []
+    if (
+        ragflow is not None
+        and bool(getattr(ragflow, "enabled", False))
+        and getattr(ragflow, "base_url", "")
+        and getattr(ragflow, "api_key", "")
+    ):
+        ragflow_dataset_ids = [
+            str(value).strip()
+            for value in getattr(ragflow, "default_dataset_ids", [])
+            if str(value).strip()
+        ]
+        if ragflow_dataset_ids:
+            ragflow_indexer = RAGFlowIndexQQGroupTool(
+                RAGFlowClient(ragflow),
+                session_store,
+            )
+
+    worker = AgentGatewayKnowledgeWorker(
+        client=AgentGatewayClient(agent_gateway),
+        group_memory=GroupMemoryService.from_workspace(
+            workspace,
+            session_store=session_store,
+        ),
+        worker_id=str(getattr(agent_gateway, "worker_id", "akashic-python-worker")),
+        group_accounts=group_accounts,
+        ragflow_indexer=ragflow_indexer,
+        ragflow_dataset_ids=ragflow_dataset_ids,
+        lease_ttl_seconds=int(getattr(agent_gateway, "lease_ttl_seconds", 300)),
+        poll_interval_seconds=float(
+            getattr(agent_gateway, "poll_interval_seconds", 2.0)
+        ),
+        enqueue_interval_seconds=float(
+            getattr(agent_gateway, "knowledge_job_interval_seconds", 60.0)
+        ),
+    )
+    return [worker.run()], worker
+
+
+def _observe_only_qq_group_accounts(config: Config) -> dict[str, str]:
+    channels = getattr(config, "channels", None)
+    if channels is None:
+        return {}
+    accounts = []
+    qq = getattr(channels, "qq", None)
+    if qq is not None:
+        accounts.append(qq)
+    accounts.extend(getattr(channels, "qq_accounts", []) or [])
+
+    result: dict[str, str] = {}
+    for account in accounts:
+        account_id = str(getattr(account, "bot_uin", "")).strip()
+        if not account_id:
+            continue
+        for group in getattr(account, "groups", []) or []:
+            if not bool(getattr(group, "observe_only", False)):
+                continue
+            group_id = str(getattr(group, "group_id", "")).strip()
+            if group_id and group_id not in result:
+                result[group_id] = account_id
+    return result
 
 
 def _loop_stop(loop: object | None):

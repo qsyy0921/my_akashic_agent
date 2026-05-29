@@ -504,6 +504,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
                     "worker_id": "worker-test",
                     "lease_ttl_seconds": 180,
                     "poll_interval_seconds": 3,
+                    "knowledge_job_interval_seconds": 30,
                 }
             },
         },
@@ -517,6 +518,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.worker_id == "worker-test"
     assert cfg.agent_gateway.lease_ttl_seconds == 180
     assert cfg.agent_gateway.poll_interval_seconds == 3
+    assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
 
 
 def test_config_load_reads_toml_layout(tmp_path: Path):

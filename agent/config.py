@@ -473,6 +473,9 @@ def _load_agent_gateway_config(data: dict) -> AgentGatewayIntegrationConfig:
         ),
         lease_ttl_seconds=int(raw.get("lease_ttl_seconds", 300)),
         poll_interval_seconds=float(raw.get("poll_interval_seconds", 2.0)),
+        knowledge_job_interval_seconds=float(
+            raw.get("knowledge_job_interval_seconds", 60.0)
+        ),
     )
 
 

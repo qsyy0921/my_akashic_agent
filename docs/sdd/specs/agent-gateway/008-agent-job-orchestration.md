@@ -14,10 +14,13 @@ Implemented:
 - Python image worker can lease generic `image_generation` jobs, execute the
   configured ChatGPT image tool, and update both generic and legacy image job
   state.
+- Python knowledge worker can enqueue observe-only QQ group
+  `group_memory_extract` and optional `rag_ingest` jobs, lease them from Go,
+  execute group memory/RAGFlow indexing, and write lifecycle results back to
+  generic jobs.
 
 Pending:
 
-- Route group-memory/RAG ingestion through generic jobs in observe-only mode.
 - Add persistence and dashboard job panel.
 
 ## Context
@@ -168,5 +171,10 @@ Go owns:
   - [x] Legacy `/v1/image-jobs` creates a generic `image_generation` AgentJob.
   - [x] Python image worker consumes generic jobs and reports both generic and
     legacy image-job completion.
-- [ ] Route group-memory/RAG ingestion through generic jobs in observe-only mode.
+- [x] Route group-memory/RAG ingestion through generic jobs in observe-only mode.
+  - [x] Observe-only QQ groups enqueue `group_memory_extract` jobs.
+  - [x] RAGFlow-enabled observe-only QQ groups enqueue `rag_ingest` jobs for
+    configured default datasets.
+  - [x] Python knowledge worker consumes both job types and writes results back
+    to generic jobs without group-visible replies.
 - [ ] Add persistence and dashboard job panel.

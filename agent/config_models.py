@@ -139,6 +139,7 @@ class AgentGatewayIntegrationConfig:
     worker_id: str = "akashic-python-worker"
     lease_ttl_seconds: int = 300
     poll_interval_seconds: float = 2.0
+    knowledge_job_interval_seconds: float = 60.0
 
 
 @dataclass

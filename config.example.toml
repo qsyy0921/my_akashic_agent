@@ -228,6 +228,7 @@ request_timeout_seconds = 5
 worker_id = "akashic-python-worker"
 lease_ttl_seconds = 300
 poll_interval_seconds = 2
+knowledge_job_interval_seconds = 60
 
 # 可选：接入外部 Peer Agent（如 DeepResearch）
 # [[integrations.peer_agents]]
