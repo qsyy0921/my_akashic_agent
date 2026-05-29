@@ -298,10 +298,10 @@ def _build_agent_gateway_image_worker_tasks(
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
     if chatgpt_proxy is None or not bool(getattr(chatgpt_proxy, "enabled", False)):
-        logger.warning("agent_gateway 已启用但 chatgpt_proxy 未启用，跳过 image worker")
+        logger.warning("agent_runtime 已启用但 chatgpt_proxy 未启用，跳过 image worker")
         return [], None
     if not getattr(chatgpt_proxy, "base_url", ""):
-        logger.warning("agent_gateway 已启用但 chatgpt_proxy.base_url 为空，跳过 image worker")
+        logger.warning("agent_runtime 已启用但 chatgpt_proxy.base_url 为空，跳过 image worker")
         return [], None
 
     from agent.tools.chatgpt_proxy import ChatGPTImageGenerateTool
@@ -336,7 +336,7 @@ def _build_agent_gateway_knowledge_worker_tasks(
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
     if not str(getattr(agent_gateway, "base_url", "")).strip():
-        logger.warning("agent_gateway 已启用但 base_url 为空，跳过 knowledge worker")
+        logger.warning("agent_runtime 已启用但 base_url 为空，跳过 knowledge worker")
         return [], None
     group_accounts = _observe_only_qq_group_accounts(config)
     if not group_accounts:
