@@ -76,8 +76,6 @@ class AppRuntime:
         self.presence = None
         self.proactive_loop = None
         self.group_memory_loop = None
-        self.agent_gateway_image_worker = None
-        self.agent_gateway_knowledge_worker = None
         self.agent_runtime_image_worker = None
         self.agent_runtime_knowledge_worker = None
         self.peer_process_manager = None
@@ -177,23 +175,21 @@ class AppRuntime:
                 self.session_manager._store,
             )
             self.tasks.extend(group_memory_tasks)
-            knowledge_worker_tasks, self.agent_gateway_knowledge_worker = (
-                _build_agent_gateway_knowledge_worker_tasks(
+            knowledge_worker_tasks, self.agent_runtime_knowledge_worker = (
+                _build_agent_runtime_knowledge_worker_tasks(
                     self.config,
                     self.workspace,
                     self.session_manager._store,
                 )
             )
-            self.agent_runtime_knowledge_worker = self.agent_gateway_knowledge_worker
             self.tasks.extend(knowledge_worker_tasks)
-            image_worker_tasks, self.agent_gateway_image_worker = (
-                _build_agent_gateway_image_worker_tasks(
+            image_worker_tasks, self.agent_runtime_image_worker = (
+                _build_agent_runtime_image_worker_tasks(
                     self.config,
                     self.workspace,
                     self.http_resources,
                 )
             )
-            self.agent_runtime_image_worker = self.agent_gateway_image_worker
             self.tasks.extend(image_worker_tasks)
 
             self._started = True
@@ -241,14 +237,6 @@ class AppRuntime:
                     _group_memory_stop(self.group_memory_loop),
                 ),
                 (
-                    "agent_gateway_image_worker.stop",
-                    _loop_stop(self.agent_gateway_image_worker),
-                ),
-                (
-                    "agent_gateway_knowledge_worker.stop",
-                    _loop_stop(self.agent_gateway_knowledge_worker),
-                ),
-                (
                     "agent_runtime_image_worker.stop",
                     _loop_stop(self.agent_runtime_image_worker),
                 ),
@@ -288,14 +276,14 @@ def _group_memory_stop(loop: object | None):
     return _loop_stop(loop)
 
 
-def _build_agent_gateway_image_worker_tasks(
+def _build_agent_runtime_image_worker_tasks(
     config: Config,
     workspace: Path,
     http_resources: SharedHttpResources,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = _get_agent_runtime_config(config)
+    agent_runtime = _get_agent_runtime_config(config)
     chatgpt_proxy = getattr(config, "chatgpt_proxy", None)
-    if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
+    if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
         return [], None
     if chatgpt_proxy is None or not bool(getattr(chatgpt_proxy, "enabled", False)):
         logger.warning("agent_runtime 已启用但 chatgpt_proxy 未启用，跳过 image worker")
@@ -309,7 +297,7 @@ def _build_agent_gateway_image_worker_tasks(
     from integrations.agent_runtime import AgentRuntimeClient
     from integrations.agent_runtime_image_worker import AgentRuntimeImageWorker
 
-    client = AgentRuntimeClient(agent_gateway)
+    client = AgentRuntimeClient(agent_runtime)
     image_tool = ChatGPTImageGenerateTool(
         chatgpt_proxy,
         workspace,
@@ -318,24 +306,24 @@ def _build_agent_gateway_image_worker_tasks(
     worker = AgentRuntimeImageWorker(
         client=client,
         image_tool=image_tool,
-        worker_id=str(getattr(agent_gateway, "worker_id", "akashic-python-worker")),
-        lease_ttl_seconds=int(getattr(agent_gateway, "lease_ttl_seconds", 300)),
+        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
-            getattr(agent_gateway, "poll_interval_seconds", 2.0)
+            getattr(agent_runtime, "poll_interval_seconds", 2.0)
         ),
     )
     return [worker.run()], worker
 
 
-def _build_agent_gateway_knowledge_worker_tasks(
+def _build_agent_runtime_knowledge_worker_tasks(
     config: Config,
     workspace: Path,
     session_store,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = _get_agent_runtime_config(config)
-    if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
+    agent_runtime = _get_agent_runtime_config(config)
+    if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
         return [], None
-    if not str(getattr(agent_gateway, "base_url", "")).strip():
+    if not str(getattr(agent_runtime, "base_url", "")).strip():
         logger.warning("agent_runtime 已启用但 base_url 为空，跳过 knowledge worker")
         return [], None
     group_accounts = _observe_only_qq_group_accounts(config)
@@ -370,24 +358,42 @@ def _build_agent_gateway_knowledge_worker_tasks(
             )
 
     worker = AgentRuntimeKnowledgeWorker(
-        client=AgentRuntimeClient(agent_gateway),
+        client=AgentRuntimeClient(agent_runtime),
         group_memory=GroupMemoryService.from_workspace(
             workspace,
             session_store=session_store,
         ),
-        worker_id=str(getattr(agent_gateway, "worker_id", "akashic-python-worker")),
+        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
         group_accounts=group_accounts,
         ragflow_indexer=ragflow_indexer,
         ragflow_dataset_ids=ragflow_dataset_ids,
-        lease_ttl_seconds=int(getattr(agent_gateway, "lease_ttl_seconds", 300)),
+        lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
-            getattr(agent_gateway, "poll_interval_seconds", 2.0)
+            getattr(agent_runtime, "poll_interval_seconds", 2.0)
         ),
         enqueue_interval_seconds=float(
-            getattr(agent_gateway, "knowledge_job_interval_seconds", 60.0)
+            getattr(agent_runtime, "knowledge_job_interval_seconds", 60.0)
         ),
     )
     return [worker.run()], worker
+
+
+def _build_agent_gateway_image_worker_tasks(
+    config: Config,
+    workspace: Path,
+    http_resources: SharedHttpResources,
+) -> tuple[list[Awaitable[None]], object | None]:
+    # 兼容层：保留历史入口名，内部统一走 agent_runtime 命名路径。
+    return _build_agent_runtime_image_worker_tasks(config, workspace, http_resources)
+
+
+def _build_agent_gateway_knowledge_worker_tasks(
+    config: Config,
+    workspace: Path,
+    session_store,
+) -> tuple[list[Awaitable[None]], object | None]:
+    # 兼容层：保留历史入口名，内部统一走 agent_runtime 命名路径。
+    return _build_agent_runtime_knowledge_worker_tasks(config, workspace, session_store)
 
 
 def _get_agent_runtime_config(config: Config):
