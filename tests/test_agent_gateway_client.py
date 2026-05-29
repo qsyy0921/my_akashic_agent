@@ -108,6 +108,39 @@ async def test_agent_gateway_client_lists_jobs_with_filters():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_updates_legacy_image_job_state():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        return _ok({"job_id": "img-1", "status": "ok"})
+
+    client = _client(handler)
+
+    await client.mark_image_job_running("img-1")
+    await client.complete_image_job(
+        "img-1",
+        results=[{"kind": "image", "url": "file:///x.png"}],
+        metadata={"agent_job_id": "img-1"},
+    )
+    await client.fail_image_job("img-1", error_message="failed")
+
+    assert calls == [
+        ("POST", "/v1/image-jobs/img-1/running", {}),
+        (
+            "POST",
+            "/v1/image-jobs/img-1/succeeded",
+            {
+                "results": [{"kind": "image", "url": "file:///x.png"}],
+                "metadata": {"agent_job_id": "img-1"},
+            },
+        ),
+        ("POST", "/v1/image-jobs/img-1/failed", {"error_message": "failed"}),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_maps_empty_lease_to_no_job():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/jobs/lease-next"

@@ -138,6 +138,7 @@ class AgentGatewayIntegrationConfig:
     request_timeout_seconds: float = 5.0
     worker_id: str = "akashic-python-worker"
     lease_ttl_seconds: int = 300
+    poll_interval_seconds: float = 2.0
 
 
 @dataclass

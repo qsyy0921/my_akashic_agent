@@ -44,3 +44,4 @@ Current architecture review sequence:
 - `2026-05-30-agent-gateway-rename-review.md`
 - `2026-05-30-phase7-2-python-agent-gateway-client.md`
 - `2026-05-30-phase7-3-image-job-agent-job-bridge.md`
+- `2026-05-30-phase7-4-python-image-agent-worker.md`

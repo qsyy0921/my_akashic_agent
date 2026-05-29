@@ -11,11 +11,12 @@ Implemented:
 - Python compatibility client for worker leases and lifecycle updates.
 - Legacy `/v1/image-jobs` create generic `image_generation` AgentJob
   compatibility records.
+- Python image worker can lease generic `image_generation` jobs, execute the
+  configured ChatGPT image tool, and update both generic and legacy image job
+  state.
 
 Pending:
 
-- Route image generation through generic jobs while preserving current output
-  behavior beyond the initial compatibility record.
 - Route group-memory/RAG ingestion through generic jobs in observe-only mode.
 - Add persistence and dashboard job panel.
 
@@ -162,10 +163,10 @@ Go owns:
 - [x] Add `AgentJob` domain model and in-memory repository/queue.
 - [x] Add HTTP control-plane endpoints.
 - [x] Add Python worker compatibility client tests.
-- [ ] Route image generation requests through generic jobs while preserving current
+- [x] Route image generation requests through generic jobs while preserving current
   output behavior.
   - [x] Legacy `/v1/image-jobs` creates a generic `image_generation` AgentJob.
-  - [ ] Python image worker consumes generic jobs and reports both generic and
+  - [x] Python image worker consumes generic jobs and reports both generic and
     legacy image-job completion.
 - [ ] Route group-memory/RAG ingestion through generic jobs in observe-only mode.
 - [ ] Add persistence and dashboard job panel.

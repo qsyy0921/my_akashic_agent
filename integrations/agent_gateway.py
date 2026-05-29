@@ -136,6 +136,33 @@ class AgentGatewayClient:
             json_body={"error_message": error_message},
         )
 
+    async def mark_image_job_running(self, job_id: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/image-jobs/{job_id}/running",
+            json_body={},
+        )
+
+    async def complete_image_job(
+        self,
+        job_id: str,
+        *,
+        results: list[dict[str, Any]],
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/image-jobs/{job_id}/succeeded",
+            json_body={"results": results, "metadata": metadata or {}},
+        )
+
+    async def fail_image_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/v1/image-jobs/{job_id}/failed",
+            json_body={"error_message": error_message},
+        )
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 

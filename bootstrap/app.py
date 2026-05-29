@@ -76,6 +76,7 @@ class AppRuntime:
         self.presence = None
         self.proactive_loop = None
         self.group_memory_loop = None
+        self.agent_gateway_image_worker = None
         self.peer_process_manager = None
         self.peer_poller = None
         self.dashboard_server = None
@@ -173,6 +174,14 @@ class AppRuntime:
                 self.session_manager._store,
             )
             self.tasks.extend(group_memory_tasks)
+            image_worker_tasks, self.agent_gateway_image_worker = (
+                _build_agent_gateway_image_worker_tasks(
+                    self.config,
+                    self.workspace,
+                    self.http_resources,
+                )
+            )
+            self.tasks.extend(image_worker_tasks)
 
             self._started = True
         except Exception:
@@ -218,6 +227,10 @@ class AppRuntime:
                     "group_memory.stop",
                     _group_memory_stop(self.group_memory_loop),
                 ),
+                (
+                    "agent_gateway_image_worker.stop",
+                    _loop_stop(self.agent_gateway_image_worker),
+                ),
                 ("http_resources.aclose", self.http_resources.aclose),
             )
         finally:
@@ -251,6 +264,48 @@ def _build_group_memory_tasks(
 
 
 def _group_memory_stop(loop: object | None):
+    return _loop_stop(loop)
+
+
+def _build_agent_gateway_image_worker_tasks(
+    config: Config,
+    workspace: Path,
+    http_resources: SharedHttpResources,
+) -> tuple[list[Awaitable[None]], object | None]:
+    agent_gateway = getattr(config, "agent_gateway", None)
+    chatgpt_proxy = getattr(config, "chatgpt_proxy", None)
+    if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
+        return [], None
+    if chatgpt_proxy is None or not bool(getattr(chatgpt_proxy, "enabled", False)):
+        logger.warning("agent_gateway 已启用但 chatgpt_proxy 未启用，跳过 image worker")
+        return [], None
+    if not getattr(chatgpt_proxy, "base_url", ""):
+        logger.warning("agent_gateway 已启用但 chatgpt_proxy.base_url 为空，跳过 image worker")
+        return [], None
+
+    from agent.tools.chatgpt_proxy import ChatGPTImageGenerateTool
+    from integrations.agent_gateway import AgentGatewayClient
+    from integrations.agent_gateway_image_worker import AgentGatewayImageWorker
+
+    client = AgentGatewayClient(agent_gateway)
+    image_tool = ChatGPTImageGenerateTool(
+        chatgpt_proxy,
+        workspace,
+        http_resources.external_default,
+    )
+    worker = AgentGatewayImageWorker(
+        client=client,
+        image_tool=image_tool,
+        worker_id=str(getattr(agent_gateway, "worker_id", "akashic-python-worker")),
+        lease_ttl_seconds=int(getattr(agent_gateway, "lease_ttl_seconds", 300)),
+        poll_interval_seconds=float(
+            getattr(agent_gateway, "poll_interval_seconds", 2.0)
+        ),
+    )
+    return [worker.run()], worker
+
+
+def _loop_stop(loop: object | None):
     async def _stop() -> None:
         if loop is not None and hasattr(loop, "stop"):
             loop.stop()
