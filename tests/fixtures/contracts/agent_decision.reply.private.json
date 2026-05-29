@@ -1,0 +1,30 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentDecision",
+  "event_id": "agent-decision:turn-0001",
+  "source_event_id": "agent-inbound:qq:2365524513:private:1049511700:msg-0001",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "1049511700",
+  "conversation_type": "private",
+  "agent_id": "main",
+  "decision": "reply",
+  "outbound": {
+    "channel": {
+      "platform": "qq",
+      "account_id": "2365524513",
+      "conversation_id": "1049511700",
+      "conversation_type": "private"
+    },
+    "content": "我会按当前账号回复这条私聊。",
+    "attachments": []
+  },
+  "jobs": [],
+  "trace_ref": "trace:turn-0001",
+  "timestamp": "2026-05-30T00:40:10+08:00",
+  "source_message_ids": ["qq:2365524513:private:1049511700:msg-0001"],
+  "source_asset_ids": [],
+  "metadata": {
+    "tool_policy": "direct_reply"
+  }
+}

@@ -14,18 +14,39 @@ class TelegramChannelConfig:
 
 
 @dataclass
+class FeishuWebhookChannelConfig:
+    webhook_url: str
+    secret: str = ""
+    channel_name: str = "feishu"
+
+
+@dataclass
+class WechatWebhookChannelConfig:
+    webhook_url: str
+    mentioned_list: list[str] = field(default_factory=list)
+    mentioned_mobile_list: list[str] = field(default_factory=list)
+    channel_name: str = "wechat"
+
+
+@dataclass
 class QQGroupConfig:
     group_id: str
     allow_from: list[str] = field(default_factory=list)
     require_at: bool = True
+    observe_only: bool = False
 
 
 @dataclass
 class QQChannelConfig:
     bot_uin: str
     allow_from: list[str] = field(default_factory=list)
+    bot_peer_ids: list[str] = field(default_factory=list)
+    peer_trigger_prefixes: list[str] = field(default_factory=list)
     groups: list[QQGroupConfig] = field(default_factory=list)
     websocket_open_timeout_seconds: float = 5.0
+    channel_name: str = "qq"
+    websocket_uri: str = ""
+    websocket_token: str = "NcatBot"
 
 
 @dataclass
@@ -47,7 +68,10 @@ class QQBotChannelConfig:
 @dataclass
 class ChannelsConfig:
     telegram: TelegramChannelConfig | None = None
+    feishu: FeishuWebhookChannelConfig | None = None
+    wechat: WechatWebhookChannelConfig | None = None
     qq: QQChannelConfig | None = None
+    qq_accounts: list[QQChannelConfig] = field(default_factory=list)
     qqbot: QQBotChannelConfig | None = None
     socket: str = "/tmp/akashic.sock"
 
@@ -69,6 +93,42 @@ class MemoryConfig:
 @dataclass
 class FitbitIntegrationConfig:
     enabled: bool = False
+
+
+@dataclass
+class ChatGPTProxyIntegrationConfig:
+    enabled: bool = False
+    base_url: str = ""
+    api_key: str = ""
+    image_model: str = "gpt-image-1"
+    image_path: str = "/images/generations"
+    response_format: str = "b64_json"
+    output_dir: str = "generated_images"
+
+
+@dataclass
+class RAGFlowIntegrationConfig:
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:9380"
+    api_key: str = ""
+    proxy_url: str = ""
+    default_dataset_ids: list[str] = field(default_factory=list)
+    default_keyword: bool = True
+    default_use_kg: bool = False
+    default_top_k: int = 1024
+    default_page_size: int = 8
+    default_similarity_threshold: float = 0.2
+    default_vector_similarity_weight: float = 0.3
+    request_timeout_seconds: float = 60.0
+
+
+@dataclass
+class ShadowGatewayIntegrationConfig:
+    enabled: bool = False
+    endpoint: str = "http://127.0.0.1:8780/v1/shadow/inbound"
+    log_path: str = "shadow/inbound.jsonl"
+    request_timeout_seconds: float = 2.0
+    agent_id: str = "shadow"
 
 
 @dataclass
@@ -120,6 +180,13 @@ class Config:
     agent_base_url: str = ""
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     fitbit: FitbitIntegrationConfig = field(default_factory=FitbitIntegrationConfig)
+    chatgpt_proxy: ChatGPTProxyIntegrationConfig = field(
+        default_factory=ChatGPTProxyIntegrationConfig
+    )
+    ragflow: RAGFlowIntegrationConfig = field(default_factory=RAGFlowIntegrationConfig)
+    shadow_gateway: ShadowGatewayIntegrationConfig = field(
+        default_factory=ShadowGatewayIntegrationConfig
+    )
     multimodal: bool = True
     vl_model: str = ""
     vl_api_key: str = ""
@@ -140,7 +207,11 @@ class Config:
 __all__ = [
     "ChannelsConfig",
     "Config",
+    "FeishuWebhookChannelConfig",
     "FitbitIntegrationConfig",
+    "ChatGPTProxyIntegrationConfig",
+    "RAGFlowIntegrationConfig",
+    "ShadowGatewayIntegrationConfig",
     "MemoryConfig",
     "MemoryEmbeddingConfig",
     "PeerAgentConfig",
@@ -149,5 +220,6 @@ __all__ = [
     "QQBotGroupConfig",
     "QQGroupConfig",
     "TelegramChannelConfig",
+    "WechatWebhookChannelConfig",
     "WiringConfig",
 ]

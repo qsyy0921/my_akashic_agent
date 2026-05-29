@@ -1,0 +1,33 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "SourceCitation",
+  "event_id": "citation:answer:hardware-001:1",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "answer_id": "answer:hardware-001",
+  "citations": [
+    {
+      "citation_id": "citation:message:msg-101",
+      "source_type": "message",
+      "source_id": "qq:2365524513:group:27234224:msg-101",
+      "quote": "这个预算建议 7800X3D 搭 B650，电源别省。",
+      "timestamp": "2026-05-30T00:58:10+08:00"
+    },
+    {
+      "citation_id": "citation:asset:msg-0498:1",
+      "source_type": "asset",
+      "source_id": "asset:qq:image:27234224:msg-0498:1",
+      "quote": "benchmark screenshot",
+      "timestamp": "2026-05-30T00:44:54+08:00"
+    }
+  ],
+  "timestamp": "2026-05-30T01:05:00+08:00",
+  "source_message_ids": ["qq:2365524513:group:27234224:msg-101"],
+  "source_asset_ids": ["asset:qq:image:27234224:msg-0498:1"],
+  "metadata": {
+    "faithfulness_check": "required"
+  }
+}

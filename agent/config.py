@@ -15,7 +15,9 @@ from zoneinfo import ZoneInfo
 
 from agent.config_models import (
     ChannelsConfig,
+    ChatGPTProxyIntegrationConfig,
     Config,
+    FeishuWebhookChannelConfig,
     FitbitIntegrationConfig,
     MemoryConfig,
     MemoryEmbeddingConfig,
@@ -24,7 +26,10 @@ from agent.config_models import (
     QQBotGroupConfig,
     QQChannelConfig,
     QQGroupConfig,
+    RAGFlowIntegrationConfig,
+    ShadowGatewayIntegrationConfig,
     TelegramChannelConfig,
+    WechatWebhookChannelConfig,
     WiringConfig,
 )
 from proactive_v2.config import ProactiveConfig
@@ -88,6 +93,9 @@ def load_config(path: str | Path = "config.toml") -> Config:
     memory = _load_memory_config(data)
     peer_agents = _load_peer_agents_config(data)
     fitbit = _load_fitbit_config(data)
+    chatgpt_proxy = _load_chatgpt_proxy_config(data)
+    ragflow = _load_ragflow_config(data)
+    shadow_gateway = _load_shadow_gateway_config(data)
     wiring = _load_wiring_config(data)
 
     return Config(
@@ -137,6 +145,9 @@ def load_config(path: str | Path = "config.toml") -> Config:
         ),
         memory=memory,
         fitbit=fitbit,
+        chatgpt_proxy=chatgpt_proxy,
+        ragflow=ragflow,
+        shadow_gateway=shadow_gateway,
         tool_search_enabled=bool(
             agent_tools.get("search_enabled", data.get("tool_search_enabled", False))
         ),
@@ -166,77 +177,92 @@ def _load_channels_config(data: dict) -> ChannelsConfig:
 
     telegram = None
     if tg := channels_data.get("telegram"):
-        token = _normalize_optional_config_text(_resolve(str(tg.get("token", ""))))
+        token = _resolve_optional_string(tg.get("token", ""))
         if bool(tg.get("enabled", True)) and token:
             telegram = TelegramChannelConfig(
                 token=token,
-                allow_from=[
-                    str(u) for u in tg.get("allow_from", tg.get("allowFrom", []))
-                ],
+                allow_from=_resolve_string_list(
+                    tg.get("allow_from", tg.get("allowFrom", []))
+                ),
                 channel_name=str(tg.get("channel_name", "telegram")),
             )
 
-    qq = None
-    if qq_data := channels_data.get("qq"):
-        bot_uin = _normalize_optional_config_text(str(qq_data.get("bot_uin", "")))
-        if bool(qq_data.get("enabled", True)) and bot_uin:
-            groups = [
-                QQGroupConfig(
-                    group_id=str(
-                        g["group_id"] if "group_id" in g else g["groupId"]
-                    ),
-                    allow_from=[
-                        str(u)
-                        for u in g.get("allow_from", g.get("allowFrom", []))
-                    ],
-                    require_at=g.get("require_at", g.get("requireAt", True)),
-                )
-                for g in qq_data.get("groups", [])
-            ]
-            qq = QQChannelConfig(
-                bot_uin=bot_uin,
-                allow_from=[
-                    str(u)
-                    for u in qq_data.get("allow_from", qq_data.get("allowFrom", []))
-                ],
-                groups=groups,
-                websocket_open_timeout_seconds=float(
-                    qq_data.get("websocket_open_timeout_seconds", 5.0)
-                ),
+    feishu = None
+    if fs := channels_data.get("feishu"):
+        webhook_url = _resolve_optional_string(
+            fs.get("webhook_url", fs.get("webhookUrl", ""))
+        )
+        if bool(fs.get("enabled", True)) and webhook_url:
+            feishu = FeishuWebhookChannelConfig(
+                webhook_url=webhook_url,
+                secret=_resolve_optional_string(fs.get("secret", "")),
+                channel_name=str(fs.get("channel_name", "feishu")),
             )
+
+    wechat = None
+    if wc := channels_data.get("wechat"):
+        webhook_url = _resolve_optional_string(
+            wc.get("webhook_url", wc.get("webhookUrl", ""))
+        )
+        if bool(wc.get("enabled", True)) and webhook_url:
+            wechat = WechatWebhookChannelConfig(
+                webhook_url=webhook_url,
+                mentioned_list=_resolve_string_list(
+                    wc.get("mentioned_list", wc.get("mentionedList", []))
+                ),
+                mentioned_mobile_list=_resolve_string_list(
+                    wc.get("mentioned_mobile_list", wc.get("mentionedMobileList", []))
+                ),
+                channel_name=str(wc.get("channel_name", "wechat")),
+            )
+
+    qq = None
+    qq_accounts: list[QQChannelConfig] = []
+    if qq_data := channels_data.get("qq"):
+        if bool(qq_data.get("enabled", True)):
+            qq = _load_qq_channel_config(qq_data, default_channel_name="qq")
+            for index, account_data in enumerate(qq_data.get("accounts", []) or [], start=2):
+                account = _load_qq_channel_config(
+                    _as_dict(account_data),
+                    default_channel_name=f"qq_{index}",
+                )
+                if account is not None:
+                    qq_accounts.append(account)
 
     qqbot = None
     if qqbot_data := channels_data.get("qqbot"):
-        app_id = _normalize_optional_config_text(
-            _resolve(str(qqbot_data.get("app_id", qqbot_data.get("appId", ""))))
+        app_id = _resolve_optional_string(
+            qqbot_data.get("app_id", qqbot_data.get("appId", ""))
         )
-        client_secret = _normalize_optional_config_text(
-            _resolve(str(qqbot_data.get("client_secret", qqbot_data.get("clientSecret", ""))))
+        client_secret = _resolve_optional_string(
+            qqbot_data.get("client_secret", qqbot_data.get("clientSecret", ""))
         )
         if bool(qqbot_data.get("enabled", True)) and app_id and client_secret:
-            groups = [
-                QQBotGroupConfig(
-                    group_openid=str(
-                        g["group_openid"] if "group_openid" in g else g["groupOpenid"]
-                    ),
-                    allow_from=[
-                        str(u)
-                        for u in g.get("allow_from", g.get("allowFrom", []))
-                    ],
-                    require_at=g.get("require_at", g.get("requireAt", True)),
-                    allow_proactive=bool(
-                        g.get("allow_proactive", g.get("allowProactive", False))
-                    ),
+            groups = []
+            for g in qqbot_data.get("groups", []):
+                group_openid = _resolve_optional_string(
+                    g["group_openid"] if "group_openid" in g else g["groupOpenid"]
                 )
-                for g in qqbot_data.get("groups", [])
-            ]
+                if not group_openid:
+                    continue
+                groups.append(
+                    QQBotGroupConfig(
+                        group_openid=group_openid,
+                        allow_from=_resolve_string_list(
+                            g.get("allow_from", g.get("allowFrom", []))
+                        ),
+                        require_at=g.get("require_at", g.get("requireAt", True)),
+                        allow_proactive=bool(
+                            g.get("allow_proactive", g.get("allowProactive", False))
+                        ),
+                    )
+                )
             qqbot = QQBotChannelConfig(
                 app_id=app_id,
                 client_secret=client_secret,
-                allow_from=[
-                    str(u)
-                    for u in qqbot_data.get("allow_from", qqbot_data.get("allowFrom", []))
-                ],
+                allow_from=_resolve_string_list(
+                    qqbot_data.get("allow_from", qqbot_data.get("allowFrom", []))
+                ),
                 groups=groups,
             )
 
@@ -245,12 +271,75 @@ def _load_channels_config(data: dict) -> ChannelsConfig:
     )
     channels = ChannelsConfig(
         telegram=telegram,
+        feishu=feishu,
+        wechat=wechat,
         qq=qq,
+        qq_accounts=qq_accounts,
         qqbot=qqbot,
         socket=_normalize_cli_socket_endpoint(socket_value),
     )
     channels.socket = _normalize_cli_socket_endpoint(channels.socket)
     return channels
+
+
+def _load_qq_groups(groups_data: list[dict]) -> list[QQGroupConfig]:
+    groups: list[QQGroupConfig] = []
+    for g in groups_data:
+        group_id = _resolve_optional_string(
+            g["group_id"] if "group_id" in g else g.get("groupId", "")
+        )
+        if not group_id:
+            continue
+        groups.append(
+            QQGroupConfig(
+                group_id=group_id,
+                allow_from=_resolve_string_list(
+                    g.get("allow_from", g.get("allowFrom", []))
+                ),
+                require_at=g.get("require_at", g.get("requireAt", True)),
+                observe_only=bool(
+                    g.get("observe_only", g.get("observeOnly", False))
+                ),
+            )
+        )
+    return groups
+
+
+def _load_qq_channel_config(
+    qq_data: dict,
+    *,
+    default_channel_name: str,
+) -> QQChannelConfig | None:
+    bot_uin = _resolve_optional_string(qq_data.get("bot_uin", qq_data.get("botUin", "")))
+    if not bot_uin:
+        return None
+    return QQChannelConfig(
+        bot_uin=bot_uin,
+        allow_from=_resolve_string_list(
+            qq_data.get("allow_from", qq_data.get("allowFrom", []))
+        ),
+        bot_peer_ids=_resolve_string_list(
+            qq_data.get("bot_peer_ids", qq_data.get("botPeerIds", []))
+        ),
+        peer_trigger_prefixes=_resolve_string_list(
+            qq_data.get(
+                "peer_trigger_prefixes",
+                qq_data.get("peerTriggerPrefixes", []),
+            )
+        ),
+        groups=_load_qq_groups(qq_data.get("groups", []) or []),
+        websocket_open_timeout_seconds=float(
+            qq_data.get("websocket_open_timeout_seconds", 5.0)
+        ),
+        channel_name=str(qq_data.get("channel_name", default_channel_name)),
+        websocket_uri=str(
+            qq_data.get("websocket_uri", qq_data.get("websocketUri", ""))
+        ),
+        websocket_token=str(
+            qq_data.get("websocket_token", qq_data.get("websocketToken", "NcatBot"))
+            or "NcatBot"
+        ),
+    )
 
 
 def _load_proactive_config(data: dict) -> ProactiveConfig:
@@ -301,6 +390,67 @@ def _load_fitbit_config(data: dict) -> FitbitIntegrationConfig:
     fitbit = _as_dict(integrations.get("fitbit"))
     return FitbitIntegrationConfig(
         enabled=bool(fitbit.get("enabled", False)),
+    )
+
+
+def _load_chatgpt_proxy_config(data: dict) -> ChatGPTProxyIntegrationConfig:
+    integrations = _as_dict(data.get("integrations"))
+    proxy = _as_dict(integrations.get("chatgpt_proxy"))
+    return ChatGPTProxyIntegrationConfig(
+        enabled=bool(proxy.get("enabled", False)),
+        base_url=_resolve_optional_string(proxy.get("base_url", "")),
+        api_key=_resolve_optional_string(proxy.get("api_key", "")),
+        image_model=str(proxy.get("image_model", "gpt-image-1") or "gpt-image-1"),
+        image_path=str(
+            proxy.get("image_path", "/images/generations") or "/images/generations"
+        ),
+        response_format=str(proxy.get("response_format", "b64_json") or ""),
+        output_dir=str(proxy.get("output_dir", "generated_images") or "generated_images"),
+    )
+
+
+def _load_ragflow_config(data: dict) -> RAGFlowIntegrationConfig:
+    integrations = _as_dict(data.get("integrations"))
+    ragflow = _as_dict(integrations.get("ragflow"))
+    return RAGFlowIntegrationConfig(
+        enabled=bool(ragflow.get("enabled", False)),
+        base_url=_resolve_optional_string(
+            ragflow.get("base_url", "http://127.0.0.1:9380")
+        )
+        or "http://127.0.0.1:9380",
+        api_key=_resolve_optional_string(ragflow.get("api_key", "")),
+        proxy_url=_resolve_optional_string(
+            ragflow.get("proxy_url", ragflow.get("proxyUrl", ""))
+        ),
+        default_dataset_ids=_resolve_string_list(
+            ragflow.get(
+                "default_dataset_ids",
+                ragflow.get("defaultDatasetIds", []),
+            )
+        ),
+        default_keyword=bool(ragflow.get("default_keyword", True)),
+        default_use_kg=bool(ragflow.get("default_use_kg", False)),
+        default_top_k=int(ragflow.get("default_top_k", 1024)),
+        default_page_size=int(ragflow.get("default_page_size", 8)),
+        default_similarity_threshold=float(
+            ragflow.get("default_similarity_threshold", 0.2)
+        ),
+        default_vector_similarity_weight=float(
+            ragflow.get("default_vector_similarity_weight", 0.3)
+        ),
+        request_timeout_seconds=float(ragflow.get("request_timeout_seconds", 60.0)),
+    )
+
+
+def _load_shadow_gateway_config(data: dict) -> ShadowGatewayIntegrationConfig:
+    integrations = _as_dict(data.get("integrations"))
+    raw = _as_dict(integrations.get("shadow_gateway"))
+    return ShadowGatewayIntegrationConfig(
+        enabled=bool(raw.get("enabled", False)),
+        endpoint=str(raw.get("endpoint", "http://127.0.0.1:8780/v1/shadow/inbound")),
+        log_path=str(raw.get("log_path", "shadow/inbound.jsonl")),
+        request_timeout_seconds=float(raw.get("request_timeout_seconds", 2.0)),
+        agent_id=str(raw.get("agent_id", "shadow") or "shadow"),
     )
 
 
@@ -362,6 +512,21 @@ def _normalize_optional_config_text(value: str) -> str:
     return text
 
 
+def _resolve_optional_string(value: object) -> str:
+    return _normalize_optional_config_text(_resolve(str(value or "")))
+
+
+def _resolve_string_list(values: object) -> list[str]:
+    raw_values = values if isinstance(values, list) else [values]
+    resolved_values: list[str] = []
+    for value in raw_values:
+        text = _normalize_optional_config_text(_resolve(str(value or "")))
+        if not text:
+            continue
+        resolved_values.extend(part.strip() for part in text.split(",") if part.strip())
+    return resolved_values
+
+
 def _load_config_data(path: str | Path) -> dict:
     path = Path(path)
     if path.suffix.lower() != ".toml":
@@ -371,13 +536,18 @@ def _load_config_data(path: str | Path) -> dict:
 
 __all__ = [
     "ChannelsConfig",
+    "ChatGPTProxyIntegrationConfig",
     "Config",
     "DEFAULT_SOCKET",
+    "FeishuWebhookChannelConfig",
     "MemoryConfig",
     "MemoryEmbeddingConfig",
     "QQChannelConfig",
     "QQGroupConfig",
+    "RAGFlowIntegrationConfig",
+    "ShadowGatewayIntegrationConfig",
     "TelegramChannelConfig",
+    "WechatWebhookChannelConfig",
     "_validated_timezone",
     "load_config",
 ]

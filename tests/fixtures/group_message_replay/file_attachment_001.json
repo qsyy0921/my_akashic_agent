@@ -1,0 +1,40 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "case_id": "file_attachment_001",
+  "category": "hardware",
+  "group_profile": {
+    "platform": "qq",
+    "account_id": "2365524513",
+    "group_id": "27234224",
+    "name": "主机DIY交流群",
+    "observe_only": true
+  },
+  "messages": [
+    {
+      "message_id": "qq:2365524513:group:27234224:msg-600",
+      "sender_id": "118800003",
+      "timestamp": "2026-05-30T00:46:00+08:00",
+      "content": "装机清单发群文件了",
+      "asset_ids": ["asset:qq:file:27234224:msg-0600:1"]
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "asset:qq:file:27234224:msg-0600:1",
+      "asset_type": "file",
+      "mime_type": "application/pdf",
+      "name": "装机清单.pdf",
+      "expected_insight": "parts list document"
+    }
+  ],
+  "query": "那份装机清单里有什么？",
+  "expected": {
+    "memory_types": ["AssetInsight", "ProductConfigMemory"],
+    "source_message_ids": ["qq:2365524513:group:27234224:msg-600"],
+    "source_asset_ids": ["asset:qq:file:27234224:msg-0600:1"],
+    "must_include": ["装机清单.pdf", "来源"],
+    "must_not_include": ["未找到文件"],
+    "retrieval_top_k": 3,
+    "observe_only_outbound": "none"
+  }
+}

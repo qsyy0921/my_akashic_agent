@@ -68,11 +68,48 @@ allow_from = ["your_username"]
 # 多个 bot 想要隔离记忆时，改成不同的名字（如 "telegram_work"）。
 # channel_name = "telegram"
 
+[channels.feishu]
+# 飞书群自定义机器人 webhook。配置后可通过 message_push/proactive 向飞书群发文本。
+# 获取方式：飞书群设置 -> 群机器人 -> 添加机器人 -> 自定义机器人。
+enabled = false
+webhook_url = "${FEISHU_WEBHOOK_URL}"
+# 如果自定义机器人开启了“签名校验”，填对应密钥；未开启则留空。
+secret = "${FEISHU_WEBHOOK_SECRET}"
+channel_name = "feishu"
+
+[channels.wechat]
+# 企业微信/微信群机器人 webhook。配置后可通过 message_push/proactive 向微信群发文本。
+# 获取方式：企业微信群 -> 群机器人 -> 添加机器人，复制 webhook 地址。
+enabled = false
+webhook_url = "${WECHAT_WEBHOOK_URL}"
+# 可选：企业微信机器人支持通过 user id 或手机号 @成员；填 "@all" 可 @所有人。
+mentioned_list = []
+mentioned_mobile_list = []
+channel_name = "wechat"
+
 [channels.qq]
 # 填 QQ 号启用 QQ 频道，留空跳过。
 bot_uin = ""
 allow_from = ["your_qq_number"]
+# bot_peer_ids 内的账号需要带 peer_trigger_prefixes 才会触发，避免多机器人循环。
+bot_peer_ids = []
+peer_trigger_prefixes = ["/ask", "/akashic", "Akashic:", "ak:"]
 websocket_open_timeout_seconds = 5.0
+channel_name = "qq"
+websocket_uri = "ws://localhost:3001"
+websocket_token = "NcatBot"
+
+# 可选：第二个 NapCat/QQ 账号。需要单独容器和端口。
+# 多账号互发时，Akashic 会记录近期出站内容并忽略回流，防止两个机器人来回回复。
+# [[channels.qq.accounts]]
+# bot_uin = "2365524513"
+# allow_from = ["1049511700"]
+# bot_peer_ids = ["1049511700", "2365524513"]
+# peer_trigger_prefixes = ["/ask", "/akashic", "Akashic:", "ak:"]
+# websocket_open_timeout_seconds = 5.0
+# channel_name = "qq_2365524513"
+# websocket_uri = "ws://localhost:3002"
+# websocket_token = "NcatBot"
 
 # 可选：允许在群组中使用（@bot 触发）
 # [[channels.qq.groups]]
@@ -144,6 +181,43 @@ min_interval_hours = 3
 
 [integrations.fitbit]
 enabled = false
+
+[integrations.chatgpt_proxy]
+# 单独的 OpenAI-compatible 图片生成端点；不影响主 LLM 配置。
+# base_url 通常形如 http://127.0.0.1:8000/v1。
+enabled = false
+base_url = "${CHATGPT_PROXY_BASE_URL}"
+api_key = "${CHATGPT_PROXY_API_KEY}"
+image_model = "gpt-image-1"
+image_path = "/images/generations"
+response_format = "b64_json"
+output_dir = "generated_images"
+
+[integrations.ragflow]
+# RAGFlow 作为多来源数据的统一 RAG 后端。
+# 先启动 RAGFlow，再在 UI 中创建 API key 和 dataset。
+enabled = false
+base_url = "http://127.0.0.1:9380"
+api_key = "${RAGFLOW_API_KEY}"
+# 你的代理端口：RAGFlow 客户端访问外部/远端 RAGFlow 时走这里；本机 9380 通常不需要。
+proxy_url = "http://127.0.0.1:7897"
+default_dataset_ids = []
+default_keyword = true
+default_use_kg = false
+default_top_k = 1024
+default_page_size = 8
+default_similarity_threshold = 0.2
+default_vector_similarity_weight = 0.3
+request_timeout_seconds = 60
+
+[integrations.shadow_gateway]
+# Phase 2 shadow mode：旁路镜像 Python 入站消息到 Go message-gateway。
+# 默认关闭；启用后仍不改变现有回复路径。
+enabled = false
+endpoint = "http://127.0.0.1:8780/v1/shadow/inbound"
+log_path = "shadow/inbound.jsonl"
+request_timeout_seconds = 2
+agent_id = "shadow"
 
 # 可选：接入外部 Peer Agent（如 DeepResearch）
 # [[integrations.peer_agents]]

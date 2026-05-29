@@ -1,0 +1,37 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentDecision",
+  "event_id": "agent-decision:turn-0002",
+  "source_event_id": "agent-inbound:qq:2365524513:private:1049511700:msg-0002",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "1049511700",
+  "conversation_type": "private",
+  "agent_id": "main",
+  "decision": "create_job",
+  "outbound": {
+    "channel": {
+      "platform": "qq",
+      "account_id": "2365524513",
+      "conversation_id": "1049511700",
+      "conversation_type": "private"
+    },
+    "content": "已创建图片生成任务。",
+    "attachments": []
+  },
+  "jobs": [
+    {
+      "job_id": "img_4e1f5e6a2c7d9b00",
+      "job_type": "image_generation",
+      "prompt": "古装人物，写实摄影风格",
+      "status": "pending"
+    }
+  ],
+  "trace_ref": "trace:turn-0002",
+  "timestamp": "2026-05-30T00:41:00+08:00",
+  "source_message_ids": ["qq:2365524513:private:1049511700:msg-0002"],
+  "source_asset_ids": [],
+  "metadata": {
+    "provider": "chatgpt-web"
+  }
+}

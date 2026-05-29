@@ -56,6 +56,10 @@ from bootstrap.providers import build_providers, build_vl_provider
 from bus.event_bus import EventBus
 from bus.processing import ProcessingState
 from bus.queue import MessageBus
+from bus.shadow_gateway import (
+    ShadowGatewaySettings,
+    build_shadow_gateway_observer,
+)
 from core.memory.markdown import MemoryLifecycleBindRequest, MarkdownMemoryMaintenance
 from core.memory.runtime import MemoryRuntime
 from core.net.http import SharedHttpResources
@@ -76,6 +80,7 @@ class CoreRuntime:
     scheduler: SchedulerService
     provider: LLMProvider
     light_provider: LLMProvider | None
+    vl_provider: LLMProvider | None
     mcp_registry: McpServerRegistry
     memory_runtime: MemoryRuntime
     presence: PresenceStore
@@ -341,6 +346,9 @@ def build_registered_tools(
             config_path=workspace / "mcp_servers.json",
             tool_registry=tools,
         )
+    _register_chatgpt_proxy_tools(config, workspace, http_resources, tools)
+    _register_group_memory_tools(workspace, store, tools)
+    _register_ragflow_tools(config, workspace, store, tools)
 
     return (
         tools,
@@ -350,6 +358,133 @@ def build_registered_tools(
         memory_runtime,
         peer_process_manager,
         peer_poller,
+    )
+
+
+def _register_chatgpt_proxy_tools(
+    config: Config,
+    workspace: Path,
+    http_resources: SharedHttpResources,
+    tools: ToolRegistry,
+) -> None:
+    proxy = getattr(config, "chatgpt_proxy", None)
+    if proxy is None or not getattr(proxy, "enabled", False):
+        return
+    if not getattr(proxy, "base_url", ""):
+        logger.warning("chatgpt_proxy 已启用但 base_url 为空，跳过图片工具注册")
+        return
+    from agent.tools.chatgpt_proxy import ChatGPTImageGenerateTool
+
+    tools.register(
+        ChatGPTImageGenerateTool(
+            proxy,
+            workspace,
+            http_resources.external_default,
+        ),
+        risk="external-side-effect",
+        always_on=False,
+        search_hint="画图 图片生成 ChatGPT 反向代理 gpt-image image generation",
+    )
+
+
+def _register_group_memory_tools(
+    workspace: Path,
+    session_store,
+    tools: ToolRegistry,
+) -> None:
+    from agent.tools.group_memory import (
+        IngestGroupMemoryTool,
+        ListGroupStrategiesTool,
+        RecallGroupMemoryTool,
+        ShowGroupStrategyEvidenceTool,
+    )
+    from group_memory import GroupMemoryService
+
+    service = GroupMemoryService.from_workspace(
+        workspace,
+        session_store=session_store,
+    )
+    tools.register(
+        IngestGroupMemoryTool(service),
+        risk="write",
+        always_on=False,
+        search_hint="QQ群 游戏群 攻略 记忆 抽取 刷新 group memory ingest",
+    )
+    tools.register(
+        RecallGroupMemoryTool(service),
+        risk="read-only",
+        always_on=False,
+        search_hint="QQ群 游戏攻略 群记忆 RAG 查询 boss 配装 打法",
+    )
+    tools.register(
+        ListGroupStrategiesTool(service),
+        risk="read-only",
+        always_on=False,
+        search_hint="列出 群攻略 memory 状态 validated disputed pending",
+    )
+    tools.register(
+        ShowGroupStrategyEvidenceTool(service),
+        risk="read-only",
+        always_on=False,
+        search_hint="群攻略 证据 原始消息 来源 citation",
+    )
+
+
+def _register_ragflow_tools(
+    config: Config,
+    workspace: Path,
+    session_store,
+    tools: ToolRegistry,
+) -> None:
+    ragflow = getattr(config, "ragflow", None)
+    if ragflow is None or not getattr(ragflow, "enabled", False):
+        return
+    if not getattr(ragflow, "base_url", ""):
+        logger.warning("ragflow 已启用但 base_url 为空，跳过工具注册")
+        return
+    if not getattr(ragflow, "api_key", ""):
+        logger.warning("ragflow 已启用但 api_key 为空，跳过工具注册")
+        return
+
+    from agent.tools.ragflow import (
+        RAGFlowIndexQQGroupTool,
+        RAGFlowListDatasetsTool,
+        RAGFlowRetrieveTool,
+        RAGFlowUploadFileTool,
+        RAGFlowUploadTextTool,
+    )
+    from integrations.ragflow import RAGFlowClient
+
+    client = RAGFlowClient(ragflow)
+    tools.register(
+        RAGFlowRetrieveTool(client),
+        risk="external-side-effect",
+        always_on=False,
+        search_hint="ragflow rag 检索 多来源 数据集 dataset retrieval graph kg",
+    )
+    tools.register(
+        RAGFlowListDatasetsTool(client),
+        risk="read-only",
+        always_on=False,
+        search_hint="ragflow dataset datasets list knowledge base",
+    )
+    tools.register(
+        RAGFlowUploadTextTool(client),
+        risk="external-side-effect",
+        always_on=False,
+        search_hint="ragflow 上传 文本 索引 parse ingest text",
+    )
+    tools.register(
+        RAGFlowUploadFileTool(client, workspace),
+        risk="external-side-effect",
+        always_on=False,
+        search_hint="ragflow 上传 文件 pdf docx txt excel parse ingest",
+    )
+    tools.register(
+        RAGFlowIndexQQGroupTool(client, session_store),
+        risk="external-side-effect",
+        always_on=False,
+        search_hint="ragflow qq 群消息 索引 多来源 数据源 group chat ingest",
     )
 
 
@@ -433,6 +568,21 @@ def build_core_runtime(
     http_resources: SharedHttpResources,
 ) -> CoreRuntime:
     bus = MessageBus()
+    shadow_observer = build_shadow_gateway_observer(
+        settings=ShadowGatewaySettings(
+            enabled=bool(getattr(config.shadow_gateway, "enabled", False)),
+            endpoint=str(getattr(config.shadow_gateway, "endpoint", "")),
+            log_path=str(getattr(config.shadow_gateway, "log_path", "")),
+            request_timeout_seconds=float(
+                getattr(config.shadow_gateway, "request_timeout_seconds", 2.0)
+            ),
+            agent_id=str(getattr(config.shadow_gateway, "agent_id", "shadow")),
+        ),
+        workspace=workspace,
+        channel_account_ids=_shadow_channel_account_ids(config),
+    )
+    if shadow_observer is not None:
+        bus.add_inbound_observer(shadow_observer)
     event_bus = EventBus()
     provider, light_provider, agent_provider = build_providers(config)
     vl_provider = build_vl_provider(config)
@@ -516,6 +666,7 @@ def build_core_runtime(
         scheduler=scheduler,
         provider=provider,
         light_provider=light_provider,
+        vl_provider=vl_provider,
         agent_provider=agent_provider,
         mcp_registry=mcp_registry,
         memory_runtime=memory_runtime,
@@ -529,3 +680,18 @@ def build_core_runtime(
 def _resolve_plugin_dirs(workspace: Path) -> list[Path]:
     project_root = Path(__file__).resolve().parent.parent
     return [project_root / "plugins"]
+
+
+def _shadow_channel_account_ids(config: Config) -> dict[str, str]:
+    channels = getattr(config, "channels", None)
+    result: dict[str, str] = {}
+    if channels is None:
+        return result
+
+    qq = getattr(channels, "qq", None)
+    if qq is not None and getattr(qq, "bot_uin", ""):
+        result[str(getattr(qq, "channel_name", "qq"))] = str(qq.bot_uin)
+    for account in getattr(channels, "qq_accounts", []) or []:
+        if getattr(account, "bot_uin", ""):
+            result[str(getattr(account, "channel_name", ""))] = str(account.bot_uin)
+    return result

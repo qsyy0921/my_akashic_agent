@@ -1,0 +1,28 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "MediaAsset",
+  "event_id": "asset-event:qq:image:27234224:msg-0498:1",
+  "asset_id": "asset:qq:image:27234224:msg-0498:1",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "source_event_id": "qq:2365524513:group:27234224:msg-0498",
+  "source_message_ids": ["qq:2365524513:group:27234224:msg-0498"],
+  "source_asset_ids": ["asset:qq:image:27234224:msg-0498:1"],
+  "asset": {
+    "asset_id": "asset:qq:image:27234224:msg-0498:1",
+    "asset_type": "image",
+    "mime_type": "image/png",
+    "name": "benchmark.png",
+    "size_bytes": 184320,
+    "sha256": "8a7b6c5d4e3f2019aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "url": "http://127.0.0.1:2236/assets/asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1",
+    "access": "local-authenticated"
+  },
+  "timestamp": "2026-05-30T00:44:54+08:00",
+  "metadata": {
+    "retention": "default-observed-group"
+  }
+}

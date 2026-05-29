@@ -1,0 +1,40 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "case_id": "version_sensitive_001",
+  "category": "game",
+  "group_profile": {
+    "platform": "qq",
+    "account_id": "1049511700",
+    "group_id": "956393163",
+    "name": "洛克王国童心交流群",
+    "observe_only": true
+  },
+  "messages": [
+    {
+      "message_id": "qq:1049511700:group:956393163:msg-800",
+      "sender_id": "400000001",
+      "timestamp": "2026-05-29T21:00:00+08:00",
+      "content": "ver9.0 这关可以卡地形过。"
+    },
+    {
+      "message_id": "qq:1049511700:group:956393163:msg-801",
+      "sender_id": "400000002",
+      "timestamp": "2026-05-30T09:00:00+08:00",
+      "content": "ver9.1 更新后卡地形修了，别再按旧攻略。"
+    }
+  ],
+  "assets": [],
+  "query": "这个卡地形攻略现在还能用吗？",
+  "expected": {
+    "memory_types": ["ProcedureMemory", "GroupFact"],
+    "source_message_ids": [
+      "qq:1049511700:group:956393163:msg-800",
+      "qq:1049511700:group:956393163:msg-801"
+    ],
+    "source_asset_ids": [],
+    "must_include": ["ver9.1", "已修复", "旧攻略"],
+    "must_not_include": ["仍然可用"],
+    "retrieval_top_k": 5,
+    "observe_only_outbound": "none"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentInboundEvent",
+  "event_id": "agent-inbound:qq:2365524513:private:1049511700:msg-0001",
+  "source_event_id": "qq:2365524513:private:1049511700:msg-0001",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "1049511700",
+  "conversation_type": "private",
+  "agent_id": "main",
+  "channel": {
+    "platform": "qq",
+    "account_id": "2365524513",
+    "conversation_id": "1049511700",
+    "conversation_type": "private"
+  },
+  "sender": {
+    "id": "1049511700",
+    "kind": "human",
+    "display_name": "owner-phone"
+  },
+  "content": "帮我生成一张古装美女图",
+  "attachments": [],
+  "provenance": {
+    "policy_decision": "allow",
+    "bot_protocol": null,
+    "trigger_prefix": "/ask"
+  },
+  "timestamp": "2026-05-30T00:40:00+08:00",
+  "source_message_ids": ["qq:2365524513:private:1049511700:msg-0001"],
+  "source_asset_ids": [],
+  "metadata": {
+    "session_key": "qq:2365524513:1049511700"
+  }
+}

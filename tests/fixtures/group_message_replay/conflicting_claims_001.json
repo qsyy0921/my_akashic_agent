@@ -1,0 +1,40 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "case_id": "conflicting_claims_001",
+  "category": "hardware",
+  "group_profile": {
+    "platform": "qq",
+    "account_id": "2365524513",
+    "group_id": "27234224",
+    "name": "主机DIY交流群",
+    "observe_only": true
+  },
+  "messages": [
+    {
+      "message_id": "qq:2365524513:group:27234224:msg-700",
+      "sender_id": "118800004",
+      "timestamp": "2026-05-30T02:00:00+08:00",
+      "content": "A 款电源带 4070S 完全没问题。"
+    },
+    {
+      "message_id": "qq:2365524513:group:27234224:msg-701",
+      "sender_id": "118800005",
+      "timestamp": "2026-05-30T02:02:00+08:00",
+      "content": "不同意，A 款这批啸叫多，建议换 B 款。"
+    }
+  ],
+  "assets": [],
+  "query": "A 款电源适合 4070S 吗？",
+  "expected": {
+    "memory_types": ["GroupFact"],
+    "source_message_ids": [
+      "qq:2365524513:group:27234224:msg-700",
+      "qq:2365524513:group:27234224:msg-701"
+    ],
+    "source_asset_ids": [],
+    "must_include": ["有争议", "A 款", "B 款"],
+    "must_not_include": ["结论非常确定"],
+    "retrieval_top_k": 5,
+    "observe_only_outbound": "none"
+  }
+}

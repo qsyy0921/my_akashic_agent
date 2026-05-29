@@ -1,0 +1,47 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "case_id": "game_guide_001",
+  "category": "game",
+  "group_profile": {
+    "platform": "qq",
+    "account_id": "1049511700",
+    "group_id": "187890369",
+    "name": "洛克王国世界交流群",
+    "observe_only": true
+  },
+  "messages": [
+    {
+      "message_id": "qq:1049511700:group:187890369:msg-210",
+      "sender_id": "300000001",
+      "timestamp": "2026-05-30T01:10:00+08:00",
+      "content": "ver9.1 这个任务先做前置，不然门不开。"
+    },
+    {
+      "message_id": "qq:1049511700:group:187890369:msg-211",
+      "sender_id": "300000002",
+      "timestamp": "2026-05-30T01:11:00+08:00",
+      "content": "第二步带控制宠物，boss 半血会狂暴。"
+    },
+    {
+      "message_id": "qq:1049511700:group:187890369:msg-212",
+      "sender_id": "300000001",
+      "timestamp": "2026-05-30T01:12:30+08:00",
+      "content": "版本更新后可能失效，先记 ver9.1。"
+    }
+  ],
+  "assets": [],
+  "query": "洛克王国世界 ver9.1 那个任务怎么打？",
+  "expected": {
+    "memory_types": ["ProcedureMemory"],
+    "source_message_ids": [
+      "qq:1049511700:group:187890369:msg-210",
+      "qq:1049511700:group:187890369:msg-211",
+      "qq:1049511700:group:187890369:msg-212"
+    ],
+    "source_asset_ids": [],
+    "must_include": ["ver9.1", "前置", "控制宠物", "版本更新后可能失效"],
+    "must_not_include": ["确定永久有效"],
+    "retrieval_top_k": 5,
+    "observe_only_outbound": "none"
+  }
+}

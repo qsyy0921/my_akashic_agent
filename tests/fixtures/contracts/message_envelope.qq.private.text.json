@@ -1,0 +1,31 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "MessageEnvelope",
+  "event_id": "qq:2365524513:private:1049511700:msg-0001",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "1049511700",
+  "conversation_type": "private",
+  "agent_id": "main",
+  "channel": {
+    "kind": "qq",
+    "platform": "qq",
+    "account_id": "2365524513",
+    "conversation_id": "1049511700",
+    "conversation_type": "private"
+  },
+  "sender": {
+    "id": "1049511700",
+    "display_name": "owner-phone",
+    "kind": "human"
+  },
+  "content": "/ask 帮我总结今天硬件群讨论",
+  "attachments": [],
+  "timestamp": "2026-05-30T00:40:00+08:00",
+  "source_message_ids": [],
+  "source_asset_ids": [],
+  "metadata": {
+    "raw_message_id": "msg-0001",
+    "route": "owner_private"
+  }
+}

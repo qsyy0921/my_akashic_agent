@@ -1,0 +1,31 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "GroupThread",
+  "event_id": "thread:gqq:27234224:hardware-001",
+  "thread_id": "thread:gqq:27234224:hardware-001",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "group_id": "27234224",
+  "title": "5000 元游戏主机配置讨论",
+  "topics": ["hardware.cpu", "hardware.gpu", "budget.5000-7000"],
+  "participants": ["2948770636", "118800001"],
+  "message_ids": [
+    "qq:2365524513:group:27234224:msg-100",
+    "qq:2365524513:group:27234224:msg-101",
+    "qq:2365524513:group:27234224:msg-102"
+  ],
+  "asset_ids": [],
+  "timestamp": "2026-05-30T01:00:00+08:00",
+  "source_message_ids": [
+    "qq:2365524513:group:27234224:msg-100",
+    "qq:2365524513:group:27234224:msg-101",
+    "qq:2365524513:group:27234224:msg-102"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "confidence": "0.84"
+  }
+}

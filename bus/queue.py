@@ -13,6 +13,7 @@ class MessageBus:
     def __init__(self) -> None:
         self._inbound: asyncio.Queue[InboundItem] = asyncio.Queue()
         self._outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
+        self._inbound_observers: list[Callable[[InboundItem], Awaitable[None]]] = []
         self._subscribers: dict[
             str, list[Callable[[OutboundMessage], Awaitable[None]]]
         ] = {}
@@ -21,6 +22,24 @@ class MessageBus:
     async def publish_inbound(self, msg: InboundItem) -> None:
         """channel → agent"""
         await self._inbound.put(msg)
+        for observer in list(self._inbound_observers):
+            asyncio.create_task(self._notify_inbound_observer(observer, msg))
+
+    def add_inbound_observer(
+        self,
+        observer: Callable[[InboundItem], Awaitable[None]],
+    ) -> None:
+        self._inbound_observers.append(observer)
+
+    async def _notify_inbound_observer(
+        self,
+        observer: Callable[[InboundItem], Awaitable[None]],
+        msg: InboundItem,
+    ) -> None:
+        try:
+            await observer(msg)
+        except Exception:
+            logger.exception("inbound observer failed")
 
     async def consume_inbound(self) -> InboundItem:
         """阻塞直到有消息可消费"""

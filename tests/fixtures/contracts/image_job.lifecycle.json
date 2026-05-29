@@ -1,0 +1,36 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentJob",
+  "job_id": "img_4e1f5e6a2c7d9b00",
+  "job_type": "image_generation",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "1049511700",
+  "conversation_type": "private",
+  "agent_id": "main",
+  "requester_id": "1049511700",
+  "prompt": "古装人物，写实摄影风格",
+  "status": "pending",
+  "lifecycle": [
+    {"status": "pending", "timestamp": "2026-05-30T00:41:00+08:00"},
+    {"status": "running", "timestamp": "2026-05-30T00:41:03+08:00"},
+    {"status": "succeeded", "timestamp": "2026-05-30T00:42:10+08:00"}
+  ],
+  "results": [
+    {
+      "id": "asset:generated:image:img_4e1f5e6a2c7d9b00:1",
+      "kind": "image",
+      "url": "file:///E:/agent/akashic/.tmp/chatgpt_20260530_004210.png",
+      "mime_type": "image/png",
+      "name": "chatgpt_20260530_004210.png",
+      "size_bytes": 1048576
+    }
+  ],
+  "timestamp": "2026-05-30T00:41:00+08:00",
+  "source_message_ids": ["qq:2365524513:private:1049511700:msg-0002"],
+  "source_asset_ids": [],
+  "metadata": {
+    "provider": "chatgpt-web",
+    "max_attempts": "3"
+  }
+}

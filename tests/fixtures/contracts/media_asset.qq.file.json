@@ -1,0 +1,28 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "MediaAsset",
+  "event_id": "asset-event:qq:file:27234224:msg-0600:1",
+  "asset_id": "asset:qq:file:27234224:msg-0600:1",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "source_event_id": "qq:2365524513:group:27234224:msg-0600",
+  "source_message_ids": ["qq:2365524513:group:27234224:msg-0600"],
+  "source_asset_ids": ["asset:qq:file:27234224:msg-0600:1"],
+  "asset": {
+    "asset_id": "asset:qq:file:27234224:msg-0600:1",
+    "asset_type": "file",
+    "mime_type": "application/pdf",
+    "name": "装机清单.pdf",
+    "size_bytes": 524288,
+    "sha256": "9b8a7c6d5e4f3021bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "url": "http://127.0.0.1:2236/assets/asset%3Aqq%3Afile%3A27234224%3Amsg-0600%3A1",
+    "access": "local-authenticated"
+  },
+  "timestamp": "2026-05-30T00:46:00+08:00",
+  "metadata": {
+    "retention": "default-observed-group"
+  }
+}

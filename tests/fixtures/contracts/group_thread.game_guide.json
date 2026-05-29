@@ -1,0 +1,32 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "GroupThread",
+  "event_id": "thread:gqq:187890369:game-guide-001",
+  "thread_id": "thread:gqq:187890369:game-guide-001",
+  "platform": "qq",
+  "account_id": "1049511700",
+  "conversation_id": "187890369",
+  "conversation_type": "group",
+  "agent_id": "game-guide-curator",
+  "group_id": "187890369",
+  "title": "洛克王国世界 ver9.1 任务打法",
+  "topics": ["game.rock-kingdom", "guide.quest", "version.ver9.1"],
+  "participants": ["300000001", "300000002"],
+  "message_ids": [
+    "qq:1049511700:group:187890369:msg-210",
+    "qq:1049511700:group:187890369:msg-211",
+    "qq:1049511700:group:187890369:msg-212"
+  ],
+  "asset_ids": [],
+  "timestamp": "2026-05-30T01:10:00+08:00",
+  "source_message_ids": [
+    "qq:1049511700:group:187890369:msg-210",
+    "qq:1049511700:group:187890369:msg-211",
+    "qq:1049511700:group:187890369:msg-212"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "confidence": "0.79",
+    "version": "ver9.1"
+  }
+}

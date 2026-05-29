@@ -1,0 +1,44 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentInboundEvent",
+  "event_id": "agent-inbound:qq:2365524513:group:27234224:msg-0498",
+  "source_event_id": "qq:2365524513:group:27234224:msg-0498",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "channel": {
+    "platform": "qq",
+    "account_id": "2365524513",
+    "conversation_id": "27234224",
+    "conversation_type": "group"
+  },
+  "sender": {
+    "id": "2948770636",
+    "kind": "human",
+    "display_name": "hardware-member"
+  },
+  "content": "[图片 x1]",
+  "attachments": [
+    {
+      "id": "asset:qq:image:27234224:msg-0498:1",
+      "kind": "image",
+      "url": "asset://asset:qq:image:27234224:msg-0498:1",
+      "mime_type": "image/png",
+      "name": "benchmark.png",
+      "size_bytes": 184320
+    }
+  ],
+  "provenance": {
+    "policy_decision": "observe_only",
+    "bot_protocol": null,
+    "observe_only": true
+  },
+  "timestamp": "2026-05-30T00:44:53.500089+08:00",
+  "source_message_ids": ["qq:2365524513:group:27234224:msg-0498"],
+  "source_asset_ids": ["asset:qq:image:27234224:msg-0498:1"],
+  "metadata": {
+    "session_key": "qq:2365524513:gqq:27234224"
+  }
+}
