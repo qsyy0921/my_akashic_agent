@@ -17,7 +17,10 @@ import (
 )
 
 func main() {
-	addr := envOrFirstDefault([]string{"AKASHIC_RUNTIME_ADDR", "AKASHIC_GATEWAY_ADDR"}, ":8780")
+	addr, addrSource := envOrFirstDefaultWithSource(
+		[]string{"AKASHIC_RUNTIME_ADDR", "AKASHIC_GATEWAY_ADDR"},
+		":8780",
+	)
 	botIDs := csvEnvOrDefault("AKASHIC_BOT_IDS", []string{"1049511700", "2365524513"})
 
 	store := memory.NewStore()
@@ -57,19 +60,19 @@ func main() {
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
-	log.Printf("akashic agent runtime listening on %s; bot_ids=%s", addr, strings.Join(botIDs, ","))
+	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func envOrFirstDefault(keys []string, fallback string) string {
+func envOrFirstDefaultWithSource(keys []string, fallback string) (string, string) {
 	for _, key := range keys {
 		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-			return value
+			return value, key
 		}
 	}
-	return fallback
+	return fallback, "default"
 }
 
 func newAgentJobRepository() (outport.AgentJobRepository, error) {
