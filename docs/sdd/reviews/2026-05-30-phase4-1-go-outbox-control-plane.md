@@ -2,7 +2,7 @@
 
 Spec:
 
-- `docs/sdd/specs/message-gateway/006-outbox-delivery-retry.md`
+- `docs/sdd/specs/agent-gateway/006-outbox-delivery-retry.md`
 - `docs/sdd/specs/agent-architecture/005-migration-plan.md`
 - `docs/sdd/specs/agent-architecture/008-go-migration-scope.md`
 

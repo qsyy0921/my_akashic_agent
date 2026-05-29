@@ -27,7 +27,7 @@ should move to Go.
 | Memory | `core/memory/*`, `memory2/*`, `group_memory/*`, `plugins/default_memory/*` | markdown memory, semantic memory, group memory, retrieval and consolidation | multiple memory engines and stores overlap |
 | Proactive | `proactive_v2/*` | feeds, scoring, proactive message decisions | same LLM/tool loop ideas as passive turn but separate implementation |
 | Dashboard | `bootstrap/dashboard_api.py`, `static/dashboard/*`, `frontend/dashboard/*` | status, sessions, memory admin, attachment display | API is large and mixed with Python runtime internals |
-| Go gateway | `services/message-gateway/*` | first DDD skeleton for message normalization, loop guard, outbound ledger, image jobs | not yet wired as the system boundary |
+| Go gateway | `services/agent-gateway/*` | first DDD skeleton for message normalization, loop guard, outbound ledger, image jobs | not yet wired as the system boundary |
 | Evaluation | `eval/*`, `tests/*` | memory/RAG and runtime tests | useful, but not yet tied to architecture gates |
 
 ## Oversized Files

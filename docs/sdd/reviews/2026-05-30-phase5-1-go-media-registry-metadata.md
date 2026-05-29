@@ -2,7 +2,7 @@
 
 Spec:
 
-- `docs/sdd/specs/message-gateway/007-media-file-registry.md`
+- `docs/sdd/specs/agent-gateway/007-media-file-registry.md`
 - `docs/sdd/adr/0003-go-service-ddd-granularity.md`
 
 Implementation summary:
@@ -14,13 +14,13 @@ Implementation summary:
 - Added `/v1/media-assets` metadata API.
 - Kept `/v1/media-assets/{asset_id}/content` disabled with `501 Not
   Implemented` until path validation and access policy are reviewed.
-- Kept all Go code under `services/message-gateway`; no new service split.
+- Kept all Go code under `services/agent-gateway`; no new service split.
 
 Tests run:
 
 - `gofmt -w api app cmd domain infrastructure trigger types`
 - `go test ./...`
-- `go build ./cmd/message-gateway`
+- `go build ./cmd/agent-gateway`
 - `uv run pytest tests\test_sdd_contract_fixtures.py tests\test_shadow_gateway.py -q`
 - `git diff --check`
 

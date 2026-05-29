@@ -34,7 +34,7 @@ must also work for study, buying, support, and hobby groups.
 
 ```mermaid
 flowchart TD
-    A["Platform Adapter QQ/Telegram"] --> B["Go Message Gateway"]
+    A["Platform Adapter QQ/Telegram"] --> B["Go Agent Gateway"]
     B --> C["Normalize Envelope"]
     C --> D["Deduplicate and Loop Guard"]
     D --> E["Media/File Registry"]

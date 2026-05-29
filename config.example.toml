@@ -211,7 +211,7 @@ default_vector_similarity_weight = 0.3
 request_timeout_seconds = 60
 
 [integrations.shadow_gateway]
-# Phase 2 shadow mode：旁路镜像 Python 入站消息到 Go message-gateway。
+# Phase 2 shadow mode：旁路镜像 Python 入站消息到 Go agent-gateway。
 # 默认关闭；启用后仍不改变现有回复路径。
 enabled = false
 endpoint = "http://127.0.0.1:8780/v1/shadow/inbound"

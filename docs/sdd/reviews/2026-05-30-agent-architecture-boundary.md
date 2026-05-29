@@ -53,11 +53,11 @@ The proposed split is technically defensible:
 
 ## Next Required Specs Before Code Migration
 
-1. `message-gateway/006-contract-fixtures.md`
+1. `agent-gateway/006-contract-fixtures.md`
 2. `agent-runtime/001-turn-state-machine.md`
 3. `agent-runtime/002-context-pipeline.md`
 4. `agent-runtime/003-tool-catalog-and-policy.md`
-5. `message-gateway/007-media-asset-registry.md`
+5. `agent-gateway/007-media-asset-registry.md`
 
 ## Verification
 
@@ -68,7 +68,7 @@ Completed during review:
 - Local CCB/Claude Code architecture and loop scan.
 - Local CyberClaw/OpenClaw-inspired transparent-agent scan.
 - Go gateway tests were already passing after the current vertical slice:
-  `go test ./...` and `go build ./cmd/message-gateway`.
+  `go test ./...` and `go build ./cmd/agent-gateway`.
 - Targeted Python QQ/message-push tests were already passing after the current
   private-loop-guard fix.
 

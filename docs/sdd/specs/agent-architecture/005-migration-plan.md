@@ -21,7 +21,7 @@ Goal:
 Acceptance:
 
 - SDD specs exist under `docs/sdd/specs/agent-architecture`.
-- `services/message-gateway/architecture_test.go` enforces Go layer imports.
+- `services/agent-gateway/architecture_test.go` enforces Go layer imports.
 - New platform features cite the relevant SDD spec.
 
 ## Phase 1: Define Contracts

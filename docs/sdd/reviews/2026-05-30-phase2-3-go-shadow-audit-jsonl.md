@@ -9,7 +9,7 @@ Implementation summary:
 
 - Add `infrastructure/auditjsonl`, a Go JSONL-backed implementation of the
   audit and shadow query ports.
-- Wire `AKASHIC_SHADOW_AUDIT_PATH` in `cmd/message-gateway` so local runs can
+- Wire `AKASHIC_SHADOW_AUDIT_PATH` in `cmd/agent-gateway` so local runs can
   persist shadow audit events across process restarts.
 - Include attachment metadata in the shadow observed query so the dashboard can
   render links when the gateway has asset data.
@@ -26,13 +26,13 @@ Safety boundaries:
 
 Tests run:
 
-- `gofmt -w services\message-gateway\cmd\message-gateway\main.go services\message-gateway\infrastructure\auditjsonl\store.go services\message-gateway\infrastructure\auditjsonl\store_test.go`
+- `gofmt -w services\agent-gateway\cmd\agent-gateway\main.go services\agent-gateway\infrastructure\auditjsonl\store.go services\agent-gateway\infrastructure\auditjsonl\store_test.go`
   passed.
-- `go test ./...` passed under `services/message-gateway`.
-- `go build ./cmd/message-gateway` passed under `services/message-gateway`.
+- `go test ./...` passed under `services/agent-gateway`.
+- `go build ./cmd/agent-gateway` passed under `services/agent-gateway`.
 - `uv run pytest tests\test_shadow_audit_plugin.py tests\test_shadow_gateway.py tests\test_sdd_contract_fixtures.py -q`
   passed.
-- `git diff --check -- services\message-gateway docs\sdd\specs\agent-architecture\007-shadow-mode-gateway.md docs\sdd\reviews\2026-05-30-phase2-3-go-shadow-audit-jsonl.md docs\sdd\reviews\README.md`
+- `git diff --check -- services\agent-gateway docs\sdd\specs\agent-architecture\007-shadow-mode-gateway.md docs\sdd\reviews\2026-05-30-phase2-3-go-shadow-audit-jsonl.md docs\sdd\reviews\README.md`
   passed.
 
 Decision:

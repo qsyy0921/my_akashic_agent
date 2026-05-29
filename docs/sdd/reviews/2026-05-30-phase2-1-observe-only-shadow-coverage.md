@@ -26,9 +26,9 @@ Tests run:
   passed.
 - `uv run pytest tests\test_runtime_smoke.py::test_load_config_keeps_internal_max_iterations_default tests\test_runtime_smoke.py::test_load_config_defaults_memory_window_and_optimizer_interval tests\test_support_modules.py::test_message_bus_covers_flows -q`
   passed with `TMP`/`TEMP` redirected to the workspace.
-- `go fmt ./...` passed under `services/message-gateway`.
-- `go test ./...` passed under `services/message-gateway`.
-- `git diff --check -- bus\shadow_gateway.py session\manager.py bootstrap\tools.py docs\sdd services\message-gateway tests\test_shadow_gateway.py`
+- `go fmt ./...` passed under `services/agent-gateway`.
+- `go test ./...` passed under `services/agent-gateway`.
+- `git diff --check -- bus\shadow_gateway.py session\manager.py bootstrap\tools.py docs\sdd services\agent-gateway tests\test_shadow_gateway.py`
   passed.
 
 Decision:

@@ -2,7 +2,7 @@
 
 Spec:
 
-- `docs/sdd/specs/message-gateway/008-agent-job-orchestration.md`
+- `docs/sdd/specs/agent-gateway/008-agent-job-orchestration.md`
 - `docs/sdd/adr/0003-go-service-ddd-granularity.md`
 
 Findings:

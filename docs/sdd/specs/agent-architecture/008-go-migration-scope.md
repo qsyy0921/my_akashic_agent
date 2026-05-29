@@ -7,12 +7,12 @@ own review record and tests.
 
 ADR-0003 sets the granularity rule: all Go code lives under `services/`, each
 Go service owns its own DDD + hexagonal layers, and the current implementation
-keeps infrastructure contexts in `services/message-gateway` until a split is
+keeps infrastructure contexts in `services/agent-gateway` until a split is
 operationally justified.
 
 ## Context
 
-The project should not use Go only for the visible message gateway. Go should
+The project should not use Go only for the visible agent gateway. Go should
 own backend infrastructure where deterministic state, concurrency, retries,
 durability, and platform protocol boundaries matter. Python should stay focused
 on agent intelligence and model-facing behavior.
@@ -21,7 +21,7 @@ on agent intelligence and model-facing behavior.
 
 | Area | Target Go Owner | Migration Priority | Notes |
 | --- | --- | --- | --- |
-| Message gateway | `services/message-gateway` | P0 | normalize QQ/Telegram/Feishu/WeChat events |
+| Agent gateway | `services/agent-gateway` | P0 | normalize QQ/Telegram/Feishu/WeChat events |
 | Account registry | `domain/model/ChannelAccount` | P0 | one identity per QQ/TG bot account |
 | Inbound routing | `RoutingService` | P0 | route by platform + account + conversation |
 | Loop guard | `LoopGuard` | P0 | self echo, peer bot protocol, nonce, hop budget |

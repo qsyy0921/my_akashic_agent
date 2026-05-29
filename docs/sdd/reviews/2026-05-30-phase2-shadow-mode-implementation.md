@@ -30,8 +30,8 @@ Tests run:
   Windows temp directory was not writable.
 - `uv run pytest tests\test_support_modules.py::test_message_bus_covers_flows -q`
   passed with `TMP`/`TEMP` redirected to the workspace.
-- `go fmt ./...` passed under `services/message-gateway`.
-- `go test ./...` passed under `services/message-gateway`.
+- `go fmt ./...` passed under `services/agent-gateway`.
+- `go test ./...` passed under `services/agent-gateway`.
 
 Decision:
 

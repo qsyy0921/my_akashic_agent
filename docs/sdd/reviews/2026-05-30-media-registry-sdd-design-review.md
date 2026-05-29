@@ -2,7 +2,7 @@
 
 Spec:
 
-- `docs/sdd/specs/message-gateway/007-media-file-registry.md`
+- `docs/sdd/specs/agent-gateway/007-media-file-registry.md`
 - `docs/sdd/specs/agent-architecture/009-go-migration-implementation-design.md`
 
 Findings:

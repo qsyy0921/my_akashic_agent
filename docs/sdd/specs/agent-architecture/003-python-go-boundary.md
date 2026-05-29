@@ -64,7 +64,7 @@ quality, prompt engineering, tool semantics, and ML/RAG libraries matter.
 Python should consume Go events through a narrow client:
 
 ```text
-Go MessageGateway -> AgentInboundEvent -> Python AgentRuntime
+Go AgentGateway -> AgentInboundEvent -> Python AgentRuntime
 Python AgentRuntime -> AgentDecision -> Go Outbox/Job APIs
 ```
 

@@ -14,7 +14,7 @@ keeps agent intelligence flexible while moving infrastructure reliability to Go.
 
 ```mermaid
 flowchart LR
-    QQ["QQ/NapCat Accounts"] --> GW["Go Message Gateway"]
+    QQ["QQ/NapCat Accounts"] --> GW["Go Agent Gateway"]
     TG["Telegram Bot"] --> GW
     FS["Feishu/WeChat Webhooks"] --> GW
     WEB["Dashboard"] --> GW
@@ -34,7 +34,7 @@ flowchart LR
     PY --> MEM["Python Memory/RAG"]
 ```
 
-## Go Message Gateway
+## Go Agent Gateway
 
 ### Package Layout
 

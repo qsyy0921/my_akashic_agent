@@ -51,7 +51,7 @@ workers
 The boundary contract is event-based:
 
 ```text
-Go MessageGateway -> AgentInboundEvent -> Python AgentRuntime
+Go AgentGateway -> AgentInboundEvent -> Python AgentRuntime
 Python AgentRuntime -> AgentDecision / JobResult -> Go Outbox / JobService
 ```
 

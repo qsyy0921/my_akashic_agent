@@ -10,7 +10,7 @@ Implementation summary:
 
 - Add typed Python contract parsing for shared SDD fixtures without wiring it
   into the production QQ, Telegram, or agent runtime path.
-- Add Go API-layer contract DTO validation so the message-gateway can parse the
+- Add Go API-layer contract DTO validation so the agent-gateway can parse the
   same fixture set without importing app, domain, infrastructure, or trigger
   packages.
 - Keep all work in Phase 1 compatibility scope: fixture validation,
@@ -20,8 +20,8 @@ Tests run:
 
 - `uv run pytest tests\test_sdd_contract_fixtures.py -q` passed.
 - `go fmt ./...` passed.
-- `go test ./...` passed under `services/message-gateway`.
-- `git diff --check -- docs\sdd core tests\test_sdd_contract_fixtures.py services\message-gateway` passed for tracked diffs.
+- `go test ./...` passed under `services/agent-gateway`.
+- `git diff --check -- docs\sdd core tests\test_sdd_contract_fixtures.py services\agent-gateway` passed for tracked diffs.
 - Touched-file trailing whitespace scan passed.
 
 Safety boundaries:

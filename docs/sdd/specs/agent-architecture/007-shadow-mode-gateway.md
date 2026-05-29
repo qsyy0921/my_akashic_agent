@@ -6,7 +6,7 @@ Draft
 
 ## Context
 
-Phase 2 must validate the Go message gateway against real traffic without
+Phase 2 must validate the Go agent gateway against real traffic without
 changing the working Python QQ, Telegram, CLI, or dashboard runtime. Shadow mode
 is a mirror path: it observes normalized Python inbound events, validates the Go
 contract, and records loop-guard decisions, but it never becomes the production
