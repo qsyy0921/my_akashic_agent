@@ -1,4 +1,4 @@
-# SPEC-009: Go Migration Implementation Design
+﻿# SPEC-009: Go Migration Implementation Design
 
 ## Status
 
@@ -45,12 +45,12 @@ have a rollback path.
 ## Target Go Bounded Contexts
 
 Per ADR-0003, every Go service owns its own DDD + hexagonal layout. The current
-migration keeps one deployable service under `services/agent-gateway` and
+migration keeps one deployable service under `services/agent-runtime` and
 models outbox, media registry, routing, audit, and job control as bounded
 contexts inside that service until they justify independent deployment.
 
 ```text
-services/agent-gateway
+services/agent-runtime
 ├── api
 ├── app
 │   ├── command
@@ -224,3 +224,4 @@ Acceptance:
 - Are observe-only groups protected from outbound replies?
 - Can failed sends/jobs be inspected and retried?
 - Can the change be rolled back without re-login or data loss?
+

@@ -39,7 +39,7 @@ leasing, retries, dead letters, and dashboard-visible state.
 
 ## Decision
 
-Add a Go-owned `AgentJob` control plane under `services/agent-gateway` before
+Add a Go-owned `AgentJob` control plane under `services/agent-runtime` before
 considering a separate job service. This follows ADR-0003: keep one deployable
 service until independent deployment is justified.
 

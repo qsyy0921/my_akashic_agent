@@ -16,7 +16,7 @@ unstructured service directory.
 Use this package layout:
 
 ```text
-services/agent-gateway
+services/agent-runtime
 ├── api
 ├── app
 ├── domain
@@ -63,7 +63,7 @@ api    -> app
 
 ## First Bounded Context
 
-The first bounded context is `agent-gateway`:
+The first bounded context is `agent-runtime`:
 
 - normalize platform messages into one envelope;
 - classify human, self echo, peer bot, and system messages;

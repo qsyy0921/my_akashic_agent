@@ -7,7 +7,7 @@ own review record and tests.
 
 ADR-0003 sets the granularity rule: all Go code lives under `services/`, each
 Go service owns its own DDD + hexagonal layers, and the current implementation
-keeps infrastructure contexts in `services/agent-gateway` until a split is
+keeps infrastructure contexts in `services/agent-runtime` until a split is
 operationally justified.
 
 ## Context
@@ -21,7 +21,7 @@ on agent intelligence and model-facing behavior.
 
 | Area | Target Go Owner | Migration Priority | Notes |
 | --- | --- | --- | --- |
-| Agent gateway | `services/agent-gateway` | P0 | normalize QQ/Telegram/Feishu/WeChat events |
+| Agent gateway | `services/agent-runtime` | P0 | normalize QQ/Telegram/Feishu/WeChat events |
 | Account registry | `domain/model/ChannelAccount` | P0 | one identity per QQ/TG bot account |
 | Inbound routing | `RoutingService` | P0 | route by platform + account + conversation |
 | Loop guard | `LoopGuard` | P0 | self echo, peer bot protocol, nonce, hop budget |
