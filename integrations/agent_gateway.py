@@ -76,7 +76,7 @@ class AgentGatewayClient:
             params["status"] = status
         data = await self._request("GET", "/v1/jobs", params=params)
         if not isinstance(data, list):
-            raise AgentGatewayError("agent gateway jobs response is not a list")
+            raise AgentGatewayError("agent runtime jobs response is not a list")
         return data
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
@@ -179,9 +179,9 @@ class AgentGatewayClient:
         no_job_on_404: bool = False,
     ) -> Any:
         if not self._config.enabled:
-            raise AgentGatewayError("agent gateway 未启用")
+            raise AgentGatewayError("agent runtime client 未启用")
         if not self._base_url:
-            raise AgentGatewayError("agent gateway base_url 未配置")
+            raise AgentGatewayError("agent runtime base_url 未配置")
         url = self._base_url + path
         async with httpx.AsyncClient(
             timeout=self._config.request_timeout_seconds,
@@ -199,7 +199,7 @@ class AgentGatewayClient:
             raise AgentGatewayNoJob(response.text.strip() or "no leaseable job")
         if response.status_code >= 400:
             raise AgentGatewayError(
-                f"agent gateway HTTP {response.status_code}: {response.text[:500]}"
+                f"agent runtime HTTP {response.status_code}: {response.text[:500]}"
             )
         try:
             payload = response.json()

@@ -83,7 +83,7 @@ class AgentGatewayImageWorker:
             }
         except Exception as exc:
             message = str(exc)
-            logger.exception("[agent_gateway_image_worker] job failed job_id=%s", job_id)
+            logger.exception("[agent_runtime_image_worker] job failed job_id=%s", job_id)
             await self._safe_fail(job_id, legacy_job_id, message)
             return {
                 "processed": True,
@@ -95,7 +95,7 @@ class AgentGatewayImageWorker:
 
     async def run(self) -> None:
         logger.info(
-            "[agent_gateway_image_worker] loop started worker_id=%s",
+            "[agent_runtime_image_worker] loop started worker_id=%s",
             self._worker_id,
         )
         try:
@@ -103,11 +103,11 @@ class AgentGatewayImageWorker:
                 try:
                     result = await self.process_once()
                     if result.get("processed") and not result.get("failed"):
-                        logger.info("[agent_gateway_image_worker] processed %s", result)
+                        logger.info("[agent_runtime_image_worker] processed %s", result)
                 except AgentGatewayError as exc:
-                    logger.warning("[agent_gateway_image_worker] gateway error: %s", exc)
+                    logger.warning("[agent_runtime_image_worker] runtime error: %s", exc)
                 except Exception:
-                    logger.exception("[agent_gateway_image_worker] unexpected loop error")
+                    logger.exception("[agent_runtime_image_worker] unexpected loop error")
                 try:
                     await asyncio.wait_for(
                         self._stopped.wait(),
@@ -116,7 +116,7 @@ class AgentGatewayImageWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
-            logger.info("[agent_gateway_image_worker] loop stopped")
+            logger.info("[agent_runtime_image_worker] loop stopped")
 
     def stop(self) -> None:
         self._stopped.set()
@@ -151,7 +151,7 @@ class AgentGatewayImageWorker:
                 await self._client.fail_image_job(legacy_job_id, error_message=message)
             except Exception:
                 logger.warning(
-                    "[agent_gateway_image_worker] legacy fail update failed job_id=%s",
+                    "[agent_runtime_image_worker] legacy fail update failed job_id=%s",
                     legacy_job_id,
                     exc_info=True,
                 )
@@ -160,7 +160,7 @@ class AgentGatewayImageWorker:
                 await self._client.fail_job(job_id, error_message=message)
             except Exception:
                 logger.warning(
-                    "[agent_gateway_image_worker] generic fail update failed job_id=%s",
+                    "[agent_runtime_image_worker] generic fail update failed job_id=%s",
                     job_id,
                     exc_info=True,
                 )

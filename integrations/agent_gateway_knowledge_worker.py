@@ -106,7 +106,7 @@ class AgentGatewayKnowledgeWorker:
             }
         except Exception as exc:
             message = str(exc)
-            logger.exception("[agent_gateway_knowledge_worker] job failed job_id=%s", job_id)
+            logger.exception("[agent_runtime_knowledge_worker] job failed job_id=%s", job_id)
             if job_id:
                 await self._client.fail_job(job_id, error_message=message)
             return {
@@ -119,7 +119,7 @@ class AgentGatewayKnowledgeWorker:
 
     async def run(self) -> None:
         logger.info(
-            "[agent_gateway_knowledge_worker] loop started worker_id=%s groups=%s",
+            "[agent_runtime_knowledge_worker] loop started worker_id=%s groups=%s",
             self._worker_id,
             sorted(self._group_accounts),
         )
@@ -129,14 +129,14 @@ class AgentGatewayKnowledgeWorker:
                     bucket = int(float(self._now_fn()) // self._enqueue_interval)
                     if bucket != self._last_enqueue_bucket:
                         summary = await self.enqueue_once()
-                        logger.info("[agent_gateway_knowledge_worker] enqueued %s", summary)
+                        logger.info("[agent_runtime_knowledge_worker] enqueued %s", summary)
                     result = await self.process_once()
                     if result.get("processed") and not result.get("failed"):
-                        logger.info("[agent_gateway_knowledge_worker] processed %s", result)
+                        logger.info("[agent_runtime_knowledge_worker] processed %s", result)
                 except AgentGatewayError as exc:
-                    logger.warning("[agent_gateway_knowledge_worker] gateway error: %s", exc)
+                    logger.warning("[agent_runtime_knowledge_worker] runtime error: %s", exc)
                 except Exception:
-                    logger.exception("[agent_gateway_knowledge_worker] unexpected loop error")
+                    logger.exception("[agent_runtime_knowledge_worker] unexpected loop error")
                 try:
                     await asyncio.wait_for(
                         self._stopped.wait(),
@@ -145,7 +145,7 @@ class AgentGatewayKnowledgeWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
-            logger.info("[agent_gateway_knowledge_worker] loop stopped")
+            logger.info("[agent_runtime_knowledge_worker] loop stopped")
 
     def stop(self) -> None:
         self._stopped.set()
@@ -180,7 +180,7 @@ class AgentGatewayKnowledgeWorker:
                 "observe_only": "true",
             },
             max_attempts=2,
-            metadata={"scheduler": "agent_gateway_knowledge_worker"},
+            metadata={"scheduler": "agent_runtime_knowledge_worker"},
         )
 
     async def _create_rag_ingest_job(
@@ -204,7 +204,7 @@ class AgentGatewayKnowledgeWorker:
                 "observe_only": "true",
             },
             max_attempts=2,
-            metadata={"scheduler": "agent_gateway_knowledge_worker"},
+            metadata={"scheduler": "agent_runtime_knowledge_worker"},
         )
 
     async def _process_group_memory_job(self, job: dict[str, Any]) -> dict[str, Any]:
