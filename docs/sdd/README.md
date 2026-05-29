@@ -1,7 +1,7 @@
 # SDD Development Record
 
 This directory records the Specification-Driven Development process used for
-Akashic Memory Agent changes, especially the planned Go agent gateway and
+Akashic Memory Agent changes, especially the planned Go agent runtime and
 multi-channel messaging refactor.
 
 SDD here means: write the behavior contract first, implement against that
@@ -15,7 +15,8 @@ contract, then review code by checking the contract, invariants, and tests.
 - `IMPLEMENTATION_FREEZE.md`: active gate for Go/Python split and group memory
   migration work.
 - `adr/`: architecture decision records.
-- `specs/agent-gateway/`: specs for the Go agent gateway.
+- `specs/agent-gateway/`: specs for the Go agent runtime (named `agent-runtime` in
+  service layout).
 - `specs/agent-architecture/`: specs for Python/Go ownership and target agent
   architecture.
 - `specs/group-message-memory/`: specs for QQ/group message memory, RAG, and
@@ -40,7 +41,7 @@ The current high-risk area is messaging:
 - provenance classification;
 - loop prevention;
 - queued media/file/memory processing;
-- Go gateway boundary design.
+- Go runtime boundary design.
 - group-message memory and RAG.
 
 For the Go/Python architecture split, group-message memory, and RAG migration,
