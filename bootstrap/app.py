@@ -78,6 +78,8 @@ class AppRuntime:
         self.group_memory_loop = None
         self.agent_gateway_image_worker = None
         self.agent_gateway_knowledge_worker = None
+        self.agent_runtime_image_worker = None
+        self.agent_runtime_knowledge_worker = None
         self.peer_process_manager = None
         self.peer_poller = None
         self.dashboard_server = None
@@ -182,6 +184,7 @@ class AppRuntime:
                     self.session_manager._store,
                 )
             )
+            self.agent_runtime_knowledge_worker = self.agent_gateway_knowledge_worker
             self.tasks.extend(knowledge_worker_tasks)
             image_worker_tasks, self.agent_gateway_image_worker = (
                 _build_agent_gateway_image_worker_tasks(
@@ -190,6 +193,7 @@ class AppRuntime:
                     self.http_resources,
                 )
             )
+            self.agent_runtime_image_worker = self.agent_gateway_image_worker
             self.tasks.extend(image_worker_tasks)
 
             self._started = True
@@ -244,6 +248,14 @@ class AppRuntime:
                     "agent_gateway_knowledge_worker.stop",
                     _loop_stop(self.agent_gateway_knowledge_worker),
                 ),
+                (
+                    "agent_runtime_image_worker.stop",
+                    _loop_stop(self.agent_runtime_image_worker),
+                ),
+                (
+                    "agent_runtime_knowledge_worker.stop",
+                    _loop_stop(self.agent_runtime_knowledge_worker),
+                ),
                 ("http_resources.aclose", self.http_resources.aclose),
             )
         finally:
@@ -281,7 +293,7 @@ def _build_agent_gateway_image_worker_tasks(
     workspace: Path,
     http_resources: SharedHttpResources,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = getattr(config, "agent_gateway", None)
+    agent_gateway = getattr(config, "agent_runtime", None) or getattr(config, "agent_gateway", None)
     chatgpt_proxy = getattr(config, "chatgpt_proxy", None)
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
@@ -293,16 +305,17 @@ def _build_agent_gateway_image_worker_tasks(
         return [], None
 
     from agent.tools.chatgpt_proxy import ChatGPTImageGenerateTool
-    from integrations.agent_gateway import AgentGatewayClient
-    from integrations.agent_gateway_image_worker import AgentGatewayImageWorker
+    # 优先使用新命名别名；没有改造时回退旧名。
+    from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_image_worker import AgentRuntimeImageWorker
 
-    client = AgentGatewayClient(agent_gateway)
+    client = AgentRuntimeClient(agent_gateway)
     image_tool = ChatGPTImageGenerateTool(
         chatgpt_proxy,
         workspace,
         http_resources.external_default,
     )
-    worker = AgentGatewayImageWorker(
+    worker = AgentRuntimeImageWorker(
         client=client,
         image_tool=image_tool,
         worker_id=str(getattr(agent_gateway, "worker_id", "akashic-python-worker")),
@@ -319,7 +332,7 @@ def _build_agent_gateway_knowledge_worker_tasks(
     workspace: Path,
     session_store,
 ) -> tuple[list[Awaitable[None]], object | None]:
-    agent_gateway = getattr(config, "agent_gateway", None)
+    agent_gateway = getattr(config, "agent_runtime", None) or getattr(config, "agent_gateway", None)
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
     if not str(getattr(agent_gateway, "base_url", "")).strip():
@@ -331,8 +344,9 @@ def _build_agent_gateway_knowledge_worker_tasks(
 
     from agent.tools.ragflow import RAGFlowIndexQQGroupTool
     from group_memory import GroupMemoryService
-    from integrations.agent_gateway import AgentGatewayClient
-    from integrations.agent_gateway_knowledge_worker import AgentGatewayKnowledgeWorker
+    # 优先使用新命名别名；没有改造时回退旧名。
+    from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_knowledge_worker import AgentRuntimeKnowledgeWorker
     from integrations.ragflow import RAGFlowClient
 
     ragflow = getattr(config, "ragflow", None)
@@ -355,8 +369,8 @@ def _build_agent_gateway_knowledge_worker_tasks(
                 session_store,
             )
 
-    worker = AgentGatewayKnowledgeWorker(
-        client=AgentGatewayClient(agent_gateway),
+    worker = AgentRuntimeKnowledgeWorker(
+        client=AgentRuntimeClient(agent_gateway),
         group_memory=GroupMemoryService.from_workspace(
             workspace,
             session_store=session_store,
