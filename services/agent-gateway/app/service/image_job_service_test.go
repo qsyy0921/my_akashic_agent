@@ -47,6 +47,61 @@ func TestImageJobServiceCreatesIdempotentQueuedJob(t *testing.T) {
 	}
 }
 
+func TestImageJobServiceCreatesGenericAgentJobCompatibilityRecord(t *testing.T) {
+	store := memory.NewStore()
+	service := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
+	job, err := service.Create(context.Background(), command.CreateImageJobCommand{
+		RequestID: "qq_2365524513:1049511700:2",
+		Requester: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "2365524513",
+			ConversationID:   "1049511700",
+			ConversationType: "private",
+		},
+		RequesterID: "1049511700",
+		Prompt:      "生成一张古装人物图",
+		Provider:    "chatgpt-web",
+		Model:       "gpt-image",
+		Size:        "1024x1024",
+		Count:       2,
+		MaxAttempts: 4,
+		Timestamp:   time.Date(2026, 5, 30, 1, 0, 0, 0, time.UTC),
+		Metadata: map[string]string{
+			"source_event_id": "qq:event:2",
+			"worker_agent_id": "image-worker",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create returned error: %v", err)
+	}
+
+	generic, ok, err := store.FindAgentJob(context.Background(), job.JobID)
+	if err != nil {
+		t.Fatalf("find generic job returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected generic image_generation agent job")
+	}
+	if generic.JobType != model.AgentJobImageGeneration {
+		t.Fatalf("unexpected generic job type: %s", generic.JobType)
+	}
+	if generic.AgentID != "image-worker" {
+		t.Fatalf("unexpected agent id: %s", generic.AgentID)
+	}
+	if generic.Route.AccountID != "2365524513" || generic.Route.ConversationID != "1049511700" {
+		t.Fatalf("unexpected route: %+v", generic.Route)
+	}
+	if generic.Payload["prompt"] != "生成一张古装人物图" || generic.Payload["count"] != "2" {
+		t.Fatalf("unexpected payload: %+v", generic.Payload)
+	}
+	if len(generic.SourceEventIDs) != 1 || generic.SourceEventIDs[0] != "qq:event:2" {
+		t.Fatalf("unexpected source events: %+v", generic.SourceEventIDs)
+	}
+	if generic.MaxAttempts != 4 {
+		t.Fatalf("unexpected max attempts: %d", generic.MaxAttempts)
+	}
+}
+
 func TestImageJobServiceCompletesJobWithResultAttachment(t *testing.T) {
 	store := memory.NewStore()
 	service := appservice.NewImageJobService(store, store)

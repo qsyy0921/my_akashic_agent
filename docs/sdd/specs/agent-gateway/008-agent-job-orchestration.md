@@ -9,11 +9,13 @@ Implemented:
 - Go `AgentJob` domain model and in-memory repository/queue.
 - HTTP control-plane endpoints.
 - Python compatibility client for worker leases and lifecycle updates.
+- Legacy `/v1/image-jobs` create generic `image_generation` AgentJob
+  compatibility records.
 
 Pending:
 
 - Route image generation through generic jobs while preserving current output
-  behavior.
+  behavior beyond the initial compatibility record.
 - Route group-memory/RAG ingestion through generic jobs in observe-only mode.
 - Add persistence and dashboard job panel.
 
@@ -161,6 +163,9 @@ Go owns:
 - [x] Add HTTP control-plane endpoints.
 - [x] Add Python worker compatibility client tests.
 - [ ] Route image generation requests through generic jobs while preserving current
-   output behavior.
+  output behavior.
+  - [x] Legacy `/v1/image-jobs` creates a generic `image_generation` AgentJob.
+  - [ ] Python image worker consumes generic jobs and reports both generic and
+    legacy image-job completion.
 - [ ] Route group-memory/RAG ingestion through generic jobs in observe-only mode.
 - [ ] Add persistence and dashboard job panel.

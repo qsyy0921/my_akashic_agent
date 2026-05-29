@@ -43,7 +43,7 @@ func main() {
 		loopGuard,
 	)
 	sender := appservice.NewMessageSendService(store, store, store, store)
-	imageJobs := appservice.NewImageJobService(store, store)
+	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaAssets := appservice.NewMediaAssetService(store)
 	agentJobs := appservice.NewAgentJobService(store)
