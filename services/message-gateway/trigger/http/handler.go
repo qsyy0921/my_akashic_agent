@@ -23,6 +23,7 @@ func RegisterRoutes(
 	imageJobs inport.ImageJobManager,
 	outbox inport.OutboxManager,
 	mediaAssets inport.MediaAssetManager,
+	agentJobs inport.AgentJobManager,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
@@ -35,6 +36,9 @@ func RegisterRoutes(
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
+	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
+	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
+	mux.Handle("/v1/jobs/", AgentJobStateHandler(agentJobs))
 }
 
 func HealthHandler() http.Handler {
@@ -360,6 +364,166 @@ func parseMediaAssetPath(path string) (string, string) {
 	return assetID, action
 }
 
+func AgentJobsHandler(agentJobs inport.AgentJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			items, err := agentJobs.List(r.Context(), query.AgentJobFilter{
+				JobType: r.URL.Query().Get("type"),
+				Status:  r.URL.Query().Get("status"),
+				Limit:   parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+		case http.MethodPost:
+			var request dto.CreateAgentJobRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			cmd, err := toCreateAgentJobCommand(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			job, err := agentJobs.Create(r.Context(), cmd)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: job})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func AgentJobLeaseNextHandler(agentJobs inport.AgentJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.AgentJobLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		job, err := agentJobs.LeaseNext(r.Context(), command.AgentJobLeaseNextCommand{
+			WorkerID:   request.WorkerID,
+			JobType:    request.JobType,
+			TTLSeconds: request.TTLSeconds,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: job})
+	})
+}
+
+func AgentJobStateHandler(agentJobs inport.AgentJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jobID, action := parseAgentJobPath(r.URL.Path)
+		if jobID == "" {
+			http.Error(w, "agent job id required", http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodGet && action == "" {
+			job, err := agentJobs.Get(r.Context(), jobID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: job})
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var state dto.AgentJobStateRequest
+		var lease dto.AgentJobLeaseRequest
+		if action == "lease" {
+			if err := json.NewDecoder(r.Body).Decode(&lease); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+		}
+
+		var timestampText string
+		if action == "lease" {
+			timestampText = lease.Timestamp
+		} else {
+			timestampText = state.Timestamp
+		}
+		timestamp, err := parseOptionalTimestamp(timestampText)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var job query.AgentJobView
+		switch action {
+		case "lease":
+			job, err = agentJobs.Lease(r.Context(), command.AgentJobLeaseCommand{
+				JobID:      jobID,
+				WorkerID:   lease.WorkerID,
+				TTLSeconds: lease.TTLSeconds,
+				Timestamp:  timestamp,
+			})
+		case "running":
+			job, err = agentJobs.MarkRunning(r.Context(), command.MarkAgentJobRunningCommand{JobID: jobID, Timestamp: timestamp})
+		case "succeeded":
+			job, err = agentJobs.Complete(r.Context(), command.CompleteAgentJobCommand{JobID: jobID, Result: state.Result, Timestamp: timestamp})
+		case "failed":
+			job, err = agentJobs.Fail(r.Context(), command.FailAgentJobCommand{JobID: jobID, ErrorMessage: state.ErrorMessage, Timestamp: timestamp})
+		case "retry":
+			job, err = agentJobs.Retry(r.Context(), command.RetryAgentJobCommand{JobID: jobID, Timestamp: timestamp})
+		case "cancel":
+			job, err = agentJobs.Cancel(r.Context(), command.CancelAgentJobCommand{JobID: jobID, Timestamp: timestamp})
+		default:
+			http.Error(w, "unknown agent job action", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: job})
+	})
+}
+
+func parseAgentJobPath(path string) (string, string) {
+	rest := strings.TrimPrefix(path, "/v1/jobs/")
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		return "", ""
+	}
+	parts := strings.Split(rest, "/")
+	jobID := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+	return jobID, action
+}
+
 func ImageJobsHandler(imageJobs inport.ImageJobManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -608,6 +772,35 @@ func toRegisterMediaAssetCommand(request dto.RegisterMediaAssetRequest) (command
 		Index:           request.Index,
 		Timestamp:       timestamp,
 		Metadata:        request.Metadata,
+	}, nil
+}
+
+func toCreateAgentJobCommand(request dto.CreateAgentJobRequest) (command.CreateAgentJobCommand, error) {
+	timestamp := time.Now().UTC()
+	if request.Timestamp != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, request.Timestamp)
+		if err != nil {
+			return command.CreateAgentJobCommand{}, err
+		}
+		timestamp = parsed
+	}
+
+	return command.CreateAgentJobCommand{
+		JobID:   request.JobID,
+		JobType: request.JobType,
+		AgentID: request.AgentID,
+		Route: command.ChannelCommand{
+			Kind:             request.Route.RoutePlatform(),
+			AccountID:        request.Route.AccountID,
+			ConversationID:   request.Route.ConversationID,
+			ConversationType: request.Route.ConversationType,
+		},
+		SourceEventIDs: request.SourceEventIDs,
+		SourceAssetIDs: request.SourceAssetIDs,
+		Payload:        request.Payload,
+		MaxAttempts:    request.MaxAttempts,
+		Timestamp:      timestamp,
+		Metadata:       request.Metadata,
 	}, nil
 }
 

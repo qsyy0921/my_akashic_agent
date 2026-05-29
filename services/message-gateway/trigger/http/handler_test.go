@@ -28,9 +28,10 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:private:1049511700:msg-1",
@@ -85,9 +86,10 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:group:27234224:msg-1",
@@ -154,9 +156,10 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
 	body := map[string]any{
 		"event_id": "outbox-http-1",
@@ -231,9 +234,10 @@ func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
 	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
 	body := map[string]any{
 		"channel": map[string]any{
@@ -287,5 +291,78 @@ func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/"+assetID+"/content", nil))
 	if response.Code != http.StatusNotImplemented {
 		t.Fatalf("content route must not be enabled yet, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
+
+	body := map[string]any{
+		"job_id":   "job-http-1",
+		"job_type": "rag_ingest",
+		"agent_id": "main",
+		"route": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "27234224",
+			"conversation_type": "group",
+		},
+		"source_event_ids": []string{"qq:gqq:27234224:1"},
+		"source_asset_ids": []string{"asset:1"},
+		"payload":          map[string]string{"source": "group"},
+		"max_attempts":     2,
+		"timestamp":        time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"pending"`)) {
+		t.Fatalf("create response missing pending status: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/lease-next", bytes.NewReader([]byte(`{"worker_id":"worker-http","job_type":"rag_ingest","ttl_seconds":60}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease-next 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"leased"`)) {
+		t.Fatalf("lease response missing leased status: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/running", bytes.NewReader([]byte(`{}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected running 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/succeeded", bytes.NewReader([]byte(`{"result":{"indexed":"true"}}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected succeeded 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"succeeded"`)) {
+		t.Fatalf("succeeded response missing status: %s", response.Body.String())
 	}
 }

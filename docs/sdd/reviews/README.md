@@ -40,3 +40,4 @@ Current architecture review sequence:
 - `2026-05-30-media-registry-sdd-design-review.md`
 - `2026-05-30-phase5-1-go-media-registry-metadata.md`
 - `2026-05-30-agent-job-orchestration-sdd-review.md`
+- `2026-05-30-phase7-1-go-agent-job-control-plane.md`

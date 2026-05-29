@@ -6,24 +6,27 @@ import (
 	"time"
 
 	outport "github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/port/out"
+	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/domain/model"
 )
 
 type Store struct {
-	mu           sync.Mutex
-	observed     []ObservedEvent
-	agentInbound []model.MessageEnvelope
-	outbound     []model.OutboundMessage
-	sendRecords  []model.SendRecord
-	nonces       map[string]time.Time
-	audits       []AuditEvent
-	imageJobs    map[string]model.ImageJob
-	imageQueue   []string
-	outbox       map[string]model.OutboxDelivery
-	outboxOrder  []string
-	outboxQueue  []string
-	mediaAssets  map[string]model.MediaAsset
-	mediaOrder   []string
+	mu            sync.Mutex
+	observed      []ObservedEvent
+	agentInbound  []model.MessageEnvelope
+	outbound      []model.OutboundMessage
+	sendRecords   []model.SendRecord
+	nonces        map[string]time.Time
+	audits        []AuditEvent
+	imageJobs     map[string]model.ImageJob
+	imageQueue    []string
+	outbox        map[string]model.OutboxDelivery
+	outboxOrder   []string
+	outboxQueue   []string
+	mediaAssets   map[string]model.MediaAsset
+	mediaOrder    []string
+	agentJobs     map[string]model.AgentJob
+	agentJobOrder []string
 }
 
 type ObservedEvent struct {
@@ -42,6 +45,7 @@ func NewStore() *Store {
 		imageJobs:   make(map[string]model.ImageJob),
 		outbox:      make(map[string]model.OutboxDelivery),
 		mediaAssets: make(map[string]model.MediaAsset),
+		agentJobs:   make(map[string]model.AgentJob),
 	}
 }
 
@@ -235,6 +239,74 @@ func (s *Store) ListMediaAssets(_ context.Context, limit int) ([]model.MediaAsse
 	return items, nil
 }
 
+func (s *Store) SaveAgentJob(_ context.Context, job model.AgentJob) error {
+	if err := job.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.agentJobs[job.JobID]; !exists {
+		s.agentJobOrder = append(s.agentJobOrder, job.JobID)
+	}
+	s.agentJobs[job.JobID] = job
+	return nil
+}
+
+func (s *Store) FindAgentJob(_ context.Context, jobID string) (model.AgentJob, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, ok := s.agentJobs[jobID]
+	return job, ok, nil
+}
+
+func (s *Store) ListAgentJobs(_ context.Context, filter query.AgentJobFilter) ([]model.AgentJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.AgentJob, 0, limit)
+	for i := len(s.agentJobOrder) - 1; i >= 0 && len(items) < limit; i-- {
+		jobID := s.agentJobOrder[i]
+		job, ok := s.agentJobs[jobID]
+		if !ok {
+			continue
+		}
+		if filter.JobType != "" && string(job.JobType) != filter.JobType {
+			continue
+		}
+		if filter.Status != "" && string(job.Status) != filter.Status {
+			continue
+		}
+		items = append(items, job)
+	}
+	return items, nil
+}
+
+func (s *Store) FindLeaseableAgentJob(_ context.Context, jobType string, now time.Time) (model.AgentJob, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, jobID := range s.agentJobOrder {
+		job, ok := s.agentJobs[jobID]
+		if !ok {
+			continue
+		}
+		if jobType != "" && string(job.JobType) != jobType {
+			continue
+		}
+		if job.CanLease(now) {
+			return job, true, nil
+		}
+	}
+	return model.AgentJob{}, false, nil
+}
+
 func (s *Store) RecentlySent(botID string, conversationID string, contentHash string, window time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -383,6 +455,19 @@ func (s *Store) MediaAssets() []model.MediaAsset {
 	for _, assetID := range s.mediaOrder {
 		if asset, ok := s.mediaAssets[assetID]; ok {
 			items = append(items, asset)
+		}
+	}
+	return items
+}
+
+func (s *Store) AgentJobs() []model.AgentJob {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]model.AgentJob, 0, len(s.agentJobOrder))
+	for _, jobID := range s.agentJobOrder {
+		if job, ok := s.agentJobs[jobID]; ok {
+			items = append(items, job)
 		}
 	}
 	return items

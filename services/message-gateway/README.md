@@ -110,6 +110,24 @@ The first media registry slice is metadata-only. The `/content` route returns
 `501 Not Implemented` until workspace path validation and controlled asset
 access are reviewed and tested.
 
+Create and lease generic agent jobs:
+
+```text
+POST /v1/jobs
+GET  /v1/jobs?limit=50&type=rag_ingest&status=pending
+GET  /v1/jobs/{job_id}
+POST /v1/jobs/lease-next
+POST /v1/jobs/{job_id}/lease
+POST /v1/jobs/{job_id}/running
+POST /v1/jobs/{job_id}/succeeded
+POST /v1/jobs/{job_id}/failed
+POST /v1/jobs/{job_id}/retry
+POST /v1/jobs/{job_id}/cancel
+```
+
+The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
+workers still execute image generation, RAG, and memory extraction.
+
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:
 
