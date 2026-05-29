@@ -28,6 +28,10 @@ The design uses:
 - `005-migration-plan.md`: incremental refactor plan and acceptance gates.
 - `006-contract-fixtures.md`: shared Go/Python fixture requirements before
   implementation.
+- `008-go-migration-scope.md`: full list of infrastructure responsibilities
+  that should move to Go and the retained Python AI runtime scope.
+- `009-go-migration-implementation-design.md`: executable phase plan, ports,
+  cutover rules, and review checklist for Go migration.
 
 Related spec family:
 

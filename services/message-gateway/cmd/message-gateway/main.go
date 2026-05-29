@@ -42,12 +42,13 @@ func main() {
 		classifier,
 		loopGuard,
 	)
-	sender := appservice.NewMessageSendService(store, store)
+	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox)
 
 	log.Printf("akashic message gateway listening on %s; bot_ids=%s", addr, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {

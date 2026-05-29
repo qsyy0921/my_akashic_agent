@@ -14,7 +14,7 @@ import (
 
 func TestMessageSendServiceAddsBotProtocolAndRecordsLedger(t *testing.T) {
 	store := memory.NewStore()
-	sender := appservice.NewMessageSendService(store, store)
+	sender := appservice.NewMessageSendService(store, store, store, store)
 
 	err := sender.Send(context.Background(), command.SendMessageCommand{
 		EventID: "outbound-1",
@@ -43,5 +43,15 @@ func TestMessageSendServiceAddsBotProtocolAndRecordsLedger(t *testing.T) {
 	}
 	if !store.RecentlySent("1049511700", "2365524513", service.ContentHash(outbound[0].Content), time.Minute) {
 		t.Fatal("expected send ledger to contain outbound content hash")
+	}
+	deliveries := store.OutboxDeliveries()
+	if len(deliveries) != 1 {
+		t.Fatalf("expected 1 outbox delivery, got %d", len(deliveries))
+	}
+	if deliveries[0].Message.EventID != "outbound-1" {
+		t.Fatalf("unexpected outbox event id: %s", deliveries[0].Message.EventID)
+	}
+	if len(store.OutboxQueue()) != 1 {
+		t.Fatalf("expected outbox queue item, got %d", len(store.OutboxQueue()))
 	}
 }

@@ -44,5 +44,6 @@ The current high-risk area is messaging:
 - group-message memory and RAG.
 
 For the Go/Python architecture split, group-message memory, and RAG migration,
-`IMPLEMENTATION_FREEZE.md` is active. Do not migrate runtime behavior until its
-gates are satisfied.
+`IMPLEMENTATION_FREEZE.md` is active as a cutover gate. Non-production Go
+control-plane slices may be implemented with review records and tests; production
+platform cutover still requires a specific review and rollback plan.

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/assembler"
@@ -13,12 +14,26 @@ import (
 )
 
 type MessageSendService struct {
-	eventBus   outport.MessageEventBus
-	sendLedger outport.SendLedger
+	eventBus          outport.MessageEventBus
+	sendLedger        outport.SendLedger
+	outboxRepository  outport.OutboxRepository
+	outboxQueue       outport.OutboxQueue
+	defaultMaxAttempt int
 }
 
-func NewMessageSendService(eventBus outport.MessageEventBus, sendLedger outport.SendLedger) *MessageSendService {
-	return &MessageSendService{eventBus: eventBus, sendLedger: sendLedger}
+func NewMessageSendService(
+	eventBus outport.MessageEventBus,
+	sendLedger outport.SendLedger,
+	outboxRepository outport.OutboxRepository,
+	outboxQueue outport.OutboxQueue,
+) *MessageSendService {
+	return &MessageSendService{
+		eventBus:          eventBus,
+		sendLedger:        sendLedger,
+		outboxRepository:  outboxRepository,
+		outboxQueue:       outboxQueue,
+		defaultMaxAttempt: 3,
+	}
 }
 
 func (s *MessageSendService) Send(ctx context.Context, cmd command.SendMessageCommand) error {
@@ -63,6 +78,38 @@ func (s *MessageSendService) Send(ctx context.Context, cmd command.SendMessageCo
 			return err
 		}
 	}
+	if s.outboxRepository != nil {
+		delivery, err := model.NewOutboxDelivery(outbound, maxAttempts(outbound.Metadata, s.defaultMaxAttempt), cmd.Timestamp)
+		if err != nil {
+			return err
+		}
+		if err := s.outboxRepository.SaveOutboxDelivery(ctx, delivery); err != nil {
+			return err
+		}
+		if s.outboxQueue != nil {
+			if err := s.outboxQueue.EnqueueOutboxDelivery(ctx, delivery); err != nil {
+				return err
+			}
+		}
+	}
 
 	return s.eventBus.PublishOutbound(ctx, outbound)
+}
+
+func maxAttempts(metadata map[string]string, fallback int) int {
+	if fallback <= 0 {
+		fallback = 3
+	}
+	if metadata == nil {
+		return fallback
+	}
+	value := metadata["max_attempts"]
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }

@@ -81,6 +81,22 @@ Publish outbound messages:
 POST /v1/outbound
 ```
 
+Query and update outbound delivery state:
+
+```text
+GET  /v1/outbox?limit=50
+GET  /v1/outbox/{event_id}
+POST /v1/outbox/{event_id}/dispatching
+POST /v1/outbox/{event_id}/succeeded
+POST /v1/outbox/{event_id}/failed
+POST /v1/outbox/{event_id}/retry
+```
+
+The current outbox implementation is a control-plane migration slice. It owns
+delivery status, attempts, retry, and dead-letter transitions in Go, while the
+actual QQ/Telegram SDK send path remains on the Python compatibility layer until
+the platform adapter cutover is reviewed.
+
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:
 

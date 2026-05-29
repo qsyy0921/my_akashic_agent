@@ -12,3 +12,8 @@ type SendMessageRequest struct {
 	ProtocolNonce   string            `json:"protocol_nonce,omitempty"`
 	ProtocolNextHop int               `json:"protocol_next_hop,omitempty"`
 }
+
+type OutboxStateRequest struct {
+	Timestamp    string `json:"timestamp,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}

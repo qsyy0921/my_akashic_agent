@@ -19,6 +19,9 @@ type Store struct {
 	audits       []AuditEvent
 	imageJobs    map[string]model.ImageJob
 	imageQueue   []string
+	outbox       map[string]model.OutboxDelivery
+	outboxOrder  []string
+	outboxQueue  []string
 }
 
 type ObservedEvent struct {
@@ -35,6 +38,7 @@ func NewStore() *Store {
 	return &Store{
 		nonces:    make(map[string]time.Time),
 		imageJobs: make(map[string]model.ImageJob),
+		outbox:    make(map[string]model.OutboxDelivery),
 	}
 }
 
@@ -120,6 +124,67 @@ func (s *Store) EnqueueImageJob(_ context.Context, job model.ImageJob) error {
 		}
 	}
 	s.imageQueue = append(s.imageQueue, job.JobID)
+	return nil
+}
+
+func (s *Store) SaveOutboxDelivery(_ context.Context, delivery model.OutboxDelivery) error {
+	if err := delivery.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.outbox[delivery.Message.EventID]; !exists {
+		s.outboxOrder = append(s.outboxOrder, delivery.Message.EventID)
+	}
+	s.outbox[delivery.Message.EventID] = delivery
+	return nil
+}
+
+func (s *Store) FindOutboxDelivery(_ context.Context, eventID string) (model.OutboxDelivery, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delivery, ok := s.outbox[eventID]
+	return delivery, ok, nil
+}
+
+func (s *Store) ListOutboxDeliveries(_ context.Context, limit int) ([]model.OutboxDelivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	start := len(s.outboxOrder) - limit
+	if start < 0 {
+		start = 0
+	}
+	items := make([]model.OutboxDelivery, 0, len(s.outboxOrder)-start)
+	for i := len(s.outboxOrder) - 1; i >= start; i-- {
+		eventID := s.outboxOrder[i]
+		if delivery, ok := s.outbox[eventID]; ok {
+			items = append(items, delivery)
+		}
+	}
+	return items, nil
+}
+
+func (s *Store) EnqueueOutboxDelivery(_ context.Context, delivery model.OutboxDelivery) error {
+	if err := delivery.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, queued := range s.outboxQueue {
+		if queued == delivery.Message.EventID {
+			return nil
+		}
+	}
+	s.outboxQueue = append(s.outboxQueue, delivery.Message.EventID)
 	return nil
 }
 
@@ -238,5 +303,27 @@ func (s *Store) ImageQueue() []string {
 
 	queue := make([]string, len(s.imageQueue))
 	copy(queue, s.imageQueue)
+	return queue
+}
+
+func (s *Store) OutboxDeliveries() []model.OutboxDelivery {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]model.OutboxDelivery, 0, len(s.outboxOrder))
+	for _, eventID := range s.outboxOrder {
+		if delivery, ok := s.outbox[eventID]; ok {
+			items = append(items, delivery)
+		}
+	}
+	return items
+}
+
+func (s *Store) OutboxQueue() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	queue := make([]string, len(s.outboxQueue))
+	copy(queue, s.outboxQueue)
 	return queue
 }

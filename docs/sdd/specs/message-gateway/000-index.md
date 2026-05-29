@@ -23,4 +23,6 @@ execution.
 - `003-loop-guard.md`: TTL, budget, nonce, duplicate-content, and cooldown rules.
 - `004-queue-and-routing.md`: NATS subjects, consumers, retries, and dead letters.
 - `005-go-package-structure.md`: Go module package layout and dependency rules.
+- `006-outbox-delivery-retry.md`: Go-owned outbound delivery state, retry, and
+  dead-letter contract.
 - Agent architecture boundary specs live under `../agent-architecture/`.

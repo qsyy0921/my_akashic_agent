@@ -84,6 +84,13 @@ Acceptance:
 - Python no longer calls `send_private_text`, `send_group_text`, or equivalent
   platform SDK methods directly for migrated channels.
 
+Current implementation slice:
+
+- Go owns `OutboxDelivery` state for `/v1/outbound`.
+- `/v1/outbox` exposes queued/dispatching/succeeded/failed/dead-letter state.
+- Actual QQ/Telegram platform SDK dispatch remains on the Python compatibility
+  path until a reviewed adapter cutover exists.
+
 ## Phase 5: Move Media/File Registry to Go
 
 Goal:

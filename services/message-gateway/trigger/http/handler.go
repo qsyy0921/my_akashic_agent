@@ -21,6 +21,7 @@ func RegisterRoutes(
 	shadowViewer inport.ShadowAuditViewer,
 	sender inport.MessageSender,
 	imageJobs inport.ImageJobManager,
+	outbox inport.OutboxManager,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
@@ -29,6 +30,8 @@ func RegisterRoutes(
 	mux.Handle("/v1/outbound", SendHandler(sender))
 	mux.Handle("/v1/image-jobs", ImageJobsHandler(imageJobs))
 	mux.Handle("/v1/image-jobs/", ImageJobStateHandler(imageJobs))
+	mux.Handle("/v1/outbox", OutboxListHandler(outbox))
+	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 }
 
 func HealthHandler() http.Handler {
@@ -159,6 +162,113 @@ func SendHandler(sender inport.MessageSender) http.Handler {
 
 		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK})
 	})
+}
+
+func OutboxListHandler(outbox inport.OutboxManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 200)
+		items, err := outbox.List(r.Context(), limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: items,
+		})
+	})
+}
+
+func OutboxStateHandler(outbox inport.OutboxManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		eventID, action := parseOutboxPath(r.URL.Path)
+		if eventID == "" {
+			http.Error(w, "outbox event id required", http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodGet && action == "" {
+			item, err := outbox.Get(r.Context(), eventID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{
+				Code: types.ErrorCodeOK,
+				Data: item,
+			})
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.OutboxStateRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var item query.OutboxDeliveryView
+		switch action {
+		case "dispatching":
+			item, err = outbox.MarkDispatching(r.Context(), command.MarkOutboxDispatchingCommand{
+				EventID:   eventID,
+				Timestamp: timestamp,
+			})
+		case "succeeded":
+			item, err = outbox.MarkSucceeded(r.Context(), command.MarkOutboxSucceededCommand{
+				EventID:   eventID,
+				Timestamp: timestamp,
+			})
+		case "failed":
+			item, err = outbox.MarkFailed(r.Context(), command.MarkOutboxFailedCommand{
+				EventID:      eventID,
+				ErrorMessage: request.ErrorMessage,
+				Timestamp:    timestamp,
+			})
+		case "retry":
+			item, err = outbox.Retry(r.Context(), command.RetryOutboxCommand{
+				EventID:   eventID,
+				Timestamp: timestamp,
+			})
+		default:
+			http.Error(w, "unknown outbox action", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: item,
+		})
+	})
+}
+
+func parseOutboxPath(path string) (string, string) {
+	rest := strings.TrimPrefix(path, "/v1/outbox/")
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		return "", ""
+	}
+	parts := strings.Split(rest, "/")
+	eventID := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+	return eventID, action
 }
 
 func ImageJobsHandler(imageJobs inport.ImageJobManager) http.Handler {
