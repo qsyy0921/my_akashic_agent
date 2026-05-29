@@ -57,6 +57,7 @@ from bus.event_bus import EventBus
 from bus.processing import ProcessingState
 from bus.queue import MessageBus
 from bus.shadow_gateway import (
+    ObservedSessionShadowMirror,
     ShadowGatewaySettings,
     build_shadow_gateway_observer,
 )
@@ -591,6 +592,10 @@ def build_core_runtime(
     loop_provider = agent_provider or provider
     loop_model = config.agent_model or config.model
     session_manager = SessionManager(workspace)
+    if shadow_observer is not None:
+        session_manager.add_message_observer(
+            ObservedSessionShadowMirror(shadow_observer)
+        )
     loop_ref: dict[str, AgentLoop] = {}
     tools, push_tool, scheduler, mcp_registry, memory_runtime, peer_pm, peer_poller = (
         build_registered_tools(

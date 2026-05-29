@@ -3,6 +3,7 @@ package httptrigger
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +18,14 @@ func RegisterRoutes(
 	mux *http.ServeMux,
 	ingestor inport.MessageIngestor,
 	shadowIngestor inport.ShadowMessageIngestor,
+	shadowViewer inport.ShadowAuditViewer,
 	sender inport.MessageSender,
 	imageJobs inport.ImageJobManager,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
 	mux.Handle("/v1/shadow/inbound", ShadowIngestHandler(shadowIngestor))
+	mux.Handle("/v1/shadow/observed", ShadowObservedHandler(shadowViewer))
 	mux.Handle("/v1/outbound", SendHandler(sender))
 	mux.Handle("/v1/image-jobs", ImageJobsHandler(imageJobs))
 	mux.Handle("/v1/image-jobs/", ImageJobStateHandler(imageJobs))
@@ -61,6 +64,26 @@ func IngestHandler(ingestor inport.MessageIngestor) http.Handler {
 	})
 }
 
+func ShadowObservedHandler(shadowViewer inport.ShadowAuditViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 200)
+		items, err := shadowViewer.ListObserved(r.Context(), limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: items,
+		})
+	})
+}
+
 func ShadowIngestHandler(shadowIngestor inport.ShadowMessageIngestor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -95,6 +118,20 @@ func ShadowIngestHandler(shadowIngestor inport.ShadowMessageIngestor) http.Handl
 			},
 		})
 	})
+}
+
+func parsePositiveInt(value string, fallback int, maxValue int) int {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	if parsed > maxValue {
+		return maxValue
+	}
+	return parsed
 }
 
 func SendHandler(sender inport.MessageSender) http.Handler {

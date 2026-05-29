@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from agent.prompting import (
@@ -306,6 +307,15 @@ class SessionManager:
         self._store = SessionStore(self.db_path)
         self._cache: dict[str, Session] = {}
         self._write_locks: dict[str, asyncio.Lock] = {}
+        self._message_observers: list[
+            Callable[[str, dict[str, Any]], Awaitable[None]]
+        ] = []
+
+    def add_message_observer(
+        self,
+        observer: Callable[[str, dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        self._message_observers.append(observer)
 
     def _lock(self, key: str) -> asyncio.Lock:
         if key not in self._write_locks:
@@ -375,9 +385,13 @@ class SessionManager:
         }
         return {k: v for k, v in msg.items() if k not in skip}
 
-    def _persist_messages(self, session: Session, messages: list[dict[str, Any]]) -> int:
+    def _persist_messages(
+        self,
+        session: Session,
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         next_seq = self._store.next_seq(session.key)
-        inserted = 0
+        inserted: list[dict[str, Any]] = []
 
         # 1. 只写入尚未持久化（没有 id）的消息。
         for msg in messages:
@@ -398,7 +412,7 @@ class SessionManager:
             )
             msg.update(row)
             next_seq += 1
-            inserted += 1
+            inserted.append(dict(msg))
 
         # 2. 保持会话消息缓存里的时间字段完整。
         for msg in messages:
@@ -410,7 +424,7 @@ class SessionManager:
     def save(self, session: Session) -> None:
         session.updated_at = datetime.now()
         self._ensure_session_meta(session)
-        self._persist_messages(session, session.messages)
+        inserted = self._persist_messages(session, session.messages)
         self._store.upsert_session(
             session.key,
             created_at=session.created_at.isoformat(),
@@ -419,6 +433,7 @@ class SessionManager:
             metadata=session.metadata,
         )
         self._cache[session.key] = session
+        self._schedule_message_observers(session.key, inserted)
 
     async def save_async(self, session: Session) -> None:
         session.updated_at = datetime.now()
@@ -432,7 +447,7 @@ class SessionManager:
             # 1. 确保 session 元数据存在并刷新 updated_at。
             self._ensure_session_meta(session)
             # 2. 追加写入本次新增消息，并补齐稳定 id。
-            self._persist_messages(session, msgs_copy)
+            inserted = self._persist_messages(session, msgs_copy)
             # 3. 回写 session 元数据（含 last_consolidated / metadata）。
             self._store.upsert_session(
                 session.key,
@@ -442,6 +457,36 @@ class SessionManager:
                 metadata=session.metadata,
             )
             self._cache[session.key] = session
+        self._schedule_message_observers(session.key, inserted)
+
+    def _schedule_message_observers(
+        self,
+        session_key: str,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        if not self._message_observers or not messages:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("message observers skipped because no event loop is running")
+            return
+        for message in messages:
+            for observer in list(self._message_observers):
+                loop.create_task(
+                    self._notify_message_observer(observer, session_key, dict(message))
+                )
+
+    async def _notify_message_observer(
+        self,
+        observer: Callable[[str, dict[str, Any]], Awaitable[None]],
+        session_key: str,
+        message: dict[str, Any],
+    ) -> None:
+        try:
+            await observer(session_key, message)
+        except Exception:
+            logger.exception("session message observer failed")
 
     def invalidate(self, key: str) -> None:
         self._cache.pop(key, None)

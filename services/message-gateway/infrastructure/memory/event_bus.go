@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/domain/model"
 )
 
@@ -169,6 +170,28 @@ func (s *Store) Observed() []ObservedEvent {
 	events := make([]ObservedEvent, len(s.observed))
 	copy(events, s.observed)
 	return events
+}
+
+func (s *Store) ListShadowObserved(_ context.Context, limit int) ([]outport.ShadowObservedRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	start := len(s.observed) - limit
+	if start < 0 {
+		start = 0
+	}
+	records := make([]outport.ShadowObservedRecord, 0, len(s.observed)-start)
+	for i := len(s.observed) - 1; i >= start; i-- {
+		item := s.observed[i]
+		records = append(records, outport.ShadowObservedRecord{
+			Envelope: item.Envelope,
+			Decision: item.Decision,
+		})
+	}
+	return records, nil
 }
 
 func (s *Store) AgentInbound() []model.MessageEnvelope {

@@ -13,8 +13,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from core.contracts import ContractFixture
 from bus.events import InboundItem, InboundMessage
+from core.contracts import ContractFixture
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,17 @@ class ShadowGatewayObserver:
             logger.warning("shadow gateway post failed: %s", exc)
 
 
+class ObservedSessionShadowMirror:
+    def __init__(self, observer: ShadowGatewayObserver) -> None:
+        self._observer = observer
+
+    async def __call__(self, session_key: str, message: Mapping[str, Any]) -> None:
+        inbound = session_message_to_shadow_inbound(session_key, message)
+        if inbound is None:
+            return
+        await self._observer(inbound)
+
+
 def build_shadow_gateway_observer(
     *,
     settings: ShadowGatewaySettings,
@@ -98,6 +109,52 @@ def build_shadow_gateway_observer(
         settings=settings,
         workspace=workspace,
         channel_account_ids=channel_account_ids,
+    )
+
+
+def session_message_to_shadow_inbound(
+    session_key: str,
+    message: Mapping[str, Any],
+) -> InboundMessage | None:
+    if str(message.get("role", "")) != "user":
+        return None
+    if _string_metadata(message).get("observe_only") != "true":
+        return None
+
+    channel, chat_id = _split_session_key(session_key)
+    metadata = _string_metadata(message.get("extra"))
+    for key, value in _string_metadata(message).items():
+        if key not in {
+            "id",
+            "session_key",
+            "seq",
+            "role",
+            "content",
+            "timestamp",
+            "ts",
+            "media",
+            "extra",
+            "tool_chain",
+        }:
+            metadata.setdefault(key, value)
+    metadata.setdefault("session_message_id", str(message.get("id", "")))
+    metadata.setdefault("session_key", session_key)
+    metadata.setdefault("seq", str(message.get("seq", "")))
+    media = [
+        str(item)
+        for item in (message.get("media") or [])
+        if isinstance(item, str) and item.strip()
+    ]
+    timestamp = _message_timestamp(message)
+    sender = metadata.get("sender_id") or metadata.get("user_id") or "unknown"
+    return InboundMessage(
+        channel=channel,
+        sender=sender,
+        chat_id=chat_id,
+        content=str(message.get("content") or ""),
+        timestamp=timestamp,
+        media=media,
+        metadata=metadata,
     )
 
 
@@ -204,6 +261,23 @@ def _string_metadata(metadata: Mapping[str, Any] | None) -> dict[str, str]:
         else:
             result[str(key)] = json.dumps(value, ensure_ascii=False, sort_keys=True)
     return result
+
+
+def _split_session_key(session_key: str) -> tuple[str, str]:
+    channel, sep, rest = session_key.partition(":")
+    if not sep:
+        return session_key, session_key
+    return channel, rest
+
+
+def _message_timestamp(message: Mapping[str, Any]) -> datetime:
+    raw = str(message.get("timestamp") or message.get("ts") or "").strip()
+    if raw:
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            pass
+    return datetime.now().astimezone()
 
 
 def _platform_for_channel(channel: str) -> str:

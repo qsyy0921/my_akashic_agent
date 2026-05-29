@@ -31,3 +31,4 @@ Current architecture review sequence:
 - `2026-05-30-round5-overall-readiness-review.md`
 - `2026-05-30-phase1-contract-model-implementation.md`
 - `2026-05-30-phase2-shadow-mode-implementation.md`
+- `2026-05-30-phase2-1-observe-only-shadow-coverage.md`
