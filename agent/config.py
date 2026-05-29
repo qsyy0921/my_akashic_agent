@@ -14,6 +14,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from agent.config_models import (
+    AgentGatewayIntegrationConfig,
     ChannelsConfig,
     ChatGPTProxyIntegrationConfig,
     Config,
@@ -96,6 +97,7 @@ def load_config(path: str | Path = "config.toml") -> Config:
     chatgpt_proxy = _load_chatgpt_proxy_config(data)
     ragflow = _load_ragflow_config(data)
     shadow_gateway = _load_shadow_gateway_config(data)
+    agent_gateway = _load_agent_gateway_config(data)
     wiring = _load_wiring_config(data)
 
     return Config(
@@ -148,6 +150,7 @@ def load_config(path: str | Path = "config.toml") -> Config:
         chatgpt_proxy=chatgpt_proxy,
         ragflow=ragflow,
         shadow_gateway=shadow_gateway,
+        agent_gateway=agent_gateway,
         tool_search_enabled=bool(
             agent_tools.get("search_enabled", data.get("tool_search_enabled", False))
         ),
@@ -451,6 +454,24 @@ def _load_shadow_gateway_config(data: dict) -> ShadowGatewayIntegrationConfig:
         log_path=str(raw.get("log_path", "shadow/inbound.jsonl")),
         request_timeout_seconds=float(raw.get("request_timeout_seconds", 2.0)),
         agent_id=str(raw.get("agent_id", "shadow") or "shadow"),
+    )
+
+
+def _load_agent_gateway_config(data: dict) -> AgentGatewayIntegrationConfig:
+    integrations = _as_dict(data.get("integrations"))
+    raw = _as_dict(integrations.get("agent_gateway"))
+    return AgentGatewayIntegrationConfig(
+        enabled=bool(raw.get("enabled", False)),
+        base_url=_resolve_optional_string(
+            raw.get("base_url", "http://127.0.0.1:8780")
+        )
+        or "http://127.0.0.1:8780",
+        request_timeout_seconds=float(raw.get("request_timeout_seconds", 5.0)),
+        worker_id=str(
+            raw.get("worker_id", "akashic-python-worker")
+            or "akashic-python-worker"
+        ),
+        lease_ttl_seconds=int(raw.get("lease_ttl_seconds", 300)),
     )
 
 

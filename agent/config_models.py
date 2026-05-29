@@ -132,6 +132,15 @@ class ShadowGatewayIntegrationConfig:
 
 
 @dataclass
+class AgentGatewayIntegrationConfig:
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:8780"
+    request_timeout_seconds: float = 5.0
+    worker_id: str = "akashic-python-worker"
+    lease_ttl_seconds: int = 300
+
+
+@dataclass
 class PeerAgentConfig:
     name: str
     base_url: str
@@ -187,6 +196,9 @@ class Config:
     shadow_gateway: ShadowGatewayIntegrationConfig = field(
         default_factory=ShadowGatewayIntegrationConfig
     )
+    agent_gateway: AgentGatewayIntegrationConfig = field(
+        default_factory=AgentGatewayIntegrationConfig
+    )
     multimodal: bool = True
     vl_model: str = ""
     vl_api_key: str = ""
@@ -212,6 +224,7 @@ __all__ = [
     "ChatGPTProxyIntegrationConfig",
     "RAGFlowIntegrationConfig",
     "ShadowGatewayIntegrationConfig",
+    "AgentGatewayIntegrationConfig",
     "MemoryConfig",
     "MemoryEmbeddingConfig",
     "PeerAgentConfig",

@@ -481,6 +481,42 @@ def test_config_load_reads_ragflow_integration_block(
     assert cfg.ragflow.request_timeout_seconds == 70
 
 
+def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "integrations": {
+                "agent_gateway": {
+                    "enabled": True,
+                    "base_url": "http://127.0.0.1:8780",
+                    "request_timeout_seconds": 9,
+                    "worker_id": "worker-test",
+                    "lease_ttl_seconds": 180,
+                }
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.agent_gateway.enabled is True
+    assert cfg.agent_gateway.base_url == "http://127.0.0.1:8780"
+    assert cfg.agent_gateway.request_timeout_seconds == 9
+    assert cfg.agent_gateway.worker_id == "worker-test"
+    assert cfg.agent_gateway.lease_ttl_seconds == 180
+
+
 def test_config_load_reads_toml_layout(tmp_path: Path):
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text(

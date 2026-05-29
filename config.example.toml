@@ -219,6 +219,15 @@ log_path = "shadow/inbound.jsonl"
 request_timeout_seconds = 2
 agent_id = "shadow"
 
+[integrations.agent_gateway]
+# Python worker 消费 Go agent-gateway 的任务控制面。
+# 用于 image_generation / media_vision / group_memory_extract / rag_ingest 等长任务。
+enabled = false
+base_url = "http://127.0.0.1:8780"
+request_timeout_seconds = 5
+worker_id = "akashic-python-worker"
+lease_ttl_seconds = 300
+
 # 可选：接入外部 Peer Agent（如 DeepResearch）
 # [[integrations.peer_agents]]
 # name = "DeepResearch Agent"
