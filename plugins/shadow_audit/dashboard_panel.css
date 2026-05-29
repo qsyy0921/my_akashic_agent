@@ -1,0 +1,69 @@
+.shadow-source-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shadow-source-gateway {
+  color: #1f4d2a;
+  background: #d9f1dd;
+}
+
+.shadow-source-jsonl {
+  color: #4d391f;
+  background: #f2e6cf;
+}
+
+.shadow-filter-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shadow-filter {
+  display: grid;
+  gap: 3px;
+  min-width: 160px;
+}
+
+.shadow-filter-source {
+  min-width: 96px;
+}
+
+.shadow-filter span {
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.shadow-filter input,
+.shadow-filter select {
+  height: 32px;
+}
+
+.shadow-attachment-list {
+  display: grid;
+  gap: 6px;
+}
+
+.shadow-attachment-row {
+  display: block;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.shadow-attachment-row:hover {
+  border-color: var(--accent);
+}
