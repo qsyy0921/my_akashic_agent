@@ -322,6 +322,9 @@ def _build_agent_gateway_knowledge_worker_tasks(
     agent_gateway = getattr(config, "agent_gateway", None)
     if agent_gateway is None or not bool(getattr(agent_gateway, "enabled", False)):
         return [], None
+    if not str(getattr(agent_gateway, "base_url", "")).strip():
+        logger.warning("agent_gateway 已启用但 base_url 为空，跳过 knowledge worker")
+        return [], None
     group_accounts = _observe_only_qq_group_accounts(config)
     if not group_accounts:
         return [], None
