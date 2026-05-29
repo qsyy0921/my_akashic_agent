@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	addr := envOrDefault("AKASHIC_GATEWAY_ADDR", ":8780")
+	addr := envOrFirstDefault([]string{"AKASHIC_RUNTIME_ADDR", "AKASHIC_GATEWAY_ADDR"}, ":8780")
 	botIDs := csvEnvOrDefault("AKASHIC_BOT_IDS", []string{"1049511700", "2365524513"})
 
 	store := memory.NewStore()
@@ -63,12 +63,13 @@ func main() {
 	}
 }
 
-func envOrDefault(key string, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
+func envOrFirstDefault(keys []string, fallback string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
 	}
-	return value
+	return fallback
 }
 
 func newAgentJobRepository() (outport.AgentJobRepository, error) {

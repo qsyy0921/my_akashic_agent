@@ -49,6 +49,8 @@ Default address:
 Override with:
 
 ```powershell
+$env:AKASHIC_RUNTIME_ADDR = ":8780"   # 推荐
+# 或兼容旧命名（仍可用）
 $env:AKASHIC_GATEWAY_ADDR = ":8780"
 ```
 
