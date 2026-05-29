@@ -73,6 +73,16 @@ With this environment variable set, `/v1/jobs` and related lifecycle endpoints u
 the file-backed `AgentJob` store so pending/running/failed work remains
 recoverable after restart.
 
+Persist media asset metadata across runtime restarts:
+
+```powershell
+$env:AKASHIC_MEDIA_ASSETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\media-assets.json"
+```
+
+With this environment variable set, `/v1/media-assets` and automatic attachment
+registration use the file-backed media registry. Use `memory` only for
+development runs where restart recovery is not required.
+
 ## HTTP Contracts
 
 Health:

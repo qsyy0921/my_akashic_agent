@@ -2,8 +2,8 @@
 
 ## Status
 
-Implemented through metadata registry. Current slice adds controlled local
-content access through Go `agent-runtime`.
+Implemented through metadata registry, controlled local content access, and
+file-backed registry persistence in Go `agent-runtime`.
 
 ## Context
 
@@ -54,6 +54,13 @@ Message ingest registers every envelope attachment as a `MediaAsset`:
 
 Registration is idempotent. Existing asset ids are not overwritten by later
 duplicate message delivery.
+
+The media registry repository can be backed by a durable JSON file. Configure
+`AKASHIC_MEDIA_ASSETS_DSN` or `AKASHIC_MEDIA_ASSETS_PATH`; the special value
+`memory` keeps development-only in-memory behavior. Runtime startup must pass
+the same repository to message ingest and media API services so shadow
+registration, manual registration, query, and content access share one
+authoritative registry.
 
 ## HTTP Contract
 
@@ -126,11 +133,12 @@ Akashic asset id remains the primary contract.
 - Content route returns `404` for missing or unsupported local content.
 - Shadow message ingest automatically registers attachments into the media
   registry.
+- File-backed media registry survives `agent-runtime` restart.
 
 ## Migration Plan
 
 1. Add Go domain/app/API/media registry with in-memory store.
-2. Add JSONL or SQLite persistence.
+2. Add JSON file persistence.
 3. Mirror Python-captured QQ attachments to `/v1/media-assets` in shadow mode.
 4. Add controlled bytes endpoint.
 5. Add dashboard panel/link rendering through Go metadata.

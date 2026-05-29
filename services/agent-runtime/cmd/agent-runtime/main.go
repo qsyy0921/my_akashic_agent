@@ -14,6 +14,7 @@ import (
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
+	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
@@ -43,6 +44,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init agent job repository: %v", err)
 	}
+	mediaAssetRepository, err := newMediaAssetRepository()
+	if err != nil {
+		log.Fatalf("init media asset repository: %v", err)
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
@@ -51,7 +56,7 @@ func main() {
 		store,
 		classifier,
 		loopGuard,
-		store,
+		mediaAssetRepository,
 	)
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
@@ -60,7 +65,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
 	}
-	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, mediaContentReader)
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
 	agentJobs := appservice.NewAgentJobService(agentJobRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
@@ -92,6 +97,20 @@ func newAgentJobRepository() (outport.AgentJobRepository, error) {
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOBS_PATH")); path != "" {
 		return agentjobstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newMediaAssetRepository() (outport.MediaAssetRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_MEDIA_ASSETS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return mediaassetstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_MEDIA_ASSETS_PATH")); path != "" {
+		return mediaassetstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

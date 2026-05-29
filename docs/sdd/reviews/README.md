@@ -49,3 +49,4 @@ Current architecture review sequence:
 - `2026-05-30-phase7-6-go-agent-job-persistence.md`
 - `2026-05-30-phase8-1-go-media-content-access.md`
 - `2026-05-30-phase8-2-go-shadow-media-registration.md`
+- `2026-05-30-phase8-3-go-media-registry-persistence.md`
