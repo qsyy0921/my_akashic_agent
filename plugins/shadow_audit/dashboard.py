@@ -28,8 +28,12 @@ class ShadowAuditDashboardReader:
         self.workspace = workspace
         self.gateway_base_url = _clean_base_url(
             gateway_base_url
+            or os.environ.get("AKASHIC_AGENT_RUNTIME_URL", "")
+            or os.environ.get("AKASHIC_RUNTIME_BASE_URL", "")
+            or os.environ.get("AKASHIC_SHADOW_RUNTIME_URL", "")
             or os.environ.get("AKASHIC_SHADOW_GATEWAY_URL", "")
             or os.environ.get("AKASHIC_GATEWAY_BASE_URL", "")
+            or os.environ.get("AKASHIC_AGENT_GATEWAY_URL", "")
             or _DEFAULT_GATEWAY_BASE_URL
         )
         self.request_timeout_seconds = max(0.05, request_timeout_seconds)
@@ -187,7 +191,7 @@ def _normalize_record(record: Mapping[str, Any], *, source: str) -> dict[str, An
     sender = _mapping_or_empty(record.get("sender"))
     channel = _mapping_or_empty(record.get("channel"))
     attachments = [
-        cast(dict[str, Any], dict(item))
+        _normalize_attachment(cast(Mapping[str, Any], item))
         for item in _sequence_or_empty(record.get("attachments"))
         if isinstance(item, Mapping)
     ]
@@ -217,6 +221,19 @@ def _normalize_record(record: Mapping[str, Any], *, source: str) -> dict[str, An
         "metadata": metadata,
         "source": source,
     }
+
+
+def _normalize_attachment(attachment: Mapping[str, Any]) -> dict[str, Any]:
+    item = dict(attachment)
+    asset_id = _text(item.get("id") or item.get("asset_id"))
+    if asset_id and not _text(item.get("content_url")):
+        item["content_url"] = _media_asset_content_url(asset_id)
+    return item
+
+
+def _media_asset_content_url(asset_id: str) -> str:
+    encoded = urllib.parse.quote(asset_id, safe="")
+    return f"/api/dashboard/media-assets/content?asset_id={encoded}"
 
 
 def _matches_filters(

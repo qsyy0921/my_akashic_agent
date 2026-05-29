@@ -96,6 +96,25 @@ Allowed roots are configured by `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated
 list. If omitted, the local runtime defaults to Akashic workspace upload
 directories under the repository root.
 
+Dashboard must use same-origin links and treat Go as the authority for media
+bytes:
+
+```text
+GET /api/dashboard/media-assets/content?asset_id={asset_id}
+```
+
+The Python dashboard endpoint is only a thin proxy to:
+
+```text
+GET /v1/media-assets/{asset_id}/content
+```
+
+It must not serve arbitrary attachment paths for Go-registered assets, must not
+fetch remote platform URLs directly, and must preserve the upstream content type
+and content disposition when Go returns bytes. Shadow audit attachment metadata
+adds `content_url` when an `asset_id` is present, and dashboard panels should
+prefer `content_url` over raw `url`.
+
 ## Asset ID
 
 Asset ids are stable and account-aware:
@@ -134,6 +153,9 @@ Akashic asset id remains the primary contract.
 - Shadow message ingest automatically registers attachments into the media
   registry.
 - File-backed media registry survives `agent-runtime` restart.
+- Shadow audit dashboard emits same-origin `content_url` links for asset ids.
+- Dashboard media proxy forwards bytes from Go content routes and maps upstream
+  content errors without exposing local file paths.
 
 ## Migration Plan
 

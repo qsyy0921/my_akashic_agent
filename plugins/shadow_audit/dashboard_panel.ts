@@ -4,6 +4,7 @@ interface ShadowAttachment {
   id?: string;
   kind?: string;
   url?: string;
+  content_url?: string;
   mime_type?: string;
   name?: string;
 }
@@ -68,7 +69,7 @@ function _renderAttachments(item: ShadowAuditRecord): string {
     <div class="shadow-attachment-list">
       ${attachments.map((attachment, index) => {
         const name = attachment.name || attachment.id || `attachment-${index + 1}`;
-        const url = attachment.url || "";
+        const url = attachment.content_url || attachment.url || "";
         const mime = attachment.mime_type || attachment.kind || "file";
         const label = `${name} (${mime})`;
         if (!url) {

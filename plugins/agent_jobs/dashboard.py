@@ -27,6 +27,8 @@ class AgentJobsDashboardReader:
         self.workspace = workspace
         self.gateway_base_url = _clean_base_url(
             gateway_base_url
+            or os.environ.get("AKASHIC_AGENT_RUNTIME_URL", "")
+            or os.environ.get("AKASHIC_RUNTIME_BASE_URL", "")
             or os.environ.get("AKASHIC_GATEWAY_BASE_URL", "")
             or os.environ.get("AKASHIC_AGENT_GATEWAY_URL", "")
             or _DEFAULT_GATEWAY_BASE_URL

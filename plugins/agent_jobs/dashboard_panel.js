@@ -1,6 +1,5 @@
 "use strict";
-var AkashicDashboardAgentJobsPlugin = (() => {
-  // plugins/agent_jobs/dashboard_panel.ts
+(() => {
   function _jobRoute(item) {
     const route = item.route || {};
     const kind = route.kind || item.route_kind || "-";

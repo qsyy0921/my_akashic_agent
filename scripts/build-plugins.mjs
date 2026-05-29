@@ -12,11 +12,24 @@ const localEsbuild = join(
   ".bin",
   isWindows ? "esbuild.cmd" : "esbuild",
 );
+const localEsbuildNodeBin = join(
+  projectRoot,
+  "node_modules",
+  "esbuild",
+  "bin",
+  "esbuild",
+);
 
 const watchMode = process.argv.includes("--watch");
 
 function resolveEsbuildCommand() {
+  if (existsSync(localEsbuildNodeBin)) {
+    return ["node", localEsbuildNodeBin];
+  }
   if (existsSync(localEsbuild)) {
+    if (isWindows) {
+      return ["cmd.exe", "/d", "/s", "/c", localEsbuild];
+    }
     return [localEsbuild];
   }
   if (isWindows) {

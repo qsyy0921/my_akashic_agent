@@ -13,6 +13,9 @@ import sys
 import threading
 import os
 import shutil
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import timedelta
 from types import ModuleType
 from typing import Any, Protocol, cast
@@ -35,6 +38,8 @@ from session.store import SessionStore
 logger = logging.getLogger(__name__)
 
 _DASHBOARD_ACCESS_PREFIXES = ("/api/dashboard", "/assets", "/plugins/")
+_DEFAULT_AGENT_RUNTIME_BASE_URL = "http://127.0.0.1:8780"
+_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS = 8.0
 
 
 def _is_plugin_disabled(plugin_dir: Path) -> bool:
@@ -84,6 +89,16 @@ def _install_dashboard_access_log_filter() -> None:
     ):
         return
     access_logger.addFilter(_DashboardAccessLogFilter())
+
+
+def _agent_runtime_base_url() -> str:
+    return (
+        os.environ.get("AKASHIC_AGENT_RUNTIME_URL", "")
+        or os.environ.get("AKASHIC_RUNTIME_BASE_URL", "")
+        or os.environ.get("AKASHIC_GATEWAY_BASE_URL", "")
+        or os.environ.get("AKASHIC_AGENT_GATEWAY_URL", "")
+        or _DEFAULT_AGENT_RUNTIME_BASE_URL
+    ).strip().rstrip("/")
 
 
 class SessionUpdatePayload(BaseModel):
@@ -556,9 +571,17 @@ _pending_plugins_lock = threading.Lock()
 
 
 def _esbuild_command(project_root: Path) -> list[str] | None:
+    node_bin = shutil.which("node")
+    package_bin = project_root / "node_modules" / "esbuild" / "bin" / "esbuild"
+    if node_bin and package_bin.exists():
+        return [node_bin, str(package_bin)]
     bin_name = "esbuild.cmd" if os.name == "nt" else "esbuild"
     local_bin = project_root / "node_modules" / ".bin" / bin_name
     if local_bin.exists():
+        if os.name == "nt":
+            cmd_bin = shutil.which("cmd.exe") or shutil.which("cmd")
+            if cmd_bin:
+                return [cmd_bin, "/d", "/s", "/c", str(local_bin)]
         return [str(local_bin)]
     if os.name == "nt":
         cmd_bin = shutil.which("cmd.exe") or shutil.which("cmd")
@@ -841,6 +864,51 @@ def create_dashboard_app(
             raise HTTPException(status_code=404, detail="附件不存在")
         media_type, _ = mimetypes.guess_type(candidate.name)
         return FileResponse(candidate, media_type=media_type or "application/octet-stream")
+
+    @app.get("/api/dashboard/media-assets/content")
+    def get_dashboard_media_asset_content(
+        asset_id: str = Query(..., min_length=1),
+    ) -> Response:
+        runtime_base_url = _agent_runtime_base_url()
+        if not runtime_base_url:
+            raise HTTPException(status_code=503, detail="agent-runtime 未配置")
+        encoded_asset_id = urllib.parse.quote(asset_id, safe="")
+        url = f"{runtime_base_url}/v1/media-assets/{encoded_asset_id}/content"
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+            ) as upstream:
+                body = upstream.read()
+                headers = getattr(upstream, "headers", {}) or {}
+        except urllib.error.HTTPError as exc:
+            detail = "agent-runtime media content 请求失败"
+            try:
+                raw = exc.read().decode("utf-8", errors="replace").strip()
+            except OSError:
+                raw = ""
+            if raw:
+                detail = raw[:500]
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
+        except (OSError, TimeoutError, urllib.error.URLError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"agent-runtime media content 不可用: {exc}",
+            ) from exc
+
+        content_type = ""
+        content_disposition = ""
+        if hasattr(headers, "get"):
+            content_type = str(headers.get("Content-Type") or "")
+            content_disposition = str(headers.get("Content-Disposition") or "")
+        response_headers: dict[str, str] = {}
+        if content_disposition:
+            response_headers["Content-Disposition"] = content_disposition
+        return Response(
+            content=body,
+            media_type=content_type or "application/octet-stream",
+            headers=response_headers,
+        )
 
     @app.get("/plugins/{plugin_id}/{panel_name}.js")
     def get_plugin_panel_js(plugin_id: str, panel_name: str) -> FileResponse:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 from fastapi.testclient import TestClient
 
@@ -58,7 +59,47 @@ def test_shadow_audit_dashboard_reads_jsonl_fallback(tmp_path, monkeypatch) -> N
     assert item["event_id"] == "qq:2365524513:group:27234224:msg-1"
     assert item["attachment_count"] == 1
     assert item["attachments"][0]["name"] == "photo.png"
+    assert item["attachments"][0]["content_url"] == (
+        "/api/dashboard/media-assets/content?asset_id=asset%3A1"
+    )
     assert item["metadata"]["observe_only"] == "true"
+
+
+def test_dashboard_media_asset_content_proxy_uses_agent_runtime(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, float | None]] = []
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        target = str(url)
+        parsed = urlparse(target)
+        calls.append((target, timeout))
+        assert parsed.scheme == "http"
+        assert parsed.netloc == "agent-runtime.local"
+        assert parsed.path == "/v1/media-assets/asset%3Aqq%3A1/content"
+        return _fake_bytes_response(
+            b"image-bytes",
+            {
+                "Content-Type": "image/png",
+                "Content-Disposition": 'inline; filename="photo.png"',
+            },
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://agent-runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": "asset:qq:1"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"image-bytes"
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.headers["content-disposition"] == 'inline; filename="photo.png"'
+    assert calls
 
 
 def test_shadow_audit_plugin_assets_are_exposed(tmp_path) -> None:
@@ -81,3 +122,19 @@ def test_shadow_audit_plugin_assets_are_exposed(tmp_path) -> None:
 def _write_shadow_line(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _fake_bytes_response(payload: bytes, headers: dict[str, str]):
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return payload
+
+    resp = _Resp()
+    resp.headers = headers
+    return resp
