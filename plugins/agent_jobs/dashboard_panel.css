@@ -1,0 +1,98 @@
+.agent-job-filter-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.agent-job-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-job-filter span {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.agent-job-filter input {
+  width: 100%;
+}
+
+.agent-job-empty,
+.agent-job-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-job-empty .detail-subtext,
+.agent-job-label {
+  color: var(--muted-text);
+}
+
+.agent-job-detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.agent-job-detail-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.agent-job-section {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.agent-job-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agent-job-label {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.agent-job-value {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.agent-job-json {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-job-error {
+  color: var(--danger);
+}
+
+.agent-status-pending {
+  color: #d97706;
+}
+
+.agent-status-running {
+  color: #0f766e;
+}
+
+.agent-status-succeeded {
+  color: #16a34a;
+}
+
+.agent-status-failed,
+.agent-status-dead_lettered,
+.agent-status-cancelled {
+  color: var(--danger);
+}

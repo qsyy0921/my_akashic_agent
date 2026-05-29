@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented.
+In progress.
 
 Implemented:
 
@@ -20,10 +20,12 @@ Implemented:
   generic jobs.
 - Agent jobs can be persisted in a file-backed store via `AKASHIC_AGENT_JOBS_DSN`
   (or `AKASHIC_AGENT_JOBS_PATH`) and recovered across gateway restarts.
+- Dashboard panel plugin (`plugins/agent_jobs`) provides job list/detail/retry/cancel
+  views under `/api/dashboard/agent-jobs` and exposes `dashboard_panel.*` assets.
 
 Pending:
 
-- Add persistence and dashboard job panel.
+- Add metrics for job throughput and dead-letter trending.
 
 ## Context
 
