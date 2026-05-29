@@ -1,4 +1,4 @@
-﻿package agentgateway_test
+﻿package agentruntime_test
 
 import (
 	"go/parser"
