@@ -46,3 +46,5 @@ Current architecture review sequence:
 - `2026-05-30-phase7-3-image-job-agent-job-bridge.md`
 - `2026-05-30-phase7-4-python-image-agent-worker.md`
 - `2026-05-30-phase7-5-knowledge-agent-worker.md`
+- `2026-05-30-phase7-6-go-agent-job-persistence.md`
+- `2026-05-30-phase8-1-go-media-content-access.md`

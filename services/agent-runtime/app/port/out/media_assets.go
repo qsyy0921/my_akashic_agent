@@ -1,9 +1,17 @@
-﻿package outport
+package outport
 
 import (
 	"context"
+	"errors"
+	"io"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
+)
+
+var (
+	ErrMediaAssetContentDisabled    = errors.New("media asset content access disabled")
+	ErrMediaAssetContentUnavailable = errors.New("media asset content unavailable")
+	ErrMediaAssetContentForbidden   = errors.New("media asset content forbidden")
 )
 
 type MediaAssetRepository interface {
@@ -12,3 +20,13 @@ type MediaAssetRepository interface {
 	ListMediaAssets(ctx context.Context, limit int) ([]model.MediaAsset, error)
 }
 
+type MediaAssetContent struct {
+	Name      string
+	MimeType  string
+	SizeBytes int64
+	Body      io.ReadCloser
+}
+
+type MediaAssetContentReader interface {
+	OpenMediaAssetContent(ctx context.Context, asset model.MediaAsset) (MediaAssetContent, error)
+}

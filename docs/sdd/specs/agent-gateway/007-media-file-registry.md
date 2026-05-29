@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft for review before implementation.
+Implemented through metadata registry. Current slice adds controlled local
+content access through Go `agent-runtime`.
 
 ## Context
 
@@ -56,14 +57,19 @@ Query one asset:
 GET /v1/media-assets/{asset_id}
 ```
 
-Future controlled bytes endpoint:
+Controlled bytes endpoint:
 
 ```text
 GET /v1/media-assets/{asset_id}/content
 ```
 
-The first implementation may return metadata only and reject `/content` unless
-a local safe path has been registered and access policy is implemented.
+The content route may serve only registered local files whose resolved path is
+inside configured media roots. Remote URLs, path traversal, directories, missing
+files, and files outside allowed roots are rejected.
+
+Allowed roots are configured by `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated
+list. If omitted, the local runtime defaults to Akashic workspace upload
+directories under the repository root.
 
 ## Asset ID
 
@@ -79,8 +85,12 @@ Akashic asset id remains the primary contract.
 ## Safety Rules
 
 - Dashboard must not expose arbitrary local paths as direct links.
-- Content routes must reject path traversal and paths outside the configured
-  workspace asset directory.
+- Content routes must reject path traversal and paths outside configured media
+  roots after absolute path resolution.
+- Content routes must serve files with registered or detected MIME type and an
+  inline `Content-Disposition` so dashboard links can preview images directly.
+- Content routes must not fetch remote URLs; download workers can mirror remote
+  platform URLs into safe local roots before registration.
 - Observe-only groups can register assets but must not trigger group replies.
 - Python vision/RAG workers consume asset ids and request bytes through Go
   routes after content access policy exists.
@@ -93,7 +103,9 @@ Akashic asset id remains the primary contract.
 - Listing returns newest assets first.
 - Asset query includes account id, conversation id, kind, file name, and source
   message id.
-- Content route is not enabled before access policy is implemented.
+- Content route returns bytes for safe local files.
+- Content route returns `403` for paths outside allowed roots.
+- Content route returns `404` for missing or unsupported local content.
 
 ## Migration Plan
 

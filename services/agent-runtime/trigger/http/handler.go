@@ -1,7 +1,10 @@
-﻿package httptrigger
+package httptrigger
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +13,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/api/dto"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	inport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/in"
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/types"
 )
@@ -330,7 +334,7 @@ func MediaAssetStateHandler(mediaAssets inport.MediaAssetManager) http.Handler {
 			return
 		}
 		if action == "content" {
-			http.Error(w, "media asset content route is not enabled", http.StatusNotImplemented)
+			writeMediaAssetContent(w, r, mediaAssets, assetID)
 			return
 		}
 		if action != "" {
@@ -347,6 +351,43 @@ func MediaAssetStateHandler(mediaAssets inport.MediaAssetManager) http.Handler {
 			Data: asset,
 		})
 	})
+}
+
+func writeMediaAssetContent(
+	w http.ResponseWriter,
+	r *http.Request,
+	mediaAssets inport.MediaAssetManager,
+	assetID string,
+) {
+	content, err := mediaAssets.OpenContent(r.Context(), assetID)
+	if err != nil {
+		switch {
+		case errors.Is(err, outport.ErrMediaAssetContentDisabled):
+			http.Error(w, err.Error(), http.StatusNotImplemented)
+		case errors.Is(err, outport.ErrMediaAssetContentForbidden):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		case errors.Is(err, outport.ErrMediaAssetContentUnavailable):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusNotFound)
+		}
+		return
+	}
+	defer content.Body.Close()
+	if content.MimeType != "" {
+		w.Header().Set("Content-Type", content.MimeType)
+	}
+	if content.SizeBytes >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(content.SizeBytes, 10))
+	}
+	if content.Name != "" {
+		w.Header().Set(
+			"Content-Disposition",
+			mime.FormatMediaType("inline", map[string]string{"filename": content.Name}),
+		)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, content.Body)
 }
 
 func parseMediaAssetPath(path string) (string, string) {
@@ -888,4 +929,3 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
-

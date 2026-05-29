@@ -119,8 +119,11 @@ GET  /v1/media-assets/{asset_id}/content
 ```
 
 The first media registry slice is metadata-only. The `/content` route returns
-`501 Not Implemented` until workspace path validation and controlled asset
-access are reviewed and tested.
+bytes only for registered local files under configured safe roots. Configure
+roots with `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated list. If omitted,
+local runs allow Akashic workspace upload directories under the repository root.
+Remote platform URLs must be mirrored into a safe root before the content route
+will serve them.
 
 Create and lease generic agent jobs:
 

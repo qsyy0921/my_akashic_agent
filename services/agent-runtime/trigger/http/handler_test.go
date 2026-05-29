@@ -1,15 +1,18 @@
-﻿package httptrigger_test
+package httptrigger_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
@@ -220,7 +223,16 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	}
 }
 
-func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
+func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
+	assetRoot := t.TempDir()
+	assetPath := filepath.Join(assetRoot, "qq-image.txt")
+	if err := os.WriteFile(assetPath, []byte("qq image bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	contentReader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
 		store,
@@ -233,7 +245,7 @@ func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
 	outbox := appservice.NewOutboxService(store, store)
-	mediaAssets := appservice.NewMediaAssetService(store)
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, contentReader)
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
@@ -249,9 +261,9 @@ func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
 		"source_message_id": "qq:gqq:27234224:498",
 		"sender_id":         "2948770636",
 		"kind":              "image",
-		"url":               "https://example.invalid/qq-image.png",
-		"mime_type":         "image/png",
-		"name":              "qq-image.png",
+		"url":               assetPath,
+		"mime_type":         "text/plain",
+		"name":              "qq-image.txt",
 		"index":             1,
 		"timestamp":         time.Now().UTC().Format(time.RFC3339Nano),
 	}
@@ -283,14 +295,20 @@ func TestMediaAssetEndpointRegistersListsAndRejectsContentRoute(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected list 200, got %d: %s", response.Code, response.Body.String())
 	}
-	if !bytes.Contains(response.Body.Bytes(), []byte("qq-image.png")) {
+	if !bytes.Contains(response.Body.Bytes(), []byte("qq-image.txt")) {
 		t.Fatalf("list response missing file name: %s", response.Body.String())
 	}
 
 	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/"+assetID+"/content", nil))
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("content route must not be enabled yet, got %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if response.Body.String() != "qq image bytes" {
+		t.Fatalf("unexpected content body: %s", response.Body.String())
+	}
+	if got := response.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("unexpected content type: %s", got)
 	}
 }
 
@@ -366,4 +384,3 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 		t.Fatalf("succeeded response missing status: %s", response.Body.String())
 	}
 }
-

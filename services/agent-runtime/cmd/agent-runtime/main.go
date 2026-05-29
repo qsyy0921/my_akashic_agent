@@ -1,9 +1,10 @@
-﻿package main
+package main
 
 import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
@@ -53,7 +55,11 @@ func main() {
 	sender := appservice.NewMessageSendService(store, store, store, store)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxService(store, store)
-	mediaAssets := appservice.NewMediaAssetService(store)
+	mediaContentReader, err := newMediaAssetContentReader()
+	if err != nil {
+		log.Fatalf("init media content reader: %v", err)
+	}
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, mediaContentReader)
 	agentJobs := appservice.NewAgentJobService(agentJobRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
@@ -89,6 +95,23 @@ func newAgentJobRepository() (outport.AgentJobRepository, error) {
 	return memory.NewStore(), nil
 }
 
+func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
+	roots := csvEnvOrDefault("AKASHIC_MEDIA_ASSET_ROOTS", nil)
+	if len(roots) == 0 {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		repoRoot := filepath.Clean(filepath.Join(cwd, "..", ".."))
+		roots = []string{
+			filepath.Join(repoRoot, ".akashic-workspace", "uploads"),
+			filepath.Join(repoRoot, ".akashic-workspace", "generated_images"),
+			filepath.Join(repoRoot, "generated_images"),
+		}
+	}
+	return localmedia.NewReader(roots)
+}
+
 func csvEnvOrDefault(key string, fallback []string) []string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -108,4 +131,3 @@ func csvEnvOrDefault(key string, fallback []string) []string {
 	}
 	return result
 }
-

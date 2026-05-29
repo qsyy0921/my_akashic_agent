@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -15,11 +15,19 @@ import (
 )
 
 type MediaAssetService struct {
-	repository outport.MediaAssetRepository
+	repository    outport.MediaAssetRepository
+	contentReader outport.MediaAssetContentReader
 }
 
 func NewMediaAssetService(repository outport.MediaAssetRepository) *MediaAssetService {
 	return &MediaAssetService{repository: repository}
+}
+
+func NewMediaAssetServiceWithContent(
+	repository outport.MediaAssetRepository,
+	contentReader outport.MediaAssetContentReader,
+) *MediaAssetService {
+	return &MediaAssetService{repository: repository, contentReader: contentReader}
 }
 
 func (s *MediaAssetService) Register(ctx context.Context, cmd command.RegisterMediaAssetCommand) (query.MediaAssetView, error) {
@@ -90,6 +98,27 @@ func (s *MediaAssetService) List(ctx context.Context, limit int) ([]query.MediaA
 	return assembler.ToMediaAssetViews(items), nil
 }
 
+func (s *MediaAssetService) OpenContent(ctx context.Context, assetID string) (outport.MediaAssetContent, error) {
+	if s == nil || s.repository == nil {
+		return outport.MediaAssetContent{}, errors.New("media asset service requires repository")
+	}
+	if s.contentReader == nil {
+		return outport.MediaAssetContent{}, outport.ErrMediaAssetContentDisabled
+	}
+	assetID = strings.TrimSpace(assetID)
+	if assetID == "" {
+		return outport.MediaAssetContent{}, errors.New("media asset id required")
+	}
+	asset, ok, err := s.repository.FindMediaAsset(ctx, assetID)
+	if err != nil {
+		return outport.MediaAssetContent{}, err
+	}
+	if !ok {
+		return outport.MediaAssetContent{}, errors.New("media asset not found")
+	}
+	return s.contentReader.OpenMediaAssetContent(ctx, asset)
+}
+
 func generatedAssetID(cmd command.RegisterMediaAssetCommand) string {
 	index := cmd.Index
 	if index <= 0 {
@@ -115,4 +144,3 @@ func safeAssetPart(value string) string {
 	}
 	return value
 }
-
