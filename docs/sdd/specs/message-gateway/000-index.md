@@ -27,4 +27,6 @@ execution.
   dead-letter contract.
 - `007-media-file-registry.md`: Go-owned QQ/TG media/file asset ids, metadata,
   retention, and safe dashboard access rules.
+- `008-agent-job-orchestration.md`: Go-owned lifecycle, leasing, retry, and
+  dead-letter control plane for image/RAG/memory jobs.
 - Agent architecture boundary specs live under `../agent-architecture/`.
