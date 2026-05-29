@@ -29,6 +29,8 @@ plugins/*/plugin.disabled
 # 运行时产物
 logs/
 /logs
+.akashic-workspace/
+.tmp/
 workspace/
 data/
 **/.kv.json
@@ -42,7 +44,9 @@ plugins/**/.data/
 /evals/
 /tests/regression/
 /config.backup.20260301-063714.json
-/docs/
+/docs/*
+!/docs/sdd/
+!/docs/sdd/**
 /.pytest_artifacts/
 /rss/
 
