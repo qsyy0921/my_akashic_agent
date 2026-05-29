@@ -83,7 +83,7 @@ class ShadowGatewayObserver:
                 max(0.1, float(self._settings.request_timeout_seconds)),
             )
         except (OSError, urllib.error.URLError, TimeoutError) as exc:
-            logger.warning("shadow gateway post failed: %s", exc)
+            logger.warning("shadow runtime post failed: %s", exc)
 
 
 class ObservedSessionShadowMirror:

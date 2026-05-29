@@ -29,6 +29,7 @@ from agent.config_models import (
     QQGroupConfig,
     RAGFlowIntegrationConfig,
     ShadowGatewayIntegrationConfig,
+    ShadowRuntimeIntegrationConfig,
     TelegramChannelConfig,
     WechatWebhookChannelConfig,
     WiringConfig,
@@ -445,9 +446,14 @@ def _load_ragflow_config(data: dict) -> RAGFlowIntegrationConfig:
     )
 
 
-def _load_shadow_gateway_config(data: dict) -> ShadowGatewayIntegrationConfig:
+def _load_shadow_gateway_config(data: dict) -> ShadowRuntimeIntegrationConfig:
     integrations = _as_dict(data.get("integrations"))
-    raw = _as_dict(integrations.get("shadow_gateway"))
+    # 新命名优先：shadow_runtime；兼容历史配置 shadow_gateway。
+    raw = _as_dict(
+        integrations.get("shadow_runtime")
+        if "shadow_runtime" in integrations
+        else integrations.get("shadow_gateway")
+    )
     return ShadowGatewayIntegrationConfig(
         enabled=bool(raw.get("enabled", False)),
         endpoint=str(raw.get("endpoint", "http://127.0.0.1:8780/v1/shadow/inbound")),

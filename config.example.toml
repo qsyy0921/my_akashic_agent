@@ -210,7 +210,7 @@ default_similarity_threshold = 0.2
 default_vector_similarity_weight = 0.3
 request_timeout_seconds = 60
 
-[integrations.shadow_gateway]
+[integrations.shadow_runtime]
 # Phase 2 shadow mode：旁路镜像 Python 入站消息到 Go agent-runtime。
 # 默认关闭；启用后仍不改变现有回复路径。
 enabled = false
@@ -218,6 +218,14 @@ endpoint = "http://127.0.0.1:8780/v1/shadow/inbound"
 log_path = "shadow/inbound.jsonl"
 request_timeout_seconds = 2
 agent_id = "shadow"
+
+# 历史配置兼容（不再推荐）
+[integrations.shadow_gateway]
+# enabled = false
+# endpoint = "http://127.0.0.1:8780/v1/shadow/inbound"
+# log_path = "shadow/inbound.jsonl"
+# request_timeout_seconds = 2
+# agent_id = "shadow"
 
 [integrations.agent_runtime]
 # Python worker 消费 Go agent-runtime 的任务控制面。

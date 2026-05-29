@@ -131,6 +131,10 @@ class ShadowGatewayIntegrationConfig:
     agent_id: str = "shadow"
 
 
+# 兼容别名：shadow 旁路现在由 agent-runtime 承接，历史配置名仍可读取。
+ShadowRuntimeIntegrationConfig = ShadowGatewayIntegrationConfig
+
+
 @dataclass
 class AgentGatewayIntegrationConfig:
     enabled: bool = False
@@ -217,6 +221,10 @@ class Config:
     wiring: WiringConfig = field(default_factory=WiringConfig)
 
     @property
+    def shadow_runtime(self) -> ShadowRuntimeIntegrationConfig:
+        return self.shadow_gateway
+
+    @property
     def agent_runtime(self) -> AgentRuntimeIntegrationConfig:
         return self.agent_gateway
 
@@ -235,6 +243,7 @@ __all__ = [
     "ChatGPTProxyIntegrationConfig",
     "RAGFlowIntegrationConfig",
     "ShadowGatewayIntegrationConfig",
+    "ShadowRuntimeIntegrationConfig",
     "AgentGatewayIntegrationConfig",
     "AgentRuntimeIntegrationConfig",
     "MemoryConfig",

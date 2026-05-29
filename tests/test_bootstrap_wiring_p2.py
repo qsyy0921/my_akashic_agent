@@ -481,6 +481,45 @@ def test_config_load_reads_ragflow_integration_block(
     assert cfg.ragflow.request_timeout_seconds == 70
 
 
+def test_config_load_reads_shadow_runtime_integration_block_with_compatibility(
+    tmp_path: Path,
+):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "integrations": {
+                "shadow_runtime": {
+                    "enabled": True,
+                    "endpoint": "http://127.0.0.1:9898/v1/shadow/inbound",
+                    "log_path": "shadow/runtime.jsonl",
+                    "request_timeout_seconds": 7,
+                    "agent_id": "runtime-shadow",
+                }
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.shadow_gateway.enabled is True
+    assert cfg.shadow_gateway.endpoint == "http://127.0.0.1:9898/v1/shadow/inbound"
+    assert cfg.shadow_gateway.log_path == "shadow/runtime.jsonl"
+    assert cfg.shadow_gateway.request_timeout_seconds == 7
+    assert cfg.shadow_gateway.agent_id == "runtime-shadow"
+    assert cfg.shadow_runtime is cfg.shadow_gateway
+
+
 def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     cfg_path = tmp_path / "config.toml"
     _write_toml(

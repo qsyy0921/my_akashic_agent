@@ -569,15 +569,16 @@ def build_core_runtime(
     http_resources: SharedHttpResources,
 ) -> CoreRuntime:
     bus = MessageBus()
+    shadow_runtime = getattr(config, "shadow_runtime", config.shadow_gateway)
     shadow_observer = build_shadow_gateway_observer(
         settings=ShadowGatewaySettings(
-            enabled=bool(getattr(config.shadow_gateway, "enabled", False)),
-            endpoint=str(getattr(config.shadow_gateway, "endpoint", "")),
-            log_path=str(getattr(config.shadow_gateway, "log_path", "")),
+            enabled=bool(getattr(shadow_runtime, "enabled", False)),
+            endpoint=str(getattr(shadow_runtime, "endpoint", "")),
+            log_path=str(getattr(shadow_runtime, "log_path", "")),
             request_timeout_seconds=float(
-                getattr(config.shadow_gateway, "request_timeout_seconds", 2.0)
+                getattr(shadow_runtime, "request_timeout_seconds", 2.0)
             ),
-            agent_id=str(getattr(config.shadow_gateway, "agent_id", "shadow")),
+            agent_id=str(getattr(shadow_runtime, "agent_id", "shadow")),
         ),
         workspace=workspace,
         channel_account_ids=_shadow_channel_account_ids(config),
