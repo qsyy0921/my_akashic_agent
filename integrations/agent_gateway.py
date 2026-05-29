@@ -163,6 +163,55 @@ class AgentGatewayClient:
             json_body={"error_message": error_message},
         )
 
+    async def record_send(
+        self,
+        *,
+        from_bot_id: str,
+        conversation_id: str,
+        content: str = "",
+        content_hash: str = "",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "from_bot_id": str(from_bot_id),
+            "conversation_id": str(conversation_id),
+        }
+        if content_hash:
+            body["content_hash"] = str(content_hash)
+        else:
+            body["content"] = str(content)
+        return await self._request(
+            "POST",
+            "/v1/send-ledger/records",
+            json_body=body,
+        )
+
+    async def recently_sent(
+        self,
+        *,
+        from_bot_id: str,
+        conversation_id: str,
+        content: str = "",
+        content_hash: str = "",
+        window_seconds: int = 15,
+    ) -> bool:
+        params: dict[str, Any] = {
+            "from_bot_id": str(from_bot_id),
+            "conversation_id": str(conversation_id),
+            "window_seconds": max(1, int(window_seconds)),
+        }
+        if content_hash:
+            params["content_hash"] = str(content_hash)
+        else:
+            params["content"] = str(content)
+        data = await self._request(
+            "GET",
+            "/v1/send-ledger/recent",
+            params=params,
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime recent-send response is not an object")
+        return bool(data.get("recent"))
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 

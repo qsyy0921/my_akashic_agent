@@ -183,6 +183,8 @@ Deliverables:
 
 - Go send ledger control plane with durable `RecordSent`, `RecentlySent`, and
   read-only diagnostics.
+- Python compatibility QQ/Telegram senders record successful outbound messages
+  into the Go send ledger before SDK dispatch is fully migrated.
 - Go `DeliveryAdapter` implementations for NapCat and Telegram.
 - Python returns `AgentDecision` to Go.
 - Go dispatches text/files/images and records receipts.

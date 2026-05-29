@@ -141,6 +141,63 @@ async def test_agent_gateway_client_updates_legacy_image_job_state():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_records_and_checks_send_ledger():
+    calls: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        params = dict(request.url.params)
+        calls.append((request.method, request.url.path, body, params))
+        if request.url.path == "/v1/send-ledger/records":
+            assert body == {
+                "from_bot_id": "1049511700",
+                "conversation_id": "2365524513",
+                "content": "hello",
+            }
+            return httpx.Response(
+                202,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "from_bot_id": "1049511700",
+                        "conversation_id": "2365524513",
+                        "content_hash": "hash-1",
+                    },
+                },
+            )
+        if request.url.path == "/v1/send-ledger/recent":
+            assert params == {
+                "from_bot_id": "1049511700",
+                "conversation_id": "2365524513",
+                "window_seconds": "60",
+                "content": "hello",
+            }
+            return _ok({"recent": True, "content_hash": "hash-1"})
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+
+    recorded = await client.record_send(
+        from_bot_id="1049511700",
+        conversation_id="2365524513",
+        content="hello",
+    )
+    recent = await client.recently_sent(
+        from_bot_id="1049511700",
+        conversation_id="2365524513",
+        content="hello",
+        window_seconds=60,
+    )
+
+    assert recorded["content_hash"] == "hash-1"
+    assert recent is True
+    assert [call[1] for call in calls] == [
+        "/v1/send-ledger/records",
+        "/v1/send-ledger/recent",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_maps_empty_lease_to_no_job():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/jobs/lease-next"

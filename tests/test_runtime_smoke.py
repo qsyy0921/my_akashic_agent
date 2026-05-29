@@ -15,6 +15,7 @@ from agent.config import (
     ChannelsConfig,
     Config,
     DEFAULT_SOCKET,
+    AgentGatewayIntegrationConfig,
     QQBotChannelConfig,
     QQBotGroupConfig,
     QQChannelConfig,
@@ -428,6 +429,10 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
             ),
             socket=str(tmp_path / "sock"),
         ),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+        ),
     )
     resources = SharedHttpResources()
     event_bus = EventBus()
@@ -459,8 +464,10 @@ async def test_start_channels_wires_telegram_and_qq(monkeypatch, tmp_path):
     ]
     assert tg.kwargs["event_bus"] is event_bus
     assert tg.kwargs["interrupt_controller"] is controller
+    assert tg.kwargs["send_ledger_client"] is not None
     assert registrations[2] == ("feishu", ["stream_text", "text"])
     assert qq.kwargs["interrupt_controller"] is controller
+    assert qq.kwargs["send_ledger_client"] is tg.kwargs["send_ledger_client"]
     assert qqbot.kwargs["event_bus"] is event_bus
     assert qqbot.kwargs["interrupt_controller"] is controller
 

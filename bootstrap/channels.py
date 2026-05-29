@@ -48,6 +48,12 @@ async def start_channels(
     )
     print(f"Agent 已启动  |  CLI 连接地址: {config.channels.socket}")
 
+    send_ledger_client = None
+    if config.agent_runtime.enabled and str(config.agent_runtime.base_url or "").strip():
+        from integrations.agent_runtime import AgentRuntimeClient
+
+        send_ledger_client = AgentRuntimeClient(config.agent_runtime)
+
     tg_channel = None
     if config.channels.telegram and config.channels.telegram.token:
         from infra.channels.telegram_channel import TelegramChannel
@@ -62,6 +68,7 @@ async def start_channels(
             event_bus=event_bus,
             interrupt_controller=interrupt_controller,
             channel_name=tg.channel_name,
+            send_ledger_client=send_ledger_client,
         )
         try:
             await candidate.start()
@@ -154,6 +161,7 @@ async def start_channels(
                 channel_name=qq.channel_name,
                 websocket_uri=qq.websocket_uri,
                 websocket_token=qq.websocket_token,
+                send_ledger_client=send_ledger_client,
             )
             try:
                 await candidate.start()

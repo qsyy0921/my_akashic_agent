@@ -179,6 +179,8 @@ GET  /v1/send-ledger/recent?from_bot_id=1049511700&conversation_id=2365524513&co
 only `content` is provided, Go computes the same normalized content hash used by
 the loop guard. Python compatibility senders should call this endpoint after a
 successful QQ/Telegram send until platform dispatch is fully cut over to Go.
+When `integrations.agent_runtime.enabled=true`, the Python QQ and Telegram
+compatibility channels record successful sends here on a best-effort basis.
 
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:

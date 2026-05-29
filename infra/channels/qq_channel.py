@@ -65,6 +65,7 @@ _TRACE_THINKING_LIMIT = 500
 _TRACE_TOOL_RESULT_LIMIT = 120
 _TRACE_DEFAULT_ACTOR = "Akashic"
 _NCATBOT_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+_RUNTIME_ECHO_CHECK_TIMEOUT_S = 2.0
 
 
 @dataclass
@@ -462,6 +463,7 @@ class QQChannel:
         websocket_uri: str = "",
         websocket_token: str = "NcatBot",
         private_outbound_guard: RecentPrivateOutboundGuard | None = None,
+        send_ledger_client: Any | None = None,
     ) -> None:
         _ensure_ncatbot_log_format_env()
         from ncatbot.core import BotClient
@@ -471,6 +473,7 @@ class QQChannel:
         self._session_manager = session_manager
         self._bot_uin = bot_uin
         self._channel = str(channel_name or _CHANNEL)
+        self._send_ledger_client = send_ledger_client
         allowed_users = [str(user_id) for user_id in (allow_from or [])]
         self._allow_from: set[str] = set(allowed_users)
         self._bot_peer_ids: set[str] = {
@@ -589,6 +592,31 @@ class QQChannel:
                     self._bot_uin,
                 )
                 return
+            if self._send_ledger_client is not None:
+                try:
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._is_recent_akashic_private_echo_runtime(
+                            user_id,
+                            text,
+                            img_urls,
+                        ),
+                        self._require_main_loop(),
+                    )
+                    if future.result(timeout=_RUNTIME_ECHO_CHECK_TIMEOUT_S):
+                        logger.info(
+                            "[qq] runtime send ledger 忽略近期出站回流  channel=%s  from=%s  to_bot=%s",
+                            self._channel,
+                            user_id,
+                            self._bot_uin,
+                        )
+                        return
+                except Exception as exc:
+                    logger.warning(
+                        "[qq] runtime send ledger recent check failed channel=%s from=%s err=%s",
+                        self._channel,
+                        user_id,
+                        exc,
+                    )
             triggered = self._bot_peer_policy.normalize_private_text(
                 user_id=user_id,
                 text=text,
@@ -1083,6 +1111,7 @@ class QQChannel:
                     await self._run_on_bot_loop(
                         api.send_group_text(int(group_id), msg.content)
                     )
+                    await self._record_runtime_send(msg.chat_id, msg.content)
                 else:
                     logger.info(f"[qq] 私聊回复  user_id={msg.chat_id}  内容: {preview!r}")
                     await self._run_on_bot_loop(
@@ -1091,6 +1120,7 @@ class QQChannel:
                     self._private_outbound_guard.record(
                         self._bot_uin, msg.chat_id, msg.content
                     )
+                    await self._record_runtime_send(msg.chat_id, msg.content)
             except Exception as e:
                 logger.error(f"[qq] 发送失败  chat_id={msg.chat_id}  错误: {e}")
         for image in (msg.media or []):
@@ -1145,6 +1175,7 @@ class QQChannel:
         self._private_outbound_guard.record(
             self._bot_uin, chat_id, OUTBOUND_FORWARD_MARKER
         )
+        await self._record_runtime_send(chat_id, OUTBOUND_FORWARD_MARKER)
 
     def _trace_actor_name(self) -> str:
         cached = self._trace_actor_name_cache
@@ -1191,6 +1222,7 @@ class QQChannel:
         else:
             await self._run_on_bot_loop(api.send_private_text(int(chat_id), message))
             self._private_outbound_guard.record(self._bot_uin, chat_id, message)
+        await self._record_runtime_send(chat_id, message)
 
     async def send_file(
         self, chat_id: str, file_path: str, name: str | None = None
@@ -1208,6 +1240,7 @@ class QQChannel:
             self._private_outbound_guard.record(
                 self._bot_uin, chat_id, OUTBOUND_FILE_MARKER
             )
+        await self._record_runtime_send(chat_id, OUTBOUND_FILE_MARKER)
 
     async def send_image(self, chat_id: str, image: str) -> None:
         """发送图片，自动区分私聊/群聊"""
@@ -1222,6 +1255,57 @@ class QQChannel:
             await self._run_on_bot_loop(api.send_private_image(int(chat_id), uri))
             self._private_outbound_guard.record(
                 self._bot_uin, chat_id, OUTBOUND_IMAGE_MARKER
+            )
+        await self._record_runtime_send(chat_id, OUTBOUND_IMAGE_MARKER)
+
+    async def _is_recent_akashic_private_echo_runtime(
+        self,
+        user_id: str,
+        text: str,
+        img_urls: list[str] | None,
+    ) -> bool:
+        client = self._send_ledger_client
+        if client is None:
+            return False
+        content = str(text or "").strip()
+        if not content and img_urls:
+            content = OUTBOUND_IMAGE_MARKER
+        if not content:
+            return False
+        try:
+            return bool(
+                await client.recently_sent(
+                    from_bot_id=str(user_id),
+                    conversation_id=self._bot_uin,
+                    content=content,
+                    window_seconds=180,
+                )
+            )
+        except Exception as exc:
+            logger.warning(
+                "[qq] runtime send ledger recent check failed channel=%s from=%s err=%s",
+                self._channel,
+                user_id,
+                exc,
+            )
+            return False
+
+    async def _record_runtime_send(self, chat_id: str, content: str) -> None:
+        client = self._send_ledger_client
+        if client is None or not str(content or "").strip():
+            return
+        try:
+            await client.record_send(
+                from_bot_id=self._bot_uin,
+                conversation_id=_runtime_conversation_id(chat_id),
+                content=content,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[qq] runtime send ledger record failed channel=%s chat_id=%s err=%s",
+                self._channel,
+                chat_id,
+                exc,
             )
 
     def _require_main_loop(self) -> asyncio.AbstractEventLoop:
@@ -1250,3 +1334,10 @@ def _local_to_base64(path: str) -> str:
     """将本地文件编码为 NapCat 接受的 base64:// URI"""
     data = Path(path).read_bytes()
     return "base64://" + base64.b64encode(data).decode()
+
+
+def _runtime_conversation_id(chat_id: str) -> str:
+    value = str(chat_id)
+    if value.startswith(_GROUP_PREFIX):
+        return value[len(_GROUP_PREFIX) :]
+    return value

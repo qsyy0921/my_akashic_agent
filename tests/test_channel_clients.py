@@ -71,6 +71,21 @@ class _SessionManager:
         return []
 
 
+class _FakeSendLedger:
+    def __init__(self, *, recent: bool = False) -> None:
+        self.recent = recent
+        self.records: list[dict[str, Any]] = []
+        self.recent_queries: list[dict[str, Any]] = []
+
+    async def record_send(self, **kwargs) -> dict[str, Any]:
+        self.records.append(dict(kwargs))
+        return {"content_hash": "hash"}
+
+    async def recently_sent(self, **kwargs) -> bool:
+        self.recent_queries.append(dict(kwargs))
+        return self.recent
+
+
 def _http_requester(handler) -> HttpRequester:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpRequester(
@@ -1119,6 +1134,59 @@ async def test_telegram_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_telegram_channel_records_runtime_send_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    mod = _import_telegram_channel(monkeypatch)
+    bus = _Bus()
+    ledger = _FakeSendLedger()
+    session_manager = _SessionManager()
+    channel = mod.TelegramChannel(
+        "token",
+        bus,
+        session_manager,
+        send_ledger_client=ledger,
+    )
+    channel._telegram_outbound_limiter = mod.TelegramOutboundLimiter(
+        send_interval_s=0.0,
+        edit_interval_s=0.0,
+        typing_interval_s=0.0,
+        global_interval_s=0.0,
+        retry_padding_s=0.0,
+    )
+    monkeypatch.setattr(mod, "send_markdown", AsyncMock())
+    monkeypatch.setattr(mod, "send_stream_markdown", AsyncMock())
+    await channel.start()
+    sample = tmp_path / "doc.txt"
+    sample.write_text("x", encoding="utf-8")
+
+    await channel.send("123", "hi")
+    await channel.send_stream("123", "stream hi")
+    await channel.send_file("123", str(sample), name="doc.txt", caption="cap")
+    await channel.send_image("123", str(sample))
+    await channel._on_response(
+        OutboundMessage(channel="telegram", chat_id="123", content="pong")
+    )
+
+    assert [record["conversation_id"] for record in ledger.records] == [
+        "123",
+        "123",
+        "123",
+        "123",
+        "123",
+    ]
+    assert [record["content"] for record in ledger.records] == [
+        "hi",
+        "stream hi",
+        "cap",
+        "[图片]",
+        "pong",
+    ]
+    assert {record["from_bot_id"] for record in ledger.records} == {"telegram"}
+
+
+@pytest.mark.asyncio
 async def test_qq_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     mod = _import_qq_channel(monkeypatch)
     bus = _Bus()
@@ -1217,6 +1285,57 @@ async def test_qq_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         await mod.QQChannel._run_on_bot_loop(channel, pending)
     pending.close()
     await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_records_runtime_send_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    ledger = _FakeSendLedger()
+    channel = mod.QQChannel(
+        "42",
+        bus,
+        session_manager,
+        allow_from=["1"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        send_ledger_client=ledger,
+    )
+    await channel.start()
+
+    async def _drain(coro):
+        return await coro
+
+    channel._run_on_bot_loop = AsyncMock(side_effect=_drain)
+    sample = tmp_path / "image.bin"
+    sample.write_bytes(b"abc")
+
+    await channel.send("1", "pong")
+    await channel.send("gqq:100", "group pong")
+    await channel.send_file("1", str(sample), name="x.bin")
+    await channel.send_image("1", str(sample))
+
+    assert [record["from_bot_id"] for record in ledger.records] == [
+        "42",
+        "42",
+        "42",
+        "42",
+    ]
+    assert [record["conversation_id"] for record in ledger.records] == [
+        "1",
+        "100",
+        "1",
+        "1",
+    ]
+    assert [record["content"] for record in ledger.records] == [
+        "pong",
+        "group pong",
+        "[文件]",
+        "[图片]",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1347,6 +1466,52 @@ async def test_qq_channel_ignores_recent_private_outbound_echo(
         await asyncio.gather(*scheduled)
 
     assert bus.inbound == []
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_ignores_runtime_send_ledger_echo(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    ledger = _FakeSendLedger(recent=True)
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+        private_outbound_guard=mod.RecentPrivateOutboundGuard(),
+        send_ledger_client=ledger,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="Akashic 刚发出的回复")
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+    assert ledger.recent_queries == [
+        {
+            "from_bot_id": "1049511700",
+            "conversation_id": "2365524513",
+            "content": "Akashic 刚发出的回复",
+            "window_seconds": 180,
+        }
+    ]
 
 
 @pytest.mark.asyncio

@@ -59,6 +59,8 @@ _LIVE_STREAM_MIN_INTERVAL_S = 2.5
 _LIVE_STREAM_MIN_CHARS = 200
 _START_MAX_ATTEMPTS = 5
 _START_RETRY_DELAY_S = 3.0
+_OUTBOUND_IMAGE_MARKER = "[图片]"
+_OUTBOUND_FILE_MARKER = "[文件]"
 
 
 @dataclass
@@ -82,12 +84,14 @@ class TelegramChannel:
         event_bus: EventBus | None = None,
         interrupt_controller: InterruptController | None = None,
         channel_name: str = _CHANNEL,
+        send_ledger_client: Any | None = None,
     ) -> None:
         self._token = token
         self._bus = bus
         self._session_manager = session_manager
         self._interrupt_controller = interrupt_controller
         self._channel = channel_name
+        self._send_ledger_client = send_ledger_client
         self._allow_from: set[str] = set(allow_from) if allow_from else set()
         self._message_deduper = MessageDeduper(_SEEN_MSG_MAXSIZE)
         ws = getattr(session_manager, "workspace", None)
@@ -554,21 +558,25 @@ class TelegramChannel:
 
     async def send(self, chat_id: str, message: str) -> None:
         """发送文本消息（供 MessagePushTool 调用）"""
+        resolved = self._resolve_chat_id(chat_id)
         await send_markdown(
             self._app.bot,
-            self._resolve_chat_id(chat_id),
+            resolved,
             message,
             self._telegram_outbound_limiter,
         )
+        await self._record_runtime_send(resolved, message)
 
     async def send_stream(self, chat_id: str, message: str) -> None:
         """发送流式文本消息（私聊优先 draft，其他场景降级普通发送）"""
+        resolved = self._resolve_chat_id(chat_id)
         await send_stream_markdown(
             self._app.bot,
-            self._resolve_chat_id(chat_id),
+            resolved,
             message,
             self._telegram_outbound_limiter,
         )
+        await self._record_runtime_send(resolved, message)
 
     def create_stream_sender(self, chat_id: str):
         cid = int(self._resolve_chat_id(chat_id))
@@ -766,6 +774,7 @@ class TelegramChannel:
             label="send_document",
             action=lambda: self._send_document_file(cid, file_path, name, caption),
         )
+        await self._record_runtime_send(str(cid), caption or _OUTBOUND_FILE_MARKER)
 
     async def send_image(self, chat_id: str, image: str) -> None:
         """发送图片（本地路径或 URL）"""
@@ -784,6 +793,7 @@ class TelegramChannel:
                 label="send_photo",
                 action=lambda: self._send_photo_file(cid, image),
             )
+        await self._record_runtime_send(str(cid), _OUTBOUND_IMAGE_MARKER)
 
     async def _send_document_file(
         self,
@@ -826,6 +836,7 @@ class TelegramChannel:
                 stream = self._active_streams.pop(str(msg.chat_id), None)
                 if stream is not None:
                     await stream.finalize(msg.content)
+                    await self._record_runtime_send(str(msg.chat_id), msg.content)
                 else:
                     await send_markdown(
                         self._app.bot,
@@ -833,6 +844,7 @@ class TelegramChannel:
                         msg.content,
                         self._telegram_outbound_limiter,
                     )
+                    await self._record_runtime_send(str(msg.chat_id), msg.content)
             else:
                 await send_markdown(
                     self._app.bot,
@@ -840,6 +852,7 @@ class TelegramChannel:
                     msg.content,
                     self._telegram_outbound_limiter,
                 )
+                await self._record_runtime_send(str(msg.chat_id), msg.content)
         if final_thinking and not had_live:
             await self._send_final_thinking(cid, msg.chat_id, final_thinking)
         self._reply_buffers.pop(session_key, None)
@@ -849,6 +862,27 @@ class TelegramChannel:
                 await self.send_image(str(msg.chat_id), image)
             except Exception as e:
                 logger.warning(f"[telegram] meme 图片发送失败  chat_id={msg.chat_id}  path={image}  err={e}")
+
+    async def _record_runtime_send(self, chat_id: str, content: str) -> None:
+        client = self._send_ledger_client
+        if client is None or not str(content or "").strip():
+            return
+        try:
+            await client.record_send(
+                from_bot_id=self._runtime_bot_id(),
+                conversation_id=str(chat_id),
+                content=content,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[telegram] agent runtime send ledger record failed chat_id=%s err=%s",
+                chat_id,
+                exc,
+            )
+
+    def _runtime_bot_id(self) -> str:
+        bot_id = getattr(self._app.bot, "id", None)
+        return str(bot_id or self._channel)
 
     async def _safe_send_typing(
         self, context: ContextTypes.DEFAULT_TYPE, chat_id: int
