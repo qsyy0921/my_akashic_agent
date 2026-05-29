@@ -1031,3 +1031,104 @@ def test_build_registered_tools_without_mcp_toolset_still_returns_empty_registry
 
     assert mcp_registry is not None
     assert mcp_registry.list_servers() == "当前没有已注册的 MCP server。"
+
+
+def test_bootstrap_disables_group_memory_loop_when_agent_gateway_enabled(
+    tmp_path: Path,
+):
+    from bootstrap.app import (
+        _build_agent_gateway_knowledge_worker_tasks,
+        _build_group_memory_tasks,
+    )
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        Config,
+        ChannelsConfig,
+        QQChannelConfig,
+        QQGroupConfig,
+    )
+
+    config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            qq=QQChannelConfig(
+                bot_uin="1049511700",
+                groups=[QQGroupConfig(group_id="284331268", observe_only=True)],
+            )
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            request_timeout_seconds=5,
+            knowledge_job_interval_seconds=60,
+        ),
+    )
+
+    legacy_tasks, legacy_loop = _build_group_memory_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    assert legacy_tasks == []
+    assert legacy_loop is None
+
+    knowledge_tasks, knowledge_worker = _build_agent_gateway_knowledge_worker_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    for task in knowledge_tasks:
+        task.close()
+    assert len(knowledge_tasks) == 1
+    assert knowledge_worker is not None
+
+
+def test_bootstrap_runs_group_memory_loop_when_agent_gateway_disabled(
+    tmp_path: Path,
+):
+    from bootstrap.app import (
+        _build_agent_gateway_knowledge_worker_tasks,
+        _build_group_memory_tasks,
+    )
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        Config,
+        ChannelsConfig,
+        QQChannelConfig,
+        QQGroupConfig,
+    )
+
+    config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            qq=QQChannelConfig(
+                bot_uin="1049511700",
+                groups=[QQGroupConfig(group_id="284331268", observe_only=True)],
+            )
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(enabled=False),
+    )
+
+    legacy_tasks, legacy_loop = _build_group_memory_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    for task in legacy_tasks:
+        task.close()
+    assert len(legacy_tasks) == 1
+    assert legacy_loop is not None
+
+    knowledge_tasks, knowledge_worker = _build_agent_gateway_knowledge_worker_tasks(
+        config,
+        tmp_path,
+        session_store=SimpleNamespace(),
+    )
+    assert knowledge_tasks == []
+    assert knowledge_worker is None

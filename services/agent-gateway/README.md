@@ -26,9 +26,9 @@ domain         -> types only when unavoidable
 types          -> none
 ```
 
-The first implementation intentionally uses an in-memory event bus so the
-domain and app boundaries can be tested before NATS JetStream, NapCat adapters,
-and persistent audit storage are introduced.
+The implementation keeps message/event handling in-memory to keep startup simple,
+while durable control-plane job state can be enabled independently for
+`AgentJob` lifecycle records.
 
 ## Run Locally
 
@@ -60,6 +60,16 @@ $env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\gat
 
 When this variable is set, `/v1/shadow/observed` reads recent events from the
 JSONL audit file instead of the in-memory development store.
+
+Persist agent jobs across gateway restarts:
+
+```powershell
+$env:AKASHIC_AGENT_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\gateway\agent-jobs.json"
+```
+
+With this environment variable set, `/v1/jobs` and related lifecycle endpoints use
+the file-backed `AgentJob` store so pending/running/failed work remains
+recoverable after restart.
 
 ## HTTP Contracts
 

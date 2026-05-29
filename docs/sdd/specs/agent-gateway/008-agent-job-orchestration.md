@@ -18,6 +18,8 @@ Implemented:
   `group_memory_extract` and optional `rag_ingest` jobs, lease them from Go,
   execute group memory/RAGFlow indexing, and write lifecycle results back to
   generic jobs.
+- Agent jobs can be persisted in a file-backed store via `AKASHIC_AGENT_JOBS_DSN`
+  (or `AKASHIC_AGENT_JOBS_PATH`) and recovered across gateway restarts.
 
 Pending:
 
@@ -177,4 +179,5 @@ Go owns:
     configured default datasets.
   - [x] Python knowledge worker consumes both job types and writes results back
     to generic jobs without group-visible replies.
-- [ ] Add persistence and dashboard job panel.
+- [x] Add persistence.
+- [ ] Add dashboard job panel.
