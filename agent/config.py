@@ -459,7 +459,12 @@ def _load_shadow_gateway_config(data: dict) -> ShadowGatewayIntegrationConfig:
 
 def _load_agent_gateway_config(data: dict) -> AgentGatewayIntegrationConfig:
     integrations = _as_dict(data.get("integrations"))
-    raw = _as_dict(integrations.get("agent_gateway"))
+    # 新命名优先：agent_runtime；兼容历史配置 agent_gateway。
+    raw = _as_dict(
+        integrations.get("agent_runtime")
+        if "agent_runtime" in integrations
+        else integrations.get("agent_gateway")
+    )
     return AgentGatewayIntegrationConfig(
         enabled=bool(raw.get("enabled", False)),
         base_url=_resolve_optional_string(

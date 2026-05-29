@@ -142,6 +142,11 @@ class AgentGatewayIntegrationConfig:
     knowledge_job_interval_seconds: float = 60.0
 
 
+# 兼容别名：历史上该配置/集成在代码中叫 AgentGateway，运行时对外文档与目录使用
+# agent-runtime，使用别名避免一次性大规模迁移。
+AgentRuntimeIntegrationConfig = AgentGatewayIntegrationConfig
+
+
 @dataclass
 class PeerAgentConfig:
     name: str
@@ -211,6 +216,10 @@ class Config:
     peer_agents: list[PeerAgentConfig] = field(default_factory=list)
     wiring: WiringConfig = field(default_factory=WiringConfig)
 
+    @property
+    def agent_runtime(self) -> AgentRuntimeIntegrationConfig:
+        return self.agent_gateway
+
     @classmethod
     def load(cls, path: str | Path = "config.toml") -> Config:
         from importlib import import_module
@@ -227,6 +236,7 @@ __all__ = [
     "RAGFlowIntegrationConfig",
     "ShadowGatewayIntegrationConfig",
     "AgentGatewayIntegrationConfig",
+    "AgentRuntimeIntegrationConfig",
     "MemoryConfig",
     "MemoryEmbeddingConfig",
     "PeerAgentConfig",

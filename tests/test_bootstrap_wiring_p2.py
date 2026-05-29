@@ -521,6 +521,47 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
 
 
+def test_config_load_reads_agent_runtime_integration_block_with_compatibility(tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "integrations": {
+                "agent_runtime": {
+                    "enabled": True,
+                    "base_url": "http://127.0.0.1:9898",
+                    "request_timeout_seconds": 11,
+                    "worker_id": "runtime-worker",
+                    "lease_ttl_seconds": 99,
+                    "poll_interval_seconds": 4,
+                    "knowledge_job_interval_seconds": 45,
+                }
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.agent_gateway.enabled is True
+    assert cfg.agent_gateway.base_url == "http://127.0.0.1:9898"
+    assert cfg.agent_gateway.request_timeout_seconds == 11
+    assert cfg.agent_gateway.worker_id == "runtime-worker"
+    assert cfg.agent_gateway.lease_ttl_seconds == 99
+    assert cfg.agent_gateway.poll_interval_seconds == 4
+    assert cfg.agent_gateway.knowledge_job_interval_seconds == 45
+    assert cfg.agent_runtime is cfg.agent_gateway
+
+
 def test_config_load_reads_toml_layout(tmp_path: Path):
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text(
