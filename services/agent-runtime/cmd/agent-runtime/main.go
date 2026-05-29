@@ -57,7 +57,7 @@ func main() {
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs)
 
-	log.Printf("akashic agent gateway listening on %s; bot_ids=%s", addr, strings.Join(botIDs, ","))
+	log.Printf("akashic agent runtime listening on %s; bot_ids=%s", addr, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
