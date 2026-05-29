@@ -76,6 +76,31 @@ uv run python main.py
 
 给 bot 发一条消息即可开始对话。
 
+**可选：启动 Go Runtime**
+
+当你启用影子观察（Shadow）或 Go 侧任务控制面（如长耗时图片/媒体/群记忆任务）时，可按需启动：
+
+```bash
+# 推荐（Windows PowerShell）
+$goRoot = "$env:USERPROFILE\\.codex\\tools\\go1.26.3"
+$env:PATH = "$goRoot\\bin;$env:PATH"
+cd E:\agent\akashic\services\agent-runtime
+go run ./cmd/agent-runtime
+```
+
+也可先指定运行时监听地址（推荐新名字）：
+
+```bash
+$env:AKASHIC_RUNTIME_ADDR = ":8780"
+$env:AKASHIC_RUNTIME_ADDR = "127.0.0.1:8780"  # 需要绑定具体主机时
+```
+
+历史兼容写法仍可使用：
+
+```bash
+$env:AKASHIC_GATEWAY_ADDR = ":8780"
+```
+
 ---
 
 ## 系统全景

@@ -54,19 +54,19 @@ $env:AKASHIC_RUNTIME_ADDR = ":8780"   # 推荐
 $env:AKASHIC_GATEWAY_ADDR = ":8780"
 ```
 
-Persist shadow audit events across gateway restarts:
+Persist shadow audit events across runtime restarts:
 
 ```powershell
-$env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\gateway-audit.jsonl"
+$env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\runtime-audit.jsonl"
 ```
 
 When this variable is set, `/v1/shadow/observed` reads recent events from the
 JSONL audit file instead of the in-memory development store.
 
-Persist agent jobs across gateway restarts:
+Persist agent jobs across runtime restarts:
 
 ```powershell
-$env:AKASHIC_AGENT_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\gateway\agent-jobs.json"
+$env:AKASHIC_AGENT_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\agent-jobs.json"
 ```
 
 With this environment variable set, `/v1/jobs` and related lifecycle endpoints use
