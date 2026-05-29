@@ -7,6 +7,7 @@ import (
 
 	outport "github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/query"
+	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/domain/model"
 )
 
 type ShadowQueryService struct {
@@ -38,10 +39,29 @@ func (s *ShadowQueryService) ListObserved(ctx context.Context, limit int) ([]que
 			Content:          envelope.Content,
 			Timestamp:        envelope.Timestamp.Format(time.RFC3339Nano),
 			AttachmentCount:  len(envelope.Attachments),
+			Attachments:      toAttachmentViews(envelope.Attachments),
 			DecisionAction:   string(record.Decision.Action),
 			DecisionReason:   record.Decision.Reason,
 			Metadata:         envelope.Metadata,
 		})
 	}
 	return views, nil
+}
+
+func toAttachmentViews(attachments []model.Attachment) []query.ShadowAttachmentView {
+	if len(attachments) == 0 {
+		return nil
+	}
+	views := make([]query.ShadowAttachmentView, 0, len(attachments))
+	for _, attachment := range attachments {
+		views = append(views, query.ShadowAttachmentView{
+			ID:        attachment.ID,
+			Kind:      string(attachment.Kind),
+			URL:       attachment.URL,
+			MimeType:  attachment.MimeType,
+			Name:      attachment.Name,
+			SizeBytes: attachment.SizeBytes,
+		})
+	}
+	return views
 }

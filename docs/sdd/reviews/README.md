@@ -33,3 +33,4 @@ Current architecture review sequence:
 - `2026-05-30-phase2-shadow-mode-implementation.md`
 - `2026-05-30-phase2-1-observe-only-shadow-coverage.md`
 - `2026-05-30-phase2-2-shadow-dashboard-audit.md`
+- `2026-05-30-phase2-3-go-shadow-audit-jsonl.md`

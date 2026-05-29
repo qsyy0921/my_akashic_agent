@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/port/out"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/message-gateway/app/service"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/message-gateway/domain/service"
+	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/infrastructure/auditjsonl"
 	"github.com/kachofugetsu09/akashic-agent/services/message-gateway/infrastructure/memory"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/message-gateway/trigger/http"
 )
@@ -18,12 +20,23 @@ func main() {
 	botIDs := csvEnvOrDefault("AKASHIC_BOT_IDS", []string{"1049511700", "2365524513"})
 
 	store := memory.NewStore()
+	var auditLog outport.AuditLog = store
+	var shadowReader outport.ShadowAuditReader = store
+	if auditPath := strings.TrimSpace(os.Getenv("AKASHIC_SHADOW_AUDIT_PATH")); auditPath != "" {
+		auditStore, err := auditjsonl.NewStore(auditPath)
+		if err != nil {
+			log.Fatalf("init shadow audit jsonl store: %v", err)
+		}
+		auditLog = auditStore
+		shadowReader = auditStore
+		log.Printf("shadow audit jsonl enabled: %s", auditPath)
+	}
 	classifier := domainservice.NewProvenanceClassifier(botIDs)
 	loopGuard := domainservice.NewLoopGuard(botIDs, 15*time.Second, 6)
 
 	ingestor := appservice.NewMessageIngestService(
 		store,
-		store,
+		auditLog,
 		store,
 		store,
 		classifier,
@@ -31,7 +44,7 @@ func main() {
 	)
 	sender := appservice.NewMessageSendService(store, store)
 	imageJobs := appservice.NewImageJobService(store, store)
-	shadowQueries := appservice.NewShadowQueryService(store)
+	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs)

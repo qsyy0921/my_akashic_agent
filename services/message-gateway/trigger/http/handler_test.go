@@ -97,7 +97,16 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 			"id":   "2948770636",
 			"kind": "human",
 		},
-		"content":   "shadow group message",
+		"content": "shadow group message",
+		"attachments": []map[string]any{
+			{
+				"id":        "asset:qq:image:1",
+				"kind":      "image",
+				"url":       "file:///E:/agent/akashic/.tmp/image.png",
+				"mime_type": "image/png",
+				"name":      "image.png",
+			},
+		},
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 		"metadata":  map[string]string{"observe_only": "true"},
 	}
@@ -121,5 +130,8 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte("decision_action")) {
 		t.Fatalf("observed response missing decision fields: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("image.png")) {
+		t.Fatalf("observed response missing attachment metadata: %s", response.Body.String())
 	}
 }

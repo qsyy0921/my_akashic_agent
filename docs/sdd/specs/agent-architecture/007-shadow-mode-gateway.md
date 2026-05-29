@@ -28,6 +28,14 @@ Go owns:
 - observed/audit storage for comparison;
 - no production outbox behavior in this phase.
 
+Optional persistence:
+
+- `AKASHIC_SHADOW_AUDIT_PATH` enables a Go-side JSONL audit store.
+- The JSONL store implements the same audit/query ports as the in-memory
+  development store.
+- Persistence is for inspection and replay only; it must not become the
+  production inbox or outbox.
+
 ## Python Shadow Contract
 
 Every mirrored inbound event should include:
@@ -56,6 +64,8 @@ the Go API DTO can receive it without rejecting live platform-specific fields.
   and must not fail or delay normal agent processing.
 - Local JSONL logging is allowed even when the Go gateway is not running.
 - HTTP POST to Go is optional and controlled by configuration.
+- Go JSONL audit persistence is optional and must not change Python queueing,
+  replying, or observe-only behavior.
 
 ## Go Shadow Endpoint
 
@@ -76,4 +86,3 @@ the Go API DTO can receive it without rejecting live platform-specific fields.
   `drop` without forwarding to the agent.
 - A shadow endpoint failure does not prevent `MessageBus.consume_inbound`.
 - Existing production endpoints and channel behavior remain unchanged.
-

@@ -52,6 +52,15 @@ Override with:
 $env:AKASHIC_GATEWAY_ADDR = ":8780"
 ```
 
+Persist shadow audit events across gateway restarts:
+
+```powershell
+$env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\gateway-audit.jsonl"
+```
+
+When this variable is set, `/v1/shadow/observed` reads recent events from the
+JSONL audit file instead of the in-memory development store.
+
 ## HTTP Contracts
 
 Health:
