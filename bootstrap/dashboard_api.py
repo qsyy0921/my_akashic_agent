@@ -106,6 +106,26 @@ def _media_asset_content_url(asset_id: str) -> str:
     return f"/api/dashboard/media-assets/content?asset_id={encoded}"
 
 
+def _workspace_upload_response_for_asset_name(
+    workspace: Path,
+    asset_id: str,
+) -> FileResponse | None:
+    name = str(asset_id).strip()
+    if not name or name in {".", ".."}:
+        return None
+    if Path(name).name != name or PureWindowsPath(name).name != name:
+        return None
+    uploads_root = (workspace / "uploads").resolve()
+    try:
+        candidate = (uploads_root / name).resolve()
+    except OSError:
+        return None
+    if not _is_relative_to(candidate, uploads_root) or not candidate.is_file():
+        return None
+    media_type, _ = mimetypes.guess_type(candidate.name)
+    return FileResponse(candidate, media_type=media_type or "application/octet-stream")
+
+
 def _enrich_messages_with_media_assets(messages: list[dict[str, Any]]) -> None:
     cache: dict[tuple[tuple[str, str], ...], list[dict[str, Any]]] = {}
     for message in messages:
@@ -1027,6 +1047,10 @@ def create_dashboard_app(
                 raw = ""
             if raw:
                 detail = raw[:500]
+            if exc.code in {403, 404}:
+                fallback = _workspace_upload_response_for_asset_name(workspace, asset_id)
+                if fallback is not None:
+                    return fallback
             raise HTTPException(status_code=exc.code, detail=detail) from exc
         except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise HTTPException(

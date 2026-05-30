@@ -23,6 +23,7 @@
 - [x] 修复 dashboard 媒体附件缩略图回退逻辑，前端可根据 `asset_id` 直接生成 Go media content 代理链接。
 - [x] 增加 Go-owned proactive scheduling state API 和 JSON 持久化，覆盖 delivery 去重、窗口计数、context-only 节流和 drift 间隔标记。
 - [x] 将 Python proactive loop 接入 Go proactive scheduling state，并保留 SQLite fallback。
+- [x] 修复 dashboard 旧附件链接兼容问题：Go media content 404/403 时，仅对 workspace uploads 内的文件名做安全回退。
 
 ## 下一步
 

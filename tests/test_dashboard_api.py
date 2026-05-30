@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import io
 import json
 import sqlite3
 import threading
 from datetime import datetime
+import urllib.error
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient as _RawTestClient
@@ -576,6 +578,42 @@ def test_dashboard_attachment_endpoint_serves_workspace_uploads(tmp_path) -> Non
     assert ok_resp.status_code == 200
     assert ok_resp.text == "qq group file preview"
     assert denied_resp.status_code == 403
+
+
+def test_dashboard_media_asset_content_falls_back_to_workspace_upload_name(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    attachment = uploads / "qq-image.jpg"
+    attachment.write_bytes(b"qq image bytes")
+
+    def _fake_urlopen(_url, timeout=None):  # type: ignore[no-untyped-def]
+        raise urllib.error.HTTPError(
+            "http://runtime.local/v1/media-assets/qq-image.jpg/content",
+            404,
+            "Not Found",
+            hdrs=None,
+            fp=io.BytesIO(b"media asset not found"),
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": "qq-image.jpg"},
+        )
+        denied = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": "../secret.jpg"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"qq image bytes"
+    assert denied.status_code == 404
 
 
 def test_dashboard_messages_are_enriched_with_runtime_media_assets(
