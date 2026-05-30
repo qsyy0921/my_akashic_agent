@@ -182,7 +182,12 @@ func main() {
 		log.Fatalf("init media content reader: %v", err)
 	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
-	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(agentJobRepository, agentJobEventStore, workQueue)
+	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(
+		agentJobRepository,
+		agentJobEventStore,
+		workQueue,
+		appservice.WithStrictAgentJobLeaseToken(boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")),
+	)
 	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
@@ -216,6 +221,7 @@ func main() {
 		queueBackendView.MigrationPhase,
 		queueBackendView.ExternalQueueActive,
 	)
+	log.Printf("agent job strict lease token=%t", boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN"))
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)

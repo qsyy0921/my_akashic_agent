@@ -118,6 +118,65 @@ func TestAgentJobServiceRejectsStaleLeaseToken(t *testing.T) {
 	}
 }
 
+func TestAgentJobServiceStrictLeaseTokenRejectsEmptyResultWriteback(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobService(
+		store,
+		appservice.WithStrictAgentJobLeaseToken(true),
+	)
+	now := time.Date(2026, 5, 30, 6, 47, 0, 0, time.UTC)
+
+	if _, err := service.Create(ctx, sampleCreateAgentJobCommand(now)); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	leased, err := service.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
+		WorkerID:   "worker-strict",
+		JobType:    "rag_ingest",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease job: %v", err)
+	}
+	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:     leased.JobID,
+		Timestamp: now.Add(2 * time.Second),
+	}); err == nil {
+		t.Fatal("expected strict mode to reject empty running token")
+	}
+	running, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(3 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("mark running with token: %v", err)
+	}
+	if running.Status != string(model.AgentJobRunning) {
+		t.Fatalf("unexpected running job: %+v", running)
+	}
+	if _, err := service.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:     leased.JobID,
+		Result:    map[string]string{"ok": "true"},
+		Timestamp: now.Add(4 * time.Second),
+	}); err == nil {
+		t.Fatal("expected strict mode to reject empty complete token")
+	}
+	done, err := service.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("complete with token: %v", err)
+	}
+	if done.Status != string(model.AgentJobSucceeded) {
+		t.Fatalf("unexpected completed job: %+v", done)
+	}
+}
+
 func TestAgentJobServiceRenewsRunningLeaseWithToken(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

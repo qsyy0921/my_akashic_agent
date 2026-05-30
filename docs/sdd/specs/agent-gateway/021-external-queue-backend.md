@@ -288,6 +288,17 @@ work:
 - This still keeps `agent_job` on Go state-store leasing; it does not yet allow
   NATS to own generic job acknowledgement.
 
+Strict token mode is an explicit runtime cutover gate:
+
+- `AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` makes `running`, `succeeded`, and
+  `failed` transitions reject empty `lease_token` values.
+- The default remains compatibility mode so old Python workers can still finish
+  state-store leased jobs during rollout.
+- `renew` is always strict because a heartbeat without a token cannot safely
+  prove ownership.
+- Agent-job external queue execution must not be enabled until strict token mode
+  is deployed with updated Python workers.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

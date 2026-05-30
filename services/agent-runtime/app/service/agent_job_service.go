@@ -17,28 +17,56 @@ import (
 )
 
 type AgentJobService struct {
-	repository outport.AgentJobRepository
-	events     outport.AgentJobEventSink
-	workQueue  outport.WorkQueuePublisher
+	repository       outport.AgentJobRepository
+	events           outport.AgentJobEventSink
+	workQueue        outport.WorkQueuePublisher
+	strictLeaseToken bool
 }
 
-func NewAgentJobService(repository outport.AgentJobRepository) *AgentJobService {
-	return &AgentJobService{repository: repository}
+type AgentJobServiceOption func(*AgentJobService)
+
+func WithStrictAgentJobLeaseToken(enabled bool) AgentJobServiceOption {
+	return func(service *AgentJobService) {
+		if service != nil {
+			service.strictLeaseToken = enabled
+		}
+	}
+}
+
+func NewAgentJobService(repository outport.AgentJobRepository, options ...AgentJobServiceOption) *AgentJobService {
+	return newAgentJobService(repository, nil, nil, options...)
 }
 
 func NewAgentJobServiceWithEvents(
 	repository outport.AgentJobRepository,
 	events outport.AgentJobEventSink,
+	options ...AgentJobServiceOption,
 ) *AgentJobService {
-	return &AgentJobService{repository: repository, events: events}
+	return newAgentJobService(repository, events, nil, options...)
 }
 
 func NewAgentJobServiceWithEventsAndWorkQueue(
 	repository outport.AgentJobRepository,
 	events outport.AgentJobEventSink,
 	workQueue outport.WorkQueuePublisher,
+	options ...AgentJobServiceOption,
 ) *AgentJobService {
-	return &AgentJobService{repository: repository, events: events, workQueue: workQueue}
+	return newAgentJobService(repository, events, workQueue, options...)
+}
+
+func newAgentJobService(
+	repository outport.AgentJobRepository,
+	events outport.AgentJobEventSink,
+	workQueue outport.WorkQueuePublisher,
+	options ...AgentJobServiceOption,
+) *AgentJobService {
+	service := &AgentJobService{repository: repository, events: events, workQueue: workQueue}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJobCommand) (query.AgentJobView, error) {
@@ -136,6 +164,9 @@ func (s *AgentJobService) RenewLease(ctx context.Context, cmd command.RenewAgent
 
 func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventRunning, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := s.requireLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
 			return err
 		}
@@ -145,6 +176,9 @@ func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgent
 
 func (s *AgentJobService) Complete(ctx context.Context, cmd command.CompleteAgentJobCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventSucceeded, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := s.requireLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
 			return err
 		}
@@ -154,6 +188,9 @@ func (s *AgentJobService) Complete(ctx context.Context, cmd command.CompleteAgen
 
 func (s *AgentJobService) Fail(ctx context.Context, cmd command.FailAgentJobCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventFailed, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := s.requireLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
 			return err
 		}
@@ -247,6 +284,16 @@ func (s *AgentJobService) getModel(ctx context.Context, jobID string) (model.Age
 		return model.AgentJob{}, errors.New("agent job not found")
 	}
 	return job, nil
+}
+
+func (s *AgentJobService) requireLeaseToken(leaseToken string) error {
+	if s == nil || !s.strictLeaseToken {
+		return nil
+	}
+	if strings.TrimSpace(leaseToken) == "" {
+		return errors.New("agent job lease token required")
+	}
+	return nil
 }
 
 func agentJobLeaseToken(value string) string {

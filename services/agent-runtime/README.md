@@ -272,6 +272,16 @@ Long-running workers also call `POST /v1/jobs/{job_id}/renew` with the current
 token while the job is executing. Renew extends the lease without increasing the
 attempt count and emits a `renewed` lifecycle event.
 
+Enable strict result writeback fencing after all workers have been upgraded:
+
+```powershell
+$env:AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN = "true"
+```
+
+In strict mode, `running`, `succeeded`, and `failed` transitions reject empty
+`lease_token` values. This is required before generic `agent_job` work can move
+from state-store leasing to an external queue acknowledgement protocol.
+
 Persist generic job lifecycle events as a JSONL stream:
 
 ```powershell
