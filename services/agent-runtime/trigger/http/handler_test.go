@@ -678,6 +678,79 @@ func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	}
 }
 
+func TestKnowledgeWorkerDiagnosticsEndpointSummarizesJobsAndCheckpoints(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	sendLedger := appservice.NewSendLedgerService(store)
+	inboxEvents := appservice.NewInboxEventService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	checkpoints := appservice.NewKnowledgeCheckpointService(store)
+	diagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(store, store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
+	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, checkpoints)
+	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, diagnostics)
+
+	jobBody := []byte(`{
+		"job_id":"rag_ingest:qq:3219982:ds1:1",
+		"job_type":"rag_ingest",
+		"agent_id":"knowledge-worker",
+		"route":{
+			"platform":"qq",
+			"account_id":"1049511700",
+			"conversation_id":"3219982",
+			"conversation_type":"group"
+		},
+		"payload":{"group_id":"3219982","dataset_id":"ds1"},
+		"max_attempts":2
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(jobBody)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	checkpointBody := []byte(`{"cursor":99,"metadata":{"group_id":"3219982","dataset_id":"ds1"}}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodPut, "/v1/knowledge-checkpoints/ragflow%3Aqq%3A3219982%3Ads1", bytes.NewReader(checkpointBody)),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected checkpoint upsert 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/v1/knowledge-worker-diagnostics?limit=10&stale_after_seconds=60", nil),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected diagnostics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"job_type":"rag_ingest"`)) {
+		t.Fatalf("diagnostics missing rag worker: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"checkpoint_id":"ragflow:qq:3219982:ds1"`)) {
+		t.Fatalf("diagnostics missing checkpoint: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status_counts":{"pending":1}`)) {
+		t.Fatalf("diagnostics missing pending count: %s", response.Body.String())
+	}
+}
+
 func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

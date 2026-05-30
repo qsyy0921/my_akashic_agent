@@ -68,3 +68,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-19-runtime-json-utf8.md`
 - `2026-05-30-phase8-20-knowledge-checkpoint-dashboard.md`
 - `2026-05-30-phase8-21-media-safe-root-discovery.md`
+- `2026-05-30-phase8-22-knowledge-worker-diagnostics.md`

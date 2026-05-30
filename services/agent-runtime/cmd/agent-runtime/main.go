@@ -91,11 +91,13 @@ func main() {
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
+	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
+	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {

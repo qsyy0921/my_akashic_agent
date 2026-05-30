@@ -22,11 +22,11 @@ Last updated: 2026-05-30
 - [x] Add dashboard visibility for Go-owned knowledge checkpoints.
 - [x] Fix Go media content safe-root discovery for Windows local runtime starts
   so QQ image/file attachments open from the dashboard.
+- [x] Add Go-owned generic job checkpoint/list diagnostics for memory and RAG
+  workers.
 
 ## Next
 
-- [ ] Add Go-owned generic job checkpoint/list diagnostics for memory and RAG
-  workers.
 - [ ] Add a Go-owned queue adapter or durable stream behind current in-process
   job leasing once local file-backed state is stable.
 - [ ] Move proactive delivery scheduling state into Go while keeping prompt and

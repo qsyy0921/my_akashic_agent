@@ -251,6 +251,17 @@ The checkpoint API owns cursor durability and rejects backwards movement in the
 domain layer. RAGFlow upload, parsing, and external dataset behavior remain in
 Python.
 
+Inspect memory/RAG worker lifecycle diagnostics:
+
+```text
+GET /v1/knowledge-worker-diagnostics?limit=50&stale_after_seconds=900
+```
+
+This read-only endpoint combines recent `group_memory_extract` and `rag_ingest`
+generic jobs with `memory:` and `ragflow:` checkpoints, status counts, leaseable
+counts, and stale lease counts. It is intended for dashboard/ops visibility and
+does not execute or mutate jobs.
+
 Record and query recent bot sends:
 
 ```text

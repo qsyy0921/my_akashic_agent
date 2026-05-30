@@ -61,6 +61,13 @@ func RegisterKnowledgeCheckpointRoutes(
 	mux.Handle("/v1/knowledge-checkpoints/", KnowledgeCheckpointStateHandler(checkpoints))
 }
 
+func RegisterKnowledgeDiagnosticsRoutes(
+	mux *http.ServeMux,
+	diagnostics inport.KnowledgeWorkerDiagnosticsViewer,
+) {
+	mux.Handle("/v1/knowledge-worker-diagnostics", KnowledgeWorkerDiagnosticsHandler(diagnostics))
+}
+
 func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: map[string]string{"status": "ok"}})
@@ -756,6 +763,24 @@ func AgentJobLeaseNextHandler(agentJobs inport.AgentJobManager) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: job})
+	})
+}
+
+func KnowledgeWorkerDiagnosticsHandler(diagnostics inport.KnowledgeWorkerDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := diagnostics.Get(r.Context(), query.KnowledgeWorkerDiagnosticsFilter{
+			Limit:             parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 86400),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 
