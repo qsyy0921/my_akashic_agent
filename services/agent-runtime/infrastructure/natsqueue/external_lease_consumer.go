@@ -17,6 +17,7 @@ import (
 const (
 	defaultExternalLeaseDurable     = "AKASHIC_EXTERNAL_LEASE_OUTBOX"
 	defaultExternalLeasePollTimeout = 2 * time.Second
+	defaultExternalLeaseNackDelay   = 30 * time.Second
 )
 
 type ExternalLeaseConsumerConfig struct {
@@ -26,6 +27,7 @@ type ExternalLeaseConsumerConfig struct {
 	Durable             string
 	WorkerID            string
 	LeaseTTLSeconds     int
+	NackDelay           time.Duration
 	Timeout             time.Duration
 	ConsumerConcurrency int
 	MaxInFlight         int
@@ -41,6 +43,7 @@ type ExternalLeaseConsumer struct {
 	durable             string
 	workerID            string
 	leaseTTLSeconds     int
+	nackDelay           time.Duration
 	timeout             time.Duration
 	consumerConcurrency int
 	maxInFlight         int
@@ -69,6 +72,7 @@ func NewExternalLeaseConsumer(config ExternalLeaseConsumerConfig) (*ExternalLeas
 		durable:             config.Durable,
 		workerID:            config.WorkerID,
 		leaseTTLSeconds:     config.LeaseTTLSeconds,
+		nackDelay:           config.NackDelay,
 		timeout:             config.Timeout,
 		consumerConcurrency: config.ConsumerConcurrency,
 		maxInFlight:         config.MaxInFlight,
@@ -160,7 +164,7 @@ func (c *ExternalLeaseConsumer) handleMessage(ctx context.Context, executor inpo
 	case "term":
 		_ = msg.Term()
 	default:
-		_ = msg.Nak()
+		_ = msg.NakWithDelay(c.nackDelay)
 	}
 }
 
@@ -244,6 +248,9 @@ func normalizeExternalLeaseConsumerConfig(config ExternalLeaseConsumerConfig) Ex
 	}
 	if config.LeaseTTLSeconds <= 0 {
 		config.LeaseTTLSeconds = 300
+	}
+	if config.NackDelay <= 0 {
+		config.NackDelay = defaultExternalLeaseNackDelay
 	}
 	if config.ConsumerConcurrency <= 0 {
 		config.ConsumerConcurrency = 1

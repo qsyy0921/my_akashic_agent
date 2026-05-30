@@ -12,7 +12,7 @@ Implementation summary:
   state before returning queue disposition.
 - Queue disposition policy:
   - success: Go `succeeded` then NATS `ack`;
-  - retryable dispatch failure: Go `failed` then Go `retry` then NATS `nack`;
+  - retryable dispatch failure: Go `failed` then Go `retry` then delayed NATS `nack`;
   - terminal failure: Go `dead_lettered` then NATS `ack`;
   - malformed or unsupported work: NATS `term`;
   - already terminal Go state: NATS `ack`.

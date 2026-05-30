@@ -98,4 +98,7 @@ func TestNormalizeExternalLeaseConsumerConfigUsesDedicatedDefaultDurable(t *test
 	if config.WorkerID == "" || config.LeaseTTLSeconds <= 0 {
 		t.Fatalf("expected worker defaults, got %#v", config)
 	}
+	if config.NackDelay != defaultExternalLeaseNackDelay {
+		t.Fatalf("unexpected default nack delay: %s", config.NackDelay)
+	}
 }

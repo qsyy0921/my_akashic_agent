@@ -15,7 +15,10 @@ execution blocked. A local NATS JetStream smoke has validated
 `shadow_publish` + `dual_read_compare` with one outbox work notification,
 one matched comparison, and zero mismatches. The sixth slice implements the
 first guarded `external_lease` executor for outbox delivery only; agent jobs
-remain on Go state-store leasing until their worker idempotency is audited.
+remain on Go state-store leasing until their worker idempotency is audited. The
+seventh slice adds a local NATS smoke that exercises success ack, retryable
+failure delayed nack, terminal failure ack, and unsupported work term without
+using real QQ or Telegram adapters.
 
 ## Context
 
@@ -120,8 +123,8 @@ message or is disabled, Go can still discover leaseable work from state.
    - The consumer subscribes to `akashic.work.outbox.>` and does not execute
      `agent_job` notifications.
    - Retryable dispatch failures move through Go failure/retry state and then
-     NATS `nack`; succeeded or terminal failed deliveries NATS `ack`; malformed
-     or unsupported work is NATS `term`.
+     delayed NATS `nack`; succeeded or terminal failed deliveries NATS `ack`;
+     malformed or unsupported work is NATS `term`.
    - Do not add a new service solely for this phase; reuse `agent-runtime`
      application services until deployment or ownership boundaries justify a
      split.
@@ -136,6 +139,7 @@ $env:AKASHIC_QUEUE_STREAM = "AKASHIC_WORK"
 $env:AKASHIC_QUEUE_SUBJECT_PREFIX = "akashic.work"
 $env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
 $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
+$env:AKASHIC_QUEUE_EXTERNAL_LEASE_NACK_DELAY_SECONDS = "30"
 $env:AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT = "1049511700=qq_1049511700,2365524513=qq_2365524513"
 ```
 
@@ -310,7 +314,7 @@ WorkQueueExternalLeaseService
         +--> OutboxService.MarkSucceeded / MarkFailed / Retry
         |
         v
-NATS ack / nack / term
+NATS ack / delayed nack / term
 ```
 
 It should not introduce a new service or package tree unless the deployment
@@ -363,7 +367,10 @@ boundary becomes independent.
 - `external_lease` outbox execution leases the Go aggregate by work id before
   dispatching any DeliveryAdapter side effect.
 - `external_lease` maps delivery success to NATS `ack`, retryable delivery
-  failure to Go retry + NATS `nack`, terminal failure to NATS `ack`, and
+  failure to Go retry + delayed NATS `nack`, terminal failure to NATS `ack`, and
   malformed/unsupported work to NATS `term`.
+- Local `external_lease` smoke verifies those four dispositions with a fake
+  DeliveryAdapter and a real NATS JetStream container, without sending real
+  platform messages.
 - `external_lease` does not execute generic `agent_job` work in this slice.
 - Existing outbox/job tests continue to pass.

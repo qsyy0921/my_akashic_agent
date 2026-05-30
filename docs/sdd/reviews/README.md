@@ -92,3 +92,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-43-external-lease-gate.md`
 - `2026-05-30-phase8-44-nats-live-smoke.md`
 - `2026-05-30-phase8-45-external-lease-outbox-executor.md`
+- `2026-05-31-phase8-46-external-lease-nats-smoke.md`

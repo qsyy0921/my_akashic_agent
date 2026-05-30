@@ -328,6 +328,10 @@ func newWorkQueueExternalLeaseConsumer(view query.QueueBackendView) (*natsqueue.
 	if err != nil {
 		return nil, nil, err
 	}
+	nackDelaySeconds, err := positiveIntEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_NACK_DELAY_SECONDS", 30, 86400)
+	if err != nil {
+		return nil, nil, err
+	}
 	consumer, err := natsqueue.NewExternalLeaseConsumer(natsqueue.ExternalLeaseConsumerConfig{
 		URL:                 strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
 		Stream:              view.Stream,
@@ -335,6 +339,7 @@ func newWorkQueueExternalLeaseConsumer(view query.QueueBackendView) (*natsqueue.
 		Durable:             strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_DURABLE")),
 		WorkerID:            strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
 		LeaseTTLSeconds:     ttlSeconds,
+		NackDelay:           time.Duration(nackDelaySeconds) * time.Second,
 		Timeout:             time.Duration(timeoutSeconds) * time.Second,
 		ConsumerConcurrency: view.ConsumerConcurrency,
 		MaxInFlight:         view.MaxInFlight,

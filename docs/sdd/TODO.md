@@ -1,6 +1,6 @@
 # Akashic Go 迁移 TODO
 
-最后更新：2026-05-30
+最后更新：2026-05-31
 
 ## 已完成
 
@@ -44,12 +44,12 @@
 - [x] 增加 NATS JetStream `external_lease` 切换门诊断：明确 ack/nack、retry、dead-letter、rollback 策略和必过条件；当前保持阻断，不新增服务、不执行真实外部租约。
 - [x] 完成本地 NATS JetStream live smoke：在 `dual_read_compare` 模式下验证 `shadow_publish` 成功 1 次、compare 匹配 1 次、mismatch 为 0，并确认 `AKASHIC_QUEUE_CONSUMER_CONCURRENCY=2` 生效。
 - [x] 实现最小化 NATS JetStream `external_lease` outbox 执行器：Go 按 queue work id 租约 outbox、调用 Go DeliveryAdapter dispatch、按 Go 生命周期结果执行 ack/nack/term；默认仍需显式 cutover 与 smoke flag，不新增独立服务。
+- [x] 完成 `external_lease` 本地 smoke：使用 NATS + fake adapter 验证 outbox 成功 ack、可重试失败延迟 nack、终态失败 ack、unsupported work term；不触发真实 QQ/Telegram 发送。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 做 `external_lease` 本地 smoke：使用 NATS + 本地 fake/受控 adapter 验证 outbox 成功 ack、可重试失败 nack、终态失败 ack；不触发真实 QQ/Telegram 发送。
 - [ ] 评估是否把 `agent_job` 的外部租约也接入 NATS；在 Python worker 幂等和结果回写稳定前，继续让 agent job 走 Go state-store lease。
 
 ## 边界约束
