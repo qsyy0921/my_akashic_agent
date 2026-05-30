@@ -20,6 +20,7 @@ const (
 type WorkQueueExternalLeaseService struct {
 	outbox           *OutboxService
 	dispatch         *DeliveryDispatchService
+	agentJobs        *AgentJobService
 	channelByAccount map[string]string
 	workerID         string
 	leaseTTLSeconds  int
@@ -63,6 +64,12 @@ func WithExternalLeaseWorker(workerID string, ttlSeconds int) WorkQueueExternalL
 	}
 }
 
+func WithExternalLeaseAgentJobs(agentJobs *AgentJobService) WorkQueueExternalLeaseOption {
+	return func(service *WorkQueueExternalLeaseService) {
+		service.agentJobs = agentJobs
+	}
+}
+
 func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 	ctx context.Context,
 	cmd command.ExecuteWorkQueueLeaseCommand,
@@ -70,8 +77,8 @@ func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 	if err := ctx.Err(); err != nil {
 		return query.QueueExternalLeaseExecutionView{}, err
 	}
-	if s == nil || s.outbox == nil || s.dispatch == nil {
-		return query.QueueExternalLeaseExecutionView{}, errors.New("work queue external lease service requires outbox and dispatch services")
+	if s == nil {
+		return query.QueueExternalLeaseExecutionView{}, errors.New("work queue external lease service is nil")
 	}
 	now := cmd.Timestamp
 	if now.IsZero() {
@@ -86,10 +93,27 @@ func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 		Subject:     strings.TrimSpace(cmd.Subject),
 		ExecutedAt:  formatQueueCompareTime(now),
 	}
-	if workKind != "outbox_delivery" {
+	switch workKind {
+	case "outbox_delivery":
+		return s.executeOutboxWork(ctx, cmd, view, workID, now)
+	case "agent_job":
+		return s.executeAgentJobWork(ctx, view, workID, now)
+	default:
 		view.Disposition = QueueLeaseDispositionTerm
 		view.Reason = "unsupported_work_kind"
 		return view, nil
+	}
+}
+
+func (s *WorkQueueExternalLeaseService) executeOutboxWork(
+	ctx context.Context,
+	cmd command.ExecuteWorkQueueLeaseCommand,
+	view query.QueueExternalLeaseExecutionView,
+	workID string,
+	now time.Time,
+) (query.QueueExternalLeaseExecutionView, error) {
+	if s.outbox == nil || s.dispatch == nil {
+		return query.QueueExternalLeaseExecutionView{}, errors.New("work queue external lease service requires outbox and dispatch services")
 	}
 	if workID == "" {
 		view.Disposition = QueueLeaseDispositionTerm
@@ -157,6 +181,88 @@ func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 	view.Disposition = QueueLeaseDispositionAck
 	view.Reason = "delivery_terminal_failure"
 	return view, nil
+}
+
+func (s *WorkQueueExternalLeaseService) executeAgentJobWork(
+	ctx context.Context,
+	view query.QueueExternalLeaseExecutionView,
+	workID string,
+	now time.Time,
+) (query.QueueExternalLeaseExecutionView, error) {
+	if workID == "" {
+		view.Disposition = QueueLeaseDispositionTerm
+		view.Reason = "missing_work_id"
+		return view, nil
+	}
+	if s.agentJobs == nil {
+		view.Disposition = QueueLeaseDispositionTerm
+		view.Reason = "agent_job_executor_unavailable"
+		return view, nil
+	}
+	job, err := s.agentJobs.getModel(ctx, workID)
+	if err != nil {
+		view.Disposition = QueueLeaseDispositionTerm
+		view.Reason = "missing_state"
+		return view, nil
+	}
+	return s.agentJobResultAckView(ctx, view, job, now)
+}
+
+func (s *WorkQueueExternalLeaseService) agentJobResultAckView(
+	ctx context.Context,
+	view query.QueueExternalLeaseExecutionView,
+	job model.AgentJob,
+	now time.Time,
+) (query.QueueExternalLeaseExecutionView, error) {
+	view.StateStatus = string(job.Status)
+	view.Attempts = job.Attempts
+	switch job.Status {
+	case model.AgentJobSucceeded, model.AgentJobDeadLettered, model.AgentJobCancelled:
+		view.Disposition = QueueLeaseDispositionAck
+		view.Reason = "agent_job_terminal"
+		return view, nil
+	case model.AgentJobFailed:
+		retried, err := s.agentJobs.Retry(ctx, command.RetryAgentJobCommand{
+			JobID:     job.JobID,
+			Timestamp: now,
+		})
+		if err != nil {
+			return query.QueueExternalLeaseExecutionView{}, err
+		}
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "agent_job_retry_scheduled"
+		view.StateStatus = retried.Status
+		view.Attempts = retried.Attempts
+		return view, nil
+	case model.AgentJobLeased, model.AgentJobRunning:
+		if job.LeaseExpired(now) {
+			recovered, err := s.agentJobs.recoverExpiredJob(ctx, job, now)
+			if err != nil {
+				return query.QueueExternalLeaseExecutionView{}, err
+			}
+			view.StateStatus = recovered.Job.Status
+			view.Attempts = recovered.Job.Attempts
+			if recovered.Job.Status == string(model.AgentJobDeadLettered) {
+				view.Disposition = QueueLeaseDispositionAck
+				view.Reason = "agent_job_terminal_after_recovery"
+				return view, nil
+			}
+			view.Disposition = QueueLeaseDispositionNack
+			view.Reason = "agent_job_expired_lease_recovered"
+			return view, nil
+		}
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "agent_job_waiting_for_result"
+		return view, nil
+	case model.AgentJobPending:
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "agent_job_pending_for_python_worker"
+		return view, nil
+	default:
+		view.Disposition = QueueLeaseDispositionTerm
+		view.Reason = "agent_job_invalid_state"
+		return view, nil
+	}
 }
 
 func (s *WorkQueueExternalLeaseService) leaseRejectedView(

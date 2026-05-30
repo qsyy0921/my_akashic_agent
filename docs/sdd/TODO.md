@@ -52,12 +52,13 @@
 - [x] 增加 `agent_job` 严格 token 模式：`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` 时 running/succeeded/failed 必须携带当前 `lease_token`，默认保持兼容模式，作为后续 NATS external lease cutover gate。
 - [x] 增加 `agent_job` queue work id 精确租约入口：`POST /v1/jobs/lease-work` 按 `work_id`/`aggregate_id` 精确租约指定 job，不再依赖 `lease-next` 按类型抢任务，为 NATS work notification 驱动作准备。
 - [x] 增加 `agent_job` 过期租约恢复入口：`POST /v1/jobs/recover-expired` 扫描 leased/running 且 lease 已过期的 job，未耗尽尝试次数则回到 pending，耗尽则 dead-letter，并写入 `lease_expired` 生命周期事件。
+- [x] 增加 `agent_job` external lease result-ack 映射：Go 不抢占执行 Python 任务，只按 AgentJob 权威状态对队列通知做 ack/nack/term；pending/running 延迟 nack，terminal ack，missing term，failed 自动 retry 后 nack，expired lease 先恢复再决定 nack/ack，并覆盖重复终态投递单元 smoke。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 补齐 `agent_job` NATS external lease 的剩余 result-ack 能力：ack/nack/term 映射、duplicate-delivery contract smoke，并把 recover-expired 接入安全的后台/启动恢复策略。
+- [ ] 补齐 `agent_job` NATS external lease 的剩余 cutover 能力：NATS 级 duplicate-delivery smoke、agent_job subject 订阅扩容、运行态执行 scope 显式开关，并评估是否需要安全的后台/启动 recover-expired 扫描。
 
 ## 边界约束
 

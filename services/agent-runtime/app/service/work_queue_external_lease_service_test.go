@@ -128,7 +128,7 @@ func TestWorkQueueExternalLeaseServiceTermsUnsupportedWork(t *testing.T) {
 	)
 
 	result, err := service.ExecuteWorkQueueLease(context.Background(), command.ExecuteWorkQueueLeaseCommand{
-		WorkKind: "agent_job",
+		WorkKind: "unknown",
 		WorkID:   "job:1",
 	})
 	if err != nil {
@@ -136,6 +136,187 @@ func TestWorkQueueExternalLeaseServiceTermsUnsupportedWork(t *testing.T) {
 	}
 	if result.Disposition != QueueLeaseDispositionTerm || result.Reason != "unsupported_work_kind" {
 		t.Fatalf("expected term unsupported, got %+v", result)
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceNacksPendingAgentJobForPythonWorker(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 0, 35, 0, 0, time.UTC)
+	if _, err := jobs.Create(ctx, sampleExternalLeaseAgentJob("job:agent:pending", 2, now)); err != nil {
+		t.Fatalf("create agent job: %v", err)
+	}
+	service := NewWorkQueueExternalLeaseService(nil, nil, WithExternalLeaseAgentJobs(jobs))
+
+	result, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "agent_job",
+		WorkID:    "job:agent:pending",
+		Timestamp: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("execute agent job result ack: %v", err)
+	}
+	if result.Disposition != QueueLeaseDispositionNack || result.Reason != "agent_job_pending_for_python_worker" {
+		t.Fatalf("expected nack while Python worker owns execution, got %+v", result)
+	}
+	if result.StateStatus != string(model.AgentJobPending) || result.Attempts != 0 {
+		t.Fatalf("expected untouched pending job state, got %+v", result)
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceAcksTerminalAgentJobDuplicateDeliveries(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 0, 40, 0, 0, time.UTC)
+	if _, err := jobs.Create(ctx, sampleExternalLeaseAgentJob("job:agent:done", 2, now)); err != nil {
+		t.Fatalf("create agent job: %v", err)
+	}
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job:agent:done",
+		WorkerID:   "python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease job: %v", err)
+	}
+	if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      "job:agent:done",
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	if _, err := jobs.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      "job:agent:done",
+		LeaseToken: leased.LeaseToken,
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete job: %v", err)
+	}
+	service := NewWorkQueueExternalLeaseService(nil, nil, WithExternalLeaseAgentJobs(jobs))
+
+	for i := 0; i < 2; i++ {
+		result, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+			WorkKind:  "agent_job",
+			WorkID:    "job:agent:done",
+			Timestamp: now.Add(time.Duration(10+i) * time.Second),
+		})
+		if err != nil {
+			t.Fatalf("execute terminal result ack #%d: %v", i+1, err)
+		}
+		if result.Disposition != QueueLeaseDispositionAck || result.Reason != "agent_job_terminal" {
+			t.Fatalf("expected duplicate terminal delivery to ack, got %+v", result)
+		}
+		if result.StateStatus != string(model.AgentJobSucceeded) || result.Attempts != 1 {
+			t.Fatalf("expected succeeded state in ack view, got %+v", result)
+		}
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceRecoversExpiredAgentJobBeforeNackOrAck(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 0, 45, 0, 0, time.UTC)
+	if _, err := jobs.Create(ctx, sampleExternalLeaseAgentJob("job:agent:recover", 2, now)); err != nil {
+		t.Fatalf("create recoverable job: %v", err)
+	}
+	if _, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job:agent:recover",
+		WorkerID:   "python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease recoverable job: %v", err)
+	}
+	if _, err := jobs.Create(ctx, sampleExternalLeaseAgentJob("job:agent:dead", 1, now)); err != nil {
+		t.Fatalf("create exhausted job: %v", err)
+	}
+	if _, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job:agent:dead",
+		WorkerID:   "python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease exhausted job: %v", err)
+	}
+	service := NewWorkQueueExternalLeaseService(nil, nil, WithExternalLeaseAgentJobs(jobs))
+
+	result, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "agent_job",
+		WorkID:    "job:agent:recover",
+		Timestamp: now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("recover expired job: %v", err)
+	}
+	if result.Disposition != QueueLeaseDispositionNack || result.Reason != "agent_job_expired_lease_recovered" {
+		t.Fatalf("expected recovered job to nack for replay, got %+v", result)
+	}
+	if result.StateStatus != string(model.AgentJobPending) || result.Attempts != 1 {
+		t.Fatalf("expected pending recovered job state, got %+v", result)
+	}
+
+	result, err = service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "agent_job",
+		WorkID:    "job:agent:dead",
+		Timestamp: now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("recover exhausted job: %v", err)
+	}
+	if result.Disposition != QueueLeaseDispositionAck || result.Reason != "agent_job_terminal_after_recovery" {
+		t.Fatalf("expected exhausted job recovery to ack terminal state, got %+v", result)
+	}
+	if result.StateStatus != string(model.AgentJobDeadLettered) || result.Attempts != 1 {
+		t.Fatalf("expected dead-lettered recovered job state, got %+v", result)
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceRetriesFailedAgentJobBeforeNack(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 0, 50, 0, 0, time.UTC)
+	if _, err := jobs.Create(ctx, sampleExternalLeaseAgentJob("job:agent:failed", 2, now)); err != nil {
+		t.Fatalf("create failed job: %v", err)
+	}
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job:agent:failed",
+		WorkerID:   "python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease failed job: %v", err)
+	}
+	if _, err := jobs.Fail(ctx, command.FailAgentJobCommand{
+		JobID:        "job:agent:failed",
+		LeaseToken:   leased.LeaseToken,
+		ErrorMessage: "temporary model error",
+		Timestamp:    now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("fail job: %v", err)
+	}
+	service := NewWorkQueueExternalLeaseService(nil, nil, WithExternalLeaseAgentJobs(jobs))
+
+	result, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "agent_job",
+		WorkID:    "job:agent:failed",
+		Timestamp: now.Add(3 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("retry failed job: %v", err)
+	}
+	if result.Disposition != QueueLeaseDispositionNack || result.Reason != "agent_job_retry_scheduled" {
+		t.Fatalf("expected retryable failure to nack after retry, got %+v", result)
+	}
+	if result.StateStatus != string(model.AgentJobPending) || result.Attempts != 1 {
+		t.Fatalf("expected retryable job back to pending, got %+v", result)
 	}
 }
 
@@ -158,6 +339,23 @@ func saveExternalLeaseDelivery(ctx context.Context, store *memory.Store, eventID
 		return err
 	}
 	return store.EnqueueOutboxDelivery(ctx, delivery)
+}
+
+func sampleExternalLeaseAgentJob(jobID string, maxAttempts int, timestamp time.Time) command.CreateAgentJobCommand {
+	return command.CreateAgentJobCommand{
+		JobID:   jobID,
+		JobType: string(model.AgentJobRagIngest),
+		AgentID: "knowledge-worker",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		Payload:     map[string]string{"dataset_id": "qq-27234224"},
+		MaxAttempts: maxAttempts,
+		Timestamp:   timestamp,
+	}
 }
 
 type recordingLeaseDeliveryAdapter struct {

@@ -200,28 +200,40 @@ func (s *AgentJobService) RecoverExpiredLeases(ctx context.Context, cmd command.
 		Items:     make([]query.AgentJobLeaseRecoveryItemView, 0, len(items)),
 	}
 	for _, job := range items {
-		action, err := job.RecoverExpiredLease(cmd.Timestamp)
+		item, err := s.recoverExpiredJob(ctx, job, cmd.Timestamp)
 		if err != nil {
 			return query.AgentJobLeaseRecoveryView{}, err
 		}
-		if err := s.repository.SaveAgentJob(ctx, job); err != nil {
-			return query.AgentJobLeaseRecoveryView{}, err
-		}
-		if err := s.recordEvent(ctx, job, model.AgentJobEventLeaseExpired, cmd.Timestamp); err != nil {
-			return query.AgentJobLeaseRecoveryView{}, err
-		}
-		switch action {
-		case model.AgentJobLeaseDeadLettered:
+		switch item.Action {
+		case string(model.AgentJobLeaseDeadLettered):
 			view.DeadLettered++
 		default:
 			view.Recovered++
 		}
-		view.Items = append(view.Items, query.AgentJobLeaseRecoveryItemView{
-			Job:    assembler.ToAgentJobView(job),
-			Action: string(action),
-		})
+		view.Items = append(view.Items, item)
 	}
 	return view, nil
+}
+
+func (s *AgentJobService) recoverExpiredJob(
+	ctx context.Context,
+	job model.AgentJob,
+	timestamp time.Time,
+) (query.AgentJobLeaseRecoveryItemView, error) {
+	action, err := job.RecoverExpiredLease(timestamp)
+	if err != nil {
+		return query.AgentJobLeaseRecoveryItemView{}, err
+	}
+	if err := s.repository.SaveAgentJob(ctx, job); err != nil {
+		return query.AgentJobLeaseRecoveryItemView{}, err
+	}
+	if err := s.recordEvent(ctx, job, model.AgentJobEventLeaseExpired, timestamp); err != nil {
+		return query.AgentJobLeaseRecoveryItemView{}, err
+	}
+	return query.AgentJobLeaseRecoveryItemView{
+		Job:    assembler.ToAgentJobView(job),
+		Action: string(action),
+	}, nil
 }
 
 func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error) {

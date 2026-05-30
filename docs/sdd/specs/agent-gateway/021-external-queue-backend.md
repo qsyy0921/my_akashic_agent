@@ -326,6 +326,32 @@ Expired lease recovery is now an explicit Go-owned operation:
   handling, then decide `ack`, delayed `nack`, or `term` from the authoritative
   Go job state.
 
+Agent-job result acknowledgement now has a safe Go mapping:
+
+- Go does not execute image generation, RAG ingest, group memory extraction, or
+  any other Python-owned model side effect.
+- For `agent_job` queue notifications, Go treats the `AgentJob` state store as
+  the source of truth and only decides queue disposition.
+- `pending` jobs return delayed `nack` with
+  `agent_job_pending_for_python_worker`, allowing the Python state-store worker
+  to lease and execute the job.
+- active `leased` / `running` jobs return delayed `nack` with
+  `agent_job_waiting_for_result`; duplicate queue deliveries during execution
+  do not create duplicate Python side effects.
+- `failed` retryable jobs are moved back to `pending` through the domain retry
+  path and then delayed `nack`ed.
+- expired active leases are recovered first. Retryable recoveries are delayed
+  `nack`ed; exhausted recoveries are `ack`ed because the job has reached
+  `dead_lettered`.
+- `succeeded`, `dead_lettered`, and `cancelled` jobs are `ack`ed. Replayed
+  terminal notifications are therefore idempotent.
+- missing job state is `term`ed because queue replay cannot safely recreate a
+  missing aggregate.
+- Runtime execution scope still remains `outbox_delivery_only`. Moving
+  `agent_job` subjects into the live NATS external lease consumer requires a
+  separate NATS-level duplicate-delivery smoke and explicit execution-scope
+  expansion.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

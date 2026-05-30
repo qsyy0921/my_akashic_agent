@@ -362,11 +362,16 @@ After both explicit cutover flags pass, the first executor consumes only
 `outbox` NATS subjects. It leases the Go outbox aggregate by work id, dispatches
 through configured Go DeliveryAdapters, then maps success to NATS `ack`,
 retryable failure to Go retry + delayed NATS `nack`, terminal failure to NATS
-`ack`, and malformed/unsupported work to NATS `term`. Generic `agent_job` work
-continues to use Go state-store leasing in this slice. The external lease
-diagnostics expose `execution_scope=outbox_delivery_only`, `outbox_delivery` as
-the allowed work kind after the gate passes, and `agent_job` as a blocked work
-kind until a Python result-ack protocol exists.
+`ack`, and malformed/unsupported work to NATS `term`.
+
+Generic `agent_job` work still executes in Python, but Go now has the safe
+result-ack mapping needed by a future queue cutover: pending/running jobs
+delayed-`nack` without being executed by Go, terminal jobs `ack`, missing state
+`term`, failed jobs go through Go retry then delayed-`nack`, and expired active
+leases are recovered before disposition. The live external lease consumer still
+keeps `execution_scope=outbox_delivery_only`; `agent_job` remains blocked until a
+NATS-level duplicate-delivery smoke and explicit execution-scope expansion are
+done.
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple

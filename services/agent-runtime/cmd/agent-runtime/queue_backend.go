@@ -207,7 +207,7 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	gate.BlockedWorkKinds = append(gate.BlockedWorkKinds, query.QueueExternalLeaseBlock{
 		WorkKind:       "agent_job",
 		Reason:         "agent jobs are executed by Python workers, so NATS ack must be tied to Python result writeback rather than Go dispatch completion",
-		RequiredChange: "enable strict lease-token deployment, add timeout recovery, and prove ack-after-result duplicate-delivery handling before moving agent_job to external lease",
+		RequiredChange: "run NATS-level duplicate-delivery smoke and explicitly expand execution scope before moving agent_job to external lease",
 	})
 	return gate
 }

@@ -147,6 +147,12 @@ func main() {
 	outbox := appservice.NewOutboxServiceWithEvents(outboxRepository, outboxQueue, outboxEventStore)
 	outboxEvents := appservice.NewOutboxDeliveryEventService(outboxEventStore)
 	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(outboxRepository, deliveryAdapters...)
+	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(
+		agentJobRepository,
+		agentJobEventStore,
+		workQueue,
+		appservice.WithStrictAgentJobLeaseToken(boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")),
+	)
 	externalLeaseConsumer, closeExternalLeaseConsumer, err := newWorkQueueExternalLeaseConsumer(queueBackendView)
 	if err != nil {
 		log.Fatalf("init work queue external lease consumer: %v", err)
@@ -168,6 +174,7 @@ func main() {
 				strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
 				positiveIntEnvOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_TTL_SECONDS", 300, 86400),
 			),
+			appservice.WithExternalLeaseAgentJobs(agentJobs),
 		)
 		externalLeaseCtx, cancelExternalLease := context.WithCancel(context.Background())
 		defer cancelExternalLease()
@@ -182,12 +189,6 @@ func main() {
 		log.Fatalf("init media content reader: %v", err)
 	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
-	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(
-		agentJobRepository,
-		agentJobEventStore,
-		workQueue,
-		appservice.WithStrictAgentJobLeaseToken(boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")),
-	)
 	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
