@@ -80,12 +80,15 @@ Filters:
 - `sender_id`
 - `decision_action`
 - `observe_only`
+- `after_seq`
+- `order=asc|desc`
 - `limit`
 
 ## HTTP API
 
 ```text
 GET /v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=50
+GET /v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&after_seq=120&order=asc&limit=80
 GET /v1/inbox/{event_id}
 ```
 
@@ -103,6 +106,9 @@ keeps the development in-memory store.
 - Shadow and normal ingest write an `InboxEvent` before publishing agent inbound
   work.
 - `/v1/inbox` lists raw observed group messages with attachment metadata.
+- `/v1/inbox` supports cursor-safe replay for session-backed messages by
+  filtering on `metadata.seq` via `after_seq` and returning oldest-first batches
+  with `order=asc`.
 - `/v1/inbox/{event_id}` returns one raw event.
 - File-backed inbox survives `agent-runtime` restart.
 - Go unit tests cover domain validation, application view mapping, HTTP API,
@@ -110,8 +116,7 @@ keeps the development in-memory store.
 
 ## Follow-Ups
 
-- Point Python group-memory workers at `/v1/inbox` for source replay instead of
-  reading Python session internals.
-- Add pagination cursor support before large historical backfill.
+- Move more historical backfill and replay leases into Go-owned projections once
+  group-memory extraction no longer needs the compatibility session store.
 - Add a durable stream/lease projection for group extraction workers.
 - Merge inbox source ids with media asset ids in RAG citations.

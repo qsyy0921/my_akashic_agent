@@ -32,6 +32,8 @@ The design uses:
   that should move to Go and the retained Python AI runtime scope.
 - `009-go-migration-implementation-design.md`: executable phase plan, ports,
   cutover rules, and review checklist for Go migration.
+- `010-python-ddd-suitability.md`: why Go uses tactical DDD while Python keeps
+  ports/adapters and AI pipeline boundaries instead of full DDD.
 
 Related spec family:
 

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -316,10 +317,19 @@ func (s *Store) ListInboxEvents(_ context.Context, filter query.InboxEventFilter
 		limit = 50
 	}
 	items := make([]model.InboxEvent, 0, limit)
-	for i := len(s.inboxOrder) - 1; i >= 0 && len(items) < limit; i-- {
-		eventID := s.inboxOrder[i]
-		if event, ok := s.inboxEvents[eventID]; ok && matchesInboxEventFilter(event, filter) {
-			items = append(items, event)
+	if inboxOrderAscending(filter) {
+		for i := 0; i < len(s.inboxOrder) && len(items) < limit; i++ {
+			eventID := s.inboxOrder[i]
+			if event, ok := s.inboxEvents[eventID]; ok && matchesInboxEventFilter(event, filter) {
+				items = append(items, event)
+			}
+		}
+	} else {
+		for i := len(s.inboxOrder) - 1; i >= 0 && len(items) < limit; i-- {
+			eventID := s.inboxOrder[i]
+			if event, ok := s.inboxEvents[eventID]; ok && matchesInboxEventFilter(event, filter) {
+				items = append(items, event)
+			}
 		}
 	}
 	return items, nil
@@ -327,6 +337,12 @@ func (s *Store) ListInboxEvents(_ context.Context, filter query.InboxEventFilter
 
 func matchesInboxEventFilter(event model.InboxEvent, filter query.InboxEventFilter) bool {
 	envelope := event.Envelope
+	if filter.AfterSeqSet {
+		seq, ok := inboxEventSeq(event)
+		if !ok || seq <= filter.AfterSeq {
+			return false
+		}
+	}
 	if filter.ChannelKind != "" && string(envelope.Channel.Kind) != filter.ChannelKind {
 		return false
 	}
@@ -354,6 +370,23 @@ func matchesInboxEventFilter(event model.InboxEvent, filter query.InboxEventFilt
 func parseBoolFilter(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return value == "true" || value == "1" || value == "yes"
+}
+
+func inboxOrderAscending(filter query.InboxEventFilter) bool {
+	order := strings.ToLower(strings.TrimSpace(filter.Order))
+	return order == "asc" || order == "oldest"
+}
+
+func inboxEventSeq(event model.InboxEvent) (int, bool) {
+	raw := strings.TrimSpace(event.Envelope.Metadata["seq"])
+	if raw == "" {
+		return 0, false
+	}
+	seq, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+	return seq, true
 }
 
 func (s *Store) SaveAgentJob(_ context.Context, job model.AgentJob) error {

@@ -83,6 +83,44 @@ class AgentGatewayClient:
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/v1/jobs/{job_id}")
 
+    async def list_inbox_events(
+        self,
+        *,
+        channel_kind: str = "",
+        account_id: str = "",
+        conversation_id: str = "",
+        conversation_type: str = "",
+        sender_id: str = "",
+        decision_action: str = "",
+        observe_only: bool | None = None,
+        after_seq: int | None = None,
+        order: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": max(1, min(int(limit), 200))}
+        if channel_kind:
+            params["channel_kind"] = str(channel_kind)
+        if account_id:
+            params["account_id"] = str(account_id)
+        if conversation_id:
+            params["conversation_id"] = str(conversation_id)
+        if conversation_type:
+            params["conversation_type"] = str(conversation_type)
+        if sender_id:
+            params["sender_id"] = str(sender_id)
+        if decision_action:
+            params["decision_action"] = str(decision_action)
+        if observe_only is not None:
+            params["observe_only"] = "true" if observe_only else "false"
+        if after_seq is not None:
+            params["after_seq"] = max(0, int(after_seq))
+        if order:
+            params["order"] = str(order)
+        data = await self._request("GET", "/v1/inbox", params=params)
+        if not isinstance(data, list):
+            raise AgentGatewayError("agent runtime inbox response is not a list")
+        return data
+
     async def lease_next(
         self,
         *,

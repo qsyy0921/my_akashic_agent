@@ -350,6 +350,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
 
     # 优先使用新命名别名；没有改造时回退旧名。
     from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_inbox_source import AgentRuntimeInboxGroupMessageSource
     from integrations.agent_runtime_knowledge_worker import AgentRuntimeKnowledgeWorker
     from integrations.ragflow import RAGFlowClient
 
@@ -378,6 +379,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
         group_memory=GroupMemoryService.from_workspace(
             workspace,
             session_store=session_store,
+            message_source=AgentRuntimeInboxGroupMessageSource(agent_runtime),
         ),
         worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
         group_accounts=group_accounts,

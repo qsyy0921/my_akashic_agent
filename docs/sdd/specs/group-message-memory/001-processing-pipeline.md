@@ -138,9 +138,12 @@ Extraction should be typed, not just free-form summaries:
 - Initial Go raw-message ownership is implemented as `InboxEvent` in
   `services/agent-runtime`, with file-backed persistence configured by
   `AKASHIC_INBOX_DSN` or `AKASHIC_INBOX_PATH`.
-- Current Python group-memory extraction still reads the compatibility session
-  store. The next migration step is to consume `/v1/inbox` as the replay source
-  while keeping extraction and RAG logic in Python.
+- When `agent_runtime` is enabled, Python group-memory extraction reads
+  observe-only QQ messages from Go `/v1/inbox` with `after_seq` and `order=asc`.
+  The compatibility Python session store remains the fallback source when the Go
+  runtime is disabled.
+- Extraction, strategy evolution, and RAG ranking remain in Python because those
+  paths are AI-pipeline logic rather than durable infrastructure.
 
 ## Security and Privacy
 

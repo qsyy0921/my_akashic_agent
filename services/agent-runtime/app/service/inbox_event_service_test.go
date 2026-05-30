@@ -13,7 +13,7 @@ import (
 
 func TestInboxEventServiceListsRawGroupMessages(t *testing.T) {
 	store := memory.NewStore()
-	event, err := model.NewInboxEvent(model.MessageEnvelope{
+	firstEvent, err := model.NewInboxEvent(model.MessageEnvelope{
 		EventID: "qq:1049511700:group:27234224:1",
 		Channel: model.ChannelRef{
 			Kind:             model.ChannelKindQQ,
@@ -25,14 +25,36 @@ func TestInboxEventServiceListsRawGroupMessages(t *testing.T) {
 			ID:   "2948770636",
 			Kind: model.SenderKindHuman,
 		},
-		Content:   "B850M board price screenshot",
+		Content:   "older group note",
 		Timestamp: time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC),
-		Metadata:  map[string]string{"observe_only": "true"},
+		Metadata:  map[string]string{"observe_only": "true", "seq": "0"},
 	}, model.LoopDecision{Action: model.LoopActionAllow, Reason: "accepted"}, time.Date(2026, 5, 30, 0, 0, 1, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveInboxEvent(context.Background(), event); err != nil {
+	secondEvent, err := model.NewInboxEvent(model.MessageEnvelope{
+		EventID: "qq:1049511700:group:27234224:2",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Sender: model.SenderRef{
+			ID:   "2948770636",
+			Kind: model.SenderKindHuman,
+		},
+		Content:   "B850M board price screenshot",
+		Timestamp: time.Date(2026, 5, 30, 0, 0, 2, 0, time.UTC),
+		Metadata:  map[string]string{"observe_only": "true", "seq": "1"},
+	}, model.LoopDecision{Action: model.LoopActionAllow, Reason: "accepted"}, time.Date(2026, 5, 30, 0, 0, 3, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveInboxEvent(context.Background(), firstEvent); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveInboxEvent(context.Background(), secondEvent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -41,6 +63,9 @@ func TestInboxEventServiceListsRawGroupMessages(t *testing.T) {
 		ConversationID:   "27234224",
 		ConversationType: "group",
 		ObserveOnly:      "true",
+		AfterSeq:         0,
+		AfterSeqSet:      true,
+		Order:            "asc",
 		Limit:            10,
 	})
 	if err != nil {

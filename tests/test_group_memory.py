@@ -60,6 +60,30 @@ def _build_service(tmp_path) -> tuple[GroupMemoryService, SessionStore, dict]:
     return service, session_store, fixture
 
 
+class _FakeGroupMessageSource:
+    def __init__(self, rows: list[dict]) -> None:
+        self.calls: list[dict] = []
+        self._rows = rows
+
+    def fetch_new_messages(
+        self,
+        *,
+        session_key: str,
+        group_id: str,
+        after_seq: int,
+        limit: int,
+    ) -> list[dict]:
+        self.calls.append(
+            {
+                "session_key": session_key,
+                "group_id": group_id,
+                "after_seq": after_seq,
+                "limit": limit,
+            }
+        )
+        return [row for row in self._rows if int(row["seq"]) > after_seq][:limit]
+
+
 def test_group_memory_ingests_open_strategy_fixture_and_evolves(tmp_path):
     service, _session_store, fixture = _build_service(tmp_path)
     group_id = str(fixture["group_id"])
@@ -82,6 +106,42 @@ def test_group_memory_ingests_open_strategy_fixture_and_evolves(tmp_path):
     second = service.ingest_group(group_id)
     assert second.scanned == 0
     assert second.cursor == stats.cursor
+
+
+def test_group_memory_can_ingest_from_injected_message_source(tmp_path):
+    fixture = _load_fixture()
+    group_id = str(fixture["group_id"])
+    session_key = f"qq:gqq:{group_id}"
+    rows = []
+    for seq, message in enumerate(fixture["messages"]):
+        sender_id = str(message["sender_id"])
+        rows.append(
+            {
+                "id": f"{session_key}:{seq}",
+                "session_key": session_key,
+                "seq": seq,
+                "role": "user",
+                "content": f"[QQ群 {group_id} | {sender_id}] {message['content']}",
+                "timestamp": f"2026-01-01T00:00:{seq:02d}+00:00",
+                "sender_id": sender_id,
+            }
+        )
+    source = _FakeGroupMessageSource(rows)
+    service = GroupMemoryService(
+        session_store=SessionStore(tmp_path / "sessions.db"),
+        memory_store=GroupMemoryStore(tmp_path / "group_memory.db"),
+        message_source=source,
+        batch_max_messages=10,
+    )
+
+    stats = service.ingest_group(group_id)
+    second = service.ingest_group(group_id)
+
+    assert stats.scanned == 4
+    assert stats.candidates == 4
+    assert second.scanned == 0
+    assert source.calls[0]["after_seq"] == -1
+    assert source.calls[1]["after_seq"] == stats.cursor
 
 
 def test_group_memory_rag_search_returns_strategy_and_evidence(tmp_path):

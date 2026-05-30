@@ -2,6 +2,9 @@ package query
 
 type InboxEventFilter struct {
 	Limit            int
+	AfterSeq         int
+	AfterSeqSet      bool
+	Order            string
 	ChannelKind      string
 	AccountID        string
 	ConversationID   string

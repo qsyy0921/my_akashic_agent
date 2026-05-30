@@ -10,6 +10,7 @@ from group_memory.evolution import StrategyEvolutionEngine
 from group_memory.extractor import RuleBasedGameStrategyExtractor
 from group_memory.models import IngestStats, ObservedMessage
 from group_memory.rag import HybridGroupRag
+from group_memory.sources import GroupMessageSource, SessionGroupMessageSource
 from group_memory.store import GroupMemoryStore
 from session.store import SessionStore
 
@@ -24,9 +25,11 @@ class GroupMemoryService:
         *,
         session_store: SessionStore,
         memory_store: GroupMemoryStore,
+        message_source: GroupMessageSource | None = None,
         batch_max_messages: int = 80,
     ) -> None:
         self._sessions = session_store
+        self._source = message_source or SessionGroupMessageSource(session_store)
         self._store = memory_store
         self._extractor = RuleBasedGameStrategyExtractor()
         self._evolution = StrategyEvolutionEngine(memory_store)
@@ -39,11 +42,13 @@ class GroupMemoryService:
         workspace: str | Path,
         *,
         session_store: SessionStore,
+        message_source: GroupMessageSource | None = None,
         batch_max_messages: int = 80,
     ) -> "GroupMemoryService":
         return cls(
             session_store=session_store,
             memory_store=GroupMemoryStore(Path(workspace) / "group_memory.db"),
+            message_source=message_source,
             batch_max_messages=batch_max_messages,
         )
 
@@ -56,8 +61,12 @@ class GroupMemoryService:
         if not group:
             return IngestStats(session_key=session_key, group_id="", cursor=-1)
         cursor = self._store.get_cursor(session_key)
-        rows = self._sessions.fetch_session_messages(session_key)
-        new_rows = [r for r in rows if int(r.get("seq", -1)) > cursor]
+        new_rows = self._source.fetch_new_messages(
+            session_key=session_key,
+            group_id=group,
+            after_seq=cursor,
+            limit=self._batch_max_messages,
+        )
         if not new_rows:
             return IngestStats(session_key=session_key, group_id=group, cursor=cursor)
         all_new_max_seq = max(int(r.get("seq", cursor)) for r in new_rows)

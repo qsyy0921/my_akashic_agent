@@ -111,6 +111,35 @@ async def test_agent_gateway_client_lists_jobs_with_filters():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_lists_inbox_events_with_cursor_filters():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/inbox"
+        assert dict(request.url.params) == {
+            "limit": "20",
+            "channel_kind": "qq",
+            "conversation_id": "27234224",
+            "conversation_type": "group",
+            "observe_only": "true",
+            "after_seq": "3",
+            "order": "asc",
+        }
+        return _ok([{"event_id": "event-4", "metadata": {"seq": "4"}}])
+
+    items = await _client(handler).list_inbox_events(
+        channel_kind="qq",
+        conversation_id="27234224",
+        conversation_type="group",
+        observe_only=True,
+        after_seq=3,
+        order="asc",
+        limit=20,
+    )
+
+    assert items == [{"event_id": "event-4", "metadata": {"seq": "4"}}]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_updates_legacy_image_job_state():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

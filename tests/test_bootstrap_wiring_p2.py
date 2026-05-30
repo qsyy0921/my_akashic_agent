@@ -1181,6 +1181,10 @@ def test_bootstrap_disables_group_memory_loop_when_agent_gateway_enabled(
         task.close()
     assert len(knowledge_tasks) == 1
     assert knowledge_worker is not None
+    assert (
+        type(getattr(knowledge_worker._group_memory, "_source")).__name__
+        == "AgentRuntimeInboxGroupMessageSource"
+    )
 
 
 def test_bootstrap_disables_group_memory_loop_when_agent_runtime_enabled(
@@ -1245,6 +1249,10 @@ def test_bootstrap_disables_group_memory_loop_when_agent_runtime_enabled(
         task.close()
     assert len(knowledge_tasks) == 1
     assert knowledge_worker is not None
+    assert (
+        type(getattr(knowledge_worker._group_memory, "_source")).__name__
+        == "AgentRuntimeInboxGroupMessageSource"
+    )
 
 
 def test_bootstrap_runtime_worker_entry_points_are_first_class(

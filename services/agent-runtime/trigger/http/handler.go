@@ -159,6 +159,9 @@ func InboxEventsHandler(inboxEvents inport.InboxEventViewer) http.Handler {
 		}
 		items, err := inboxEvents.ListInboxEvents(r.Context(), query.InboxEventFilter{
 			Limit:            parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			AfterSeq:         parseNonNegativeInt(r.URL.Query().Get("after_seq"), -1),
+			AfterSeqSet:      strings.TrimSpace(r.URL.Query().Get("after_seq")) != "",
+			Order:            strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order"))),
 			ChannelKind:      channelKind,
 			AccountID:        r.URL.Query().Get("account_id"),
 			ConversationID:   r.URL.Query().Get("conversation_id"),
@@ -211,6 +214,17 @@ func parsePositiveInt(value string, fallback int, maxValue int) int {
 	}
 	if parsed > maxValue {
 		return maxValue
+	}
+	return parsed
+}
+
+func parseNonNegativeInt(value string, fallback int) int {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
 	}
 	return parsed
 }

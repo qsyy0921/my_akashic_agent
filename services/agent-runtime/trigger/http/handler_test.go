@@ -193,7 +193,7 @@ func TestInboxEndpointListsRawObservedGroupEvents(t *testing.T) {
 		},
 		"content":   "raw inbox hardware message",
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
-		"metadata":  map[string]string{"observe_only": "true"},
+		"metadata":  map[string]string{"observe_only": "true", "seq": "1"},
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -214,6 +214,15 @@ func TestInboxEndpointListsRawObservedGroupEvents(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"observe_only":true`)) {
 		t.Fatalf("inbox response missing observe-only flag: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&after_seq=0&order=asc&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected cursor inbox list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("raw inbox hardware message")) {
+		t.Fatalf("cursor inbox response missing raw event content: %s", response.Body.String())
 	}
 
 	response = httptest.NewRecorder()

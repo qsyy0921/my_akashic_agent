@@ -62,3 +62,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-13-outbox-failure-kind.md`
 - `2026-05-30-phase8-14-outbox-retryability-policy.md`
 - `2026-05-30-phase8-15-go-inbox-raw-store.md`
+- `2026-05-30-phase8-16-group-memory-runtime-inbox-source.md`
