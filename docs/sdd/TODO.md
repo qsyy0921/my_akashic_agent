@@ -67,6 +67,7 @@
 - [x] 将 `agent_job` 过期租约恢复接入 Agent Jobs dashboard：前端可触发 Go `/v1/jobs/recover-expired`，展示扫描/恢复/死信结果，并只暴露 `lease_token_present` 避免泄漏 token 值。
 - [x] 增加 Go-owned `agent_job` metrics endpoint `GET /v1/job-metrics`：Go 聚合 job 状态、类型分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
 - [x] 增加 Go-owned outbox metrics endpoint `GET /v1/outbox-metrics`：Go 聚合投递状态、channel 分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
+- [x] 增加 Go-owned inbox metrics endpoint `GET /v1/inbox-metrics`：Go 聚合原始观察消息、observe-only 占比、附件采集、会话 sender 和 seq cursor，用于 runtime overview 观察 QQ 群数据采集质量。
 
 ## 下一步
 

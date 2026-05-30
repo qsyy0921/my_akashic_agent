@@ -140,6 +140,18 @@ The inbox is the Go-owned raw message log for QQ/TG observations. It preserves
 route, sender, provenance, decision, attachment metadata, and observe-only
 state. Duplicate `event_id` writes are idempotent.
 
+Inspect Go-owned inbox collection metrics:
+
+```text
+GET /v1/inbox-metrics?limit=200
+GET /v1/inbox-metrics?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=200
+```
+
+The metrics response summarizes the bounded raw inbox sample by channel kind,
+conversation, decision action, sender kind, observe-only totals, attachment
+capture, unique senders, and latest `metadata.seq` cursor per conversation. It
+is read-only and does not publish agent inbound work or send platform replies.
+
 Publish outbound messages:
 
 ```text

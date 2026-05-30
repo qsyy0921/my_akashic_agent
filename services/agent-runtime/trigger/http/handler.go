@@ -85,6 +85,13 @@ func RegisterAgentJobMetricsRoutes(
 	mux.Handle("/v1/job-metrics", AgentJobMetricsHandler(metrics))
 }
 
+func RegisterInboxMetricsRoutes(
+	mux *http.ServeMux,
+	metrics inport.InboxMetricsViewer,
+) {
+	mux.Handle("/v1/inbox-metrics", InboxMetricsHandler(metrics))
+}
+
 func RegisterOutboxEventRoutes(
 	mux *http.ServeMux,
 	outboxEvents inport.OutboxDeliveryEventViewer,
@@ -1133,6 +1140,33 @@ func AgentJobMetricsHandler(metrics inport.AgentJobMetricsViewer) http.Handler {
 		item, err := metrics.Get(r.Context(), query.AgentJobMetricsFilter{
 			JobLimit:   parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
 			EventLimit: parsePositiveInt(r.URL.Query().Get("event_limit"), 200, 200),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func InboxMetricsHandler(metrics inport.InboxMetricsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		channelKind := r.URL.Query().Get("channel_kind")
+		if channelKind == "" {
+			channelKind = r.URL.Query().Get("platform")
+		}
+		item, err := metrics.Get(r.Context(), query.InboxMetricsFilter{
+			Limit:            parsePositiveInt(r.URL.Query().Get("limit"), 200, 200),
+			ChannelKind:      channelKind,
+			AccountID:        r.URL.Query().Get("account_id"),
+			ConversationID:   r.URL.Query().Get("conversation_id"),
+			ConversationType: r.URL.Query().Get("conversation_type"),
+			DecisionAction:   r.URL.Query().Get("decision_action"),
+			ObserveOnly:      r.URL.Query().Get("observe_only"),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

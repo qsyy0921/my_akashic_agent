@@ -300,6 +300,50 @@ func TestInboxEndpointListsRawObservedGroupEvents(t *testing.T) {
 	}
 }
 
+func TestInboxMetricsEndpointReturnsObserveOnlyCollectionSummary(t *testing.T) {
+	store := memory.NewStore()
+	metrics := appservice.NewInboxMetricsService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterInboxMetricsRoutes(mux, metrics)
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	events := []model.InboxEvent{
+		mustHTTPInboxEvent(t, "qq:1049511700:group:27234224:metrics-1", "27234224", "2948770636", nil, map[string]string{"observe_only": "true", "seq": "10"}, now),
+		mustHTTPInboxEvent(t, "qq:1049511700:group:27234224:metrics-2", "27234224", "99887766", []model.Attachment{{
+			ID:       "asset:qq:image:metrics-2:1",
+			Kind:     model.AttachmentKindImage,
+			MimeType: "image/png",
+			Name:     "qq-image.png",
+		}}, map[string]string{"observe_only": "true", "seq": "11"}, now.Add(time.Second)),
+	}
+	for _, event := range events {
+		if err := store.SaveInboxEvent(context.Background(), event); err != nil {
+			t.Fatalf("save inbox event: %v", err)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/inbox-metrics?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected metrics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`"sampled_events":2`,
+		`"observe_only_total":2`,
+		`"reply_eligible_total":0`,
+		`"with_attachments":1`,
+		`"attachment_count":1`,
+		`"unique_senders":2`,
+		`"latest_seq":11`,
+		`"event_id":"qq:1049511700:group:27234224:metrics-2"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("metrics response missing %s: %s", expected, body)
+		}
+	}
+}
+
 func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -379,6 +423,39 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte("outbox-http-1")) {
 		t.Fatalf("list response missing delivery: %s", response.Body.String())
 	}
+}
+
+func mustHTTPInboxEvent(
+	t *testing.T,
+	eventID string,
+	conversationID string,
+	senderID string,
+	attachments []model.Attachment,
+	metadata map[string]string,
+	timestamp time.Time,
+) model.InboxEvent {
+	t.Helper()
+	event, err := model.NewInboxEvent(model.MessageEnvelope{
+		EventID: eventID,
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   conversationID,
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Sender: model.SenderRef{
+			ID:   senderID,
+			Kind: model.SenderKindHuman,
+		},
+		Content:     "raw group observation",
+		Attachments: attachments,
+		Timestamp:   timestamp,
+		Metadata:    metadata,
+	}, model.LoopDecision{Action: model.LoopActionAllow, Reason: "fixture"}, timestamp)
+	if err != nil {
+		t.Fatalf("new inbox event: %v", err)
+	}
+	return event
 }
 
 func TestOutboxEndpointDeadLettersNonRetryableFailureKind(t *testing.T) {

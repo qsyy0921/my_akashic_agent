@@ -92,6 +92,18 @@ GET /v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&o
 GET /v1/inbox/{event_id}
 ```
 
+Read Go-owned inbox collection metrics:
+
+```text
+GET /v1/inbox-metrics?limit=200
+GET /v1/inbox-metrics?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=200
+```
+
+The metrics response summarizes the bounded raw inbox sample by channel kind,
+conversation, decision action, sender kind, observe-only totals, attachment
+capture, unique senders, and latest `metadata.seq` cursor per conversation. It
+is read-only and must not publish agent inbound work or send platform replies.
+
 ## Runtime Configuration
 
 ```powershell
@@ -110,9 +122,11 @@ keeps the development in-memory store.
   filtering on `metadata.seq` via `after_seq` and returning oldest-first batches
   with `order=asc`.
 - `/v1/inbox/{event_id}` returns one raw event.
+- `/v1/inbox-metrics` reports observe-only, attachment, conversation, sender,
+  and latest sequence cursor metrics from the Go-owned inbox repository.
 - File-backed inbox survives `agent-runtime` restart.
 - Go unit tests cover domain validation, application view mapping, HTTP API,
-  and file-backed persistence.
+  metrics API, and file-backed persistence.
 
 ## Follow-Ups
 

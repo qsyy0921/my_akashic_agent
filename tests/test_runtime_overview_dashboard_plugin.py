@@ -217,6 +217,63 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "blockers": ["explicit_cutover", "state_lease_workers_disabled"],
         },
     }
+    inbox_metrics = {
+        "sampled_events": 9,
+        "observe_only_total": 7,
+        "reply_eligible_total": 2,
+        "with_attachments": 3,
+        "attachment_count": 4,
+        "unique_senders": 5,
+        "events_by_channel_kind": {
+            "qq": {
+                "total": 7,
+                "observe_only": 7,
+                "reply_eligible": 0,
+                "with_attachments": 3,
+                "attachment_count": 4,
+                "by_conversation_type": {"group": 7},
+            }
+        },
+        "events_by_conversation": {
+            "qq/1049511700/group/27234224": {
+                "channel": {
+                    "kind": "qq",
+                    "account_id": "1049511700",
+                    "conversation_id": "27234224",
+                    "conversation_type": "group",
+                },
+                "total": 7,
+                "observe_only": 7,
+                "reply_eligible": 0,
+                "with_attachments": 3,
+                "attachment_count": 4,
+                "unique_senders": 5,
+                "sequenced_events": 7,
+                "latest_seq": 119,
+                "latest_received_at": "2026-05-30T08:49:00Z",
+            }
+        },
+        "events_by_decision_action": {"allow": 9},
+        "events_by_sender_kind": {"human": 9},
+        "recent": [
+            {
+                "event_id": "qq:1049511700:group:27234224:119",
+                "channel": {
+                    "kind": "qq",
+                    "account_id": "1049511700",
+                    "conversation_id": "27234224",
+                    "conversation_type": "group",
+                },
+                "sender_id": "2948770636",
+                "sender_kind": "human",
+                "decision_action": "allow",
+                "observe_only": True,
+                "attachment_count": 1,
+                "seq": 119,
+                "received_at": "2026-05-30T08:49:00Z",
+            }
+        ],
+    }
     agent_job_metrics = {
         "sampled_jobs": 3,
         "sampled_events": 12,
@@ -319,6 +376,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": delivery_adapters}))
         if parsed.path == "/v1/queue-backend":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": queue_backend}))
+        if parsed.path == "/v1/inbox-metrics":
+            assert query["limit"] == ["50"]
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": inbox_metrics}))
         if parsed.path == "/v1/job-metrics":
             assert query["job_limit"] == ["50"]
             assert query["event_limit"] == ["10"]
@@ -361,6 +421,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_consumer_concurrency"] == 8
     assert payload["summary"]["queue_max_in_flight"] == 64
     assert payload["summary"]["queue_external_lease_ready"] is False
+    assert payload["summary"]["inbox_metric_events"] == 9
+    assert payload["summary"]["inbox_metric_observe_only"] == 7
+    assert payload["summary"]["inbox_metric_with_attachments"] == 3
     assert payload["summary"]["agent_job_metric_events"] == 12
     assert payload["summary"]["agent_job_metric_dead_letters"] == 1
     assert payload["summary"]["outbox_metric_events"] == 7
@@ -374,6 +437,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    inbox_metrics_card = next(item for item in payload["cards"] if item["id"] == "inbox_metrics")
+    assert inbox_metrics_card["status"] == "ok"
+    assert payload["inbox_metrics"]["events_by_conversation"][
+        "qq/1049511700/group/27234224"
+    ]["latest_seq"] == 119
     metrics_card = next(item for item in payload["cards"] if item["id"] == "agent_job_metrics")
     assert metrics_card["status"] == "danger"
     assert payload["agent_job_metrics"]["throughput"]["succeeded"] == 1
@@ -396,6 +464,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/outbox-events",
         "/v1/delivery-adapters",
         "/v1/queue-backend",
+        "/v1/inbox-metrics",
         "/v1/job-metrics",
         "/v1/outbox-metrics",
     }.issubset(set(seen_paths))
@@ -415,6 +484,7 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
                 in {
                     "/v1/knowledge-worker-diagnostics",
                     "/v1/queue-backend",
+                    "/v1/inbox-metrics",
                     "/v1/job-metrics",
                     "/v1/outbox-metrics",
                 }

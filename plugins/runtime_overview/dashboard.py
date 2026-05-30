@@ -137,6 +137,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        inbox_metrics_raw, error = self._read_mapping(
+            "/v1/inbox-metrics",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "inbox-metrics", "error": error})
+            inbox_metrics_raw = {}
+        else:
+            successful_reads += 1
+
         agent_job_metrics_raw, error = self._read_mapping(
             "/v1/job-metrics",
             {"job_limit": safe_limit, "event_limit": safe_event_limit},
@@ -180,6 +190,7 @@ class RuntimeOverviewDashboardReader:
             if isinstance(item, Mapping)
         ]
         queue_backend = _normalize_queue_backend(queue_backend_raw)
+        inbox_metrics = _normalize_inbox_metrics(inbox_metrics_raw)
         agent_job_metrics = _normalize_agent_job_metrics(agent_job_metrics_raw)
         outbox_metrics = _normalize_outbox_metrics(outbox_metrics_raw)
 
@@ -231,6 +242,9 @@ class RuntimeOverviewDashboardReader:
             "queue_consumer_concurrency": queue_backend["consumer_concurrency"],
             "queue_max_in_flight": queue_backend["max_in_flight"],
             "queue_external_lease_ready": queue_backend["external_lease_ready"],
+            "inbox_metric_events": inbox_metrics["sampled_events"],
+            "inbox_metric_observe_only": inbox_metrics["observe_only_total"],
+            "inbox_metric_with_attachments": inbox_metrics["with_attachments"],
             "agent_job_metric_events": agent_job_metrics["sampled_events"],
             "agent_job_metric_dead_letters": agent_job_metrics["dead_letters"]["current_total"],
             "outbox_metric_events": outbox_metrics["sampled_events"],
@@ -254,6 +268,7 @@ class RuntimeOverviewDashboardReader:
             delivery_adapters=delivery_adapters,
             disabled_adapters=disabled_adapters,
             queue_backend=queue_backend,
+            inbox_metrics=inbox_metrics,
             agent_job_metrics=agent_job_metrics,
             outbox_metrics=outbox_metrics,
         )
@@ -279,6 +294,7 @@ class RuntimeOverviewDashboardReader:
             "diagnostics": diagnostics,
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
+            "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
             "outbox_metrics": outbox_metrics,
             "status": {
@@ -529,6 +545,27 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_inbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
+    recent = item.get("recent")
+    if not isinstance(recent, list):
+        recent = []
+    return {
+        "sampled_events": _int_value(item.get("sampled_events"), fallback=0),
+        "observe_only_total": _int_value(item.get("observe_only_total"), fallback=0),
+        "reply_eligible_total": _int_value(item.get("reply_eligible_total"), fallback=0),
+        "with_attachments": _int_value(item.get("with_attachments"), fallback=0),
+        "attachment_count": _int_value(item.get("attachment_count"), fallback=0),
+        "unique_senders": _int_value(item.get("unique_senders"), fallback=0),
+        "events_by_channel_kind": _mapping_or_empty(item.get("events_by_channel_kind")),
+        "events_by_conversation": _mapping_or_empty(item.get("events_by_conversation")),
+        "events_by_decision_action": _mapping_or_empty(
+            item.get("events_by_decision_action")
+        ),
+        "events_by_sender_kind": _mapping_or_empty(item.get("events_by_sender_kind")),
+        "recent": [dict(value) for value in recent if isinstance(value, Mapping)],
+    }
+
+
 def _normalize_agent_job_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     throughput = _mapping_or_empty(item.get("throughput"))
     dead_letters = _mapping_or_empty(item.get("dead_letters"))
@@ -617,6 +654,7 @@ def _overview_cards(
     delivery_adapters: list[dict[str, Any]],
     disabled_adapters: list[dict[str, Any]],
     queue_backend: dict[str, Any],
+    inbox_metrics: dict[str, Any],
     agent_job_metrics: dict[str, Any],
     outbox_metrics: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -712,6 +750,13 @@ def _overview_cards(
             f"{queue_provider}/{queue_mode}",
             queue_status,
             {"queue_backend": queue_backend},
+        ),
+        _card(
+            "inbox_metrics",
+            "Inbox Metrics",
+            summary.get("inbox_metric_events", 0),
+            "ok" if summary.get("inbox_metric_events") else "muted",
+            {"inbox_metrics": inbox_metrics},
         ),
     ]
 
