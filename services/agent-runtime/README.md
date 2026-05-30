@@ -293,6 +293,19 @@ future external queue consumers. It scans expired `leased` / `running` jobs,
 returns retryable jobs to `pending`, moves exhausted jobs to `dead_lettered`,
 clears stale lease ownership, and appends a `lease_expired` lifecycle event.
 
+The same recovery use case can run as an optional runtime background job:
+
+```powershell
+$env:AKASHIC_AGENT_JOB_RECOVERY_ENABLED = "true"
+$env:AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS = "300"
+$env:AKASHIC_AGENT_JOB_RECOVERY_LIMIT = "50"
+$env:AKASHIC_AGENT_JOB_RECOVERY_RUN_ON_START = "true"
+```
+
+The runner is disabled by default. When enabled, it only calls the Go
+`RecoverExpiredLeases` application use case; it does not execute Python workers
+or acknowledge NATS messages directly.
+
 Persist generic job lifecycle events as a JSONL stream:
 
 ```powershell

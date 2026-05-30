@@ -329,6 +329,21 @@ Expired lease recovery is now an explicit Go-owned operation:
   handling, then decide `ack`, delayed `nack`, or `term` from the authoritative
   Go job state.
 
+The same recovery path can run as an optional runtime background job:
+
+- `AKASHIC_AGENT_JOB_RECOVERY_ENABLED=true` starts the runner.
+- `AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS` controls scan interval, default
+  `300`.
+- `AKASHIC_AGENT_JOB_RECOVERY_LIMIT` controls per-scan batch size, default `50`,
+  max `200`.
+- `AKASHIC_AGENT_JOB_RECOVERY_RUN_ON_START` defaults to `true` when the runner is
+  enabled.
+- The runner is a trigger adapter. It calls the application-level
+  `RecoverExpiredLeases` use case and does not duplicate domain rules in the
+  runtime process.
+- The runner is disabled by default so existing Python state-store workers and
+  heartbeat behavior are unchanged unless the operator opts in.
+
 Agent-job result acknowledgement now has a safe Go mapping:
 
 - Go does not execute image generation, RAG ingest, group memory extraction, or

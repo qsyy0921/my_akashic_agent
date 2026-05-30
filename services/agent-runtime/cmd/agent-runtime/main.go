@@ -153,6 +153,13 @@ func main() {
 		workQueue,
 		appservice.WithStrictAgentJobLeaseToken(boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")),
 	)
+	stopAgentJobRecovery, err := startAgentJobLeaseRecovery(agentJobs)
+	if err != nil {
+		log.Fatalf("init agent job lease recovery: %v", err)
+	}
+	if stopAgentJobRecovery != nil {
+		defer stopAgentJobRecovery()
+	}
 	externalLeaseConsumer, closeExternalLeaseConsumer, err := newWorkQueueExternalLeaseConsumer(queueBackendView)
 	if err != nil {
 		log.Fatalf("init work queue external lease consumer: %v", err)

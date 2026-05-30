@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 )
@@ -312,6 +313,34 @@ func TestQueueBackendViewFromEnvRejectsMaxInFlightBelowConcurrency(t *testing.T)
 
 	if _, err := queueBackendViewFromEnv(); err == nil {
 		t.Fatalf("expected max in-flight validation error")
+	}
+}
+
+func TestAgentJobLeaseRecoveryConfigDisabledByDefault(t *testing.T) {
+	_, enabled, err := agentJobLeaseRecoveryConfigFromEnv()
+	if err != nil {
+		t.Fatalf("recovery config: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected recovery runner disabled by default")
+	}
+}
+
+func TestAgentJobLeaseRecoveryConfigFromEnv(t *testing.T) {
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED", "true")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS", "120")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_LIMIT", "25")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_RUN_ON_START", "false")
+
+	config, enabled, err := agentJobLeaseRecoveryConfigFromEnv()
+	if err != nil {
+		t.Fatalf("recovery config: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected recovery runner enabled")
+	}
+	if config.Interval != 120*time.Second || config.Limit != 25 || config.RunOnStart {
+		t.Fatalf("unexpected recovery config: %+v", config)
 	}
 }
 
