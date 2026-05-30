@@ -69,6 +69,7 @@
 - [x] 增加 Go-owned outbox metrics endpoint `GET /v1/outbox-metrics`：Go 聚合投递状态、channel 分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
 - [x] 增加 Go-owned inbox metrics endpoint `GET /v1/inbox-metrics`：Go 聚合原始观察消息、observe-only 占比、附件采集、会话 sender 和 seq cursor，用于 runtime overview 观察 QQ 群数据采集质量。
 - [x] 增加 Go-owned send ledger metrics endpoint `GET /v1/send-ledger/metrics`：Go 聚合 recent-send 防循环记录、bot/conversation 分布和重复 content hash，用于 runtime overview 审计双账号互聊回流风险。
+- [x] 增加 Go-owned runtime overview aggregate endpoint `GET /v1/runtime-overview`：Go 聚合 adapter、queue、send ledger、inbox、agent job、outbox 和 knowledge diagnostics，Python dashboard 优先读取该聚合口并保留旧多接口 fallback。
 
 ## 下一步
 

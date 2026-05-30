@@ -543,6 +543,19 @@ generic jobs with `memory:` and `ragflow:` checkpoints, status counts, leaseable
 counts, and stale lease counts. It is intended for dashboard/ops visibility and
 does not execute or mutate jobs.
 
+Inspect the Go-owned runtime overview aggregate:
+
+```text
+GET /v1/runtime-overview?limit=200&event_limit=50&stale_after_seconds=900
+```
+
+This read-only endpoint combines delivery adapter diagnostics, queue backend
+state, send ledger metrics, inbox metrics, agent job metrics, outbox metrics,
+and knowledge worker diagnostics into the same summary/card shape consumed by
+the Python dashboard. It does not send platform messages, lease work, recover
+jobs, or mutate runtime state. The Python dashboard prefers this endpoint and
+falls back to the older multi-endpoint read path when it is unavailable.
+
 Record and query recent bot sends:
 
 ```text

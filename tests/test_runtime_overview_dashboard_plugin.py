@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 
 from bootstrap.dashboard_api import create_dashboard_app
+from plugins.runtime_overview.dashboard import RuntimeOverviewDashboardReader
 
 
 class _MemoryAdmin:
@@ -171,7 +172,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "stale_leases": 1,
             "leaseable_jobs": 0,
         },
-        "workers": [],
+        "workers": [
+            {
+                "job_type": "rag_ingest",
+                "checkpoints": checkpoints,
+            }
+        ],
     }
     delivery_adapters = [
         {
@@ -389,6 +395,65 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             ],
         },
     }
+    go_overview = {
+        "summary": {
+            "jobs_total": 3,
+            "outbox_total": 2,
+            "checkpoints_total": 1,
+            "worker_leases": 2,
+            "agent_job_leases": 1,
+            "outbox_leases": 1,
+            "stale_jobs": 1,
+            "dead_letters": 2,
+            "checkpoint_lag_max": 17,
+            "job_events": 12,
+            "outbox_events": 7,
+            "rag_eval_failures": 1,
+            "delivery_adapters": 2,
+            "delivery_adapters_enabled": 1,
+            "delivery_adapters_disabled": 1,
+            "queue_backend_provider": "nats_jetstream",
+            "queue_backend_mode": "external_lease",
+            "queue_consumer_concurrency": 8,
+            "queue_max_in_flight": 64,
+            "queue_external_lease_ready": False,
+            "send_ledger_records": 4,
+            "send_ledger_repeated_hashes": 1,
+            "inbox_metric_events": 9,
+            "inbox_metric_observe_only": 7,
+            "inbox_metric_with_attachments": 3,
+            "agent_job_metric_events": 12,
+            "agent_job_metric_dead_letters": 1,
+            "outbox_metric_events": 7,
+            "outbox_metric_dead_letters": 1,
+        },
+        "cards": [
+            {"id": "delivery_adapters", "label": "Delivery Adapters", "value": 1, "status": "warn"},
+            {
+                "id": "queue_backend",
+                "label": "Queue Backend",
+                "value": "nats_jetstream/external_lease",
+                "status": "warn",
+            },
+            {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
+            {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
+            {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
+            {"id": "outbox_metrics", "label": "Outbox Metrics", "value": 7, "status": "danger"},
+        ],
+        "delivery_adapters": delivery_adapters,
+        "queue_backend": queue_backend,
+        "send_ledger_metrics": send_ledger_metrics,
+        "inbox_metrics": inbox_metrics,
+        "agent_job_metrics": agent_job_metrics,
+        "outbox_metrics": outbox_metrics,
+        "diagnostics": diagnostics,
+        "status": {
+            "runtime_available": True,
+            "health_available": True,
+            "partial": False,
+            "errors": [],
+        },
+    }
     seen_paths: list[str] = []
 
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
@@ -396,6 +461,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         parsed = urlparse(target)
         seen_paths.append(parsed.path)
         query = parse_qs(parsed.query)
+        if parsed.path == "/v1/runtime-overview":
+            assert query["limit"] == ["50"]
+            assert query["event_limit"] == ["10"]
+            assert query["stale_after_seconds"] == ["60"]
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": go_overview}))
         if parsed.path == "/healthz":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
         if parsed.path == "/v1/jobs":
@@ -457,8 +527,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["stale_jobs"] == 1
     assert payload["summary"]["dead_letters"] == 2
     assert payload["summary"]["checkpoint_lag_max"] == 17
-    assert payload["summary"]["job_events"] == 2
-    assert payload["summary"]["outbox_events"] == 1
+    assert payload["summary"]["job_events"] == 12
+    assert payload["summary"]["outbox_events"] == 7
     assert payload["summary"]["rag_eval_failures"] == 1
     assert payload["summary"]["delivery_adapters"] == 2
     assert payload["summary"]["delivery_adapters_enabled"] == 1
@@ -512,19 +582,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "explicit_cutover",
         "state_lease_workers_disabled",
     ]
-    assert {
-        "/healthz",
-        "/v1/jobs",
-        "/v1/outbox",
-        "/v1/job-events",
-        "/v1/outbox-events",
-        "/v1/delivery-adapters",
-        "/v1/queue-backend",
-        "/v1/send-ledger/metrics",
-        "/v1/inbox-metrics",
-        "/v1/job-metrics",
-        "/v1/outbox-metrics",
-    }.issubset(set(seen_paths))
+    assert seen_paths == ["/v1/runtime-overview"]
 
 
 def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
@@ -567,6 +625,52 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert plugin_panels["runtime_overview"][0]["has_css"] is True
     assert js_response.status_code == 200
     assert css_response.status_code == 200
+
+
+def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    seen_paths: list[str] = []
+
+    def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
+        target = request.full_url if hasattr(request, "full_url") else str(request)
+        parsed = urlparse(target)
+        seen_paths.append(parsed.path)
+        if parsed.path == "/v1/runtime-overview":
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": []}))
+        if parsed.path == "/healthz":
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
+        if parsed.path.startswith("/v1/"):
+            payload: dict[str, Any] | list[Any]
+            payload = (
+                {}
+                if parsed.path
+                in {
+                    "/v1/knowledge-worker-diagnostics",
+                    "/v1/queue-backend",
+                    "/v1/send-ledger/metrics",
+                    "/v1/inbox-metrics",
+                    "/v1/job-metrics",
+                    "/v1/outbox-metrics",
+                }
+                else []
+            )
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": payload}))
+        raise AssertionError(f"unhandled runtime call: {parsed.path}")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    payload = RuntimeOverviewDashboardReader(tmp_path).get_overview(
+        limit=10,
+        event_limit=5,
+        stale_after_seconds=30,
+    )
+
+    assert payload["status"]["runtime_available"] is True
+    assert "/v1/runtime-overview" in seen_paths
+    assert "/v1/jobs" in seen_paths
+    assert "/v1/outbox-metrics" in seen_paths
 
 
 def _fake_urlopen_response(payload: str):

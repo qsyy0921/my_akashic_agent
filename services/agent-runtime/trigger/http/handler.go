@@ -130,6 +130,13 @@ func RegisterDeliveryAdapterDiagnosticsRoutes(
 	mux.Handle("/v1/delivery-adapters", DeliveryAdaptersHandler(viewer))
 }
 
+func RegisterRuntimeOverviewRoutes(
+	mux *http.ServeMux,
+	viewer inport.RuntimeOverviewViewer,
+) {
+	mux.Handle("/v1/runtime-overview", RuntimeOverviewHandler(viewer))
+}
+
 func RegisterProactiveStateRoutes(
 	mux *http.ServeMux,
 	proactiveState inport.ProactiveStateManager,
@@ -1245,6 +1252,29 @@ func QueueBackendHandler(queueBackend inport.QueueBackendViewer) http.Handler {
 			return
 		}
 		item, err := queueBackend.Get(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func RuntimeOverviewHandler(viewer inport.RuntimeOverviewViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "runtime overview disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := viewer.Get(r.Context(), query.RuntimeOverviewFilter{
+			Limit:             parsePositiveInt(r.URL.Query().Get("limit"), 200, 200),
+			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 86400),
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

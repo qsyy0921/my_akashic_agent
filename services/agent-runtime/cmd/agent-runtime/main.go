@@ -215,6 +215,15 @@ func main() {
 		AgentJobRepo:   agentJobRepository,
 		AgentJobEvents: agentJobEventStore,
 	})
+	runtimeOverview := appservice.NewRuntimeOverviewService(appservice.RuntimeOverviewDeps{
+		QueueBackend:         queueBackend,
+		DeliveryAdapters:     deliveryAdapterDiagnostics,
+		SendLedger:           sendLedger,
+		InboxMetrics:         inboxMetrics,
+		AgentJobMetrics:      agentJobMetrics,
+		OutboxMetrics:        outboxMetrics,
+		KnowledgeDiagnostics: knowledgeDiagnostics,
+	})
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
@@ -228,6 +237,7 @@ func main() {
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
+	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 
 	log.Printf(

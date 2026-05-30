@@ -51,6 +51,41 @@ func TestQueueBackendEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterRuntimeOverviewRoutes(mux, staticRuntimeOverviewViewer{
+		view: query.RuntimeOverviewView{
+			Summary: map[string]any{
+				"queue_backend_provider": "nats_jetstream",
+				"inbox_metric_events":    9,
+			},
+			Cards: []query.RuntimeOverviewCardView{{
+				ID:     "inbox_metrics",
+				Label:  "Inbox Metrics",
+				Value:  9,
+				Status: "ok",
+			}},
+			Status: query.RuntimeOverviewStatusView{
+				RuntimeAvailable: true,
+				HealthAvailable:  true,
+			},
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/runtime-overview?limit=50&event_limit=10&stale_after_seconds=60", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"queue_backend_provider":"nats_jetstream"`)) {
+		t.Fatalf("response missing summary: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"id":"inbox_metrics"`)) {
+		t.Fatalf("response missing card: %s", response.Body.String())
+	}
+}
+
 func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
 		{
@@ -1892,4 +1927,12 @@ func queryQueueBackendViewForTest() query.QueueBackendView {
 		SupportedProviders:      []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
 		Notes:                   []string{"diagnostic only"},
 	}
+}
+
+type staticRuntimeOverviewViewer struct {
+	view query.RuntimeOverviewView
+}
+
+func (s staticRuntimeOverviewViewer) Get(context.Context, query.RuntimeOverviewFilter) (query.RuntimeOverviewView, error) {
+	return s.view, nil
 }

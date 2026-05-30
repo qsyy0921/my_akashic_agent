@@ -2,9 +2,10 @@
 
 ## Status
 
-Implemented read-only dashboard plugin with delivery adapter, queue backend,
-Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
-Go-owned agent job metrics diagnostics, and Go-owned outbox metrics diagnostics.
+Implemented read-only dashboard plugin with a Go-owned runtime overview
+aggregate, delivery adapter, queue backend, Go-owned send ledger metrics
+diagnostics, Go-owned inbox metrics diagnostics, Go-owned agent job metrics
+diagnostics, and Go-owned outbox metrics diagnostics.
 
 ## Context
 
@@ -27,7 +28,14 @@ runtime availability before cutting more responsibilities over to Go.
 
 ## Runtime Reads
 
-The plugin reads:
+The plugin first reads the Go-owned aggregate:
+
+```text
+GET /v1/runtime-overview
+```
+
+When this endpoint is unavailable or returns an invalid shape, the dashboard
+falls back to the older multi-endpoint read path:
 
 ```text
 GET /healthz
@@ -64,6 +72,8 @@ It summarizes:
   sequence cursor metrics.
 - Go-owned `agent_job` lifecycle throughput and dead-letter trend samples.
 - Go-owned outbox delivery lifecycle throughput and dead-letter trend samples.
+- Go-owned aggregate cards and summary fields for runtime overview. Python
+  keeps only display normalization and fallback compatibility.
 
 ## Boundaries
 
@@ -89,6 +99,7 @@ remain in the specific job/outbox plugins where mutation is explicit.
 ## Acceptance
 
 - `/api/dashboard/runtime-overview` returns an aggregate summary and cards.
+- `GET /v1/runtime-overview` returns the Go-owned aggregate summary and cards.
 - The panel is discoverable via `/api/dashboard/plugins`.
 - Endpoint failures are returned in `status.errors` without breaking the whole
   overview when other endpoints still respond.
@@ -97,3 +108,5 @@ remain in the specific job/outbox plugins where mutation is explicit.
   visibility, queue backend visibility, Go-owned send ledger metrics,
   Go-owned inbox metrics, Go-owned `agent_job` metrics, and Go-owned outbox
   metrics.
+- Tests cover Python fallback to the old multi-endpoint path when the Go
+  aggregate is unavailable.

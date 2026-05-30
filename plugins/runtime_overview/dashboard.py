@@ -59,6 +59,20 @@ class RuntimeOverviewDashboardReader:
             maximum=24 * 60 * 60,
         )
 
+        go_overview, go_overview_error = self._read_mapping(
+            "/v1/runtime-overview",
+            {
+                "limit": safe_limit,
+                "event_limit": safe_event_limit,
+                "stale_after_seconds": safe_stale_after,
+            },
+        )
+        if not go_overview_error and go_overview:
+            return _normalize_go_runtime_overview(
+                go_overview,
+                runtime_base_url=self.runtime_base_url,
+            )
+
         errors: list[dict[str, str]] = []
         successful_reads = 0
         now = datetime.now(timezone.utc)
@@ -674,6 +688,155 @@ def _normalize_outbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(item.get("notes"), list)
         else [],
     }
+
+
+def _normalize_go_runtime_overview(
+    item: Mapping[str, Any],
+    *,
+    runtime_base_url: str,
+) -> dict[str, Any]:
+    summary = _summary_with_defaults(_mapping_or_empty(item.get("summary")))
+    delivery_adapters_raw = item.get("delivery_adapters")
+    if not isinstance(delivery_adapters_raw, list):
+        delivery_adapters_raw = []
+    cards_raw = item.get("cards")
+    if not isinstance(cards_raw, list):
+        cards_raw = []
+
+    delivery_adapters = [
+        _normalize_delivery_adapter(value)
+        for value in delivery_adapters_raw
+        if isinstance(value, Mapping)
+    ]
+    queue_backend = _normalize_queue_backend(_mapping_or_empty(item.get("queue_backend")))
+    send_ledger_metrics = _normalize_send_ledger_metrics(
+        _mapping_or_empty(item.get("send_ledger_metrics"))
+    )
+    inbox_metrics = _normalize_inbox_metrics(_mapping_or_empty(item.get("inbox_metrics")))
+    agent_job_metrics = _normalize_agent_job_metrics(
+        _mapping_or_empty(item.get("agent_job_metrics"))
+    )
+    outbox_metrics = _normalize_outbox_metrics(_mapping_or_empty(item.get("outbox_metrics")))
+    diagnostics = _mapping_or_empty(item.get("diagnostics"))
+    status = _mapping_or_empty(item.get("status"))
+    errors_raw = status.get("errors")
+    if not isinstance(errors_raw, list):
+        errors_raw = []
+    errors = [
+        {
+            "endpoint": _text(_mapping_or_empty(value).get("endpoint")),
+            "error": _text(_mapping_or_empty(value).get("error")),
+        }
+        for value in errors_raw
+        if isinstance(value, Mapping)
+    ]
+
+    cards = [
+        _normalize_go_runtime_card(value)
+        for value in cards_raw
+        if isinstance(value, Mapping)
+    ]
+
+    return {
+        "summary": summary,
+        "cards": cards,
+        "jobs_by_status": agent_job_metrics["jobs_by_status"],
+        "jobs_by_type": agent_job_metrics["jobs_by_type"],
+        "outbox_by_status": outbox_metrics["deliveries_by_status"],
+        "worker_leases": {
+            "agent_jobs": [],
+            "outbox": [],
+        },
+        "stale_items": [],
+        "dead_letters": {
+            "agent_jobs": agent_job_metrics["dead_letters"]["recent"],
+            "outbox": outbox_metrics["dead_letters"]["recent"],
+        },
+        "checkpoint_lag": _checkpoint_lag_from_diagnostics(diagnostics),
+        "recent_events": [],
+        "recent_outbox_events": [],
+        "diagnostics": diagnostics,
+        "delivery_adapters": delivery_adapters,
+        "queue_backend": queue_backend,
+        "send_ledger_metrics": send_ledger_metrics,
+        "inbox_metrics": inbox_metrics,
+        "agent_job_metrics": agent_job_metrics,
+        "outbox_metrics": outbox_metrics,
+        "status": {
+            "runtime_url": runtime_base_url,
+            "runtime_available": bool(status.get("runtime_available", True)),
+            "health_available": bool(status.get("health_available", True)),
+            "partial": bool(status.get("partial")) or bool(errors),
+            "errors": errors,
+        },
+    }
+
+
+def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
+    summary = dict(item)
+    defaults: dict[str, Any] = {
+        "jobs_total": 0,
+        "outbox_total": 0,
+        "checkpoints_total": 0,
+        "worker_leases": 0,
+        "agent_job_leases": 0,
+        "outbox_leases": 0,
+        "stale_jobs": 0,
+        "dead_letters": 0,
+        "checkpoint_lag_max": 0,
+        "job_events": 0,
+        "outbox_events": 0,
+        "rag_eval_failures": 0,
+        "delivery_adapters": 0,
+        "delivery_adapters_enabled": 0,
+        "delivery_adapters_disabled": 0,
+        "queue_backend_provider": "unknown",
+        "queue_backend_mode": "unknown",
+        "queue_consumer_concurrency": 0,
+        "queue_max_in_flight": 0,
+        "queue_external_lease_ready": False,
+        "send_ledger_records": 0,
+        "send_ledger_repeated_hashes": 0,
+        "inbox_metric_events": 0,
+        "inbox_metric_observe_only": 0,
+        "inbox_metric_with_attachments": 0,
+        "agent_job_metric_events": 0,
+        "agent_job_metric_dead_letters": 0,
+        "outbox_metric_events": 0,
+        "outbox_metric_dead_letters": 0,
+    }
+    for key, value in defaults.items():
+        summary.setdefault(key, value)
+    return summary
+
+
+def _normalize_go_runtime_card(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _text(item.get("id")),
+        "label": _text(item.get("label")),
+        "value": item.get("value"),
+        "status": _text(item.get("status")),
+        "detail": _mapping_or_empty(item.get("detail")),
+    }
+
+
+def _checkpoint_lag_from_diagnostics(diagnostics: Mapping[str, Any]) -> list[dict[str, Any]]:
+    workers = diagnostics.get("workers")
+    if not isinstance(workers, list):
+        return []
+    checkpoints: list[dict[str, Any]] = []
+    for worker in workers:
+        if not isinstance(worker, Mapping):
+            continue
+        raw_items = worker.get("checkpoints")
+        if not isinstance(raw_items, list):
+            continue
+        for item in raw_items:
+            if isinstance(item, Mapping):
+                checkpoint = _normalize_checkpoint(item)
+                if checkpoint["checkpoint_lag_messages"] is not None:
+                    checkpoints.append(checkpoint)
+    return checkpoints
 
 
 def _overview_cards(
