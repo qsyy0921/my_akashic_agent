@@ -172,15 +172,61 @@ func TestMessageIngestServiceShadowIngestRegistersAttachments(t *testing.T) {
 	}
 }
 
+func TestMessageIngestServiceShadowIngestRecordsInboxEvent(t *testing.T) {
+	store := memory.NewStore()
+	service := appservice.NewMessageIngestServiceWithRuntimeStores(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+		store,
+		store,
+	)
+
+	_, err := service.ShadowIngest(context.Background(), command.IngestMessageCommand{
+		EventID: "qq:1049511700:group:27234224:msg-raw-1",
+		Channel: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		Sender: command.SenderCommand{
+			ID:   "2948770636",
+			Kind: string(model.SenderKindHuman),
+		},
+		Content:   "raw group observation",
+		Timestamp: time.Now().UTC(),
+		Metadata:  map[string]string{"observe_only": "true"},
+	})
+	if err != nil {
+		t.Fatalf("shadow ingest returned error: %v", err)
+	}
+
+	events := store.InboxEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 inbox event, got %d", len(events))
+	}
+	if events[0].Envelope.EventID != "qq:1049511700:group:27234224:msg-raw-1" {
+		t.Fatalf("unexpected inbox event id: %s", events[0].Envelope.EventID)
+	}
+	if !events[0].ObserveOnly() {
+		t.Fatalf("expected inbox event to preserve observe-only state")
+	}
+}
+
 func newIngestService(store *memory.Store) *appservice.MessageIngestService {
 	botIDs := []string{"1049511700", "2365524513"}
-	return appservice.NewMessageIngestServiceWithMediaAssets(
+	return appservice.NewMessageIngestServiceWithRuntimeStores(
 		store,
 		store,
 		store,
 		store,
 		domainservice.NewProvenanceClassifier(botIDs),
 		domainservice.NewLoopGuard(botIDs, 15*time.Second, 6),
+		store,
 		store,
 	)
 }

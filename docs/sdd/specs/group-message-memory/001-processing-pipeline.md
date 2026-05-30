@@ -133,6 +133,15 @@ Extraction should be typed, not just free-form summaries:
 - If extraction fails, raw messages remain stored and replayable.
 - Observe-only groups never emit outbound replies from this pipeline.
 
+## Implementation Notes
+
+- Initial Go raw-message ownership is implemented as `InboxEvent` in
+  `services/agent-runtime`, with file-backed persistence configured by
+  `AKASHIC_INBOX_DSN` or `AKASHIC_INBOX_PATH`.
+- Current Python group-memory extraction still reads the compatibility session
+  store. The next migration step is to consume `/v1/inbox` as the replay source
+  while keeping extraction and RAG logic in Python.
+
 ## Security and Privacy
 
 - Store group ids, sender ids, and asset ids explicitly.
@@ -140,4 +149,3 @@ Extraction should be typed, not just free-form summaries:
 - Do not expose private group files through unauthenticated public URLs.
 - Dashboard asset links should be local authenticated routes or signed temporary
   URLs.
-

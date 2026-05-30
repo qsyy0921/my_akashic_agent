@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/assembler"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
@@ -21,6 +22,7 @@ type MessageIngestService struct {
 	classifier  domainservice.ProvenanceClassifier
 	loopGuard   domainservice.LoopGuard
 	mediaAssets outport.MediaAssetRepository
+	inboxEvents outport.InboxEventRepository
 }
 
 func NewMessageIngestService(
@@ -50,6 +52,28 @@ func NewMessageIngestServiceWithMediaAssets(
 	loopGuard domainservice.LoopGuard,
 	mediaAssets outport.MediaAssetRepository,
 ) *MessageIngestService {
+	return NewMessageIngestServiceWithRuntimeStores(
+		eventBus,
+		auditLog,
+		sendLedger,
+		nonceLedger,
+		classifier,
+		loopGuard,
+		mediaAssets,
+		nil,
+	)
+}
+
+func NewMessageIngestServiceWithRuntimeStores(
+	eventBus outport.MessageEventBus,
+	auditLog outport.AuditLog,
+	sendLedger outport.SendLedger,
+	nonceLedger outport.NonceLedger,
+	classifier domainservice.ProvenanceClassifier,
+	loopGuard domainservice.LoopGuard,
+	mediaAssets outport.MediaAssetRepository,
+	inboxEvents outport.InboxEventRepository,
+) *MessageIngestService {
 	service := NewMessageIngestService(
 		eventBus,
 		auditLog,
@@ -59,6 +83,7 @@ func NewMessageIngestServiceWithMediaAssets(
 		loopGuard,
 	)
 	service.mediaAssets = mediaAssets
+	service.inboxEvents = inboxEvents
 	return service
 }
 
@@ -75,6 +100,9 @@ func (s *MessageIngestService) Ingest(ctx context.Context, cmd command.IngestMes
 	envelope.Provenance = s.classifier.Classify(envelope)
 	decision := s.loopGuard.Decide(envelope, s.sendLedger, s.nonceLedger)
 
+	if err := s.recordInboxEvent(ctx, envelope, decision); err != nil {
+		return err
+	}
 	if err := s.eventBus.PublishObserved(ctx, envelope, decision); err != nil {
 		return err
 	}
@@ -111,6 +139,9 @@ func (s *MessageIngestService) ShadowIngest(ctx context.Context, cmd command.Ing
 	envelope.Provenance = s.classifier.Classify(envelope)
 	decision := s.loopGuard.Decide(envelope, s.sendLedger, s.nonceLedger)
 
+	if err := s.recordInboxEvent(ctx, envelope, decision); err != nil {
+		return model.LoopDecision{}, err
+	}
 	if err := s.eventBus.PublishObserved(ctx, envelope, decision); err != nil {
 		return model.LoopDecision{}, err
 	}
@@ -129,6 +160,17 @@ func (s *MessageIngestService) ShadowIngest(ctx context.Context, cmd command.Ing
 	}
 
 	return decision, nil
+}
+
+func (s *MessageIngestService) recordInboxEvent(ctx context.Context, envelope model.MessageEnvelope, decision model.LoopDecision) error {
+	if s == nil || s.inboxEvents == nil {
+		return nil
+	}
+	event, err := model.NewInboxEvent(envelope, decision, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return s.inboxEvents.SaveInboxEvent(ctx, event)
 }
 
 func (s *MessageIngestService) registerEnvelopeAttachments(ctx context.Context, envelope model.MessageEnvelope) error {

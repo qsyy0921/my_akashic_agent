@@ -35,7 +35,7 @@ func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:private:1049511700:msg-1",
@@ -104,7 +104,7 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"event_id": "qq:2365524513:group:27234224:msg-1",
@@ -157,6 +157,75 @@ func TestShadowObservedEndpointReturnsRecentEvents(t *testing.T) {
 	}
 }
 
+func TestInboxEndpointListsRawObservedGroupEvents(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+		store,
+		store,
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	inboxEvents := appservice.NewInboxEventService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), inboxEvents)
+
+	body := map[string]any{
+		"event_id": "qq:1049511700:group:27234224:msg-inbox-1",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "27234224",
+			"conversation_type": "group",
+		},
+		"sender": map[string]any{
+			"id":   "2948770636",
+			"kind": "human",
+		},
+		"content":   "raw inbox hardware message",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"metadata":  map[string]string{"observe_only": "true"},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodPost, "/v1/shadow/inbound", bytes.NewReader(raw)),
+	)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected inbox list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("raw inbox hardware message")) {
+		t.Fatalf("inbox response missing raw event content: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"observe_only":true`)) {
+		t.Fatalf("inbox response missing observe-only flag: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/inbox/qq:1049511700:group:27234224:msg-inbox-1", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected inbox get 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_id":"qq:1049511700:group:27234224:msg-inbox-1"`)) {
+		t.Fatalf("inbox get response missing event id: %s", response.Body.String())
+	}
+}
+
 func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -174,7 +243,7 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"event_id": "outbox-http-1",
@@ -255,7 +324,7 @@ func TestOutboxEndpointDeadLettersNonRetryableFailureKind(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"event_id": "outbox-http-nonretryable",
@@ -321,7 +390,7 @@ func TestOutboxLeaseNextEndpointLeasesQueuedDelivery(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"event_id": "outbox-http-lease-1",
@@ -386,7 +455,7 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"channel": map[string]any{
@@ -478,7 +547,7 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"job_id":   "job-http-1",
@@ -552,7 +621,7 @@ func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
 	sendLedger := appservice.NewSendLedgerService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, appservice.NewInboxEventService(store))
 
 	body := map[string]any{
 		"from_bot_id":     "1049511700",

@@ -26,6 +26,8 @@ type Store struct {
 	outboxQueue   []string
 	mediaAssets   map[string]model.MediaAsset
 	mediaOrder    []string
+	inboxEvents   map[string]model.InboxEvent
+	inboxOrder    []string
 	agentJobs     map[string]model.AgentJob
 	agentJobOrder []string
 }
@@ -46,6 +48,7 @@ func NewStore() *Store {
 		imageJobs:   make(map[string]model.ImageJob),
 		outbox:      make(map[string]model.OutboxDelivery),
 		mediaAssets: make(map[string]model.MediaAsset),
+		inboxEvents: make(map[string]model.InboxEvent),
 		agentJobs:   make(map[string]model.AgentJob),
 	}
 }
@@ -277,6 +280,80 @@ func matchesMediaAssetFilter(asset model.MediaAsset, filter query.MediaAssetFilt
 		return false
 	}
 	return true
+}
+
+func (s *Store) SaveInboxEvent(_ context.Context, event model.InboxEvent) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	eventID := event.EventID()
+	if _, exists := s.inboxEvents[eventID]; exists {
+		return nil
+	}
+	s.inboxOrder = append(s.inboxOrder, eventID)
+	s.inboxEvents[eventID] = event
+	return nil
+}
+
+func (s *Store) FindInboxEvent(_ context.Context, eventID string) (model.InboxEvent, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	event, ok := s.inboxEvents[eventID]
+	return event, ok, nil
+}
+
+func (s *Store) ListInboxEvents(_ context.Context, filter query.InboxEventFilter) ([]model.InboxEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.InboxEvent, 0, limit)
+	for i := len(s.inboxOrder) - 1; i >= 0 && len(items) < limit; i-- {
+		eventID := s.inboxOrder[i]
+		if event, ok := s.inboxEvents[eventID]; ok && matchesInboxEventFilter(event, filter) {
+			items = append(items, event)
+		}
+	}
+	return items, nil
+}
+
+func matchesInboxEventFilter(event model.InboxEvent, filter query.InboxEventFilter) bool {
+	envelope := event.Envelope
+	if filter.ChannelKind != "" && string(envelope.Channel.Kind) != filter.ChannelKind {
+		return false
+	}
+	if filter.AccountID != "" && envelope.Channel.AccountID != filter.AccountID {
+		return false
+	}
+	if filter.ConversationID != "" && envelope.Channel.ConversationID != filter.ConversationID {
+		return false
+	}
+	if filter.ConversationType != "" && string(envelope.Channel.ConversationType) != filter.ConversationType {
+		return false
+	}
+	if filter.SenderID != "" && envelope.Sender.ID != filter.SenderID {
+		return false
+	}
+	if filter.DecisionAction != "" && string(event.Decision.Action) != filter.DecisionAction {
+		return false
+	}
+	if filter.ObserveOnly != "" && parseBoolFilter(filter.ObserveOnly) != event.ObserveOnly() {
+		return false
+	}
+	return true
+}
+
+func parseBoolFilter(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "true" || value == "1" || value == "yes"
 }
 
 func (s *Store) SaveAgentJob(_ context.Context, job model.AgentJob) error {
@@ -520,6 +597,19 @@ func (s *Store) MediaAssets() []model.MediaAsset {
 	for _, assetID := range s.mediaOrder {
 		if asset, ok := s.mediaAssets[assetID]; ok {
 			items = append(items, asset)
+		}
+	}
+	return items
+}
+
+func (s *Store) InboxEvents() []model.InboxEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]model.InboxEvent, 0, len(s.inboxOrder))
+	for _, eventID := range s.inboxOrder {
+		if event, ok := s.inboxEvents[eventID]; ok {
+			items = append(items, event)
 		}
 	}
 	return items

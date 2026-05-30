@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ func RegisterRoutes(
 	mediaAssets inport.MediaAssetManager,
 	agentJobs inport.AgentJobManager,
 	sendLedger inport.SendLedgerManager,
+	inboxEvents inport.InboxEventViewer,
 ) {
 	mux.Handle("/healthz", HealthHandler())
 	mux.Handle("/v1/inbound", IngestHandler(ingestor))
@@ -47,6 +49,8 @@ func RegisterRoutes(
 	mux.Handle("/v1/jobs/", AgentJobStateHandler(agentJobs))
 	mux.Handle("/v1/send-ledger/records", SendLedgerRecordsHandler(sendLedger))
 	mux.Handle("/v1/send-ledger/recent", SendLedgerRecentHandler(sendLedger))
+	mux.Handle("/v1/inbox", InboxEventsHandler(inboxEvents))
+	mux.Handle("/v1/inbox/", InboxEventStateHandler(inboxEvents))
 }
 
 func HealthHandler() http.Handler {
@@ -135,6 +139,65 @@ func ShadowIngestHandler(shadowIngestor inport.ShadowMessageIngestor) http.Handl
 				},
 			},
 		})
+	})
+}
+
+func InboxEventsHandler(inboxEvents inport.InboxEventViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if inboxEvents == nil {
+			http.Error(w, "inbox event viewer disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		channelKind := r.URL.Query().Get("channel_kind")
+		if channelKind == "" {
+			channelKind = r.URL.Query().Get("platform")
+		}
+		items, err := inboxEvents.ListInboxEvents(r.Context(), query.InboxEventFilter{
+			Limit:            parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			ChannelKind:      channelKind,
+			AccountID:        r.URL.Query().Get("account_id"),
+			ConversationID:   r.URL.Query().Get("conversation_id"),
+			ConversationType: r.URL.Query().Get("conversation_type"),
+			SenderID:         r.URL.Query().Get("sender_id"),
+			DecisionAction:   r.URL.Query().Get("decision_action"),
+			ObserveOnly:      r.URL.Query().Get("observe_only"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func InboxEventStateHandler(inboxEvents inport.InboxEventViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if inboxEvents == nil {
+			http.Error(w, "inbox event viewer disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		eventID := strings.TrimPrefix(r.URL.Path, "/v1/inbox/")
+		eventID, err := url.PathUnescape(eventID)
+		if err != nil || strings.TrimSpace(eventID) == "" {
+			http.Error(w, "missing inbox event id", http.StatusBadRequest)
+			return
+		}
+		item, err := inboxEvents.GetInboxEvent(r.Context(), eventID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

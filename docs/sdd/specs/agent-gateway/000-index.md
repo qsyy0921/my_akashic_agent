@@ -29,4 +29,6 @@ execution.
   retention, and safe dashboard access rules.
 - `008-agent-job-orchestration.md`: Go-owned lifecycle, leasing, retry, and
   dead-letter control plane for image/RAG/memory jobs.
+- `009-inbox-raw-message-store.md`: Go-owned raw observed/inbound message store
+  for replay, dashboard queries, and group-memory source citations.
 - Agent architecture boundary specs live under `../agent-architecture/`.

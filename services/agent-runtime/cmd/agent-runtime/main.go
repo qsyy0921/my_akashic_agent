@@ -13,6 +13,7 @@ import (
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
@@ -58,8 +59,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("init outbox repository: %v", err)
 	}
+	inboxEventRepository, err := newInboxEventRepository()
+	if err != nil {
+		log.Fatalf("init inbox event repository: %v", err)
+	}
 
-	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
+	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
 		store,
 		auditLog,
 		sendLedgerRepository,
@@ -67,6 +72,7 @@ func main() {
 		classifier,
 		loopGuard,
 		mediaAssetRepository,
+		inboxEventRepository,
 	)
 	sender := appservice.NewMessageSendService(store, sendLedgerRepository, outboxRepository, outboxQueue)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
@@ -78,10 +84,11 @@ func main() {
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
 	agentJobs := appservice.NewAgentJobService(agentJobRepository)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
+	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
-	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger)
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -162,6 +169,20 @@ func newOutboxStore() (outport.OutboxRepository, outport.OutboxQueue, error) {
 	}
 	store := memory.NewStore()
 	return store, store, nil
+}
+
+func newInboxEventRepository() (outport.InboxEventRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_INBOX_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return inboxstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_INBOX_PATH")); path != "" {
+		return inboxstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
 }
 
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {

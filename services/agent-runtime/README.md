@@ -28,7 +28,7 @@ types          -> none
 
 The implementation keeps message event fanout in-memory to keep startup simple,
 while durable control-plane state can be enabled independently for `AgentJob`,
-media asset, send ledger, and outbox delivery records.
+media asset, send ledger, inbox, and outbox delivery records.
 
 ## Run Locally
 
@@ -93,6 +93,17 @@ With this environment variable set, outbound sends and inbound echo checks share
 the same file-backed ledger. Use `memory` only for development runs where recent
 echo detection does not need restart recovery.
 
+Persist raw inbound/observed message events across runtime restarts:
+
+```powershell
+$env:AKASHIC_INBOX_DSN = "E:\agent\akashic\.akashic-workspace\runtime\inbox.json"
+```
+
+With this environment variable set, `/v1/inbound` and `/v1/shadow/inbound`
+record normalized `InboxEvent` rows in a file-backed raw message store. Use
+`memory` only for development runs where replay and group-memory source
+recovery are not required.
+
 ## HTTP Contracts
 
 Health:
@@ -106,6 +117,17 @@ Normalize and route inbound platform messages:
 ```text
 POST /v1/inbound
 ```
+
+Query raw inbound/observed message events:
+
+```text
+GET /v1/inbox?channel_kind=qq&conversation_id=27234224&conversation_type=group&observe_only=true&limit=50
+GET /v1/inbox/{event_id}
+```
+
+The inbox is the Go-owned raw message log for QQ/TG observations. It preserves
+route, sender, provenance, decision, attachment metadata, and observe-only
+state. Duplicate `event_id` writes are idempotent.
 
 Publish outbound messages:
 
