@@ -6,8 +6,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/natsqueue"
 )
 
 func queueBackendViewFromEnv() (query.QueueBackendView, error) {
@@ -34,11 +37,21 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 	dsnConfigured := dsn != ""
 	externalConfigured := provider != "local" && dsnConfigured
 	notes := queueBackendNotes(provider, mode, dsnConfigured)
+	stream := strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_STREAM"))
+	if stream == "" {
+		stream = "AKASHIC_WORK"
+	}
+	subjectPrefix := strings.Trim(strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_SUBJECT_PREFIX")), ".")
+	if subjectPrefix == "" {
+		subjectPrefix = "akashic.work"
+	}
 
 	return query.QueueBackendView{
 		Provider:                provider,
 		Mode:                    mode,
 		MigrationPhase:          queueMigrationPhase(provider, mode),
+		Stream:                  stream,
+		SubjectPrefix:           subjectPrefix,
 		ExternalQueueConfigured: externalConfigured,
 		ExternalQueueActive:     false,
 		StateStoreAuthoritative: true,
@@ -176,4 +189,24 @@ func redactQueueDSN(raw string) string {
 		return "redacted"
 	}
 	return raw[:6] + "..." + raw[len(raw)-4:]
+}
+
+func newWorkQueuePublisher(view query.QueueBackendView) (outport.WorkQueuePublisher, func(), error) {
+	if view.Provider != "nats_jetstream" || view.Mode != "shadow_publish" || !view.DSNConfigured {
+		return nil, nil, nil
+	}
+	timeoutSeconds, err := positiveIntEnv("AKASHIC_QUEUE_TIMEOUT_SECONDS", 3, 60)
+	if err != nil {
+		return nil, nil, err
+	}
+	publisher, err := natsqueue.NewPublisher(natsqueue.Config{
+		URL:           strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
+		Stream:        view.Stream,
+		SubjectPrefix: view.SubjectPrefix,
+		Timeout:       time.Duration(timeoutSeconds) * time.Second,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return publisher, publisher.Close, nil
 }

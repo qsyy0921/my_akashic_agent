@@ -303,6 +303,8 @@ Inspect external queue backend migration settings:
 $env:AKASHIC_QUEUE_BACKEND = "nats_jetstream"
 $env:AKASHIC_QUEUE_MODE = "shadow_publish"
 $env:AKASHIC_QUEUE_DSN = "nats://127.0.0.1:4222"
+$env:AKASHIC_QUEUE_STREAM = "AKASHIC_WORK"
+$env:AKASHIC_QUEUE_SUBJECT_PREFIX = "akashic.work"
 $env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
 $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
 ```
@@ -311,13 +313,22 @@ $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
 GET /v1/queue-backend
 ```
 
-The current implementation is diagnostic-only: outbox and generic job work
-discovery still uses Go state stores, and `external_queue_active=false`. NATS
-JetStream is the preferred first MQ because its subject routing fits
+When `nats_jetstream + shadow_publish + AKASHIC_QUEUE_DSN` are configured,
+`agent-runtime` publishes work notifications after outbox deliveries and generic
+agent jobs are committed to Go state stores. Work discovery and leases still use
+Go state stores; NATS is not allowed to execute or lease work in this phase.
+NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple
 deployment alternative; RabbitMQ remains a later option for heavier broker
 routing.
+
+Shadow publish subjects:
+
+```text
+akashic.work.outbox.{channel_kind}.{account_id}
+akashic.work.agent_job.{job_type}
+```
 
 Persist proactive scheduling state across runtime restarts:
 

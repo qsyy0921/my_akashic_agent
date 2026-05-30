@@ -4,6 +4,8 @@ type QueueBackendView struct {
 	Provider                string   `json:"provider"`
 	Mode                    string   `json:"mode"`
 	MigrationPhase          string   `json:"migration_phase"`
+	Stream                  string   `json:"stream,omitempty"`
+	SubjectPrefix           string   `json:"subject_prefix,omitempty"`
 	ExternalQueueConfigured bool     `json:"external_queue_configured"`
 	ExternalQueueActive     bool     `json:"external_queue_active"`
 	StateStoreAuthoritative bool     `json:"state_store_authoritative"`

@@ -90,6 +90,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("init proactive state repository: %v", err)
 	}
+	queueBackendView, err := queueBackendViewFromEnv()
+	if err != nil {
+		log.Fatalf("init queue backend config: %v", err)
+	}
+	workQueue, closeWorkQueue, err := newWorkQueuePublisher(queueBackendView)
+	if err != nil {
+		log.Fatalf("init work queue publisher: %v", err)
+	}
+	if closeWorkQueue != nil {
+		defer closeWorkQueue()
+	}
+	if workQueue != nil {
+		queueBackendView.ExternalQueueActive = true
+		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream shadow_publish adapter is active")
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
 		store,
@@ -101,7 +116,7 @@ func main() {
 		mediaAssetRepository,
 		inboxEventRepository,
 	)
-	sender := appservice.NewMessageSendServiceWithOutboxEvents(store, sendLedgerRepository, outboxRepository, outboxQueue, outboxEventStore)
+	sender := appservice.NewMessageSendServiceWithOutboxEventsAndWorkQueue(store, sendLedgerRepository, outboxRepository, outboxQueue, outboxEventStore, workQueue)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxServiceWithEvents(outboxRepository, outboxQueue, outboxEventStore)
 	outboxEvents := appservice.NewOutboxDeliveryEventService(outboxEventStore)
@@ -111,7 +126,7 @@ func main() {
 		log.Fatalf("init media content reader: %v", err)
 	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
-	agentJobs := appservice.NewAgentJobServiceWithEvents(agentJobRepository, agentJobEventStore)
+	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(agentJobRepository, agentJobEventStore, workQueue)
 	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
@@ -119,10 +134,6 @@ func main() {
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
-	queueBackendView, err := queueBackendViewFromEnv()
-	if err != nil {
-		log.Fatalf("init queue backend config: %v", err)
-	}
 	queueBackend := appservice.NewQueueBackendService(queueBackendView)
 
 	mux := http.NewServeMux()

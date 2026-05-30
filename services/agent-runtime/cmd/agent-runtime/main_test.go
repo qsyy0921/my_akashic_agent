@@ -126,6 +126,9 @@ func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 	if view.Provider != "local" || view.Mode != "local_state_store" || view.MigrationPhase != "local_only" {
 		t.Fatalf("unexpected default queue backend: %#v", view)
 	}
+	if view.Stream != "AKASHIC_WORK" || view.SubjectPrefix != "akashic.work" {
+		t.Fatalf("unexpected default queue names: %#v", view)
+	}
 	if view.ExternalQueueActive {
 		t.Fatalf("external queue must not be active by default")
 	}
@@ -137,6 +140,8 @@ func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
 	t.Setenv("AKASHIC_QUEUE_DSN", "nats://token@127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_STREAM", "AKASHIC_TEST")
+	t.Setenv("AKASHIC_QUEUE_SUBJECT_PREFIX", "akashic.test")
 	t.Setenv("AKASHIC_QUEUE_CONSUMER_CONCURRENCY", "16")
 	t.Setenv("AKASHIC_QUEUE_MAX_IN_FLIGHT", "128")
 
@@ -153,6 +158,9 @@ func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
 	}
 	if view.ConsumerModel != "goroutine_worker_pool" || view.ConsumerConcurrency != 16 || view.MaxInFlight != 128 {
 		t.Fatalf("unexpected consumer concurrency diagnostics: %#v", view)
+	}
+	if view.Stream != "AKASHIC_TEST" || view.SubjectPrefix != "akashic.test" {
+		t.Fatalf("unexpected queue names: %#v", view)
 	}
 	if view.RecommendedFirstBackend != "nats_jetstream" {
 		t.Fatalf("unexpected recommended backend: %q", view.RecommendedFirstBackend)

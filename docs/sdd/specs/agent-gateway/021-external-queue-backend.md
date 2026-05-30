@@ -2,8 +2,10 @@
 
 ## Status
 
-Design accepted; first implementation slice exposes read-only runtime
-diagnostics and keeps local state stores authoritative.
+In progress. The first implementation slice exposed read-only runtime
+diagnostics. The second slice adds NATS JetStream `shadow_publish` for outbox
+deliveries and generic agent jobs while keeping local state stores
+authoritative.
 
 ## Context
 
@@ -84,6 +86,8 @@ message or is disabled, Go can still discover leaseable work from state.
      queue notification.
    - Workers still lease from state store.
    - Diagnostics compare queue notification counts against state/event counts.
+   - Publish failure is non-fatal after aggregate state is saved; state-store
+     leasing remains the recovery path.
 
 4. `dual_read_compare`
    - Workers still execute leases through Go state store.
@@ -102,6 +106,8 @@ message or is disabled, Go can still discover leaseable work from state.
 $env:AKASHIC_QUEUE_BACKEND = "local"          # local, nats_jetstream, redis_streams, rabbitmq
 $env:AKASHIC_QUEUE_MODE = "local_state_store" # local_state_store, shadow_publish, dual_read_compare, external_lease
 $env:AKASHIC_QUEUE_DSN = "nats://127.0.0.1:4222"
+$env:AKASHIC_QUEUE_STREAM = "AKASHIC_WORK"
+$env:AKASHIC_QUEUE_SUBJECT_PREFIX = "akashic.work"
 $env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
 $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
 ```
@@ -168,6 +174,27 @@ type WorkQueuePublisher interface {
 }
 ```
 
+NATS subjects:
+
+```text
+akashic.work.outbox.{channel_kind}.{account_id}
+akashic.work.agent_job.{job_type}
+```
+
+Notification payloads include:
+
+- `schema_version`
+- `work_kind`
+- `work_id`
+- `aggregate_id`
+- route and status hints
+- source event ids and source asset ids
+- metadata
+- timestamp
+
+The payload is intentionally a work notification. Consumers must read/lease the
+authoritative aggregate through Go APIs before executing side effects.
+
 Add consumer/ack ports only when implementing `dual_read_compare` or
 `external_lease`:
 
@@ -185,6 +212,8 @@ type WorkQueueConsumer interface {
   notification.
 - Queue messages carry only ids, route hints, and trace metadata; they do not
   carry authoritative aggregate state.
+- Shadow publish failures do not fail `/v1/outbound` or `/v1/jobs` after state
+  has been committed.
 - Worker execution must still transition Go lifecycle state before platform or
   Python side effects.
 - Duplicate queue messages are harmless because aggregate ids are idempotent.
@@ -198,6 +227,8 @@ type WorkQueueConsumer interface {
 - Consumer concurrency and max in-flight settings are validated and exposed.
 - DSNs are redacted in runtime output.
 - Non-local queue configuration does not activate external leasing yet.
+- `shadow_publish` can publish NATS JetStream notifications for new outbox
+  deliveries and agent jobs.
 - Existing outbox/job tests continue to pass.
 - TODO and review records document that actual adapter implementation remains a
   separate migration slice.

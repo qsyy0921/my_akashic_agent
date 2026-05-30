@@ -1234,6 +1234,8 @@ func queryQueueBackendViewForTest() query.QueueBackendView {
 		Provider:                "nats_jetstream",
 		Mode:                    "shadow_publish",
 		MigrationPhase:          "shadow_ready",
+		Stream:                  "AKASHIC_WORK",
+		SubjectPrefix:           "akashic.work",
 		ExternalQueueConfigured: true,
 		ExternalQueueActive:     false,
 		StateStoreAuthoritative: true,

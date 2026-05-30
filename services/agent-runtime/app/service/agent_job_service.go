@@ -17,6 +17,7 @@ import (
 type AgentJobService struct {
 	repository outport.AgentJobRepository
 	events     outport.AgentJobEventSink
+	workQueue  outport.WorkQueuePublisher
 }
 
 func NewAgentJobService(repository outport.AgentJobRepository) *AgentJobService {
@@ -28,6 +29,14 @@ func NewAgentJobServiceWithEvents(
 	events outport.AgentJobEventSink,
 ) *AgentJobService {
 	return &AgentJobService{repository: repository, events: events}
+}
+
+func NewAgentJobServiceWithEventsAndWorkQueue(
+	repository outport.AgentJobRepository,
+	events outport.AgentJobEventSink,
+	workQueue outport.WorkQueuePublisher,
+) *AgentJobService {
+	return &AgentJobService{repository: repository, events: events, workQueue: workQueue}
 }
 
 func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJobCommand) (query.AgentJobView, error) {
@@ -62,6 +71,7 @@ func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJob
 	if err := s.recordEvent(ctx, job, model.AgentJobEventCreated, cmd.Timestamp); err != nil {
 		return query.AgentJobView{}, err
 	}
+	s.publishAgentJobWork(ctx, job)
 	return assembler.ToAgentJobView(job), nil
 }
 
@@ -195,6 +205,13 @@ func (s *AgentJobService) recordEvent(
 		return err
 	}
 	return s.events.AppendAgentJobEvent(ctx, event)
+}
+
+func (s *AgentJobService) publishAgentJobWork(ctx context.Context, job model.AgentJob) {
+	if s == nil || s.workQueue == nil {
+		return
+	}
+	_ = s.workQueue.PublishAgentJob(ctx, job)
 }
 
 func (s *AgentJobService) getModel(ctx context.Context, jobID string) (model.AgentJob, error) {

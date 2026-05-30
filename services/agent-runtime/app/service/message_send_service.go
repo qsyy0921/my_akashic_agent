@@ -19,6 +19,7 @@ type MessageSendService struct {
 	outboxRepository  outport.OutboxRepository
 	outboxQueue       outport.OutboxQueue
 	outboxEvents      outport.OutboxDeliveryEventSink
+	workQueue         outport.WorkQueuePublisher
 	defaultMaxAttempt int
 }
 
@@ -46,6 +47,19 @@ func NewMessageSendServiceWithOutboxEvents(
 ) *MessageSendService {
 	service := NewMessageSendService(eventBus, sendLedger, outboxRepository, outboxQueue)
 	service.outboxEvents = outboxEvents
+	return service
+}
+
+func NewMessageSendServiceWithOutboxEventsAndWorkQueue(
+	eventBus outport.MessageEventBus,
+	sendLedger outport.SendLedger,
+	outboxRepository outport.OutboxRepository,
+	outboxQueue outport.OutboxQueue,
+	outboxEvents outport.OutboxDeliveryEventSink,
+	workQueue outport.WorkQueuePublisher,
+) *MessageSendService {
+	service := NewMessageSendServiceWithOutboxEvents(eventBus, sendLedger, outboxRepository, outboxQueue, outboxEvents)
+	service.workQueue = workQueue
 	return service
 }
 
@@ -107,6 +121,7 @@ func (s *MessageSendService) Send(ctx context.Context, cmd command.SendMessageCo
 		if err := s.recordOutboxEvent(ctx, delivery, model.OutboxDeliveryEventQueued, cmd.Timestamp); err != nil {
 			return err
 		}
+		s.publishOutboxWork(ctx, delivery)
 	}
 
 	return s.eventBus.PublishOutbound(ctx, outbound)
@@ -131,6 +146,13 @@ func (s *MessageSendService) recordOutboxEvent(
 		return err
 	}
 	return s.outboxEvents.AppendOutboxDeliveryEvent(ctx, event)
+}
+
+func (s *MessageSendService) publishOutboxWork(ctx context.Context, delivery model.OutboxDelivery) {
+	if s == nil || s.workQueue == nil {
+		return
+	}
+	_ = s.workQueue.PublishOutboxDelivery(ctx, delivery)
 }
 
 func maxAttempts(metadata map[string]string, fallback int) int {
