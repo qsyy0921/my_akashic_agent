@@ -9,6 +9,7 @@ import pytest
 from agent.config_models import AgentGatewayIntegrationConfig
 from integrations.agent_gateway import (
     AgentGatewayClient,
+    AgentGatewayDeliveryPlanError,
     AgentGatewayError,
     AgentGatewayNoJob,
 )
@@ -298,6 +299,61 @@ async def test_agent_gateway_client_leases_and_updates_outbox_delivery():
         "/v1/outbox/qq:private:1/succeeded",
         "/v1/outbox/qq:private:2/failed",
     ]
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_client_requests_outbox_dispatch_plan():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        assert request.url.path == "/v1/delivery-dispatch/plan"
+        assert body == {
+            "event_id": "qq:private:1",
+            "channel_by_account": {"2365524513": "qq_2365524513"},
+        }
+        return _ok(
+            {
+                "event_id": "qq:private:1",
+                "steps": [
+                    {
+                        "step_index": 1,
+                        "kind": "text",
+                        "channel": "qq_2365524513",
+                        "chat_id": "1049511700",
+                        "message": "hello",
+                    }
+                ],
+            }
+        )
+
+    plan = await _client(handler).plan_outbox_dispatch(
+        "qq:private:1",
+        channel_by_account={"2365524513": "qq_2365524513"},
+    )
+
+    assert plan["steps"][0]["channel"] == "qq_2365524513"
+    assert calls[0][1] == "/v1/delivery-dispatch/plan"
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_client_maps_dispatch_plan_error_kind():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/delivery-dispatch/plan"
+        return httpx.Response(
+            400,
+            json={
+                "code": "INVALID_ARGUMENT",
+                "message": "outbox delivery missing channel kind",
+                "data": {"error_kind": "route_error"},
+            },
+        )
+
+    with pytest.raises(AgentGatewayDeliveryPlanError) as raised:
+        await _client(handler).plan_outbox_dispatch("qq:private:bad")
+
+    assert raised.value.kind == "route_error"
 
 
 @pytest.mark.asyncio

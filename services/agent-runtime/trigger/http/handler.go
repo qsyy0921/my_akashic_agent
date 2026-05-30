@@ -75,6 +75,13 @@ func RegisterAgentJobEventRoutes(
 	mux.Handle("/v1/job-events", AgentJobEventsHandler(jobEvents))
 }
 
+func RegisterDeliveryDispatchRoutes(
+	mux *http.ServeMux,
+	planner inport.DeliveryDispatchPlanner,
+) {
+	mux.Handle("/v1/delivery-dispatch/plan", DeliveryDispatchPlanHandler(planner))
+}
+
 func RegisterProactiveStateRoutes(
 	mux *http.ServeMux,
 	proactiveState inport.ProactiveStateManager,
@@ -558,6 +565,51 @@ func OutboxStateHandler(outbox inport.OutboxManager) http.Handler {
 			Data: item,
 		})
 	})
+}
+
+func DeliveryDispatchPlanHandler(planner inport.DeliveryDispatchPlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "delivery dispatch planner disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.PlanDeliveryDispatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		plan, err := planner.Plan(r.Context(), command.PlanDeliveryDispatchCommand{
+			EventID:          request.EventID,
+			ChannelByAccount: request.ChannelByAccount,
+		})
+		if err != nil {
+			kind := deliveryDispatchErrorKind(err)
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+				Data: map[string]string{
+					"error_kind": kind,
+				},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: plan})
+	})
+}
+
+func deliveryDispatchErrorKind(err error) string {
+	if err == nil {
+		return ""
+	}
+	if kinded, ok := err.(interface{ DeliveryErrorKind() string }); ok {
+		return strings.TrimSpace(kinded.DeliveryErrorKind())
+	}
+	return "unknown"
 }
 
 func parseOutboxPath(path string) (string, string) {

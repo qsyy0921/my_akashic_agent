@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from integrations.agent_gateway import AgentGatewayNoJob
+from integrations.agent_gateway import AgentGatewayDeliveryPlanError
 from integrations.agent_gateway_outbox_worker import AgentGatewayOutboxWorker
 
 
@@ -42,6 +43,29 @@ class _FakePushTool:
     async def execute(self, **kwargs: Any) -> str:
         self.calls.append(kwargs)
         return self.result
+
+
+class _FakePlanClient(_FakeClient):
+    def __init__(
+        self,
+        delivery: dict[str, Any],
+        plan: dict[str, Any] | None = None,
+        plan_error: Exception | None = None,
+    ) -> None:
+        super().__init__(delivery)
+        self.plan = plan
+        self.plan_error = plan_error
+
+    async def plan_outbox_dispatch(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(("plan_outbox_dispatch", event_id, channel_by_account or {}))
+        if self.plan_error is not None:
+            raise self.plan_error
+        return self.plan or {"event_id": event_id, "steps": []}
 
 
 def _delivery(**overrides: Any) -> dict[str, Any]:
@@ -123,6 +147,82 @@ async def test_outbox_worker_dispatches_media_with_message_once():
         "file": "E:/agent/akashic/.tmp/a.pdf",
     }
     assert client.calls[-1] == ("mark_outbox_succeeded", "qq:private:1")
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_prefers_runtime_dispatch_plan():
+    client = _FakePlanClient(
+        _delivery(),
+        {
+            "event_id": "qq:private:1",
+            "steps": [
+                {
+                    "step_index": 1,
+                    "kind": "image",
+                    "channel": "qq_2365524513",
+                    "chat_id": "1049511700",
+                    "message": "hello",
+                    "image": "E:/agent/akashic/.tmp/a.png",
+                },
+                {
+                    "step_index": 2,
+                    "kind": "text",
+                    "channel": "qq_2365524513",
+                    "chat_id": "1049511700",
+                    "message": "done",
+                },
+            ],
+        },
+    )
+    push_tool = _FakePushTool("图片已发送")
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["dispatch_count"] == 2
+    assert client.calls[1] == (
+        "plan_outbox_dispatch",
+        "qq:private:1",
+        {"2365524513": "qq_2365524513"},
+    )
+    assert push_tool.calls == [
+        {
+            "channel": "qq_2365524513",
+            "chat_id": "1049511700",
+            "message": "hello",
+            "image": "E:/agent/akashic/.tmp/a.png",
+        },
+        {
+            "channel": "qq_2365524513",
+            "chat_id": "1049511700",
+            "message": "done",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_uses_runtime_plan_error_kind():
+    client = _FakePlanClient(
+        _delivery(),
+        plan_error=AgentGatewayDeliveryPlanError(
+            "route_error",
+            "outbox delivery missing channel kind",
+        ),
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["failed"] is True
+    assert result["error_kind"] == "route_error"
+    assert push_tool.calls == []
+    assert client.calls[-1] == (
+        "mark_outbox_failed",
+        "qq:private:1",
+        "route_error",
+        "outbox delivery missing channel kind",
+    )
 
 
 @pytest.mark.asyncio

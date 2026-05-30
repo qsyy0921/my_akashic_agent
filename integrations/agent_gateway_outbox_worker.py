@@ -7,6 +7,7 @@ from urllib.parse import unquote, urlparse
 
 from integrations.agent_gateway import (
     AgentGatewayClient,
+    AgentGatewayDeliveryPlanError,
     AgentGatewayError,
     AgentGatewayNoJob,
 )
@@ -111,6 +112,52 @@ class AgentGatewayOutboxWorker:
         self._stopped.set()
 
     async def _dispatch_delivery(self, delivery: dict[str, Any]) -> list[str]:
+        plan_method = getattr(self._client, "plan_outbox_dispatch", None)
+        if callable(plan_method):
+            try:
+                plan = await plan_method(
+                    str(delivery.get("event_id") or ""),
+                    channel_by_account=self._channel_by_account,
+                )
+                return await self._dispatch_runtime_plan(plan)
+            except AgentGatewayDeliveryPlanError as exc:
+                raise DeliveryDispatchError(exc.kind, str(exc)) from exc
+            except AgentGatewayError:
+                logger.warning(
+                    "[agent_runtime_outbox_worker] dispatch plan unavailable; falling back to python planner",
+                    exc_info=True,
+                )
+        return await self._dispatch_delivery_legacy(delivery)
+
+    async def _dispatch_runtime_plan(self, plan: dict[str, Any]) -> list[str]:
+        steps = plan.get("steps")
+        if not isinstance(steps, list):
+            raise DeliveryDispatchError(
+                "validation_error",
+                "agent runtime dispatch plan has no steps",
+            )
+        results: list[str] = []
+        for step in steps:
+            if not isinstance(step, dict):
+                raise DeliveryDispatchError(
+                    "validation_error",
+                    "agent runtime dispatch plan has invalid step",
+                )
+            kwargs: dict[str, Any] = {
+                "channel": str(step.get("channel") or "").strip(),
+                "chat_id": str(step.get("chat_id") or "").strip(),
+                "message": str(step.get("message") or ""),
+            }
+            image = str(step.get("image") or "").strip()
+            file_path = str(step.get("file") or "").strip()
+            if image:
+                kwargs["image"] = image
+            if file_path:
+                kwargs["file"] = file_path
+            results.append(await self._send(**kwargs))
+        return results
+
+    async def _dispatch_delivery_legacy(self, delivery: dict[str, Any]) -> list[str]:
         route = _delivery_route(delivery)
         channel_name = self._resolve_channel_name(route)
         chat_id = str(route.get("conversation_id") or "").strip()

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -445,6 +446,74 @@ func TestOutboxLeaseNextEndpointLeasesQueuedDelivery(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"lease_owner":"qq-dispatcher"`)) {
 		t.Fatalf("lease response missing owner: %s", response.Body.String())
+	}
+}
+
+func TestDeliveryDispatchPlanEndpointBuildsSendSteps(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	deliveryDispatch := appservice.NewDeliveryDispatchService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+
+	body := map[string]any{
+		"event_id": "outbox-dispatch-plan-1",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "2365524513",
+			"conversation_id":   "1049511700",
+			"conversation_type": "private",
+		},
+		"content":   "hello",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"attachments": []map[string]any{
+			{"kind": "image", "url": "file:///E:/agent/akashic/.tmp/a.png"},
+			{"kind": "file", "url": "file:///E:/agent/akashic/.tmp/a.pdf"},
+		},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	request := []byte(`{"event_id":"outbox-dispatch-plan-1","channel_by_account":{"2365524513":"qq_2365524513"}}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-dispatch/plan", bytes.NewReader(request)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"event_id":"outbox-dispatch-plan-1"`,
+		`"channel":"qq_2365524513"`,
+		`"step_count":2`,
+		`"kind":"image"`,
+		`"image":"E:/agent/akashic/.tmp/a.png"`,
+		`"kind":"file"`,
+		`"file":"E:/agent/akashic/.tmp/a.pdf"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("plan response missing %s: %s", expected, bodyText)
+		}
 	}
 }
 

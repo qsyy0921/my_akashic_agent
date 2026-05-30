@@ -33,4 +33,6 @@ execution.
   for replay, dashboard queries, and group-memory source citations.
 - `010-knowledge-checkpoints.md`: Go-owned knowledge ingestion cursors for
   RAGFlow and future memory/RAG workers.
+- `015-delivery-dispatch-plan.md`: Go-owned outbound dispatch planning before
+  Python compatibility workers perform platform sends.
 - Agent architecture boundary specs live under `../agent-architecture/`.

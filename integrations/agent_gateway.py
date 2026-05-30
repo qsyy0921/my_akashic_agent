@@ -18,6 +18,25 @@ class AgentGatewayNoJob(AgentGatewayError):
     pass
 
 
+class AgentGatewayHTTPError(AgentGatewayError):
+    def __init__(
+        self,
+        status_code: int,
+        text: str,
+        payload: Any | None = None,
+    ) -> None:
+        super().__init__(f"agent runtime HTTP {status_code}: {str(text)[:500]}")
+        self.status_code = int(status_code)
+        self.text = str(text)
+        self.payload = payload
+
+
+class AgentGatewayDeliveryPlanError(AgentGatewayError):
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind or "unknown"
+
+
 class AgentGatewayClient:
     def __init__(
         self,
@@ -311,6 +330,39 @@ class AgentGatewayClient:
             no_job_on_404=True,
         )
 
+    async def plan_outbox_dispatch(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            data = await self._request(
+                "POST",
+                "/v1/delivery-dispatch/plan",
+                json_body={
+                    "event_id": str(event_id),
+                    "channel_by_account": channel_by_account or {},
+                },
+            )
+        except AgentGatewayHTTPError as exc:
+            kind = ""
+            message = exc.text
+            if isinstance(exc.payload, dict):
+                message = str(exc.payload.get("message") or message)
+                error_data = exc.payload.get("data")
+                if isinstance(error_data, dict):
+                    kind = str(error_data.get("error_kind") or "")
+            if kind:
+                raise AgentGatewayDeliveryPlanError(kind, message) from exc
+            raise
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime dispatch plan response is not an object")
+        steps = data.get("steps")
+        if not isinstance(steps, list):
+            raise AgentGatewayError("agent runtime dispatch plan response has no steps")
+        return data
+
     async def mark_outbox_succeeded(self, event_id: str) -> dict[str, Any]:
         encoded_id = quote(str(event_id), safe="")
         return await self._request(
@@ -365,9 +417,12 @@ class AgentGatewayClient:
         if response.status_code == 404 and no_job_on_404:
             raise AgentGatewayNoJob(response.text.strip() or "no leaseable job")
         if response.status_code >= 400:
-            raise AgentGatewayError(
-                f"agent runtime HTTP {response.status_code}: {response.text[:500]}"
-            )
+            payload: Any | None = None
+            try:
+                payload = response.json()
+            except json.JSONDecodeError:
+                payload = None
+            raise AgentGatewayHTTPError(response.status_code, response.text, payload)
         try:
             payload = response.json()
         except json.JSONDecodeError:
