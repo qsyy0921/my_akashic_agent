@@ -150,6 +150,28 @@ go env -w GOPROXY="https://goproxy.cn,direct"
 go env -w GOSUMDB=off
 ```
 
+If Docker Hub access is unstable, prefer a Docker registry mirror before
+changing runtime queue semantics. On this Windows development machine the
+user-level Docker Desktop config lives at
+`C:\Users\qsyy0921\.docker\daemon.json`; the mirror fallback should include:
+
+```json
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run"
+  ]
+}
+```
+
+The daemon only reports these mirrors after Docker Desktop is restarted. The
+mirror itself can be smoke-tested without a daemon restart by pulling a fully
+qualified image such as:
+
+```powershell
+docker pull docker.m.daocloud.io/library/nats:2-alpine
+```
+
 External image and Git operations should prefer the configured local proxy
 first, for example `HTTP_PROXY=http://127.0.0.1:7897` and
 `HTTPS_PROXY=http://127.0.0.1:7897`. Local runtime calls should keep
