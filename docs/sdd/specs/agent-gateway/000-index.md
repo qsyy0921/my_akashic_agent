@@ -39,6 +39,7 @@ execution.
   behind the delivery dispatch boundary.
 - `017-runtime-backed-message-push.md`: Python `message_push` enqueue path into
   Go `/v1/outbound` and outbox workers for supported channels.
-- `018-onebot-napcat-delivery-adapter.md`: Go-owned OneBot/NapCat HTTP sender
-  for env-gated QQ private/group text, image, and file dispatch.
+- `018-onebot-napcat-delivery-adapter.md`: Go-owned OneBot/NapCat HTTP or
+  WebSocket sender for env-gated QQ private/group text, image, and file
+  dispatch.
 - Agent architecture boundary specs live under `../agent-architecture/`.

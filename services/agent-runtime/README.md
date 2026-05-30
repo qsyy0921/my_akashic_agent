@@ -199,6 +199,17 @@ and `sender_unavailable` remain retryable until max attempts are exhausted.
 Enable QQ/NapCat OneBot HTTP delivery adapters explicitly:
 
 ```powershell
+$env:AKASHIC_ONEBOT_WS_URLS = "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"
+$env:AKASHIC_ONEBOT_ACCESS_TOKENS = "qq=NcatBot,qq_2365524513=NcatBot"
+```
+
+The current local NapCat containers expose OneBot WebSocket servers. A plain
+HTTP request to those ports returns `426 Upgrade Required`; use WebSocket action
+requests unless you explicitly enable NapCat HTTP servers.
+
+OneBot HTTP action endpoints are also supported:
+
+```powershell
 $env:AKASHIC_ONEBOT_HTTP_BASE_URLS = "qq_1049511700=http://127.0.0.1:3001,qq_2365524513=http://127.0.0.1:3002"
 $env:AKASHIC_ONEBOT_ACCESS_TOKENS = "qq_1049511700=NcatBot,qq_2365524513=NcatBot"
 ```
@@ -212,7 +223,7 @@ $env:AKASHIC_ONEBOT_ACCESS_TOKEN = "NcatBot"
 ```
 
 Keep QQ aliases out of `integrations.agent_runtime.outbound_channels` until the
-NapCat HTTP endpoint has passed a live send smoke test.
+NapCat OneBot endpoint has passed a live send smoke test.
 
 Register and query media/file metadata:
 

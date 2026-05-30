@@ -422,6 +422,7 @@ def _build_agent_runtime_outbox_worker_tasks(
         push_tool=push_tool,
         worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
         channel_by_account=_outbox_channel_names_by_account(config),
+        runtime_dispatch_channels=getattr(agent_runtime, "outbound_channels", None),
         lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
             getattr(agent_runtime, "poll_interval_seconds", 2.0)

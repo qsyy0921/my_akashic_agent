@@ -81,6 +81,42 @@ func TestOneBotEndpointsFromEnvReadsSingleEndpointConfig(t *testing.T) {
 	}
 }
 
+func TestOneBotEndpointsFromEnvReadsWebSocketEndpointConfig(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq_1049511700=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKEN", "shared-token")
+
+	endpoints := onebotEndpointsFromEnv()
+
+	if len(endpoints) != 2 {
+		t.Fatalf("expected two websocket endpoints, got %#v", endpoints)
+	}
+	if got := endpoints["qq_1049511700"].WebSocketURL; got != "ws://127.0.0.1:3001" {
+		t.Fatalf("unexpected endpoint A websocket url: %q", got)
+	}
+	if got := endpoints["qq_2365524513"].WebSocketURL; got != "ws://127.0.0.1:3002" {
+		t.Fatalf("unexpected endpoint B websocket url: %q", got)
+	}
+	if got := endpoints["qq_2365524513"].AccessToken; got != "shared-token" {
+		t.Fatalf("unexpected endpoint B token: %q", got)
+	}
+}
+
+func TestOneBotEndpointsFromEnvCombinesHTTPAndWebSocketEndpointConfig(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_HTTP_BASE_URLS", "qq=http://127.0.0.1:3003")
+	t.Setenv("AKASHIC_ONEBOT_WEBSOCKET_URLS", "qq=ws://127.0.0.1:3001")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKEN", "token")
+
+	endpoints := onebotEndpointsFromEnv()
+	endpoint := endpoints["qq"]
+
+	if endpoint.BaseURL != "http://127.0.0.1:3003" || endpoint.WebSocketURL != "ws://127.0.0.1:3001" {
+		t.Fatalf("expected combined endpoint, got %#v", endpoint)
+	}
+	if endpoint.AccessToken != "token" {
+		t.Fatalf("unexpected token: %q", endpoint.AccessToken)
+	}
+}
+
 func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {
 	got := parseKeyValueCSV("a=1, malformed, b = 2, =missing, c= ")
 

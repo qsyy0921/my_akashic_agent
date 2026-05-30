@@ -16,22 +16,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
 type EndpointConfig struct {
-	BaseURL     string
-	AccessToken string
+	BaseURL      string
+	WebSocketURL string
+	AccessToken  string
 }
 
 type Config struct {
-	Endpoints map[string]EndpointConfig
-	Client    *http.Client
+	Endpoints       map[string]EndpointConfig
+	Client          *http.Client
+	WebSocketDialer *websocket.Dialer
 }
 
 type Adapter struct {
-	endpoints map[string]EndpointConfig
-	client    *http.Client
+	endpoints       map[string]EndpointConfig
+	client          *http.Client
+	webSocketDialer *websocket.Dialer
 }
 
 type DeliveryError struct {
@@ -52,12 +56,18 @@ func NewAdapter(config Config) (*Adapter, error) {
 	for channel, endpoint := range config.Endpoints {
 		channel = normalizeChannel(channel)
 		baseURL := strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/")
-		if channel == "" || baseURL == "" {
+		webSocketURL := strings.TrimSpace(endpoint.WebSocketURL)
+		if isWebSocketURL(baseURL) && webSocketURL == "" {
+			webSocketURL = baseURL
+			baseURL = ""
+		}
+		if channel == "" || (baseURL == "" && webSocketURL == "") {
 			continue
 		}
 		endpoints[channel] = EndpointConfig{
-			BaseURL:     baseURL,
-			AccessToken: strings.TrimSpace(endpoint.AccessToken),
+			BaseURL:      baseURL,
+			WebSocketURL: webSocketURL,
+			AccessToken:  strings.TrimSpace(endpoint.AccessToken),
 		}
 	}
 	if len(endpoints) == 0 {
@@ -67,7 +77,11 @@ func NewAdapter(config Config) (*Adapter, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &Adapter{endpoints: endpoints, client: client}, nil
+	webSocketDialer := config.WebSocketDialer
+	if webSocketDialer == nil {
+		webSocketDialer = websocket.DefaultDialer
+	}
+	return &Adapter{endpoints: endpoints, client: client, webSocketDialer: webSocketDialer}, nil
 }
 
 func (a *Adapter) SupportsDeliveryChannel(channel string) bool {
@@ -265,11 +279,25 @@ func targetIDValue(value string) any {
 }
 
 func (a *Adapter) call(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (string, error) {
+	if strings.TrimSpace(endpoint.WebSocketURL) != "" {
+		return a.callWebSocket(ctx, endpoint, method, payload)
+	}
+	return a.callHTTP(ctx, endpoint, method, payload)
+}
+
+func (a *Adapter) callHTTP(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (string, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/")
+	if baseURL == "" {
+		return "", DeliveryError{
+			Kind:    model.DeliveryErrorSenderUnavailable,
+			Message: "onebot http endpoint is empty",
+		}
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL+"/"+method, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/"+method, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -312,12 +340,18 @@ func (a *Adapter) call(ctx context.Context, endpoint EndpointConfig, method stri
 	return payloadResp.Data.MessageIDString(), nil
 }
 
+func isWebSocketURL(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(value, "ws://") || strings.HasPrefix(value, "wss://")
+}
+
 type onebotResponse struct {
 	Status  string         `json:"status"`
 	Retcode int            `json:"retcode"`
 	Message string         `json:"message"`
 	Wording string         `json:"wording"`
 	Data    onebotRespData `json:"data"`
+	Echo    any            `json:"echo"`
 }
 
 type onebotRespData struct {

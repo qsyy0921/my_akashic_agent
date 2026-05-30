@@ -176,13 +176,9 @@ func onebotEndpointsFromEnv() map[string]onebotdelivery.EndpointConfig {
 		if baseURL == "" {
 			continue
 		}
-		token := accessTokens[channel]
-		if token == "" {
-			token = defaultToken
-		}
 		endpoints[channel] = onebotdelivery.EndpointConfig{
 			BaseURL:     baseURL,
-			AccessToken: token,
+			AccessToken: onebotTokenForChannel(channel, accessTokens, defaultToken),
 		}
 	}
 	if baseURL := strings.TrimSpace(os.Getenv("AKASHIC_ONEBOT_HTTP_BASE_URL")); baseURL != "" {
@@ -192,17 +188,61 @@ func onebotEndpointsFromEnv() map[string]onebotdelivery.EndpointConfig {
 			if channel == "" {
 				continue
 			}
-			token := accessTokens[channel]
-			if token == "" {
-				token = defaultToken
-			}
 			endpoints[channel] = onebotdelivery.EndpointConfig{
 				BaseURL:     baseURL,
-				AccessToken: token,
+				AccessToken: onebotTokenForChannel(channel, accessTokens, defaultToken),
 			}
 		}
 	}
+	for channel, webSocketURL := range mergedKeyValueCSVEnv("AKASHIC_ONEBOT_WS_URLS", "AKASHIC_ONEBOT_WEBSOCKET_URLS") {
+		if webSocketURL == "" {
+			continue
+		}
+		endpoint := endpoints[channel]
+		endpoint.WebSocketURL = webSocketURL
+		endpoint.AccessToken = onebotTokenForChannel(channel, accessTokens, defaultToken)
+		endpoints[channel] = endpoint
+	}
+	if webSocketURL := firstEnvValue("AKASHIC_ONEBOT_WS_URL", "AKASHIC_ONEBOT_WEBSOCKET_URL"); webSocketURL != "" {
+		channels := csvEnvOrDefault("AKASHIC_ONEBOT_CHANNELS", []string{"qq"})
+		for _, channel := range channels {
+			channel = strings.TrimSpace(channel)
+			if channel == "" {
+				continue
+			}
+			endpoint := endpoints[channel]
+			endpoint.WebSocketURL = webSocketURL
+			endpoint.AccessToken = onebotTokenForChannel(channel, accessTokens, defaultToken)
+			endpoints[channel] = endpoint
+		}
+	}
 	return endpoints
+}
+
+func onebotTokenForChannel(channel string, accessTokens map[string]string, defaultToken string) string {
+	if token := strings.TrimSpace(accessTokens[channel]); token != "" {
+		return token
+	}
+	return strings.TrimSpace(defaultToken)
+}
+
+func mergedKeyValueCSVEnv(keys ...string) map[string]string {
+	result := make(map[string]string)
+	for _, key := range keys {
+		for itemKey, itemValue := range keyValueCSVEnv(key) {
+			result[itemKey] = itemValue
+		}
+	}
+	return result
+}
+
+func firstEnvValue(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func keyValueCSVEnv(key string) map[string]string {

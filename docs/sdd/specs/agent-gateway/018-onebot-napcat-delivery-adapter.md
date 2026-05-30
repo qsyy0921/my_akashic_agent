@@ -8,15 +8,21 @@ compatibility layer, which keeps the platform SDK details close to the agent
 runtime and prevents outbox delivery from becoming the single infrastructure
 boundary.
 
-This slice adds a Go-owned OneBot HTTP delivery adapter for NapCat-compatible QQ
-accounts. It is deliberately limited to outbound HTTP sends. QR login, inbound
+This slice adds a Go-owned OneBot delivery adapter for NapCat-compatible QQ
+accounts. It supports OneBot HTTP action endpoints and OneBot WebSocket action
+requests. The current local NapCat containers expose WebSocket servers on
+`3001` and `3002`; normal HTTP requests to those ports return `426 Upgrade
+Required` because the server expects a WebSocket upgrade.
+
+The adapter is deliberately limited to outbound action calls. QR login, inbound
 WebSocket observation, group observe-only capture, and media download remain in
 the existing Python/NapCat path until those parts receive separate migration
 reviews.
 
 ## Goals
 
-- Let Go dispatch outbox text, image, and file steps through OneBot HTTP.
+- Let Go dispatch outbox text, image, and file steps through OneBot HTTP or
+  OneBot WebSocket action calls.
 - Support multiple QQ account routes, for example `qq_1049511700` and
   `qq_2365524513`.
 - Preserve the DDD/hexagonal boundary: app service depends on the
@@ -36,7 +42,14 @@ reviews.
 
 ## Configuration Contract
 
-Multi-account deployment:
+Multi-account WebSocket deployment matching the current Docker mapping:
+
+```powershell
+$env:AKASHIC_ONEBOT_WS_URLS = "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"
+$env:AKASHIC_ONEBOT_ACCESS_TOKENS = "qq=NcatBot,qq_2365524513=NcatBot"
+```
+
+Multi-account HTTP deployment:
 
 ```powershell
 $env:AKASHIC_ONEBOT_HTTP_BASE_URLS = "qq_1049511700=http://127.0.0.1:3001,qq_2365524513=http://127.0.0.1:3002"
@@ -55,6 +68,11 @@ $env:AKASHIC_ONEBOT_ACCESS_TOKEN = "NcatBot"
 `channel=http://host:port,channel2=http://host2:port2`. Per-channel tokens from
 `AKASHIC_ONEBOT_ACCESS_TOKENS` override the shared
 `AKASHIC_ONEBOT_ACCESS_TOKEN`.
+
+`AKASHIC_ONEBOT_WS_URLS` and `AKASHIC_ONEBOT_WEBSOCKET_URLS` accept the same
+`channel=ws://host:port` shape. WebSocket endpoints are preferred over HTTP when
+both are configured for the same channel, because current NapCat containers are
+already running WebSocket servers.
 
 ## Routing Rules
 
@@ -99,7 +117,7 @@ and unsupported media failures can dead-letter without retry churn.
 
 ## Safety
 
-QQ delivery through Go is env-gated. If no OneBot HTTP endpoint is configured,
+QQ delivery through Go is env-gated. If no OneBot endpoint is configured,
 `agent-runtime` starts without the adapter and existing Python QQ direct send
 fallback remains authoritative.
 
@@ -114,8 +132,13 @@ For two-bot interaction, this slice relies on existing controls:
 
 - `go test ./...` passes.
 - OneBot adapter unit tests cover private text, group image, private file,
-  `gqq:` group inference, configured channel aliases, and route error mapping.
-- `cmd/agent-runtime` tests cover multi-endpoint and single-endpoint env parsing.
+  `gqq:` group inference, configured channel aliases, WebSocket action dispatch,
+  and route error mapping.
+- `cmd/agent-runtime` tests cover HTTP, WebSocket, multi-endpoint, and
+  single-endpoint env parsing.
 - `DeliveryDispatchStep` exposes `conversation_type` in the query view.
 - `config.example.toml` keeps QQ out of Go outbound by default and documents the
   env-gated cutover.
+- Python outbox worker only calls Go dispatch for channels listed in
+  `integrations.agent_runtime.outbound_channels`, so QQ cutover remains an
+  explicit operator decision.

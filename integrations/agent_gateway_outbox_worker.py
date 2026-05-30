@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -31,6 +32,7 @@ class AgentGatewayOutboxWorker:
         push_tool: Any,
         worker_id: str,
         channel_by_account: dict[str, str] | None = None,
+        runtime_dispatch_channels: Iterable[str] | None = None,
         lease_ttl_seconds: int = 300,
         poll_interval_seconds: float = 2.0,
     ) -> None:
@@ -41,6 +43,11 @@ class AgentGatewayOutboxWorker:
             str(key): str(value)
             for key, value in (channel_by_account or {}).items()
             if str(key).strip() and str(value).strip()
+        }
+        self._runtime_dispatch_channels = {
+            str(channel).strip().lower()
+            for channel in (runtime_dispatch_channels or ["telegram"])
+            if str(channel).strip()
         }
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
@@ -157,7 +164,10 @@ class AgentGatewayOutboxWorker:
         route = _delivery_route(delivery)
         route_kind = str(route.get("kind") or "").strip().lower()
         channel_name = self._resolve_channel_name(route).strip().lower()
-        return route_kind == "telegram" or channel_name == "telegram" or channel_name.startswith("telegram_")
+        return (
+            route_kind in self._runtime_dispatch_channels
+            or channel_name in self._runtime_dispatch_channels
+        )
 
     async def _dispatch_runtime_plan(self, plan: dict[str, Any]) -> list[str]:
         steps = plan.get("steps")

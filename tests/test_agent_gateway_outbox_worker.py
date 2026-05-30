@@ -151,12 +151,15 @@ def _telegram_delivery(**overrides: Any) -> dict[str, Any]:
 def _worker(
     client: _FakeClient,
     push_tool: _FakePushTool,
+    *,
+    runtime_dispatch_channels: list[str] | None = None,
 ) -> AgentGatewayOutboxWorker:
     return AgentGatewayOutboxWorker(
         client=client,  # type: ignore[arg-type]
         push_tool=push_tool,
         worker_id="worker-a",
         channel_by_account={"2365524513": "qq_2365524513"},
+        runtime_dispatch_channels=runtime_dispatch_channels,
         lease_ttl_seconds=60,
         poll_interval_seconds=0.5,
     )
@@ -301,6 +304,45 @@ async def test_outbox_worker_prefers_go_runtime_dispatch_for_telegram():
     )
     assert push_tool.calls == []
     assert client.calls[-1] == ("mark_outbox_succeeded", "telegram:private:1")
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_prefers_go_runtime_dispatch_for_configured_qq_channel():
+    client = _FakeDispatchClient(
+        _delivery(),
+        dispatch={
+            "event_id": "qq:private:1",
+            "results": [
+                {
+                    "step_index": 1,
+                    "kind": "text",
+                    "channel": "qq_2365524513",
+                    "chat_id": "1049511700",
+                    "status": "sent",
+                    "provider": "onebot",
+                    "provider_message_id": "42",
+                }
+            ],
+        },
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(
+        client,
+        push_tool,
+        runtime_dispatch_channels=["telegram", "qq_2365524513"],
+    )
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert result["dispatch_count"] == 1
+    assert client.calls[1] == (
+        "dispatch_outbox_delivery",
+        "qq:private:1",
+        {"2365524513": "qq_2365524513"},
+    )
+    assert push_tool.calls == []
+    assert client.calls[-1] == ("mark_outbox_succeeded", "qq:private:1")
 
 
 @pytest.mark.asyncio

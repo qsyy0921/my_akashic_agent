@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/websocket"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
@@ -230,6 +231,80 @@ func TestOneBotAdapterSupportsConfiguredChannelAliases(t *testing.T) {
 	}
 	if adapter.SupportsDeliveryChannel("telegram") {
 		t.Fatal("did not expect telegram to be supported")
+	}
+}
+
+func TestOneBotAdapterDispatchesViaWebSocketAction(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	var actionRequest map[string]any
+	var authHeader string
+	var accessToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader = r.Header.Get("Authorization")
+		accessToken = r.URL.Query().Get("access_token")
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		if err := conn.ReadJSON(&actionRequest); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"post_type": "message",
+			"message":   "ignored event",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"status":  "ok",
+			"retcode": 0,
+			"echo":    actionRequest["echo"],
+			"data": map[string]any{
+				"message_id": 42,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_2365524513": {
+				WebSocketURL: wsURL,
+				AccessToken:  "token",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.DispatchDeliveryStep(context.Background(), model.DeliveryDispatchStep{
+		StepIndex:        1,
+		Kind:             model.DeliveryDispatchStepText,
+		Channel:          "qq_2365524513",
+		ChatID:           "1049511700",
+		ConversationType: model.ConversationTypePrivate,
+		Message:          "hello over ws",
+	})
+	if err != nil {
+		t.Fatalf("dispatch websocket text: %v", err)
+	}
+
+	if authHeader != "Bearer token" || accessToken != "token" {
+		t.Fatalf("expected token in websocket header and query, got header=%q query=%q", authHeader, accessToken)
+	}
+	if actionRequest["action"] != "send_private_msg" {
+		t.Fatalf("unexpected action request: %+v", actionRequest)
+	}
+	params := actionRequest["params"].(map[string]any)
+	if params["user_id"] != float64(1049511700) || params["message"] != "hello over ws" {
+		t.Fatalf("unexpected action params: %+v", params)
+	}
+	if result.ProviderMessageID != "42" || result.Provider != "onebot" {
+		t.Fatalf("unexpected dispatch result: %+v", result)
 	}
 }
 

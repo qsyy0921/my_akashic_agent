@@ -242,8 +242,10 @@ knowledge_job_interval_seconds = 60
 outbox_worker_enabled = false
 # Normal message_push channels that may enqueue through Go /v1/outbound when
 # outbox_worker_enabled=true. QQ aliases can be added after configuring
-# AKASHIC_ONEBOT_HTTP_BASE_URLS / AKASHIC_ONEBOT_ACCESS_TOKENS and completing a
-# live NapCat smoke test, for example:
+# AKASHIC_ONEBOT_WS_URLS or AKASHIC_ONEBOT_HTTP_BASE_URLS plus
+# AKASHIC_ONEBOT_ACCESS_TOKENS, then completing a live NapCat smoke test.
+# The current local NapCat containers expose WebSocket ports, for example:
+# $env:AKASHIC_ONEBOT_WS_URLS = "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"
 # outbound_channels = ["telegram", "qq_1049511700", "qq_2365524513"]
 outbound_channels = ["telegram"]
 
