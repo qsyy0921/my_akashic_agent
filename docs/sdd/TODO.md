@@ -29,6 +29,7 @@
 
 ## 下一步
 
+- [ ] 将普通 `message_push` / `OutboundPort` 发送路径接入 Go `/v1/outbound` + outbox worker，使 Telegram Go `DeliveryAdapter` 真正覆盖常规回复和主动推送路径。
 - [ ] 评估并实现 QQ/NapCat Go `DeliveryAdapter`：先明确 OneBot HTTP/WebSocket 发送边界、双账号路由、二维码登录状态和防循环交互策略。
 - [ ] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream。
 - [ ] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 eval worker。
