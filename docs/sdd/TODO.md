@@ -62,6 +62,7 @@
 - [x] 将 Go-owned delivery adapter 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可直接看到 Telegram/OneBot adapter enabled/disabled 状态，不需要依赖日志确认。
 - [x] 将 Go-owned queue backend 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可查看 NATS/本地队列 provider、mode、多 goroutine consumer concurrency、max-in-flight 与 external lease gate 阻断原因。
 - [x] 增加 Go-owned delivery dispatch readiness 只读接口 `POST /v1/delivery-dispatch/readiness`：Go 统一判断 outbox 路由计划是否有可用 DeliveryAdapter，返回 missing channel 和 side_effect=none，Python client 可读取但不改变现有发送行为。
+- [x] 将 Python outbox worker 的 Go dispatch 决策接入 Go readiness：配置为 Go dispatch 候选的 channel 会先由 Go 判断 adapter 是否 ready；若缺失 adapter，则直接执行 Go readiness 返回的 plan，不再先尝试必然失败的 runtime dispatch。
 
 ## 下一步
 

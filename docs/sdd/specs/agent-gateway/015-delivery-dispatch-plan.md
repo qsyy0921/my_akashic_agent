@@ -153,6 +153,10 @@ outbox failure classification:
   kind.
 - `integrations`: Python compatibility worker asks Go for a plan, then executes
   platform sends through the existing tool.
+- When a channel is configured as a Go dispatch candidate, the Python outbox
+  worker first calls Go readiness. `ready=true` proceeds to Go dispatch;
+  `ready=false` executes the Go-provided plan through the Python sender without
+  attempting a known-missing Go adapter.
 
 ## Acceptance
 
@@ -164,3 +168,5 @@ outbox failure classification:
 - Python client tests cover readiness response validation.
 - Python worker tests prove runtime plan execution is preferred and errors are
   written back to outbox with the Go-provided kind.
+- Python worker tests prove Go readiness is checked before runtime dispatch and
+  missing adapters use the Go readiness plan directly.

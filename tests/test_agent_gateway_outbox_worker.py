@@ -119,6 +119,40 @@ class _FakeDispatchClient(_FakePlanClient):
         }
 
 
+class _FakeReadinessDispatchClient(_FakeDispatchClient):
+    def __init__(
+        self,
+        delivery: dict[str, Any],
+        readiness: dict[str, Any] | None = None,
+        readiness_error: Exception | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(delivery, **kwargs)
+        self.readiness = readiness
+        self.readiness_error = readiness_error
+
+    async def check_outbox_dispatch_readiness(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            (
+                "check_outbox_dispatch_readiness",
+                event_id,
+                channel_by_account or {},
+            )
+        )
+        if self.readiness_error is not None:
+            raise self.readiness_error
+        return self.readiness or {
+            "event_id": event_id,
+            "ready": True,
+            "plan": {"event_id": event_id, "steps": []},
+        }
+
+
 def _delivery(**overrides: Any) -> dict[str, Any]:
     value = {
         "event_id": "qq:private:1",
@@ -343,6 +377,103 @@ async def test_outbox_worker_prefers_go_runtime_dispatch_for_configured_qq_chann
     )
     assert push_tool.calls == []
     assert client.calls[-1] == ("mark_outbox_succeeded", "qq:private:1")
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_checks_go_readiness_before_runtime_dispatch():
+    client = _FakeReadinessDispatchClient(
+        _telegram_delivery(),
+        readiness={
+            "event_id": "telegram:private:1",
+            "ready": True,
+            "plan": {"event_id": "telegram:private:1", "steps": []},
+        },
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert result["dispatch_count"] == 1
+    assert [call[0] for call in client.calls[:3]] == [
+        "lease_next_outbox",
+        "check_outbox_dispatch_readiness",
+        "dispatch_outbox_delivery",
+    ]
+    assert push_tool.calls == []
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_uses_go_readiness_plan_when_adapter_missing():
+    client = _FakeReadinessDispatchClient(
+        _delivery(),
+        readiness={
+            "event_id": "qq:private:1",
+            "ready": False,
+            "reason": "delivery_adapter_unavailable",
+            "missing_channels": ["qq_2365524513"],
+            "plan": {
+                "event_id": "qq:private:1",
+                "steps": [
+                    {
+                        "step_index": 1,
+                        "kind": "text",
+                        "channel": "qq_2365524513",
+                        "chat_id": "1049511700",
+                        "message": "hello",
+                    }
+                ],
+            },
+        },
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(
+        client,
+        push_tool,
+        runtime_dispatch_channels=["telegram", "qq_2365524513"],
+    )
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert result["dispatch_count"] == 1
+    assert [call[0] for call in client.calls] == [
+        "lease_next_outbox",
+        "check_outbox_dispatch_readiness",
+        "mark_outbox_succeeded",
+    ]
+    assert push_tool.calls == [
+        {
+            "channel": "qq_2365524513",
+            "chat_id": "1049511700",
+            "message": "hello",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_uses_go_readiness_error_kind():
+    client = _FakeReadinessDispatchClient(
+        _telegram_delivery(),
+        readiness_error=AgentGatewayDeliveryPlanError(
+            "route_error",
+            "outbox delivery missing channel kind",
+        ),
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["failed"] is True
+    assert result["error_kind"] == "route_error"
+    assert [call[0] for call in client.calls] == [
+        "lease_next_outbox",
+        "check_outbox_dispatch_readiness",
+        "mark_outbox_failed",
+    ]
+    assert push_tool.calls == []
 
 
 @pytest.mark.asyncio

@@ -122,6 +122,10 @@ class AgentGatewayOutboxWorker:
 
     async def _dispatch_delivery(self, delivery: dict[str, Any]) -> list[str]:
         if self._should_try_runtime_dispatch(delivery):
+            readiness = await self._runtime_dispatch_readiness(delivery)
+            if readiness is not None and readiness.get("ready") is False:
+                return await self._dispatch_runtime_plan(_readiness_plan(readiness))
+
             dispatch_method = getattr(self._client, "dispatch_outbox_delivery", None)
             if callable(dispatch_method):
                 try:
@@ -159,6 +163,31 @@ class AgentGatewayOutboxWorker:
                     exc_info=True,
                 )
         return await self._dispatch_delivery_legacy(delivery)
+
+    async def _runtime_dispatch_readiness(
+        self,
+        delivery: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        readiness_method = getattr(
+            self._client,
+            "check_outbox_dispatch_readiness",
+            None,
+        )
+        if not callable(readiness_method):
+            return None
+        try:
+            return await readiness_method(
+                str(delivery.get("event_id") or ""),
+                channel_by_account=self._channel_by_account,
+            )
+        except AgentGatewayDeliveryPlanError as exc:
+            raise DeliveryDispatchError(exc.kind, str(exc)) from exc
+        except AgentGatewayError:
+            logger.warning(
+                "[agent_runtime_outbox_worker] dispatch readiness unavailable; using previous dispatch path",
+                exc_info=True,
+            )
+            return None
 
     def _should_try_runtime_dispatch(self, delivery: dict[str, Any]) -> bool:
         route = _delivery_route(delivery)
@@ -325,6 +354,16 @@ def _runtime_dispatch_results(result: dict[str, Any]) -> list[str]:
         for item in raw_results
         if isinstance(item, dict)
     ]
+
+
+def _readiness_plan(readiness: dict[str, Any]) -> dict[str, Any]:
+    plan = readiness.get("plan")
+    if not isinstance(plan, dict):
+        raise DeliveryDispatchError(
+            "validation_error",
+            "agent runtime dispatch readiness has no plan",
+        )
+    return plan
 
 
 def _normalise_attachment_uri(attachment: dict[str, Any]) -> str:
