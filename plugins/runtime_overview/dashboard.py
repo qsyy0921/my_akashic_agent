@@ -335,12 +335,47 @@ class RuntimeOverviewDashboardReader:
             },
         }
 
+    def get_delivery_adapter_health(
+        self,
+        *,
+        timeout_seconds: int = 3,
+    ) -> dict[str, Any]:
+        safe_timeout = _bounded_int(timeout_seconds, default=3, maximum=30)
+        health, error = self._read_mapping(
+            "/v1/delivery-adapters/health",
+            {"timeout_seconds": safe_timeout},
+            timeout_seconds=float(safe_timeout) + 0.5,
+        )
+        if error:
+            return {
+                "items": [],
+                "totals": {
+                    "adapters": 0,
+                    "healthy": 0,
+                    "unhealthy": 0,
+                    "authenticated": 0,
+                },
+                "notes": [],
+                "status": {
+                    "runtime_url": self.runtime_base_url,
+                    "available": False,
+                    "error": error,
+                    "side_effect": "none",
+                },
+            }
+        return _normalize_delivery_adapter_health(
+            health,
+            runtime_base_url=self.runtime_base_url,
+        )
+
     def _read_list(
         self,
         path: str,
         params: Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: float | None = None,
     ) -> tuple[list[Any], str | None]:
-        data, error = self._request_json(path, params)
+        data, error = self._request_json(path, params, timeout_seconds=timeout_seconds)
         if error:
             return [], error
         if not isinstance(data, list):
@@ -351,8 +386,10 @@ class RuntimeOverviewDashboardReader:
         self,
         path: str,
         params: Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any], str | None]:
-        data, error = self._request_json(path, params)
+        data, error = self._request_json(path, params, timeout_seconds=timeout_seconds)
         if error:
             return {}, error
         if not isinstance(data, Mapping):
@@ -363,6 +400,8 @@ class RuntimeOverviewDashboardReader:
         self,
         path: str,
         params: Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
         if not self.runtime_base_url:
             return None, "runtime base url is empty"
@@ -376,7 +415,7 @@ class RuntimeOverviewDashboardReader:
         try:
             with urllib.request.urlopen(
                 request,
-                timeout=self.request_timeout_seconds,
+                timeout=timeout_seconds or self.request_timeout_seconds,
             ) as response:
                 raw = response.read().decode("utf-8")
         except (TimeoutError, OSError, urllib.error.URLError) as exc:
@@ -415,6 +454,12 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
             event_limit=event_limit,
             stale_after_seconds=stale_after_seconds,
         )
+
+    @app.get("/api/dashboard/runtime-overview/delivery-adapter-health")
+    def get_delivery_adapter_health(
+        timeout_seconds: int = Query(3, ge=1, le=30),
+    ) -> dict[str, Any]:
+        return reader.get_delivery_adapter_health(timeout_seconds=timeout_seconds)
 
 
 def _normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -534,6 +579,75 @@ def _normalize_delivery_adapter(item: Mapping[str, Any]) -> dict[str, Any]:
         "notes": [str(value) for value in item.get("notes", [])]
         if isinstance(item.get("notes"), list)
         else [],
+    }
+
+
+def _normalize_delivery_adapter_health(
+    item: Mapping[str, Any],
+    *,
+    runtime_base_url: str,
+) -> dict[str, Any]:
+    items_raw = item.get("items")
+    if not isinstance(items_raw, list):
+        items_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    items = [
+        _normalize_delivery_adapter_health_item(value)
+        for value in items_raw
+        if isinstance(value, Mapping)
+    ]
+    totals_raw = _mapping_or_empty(item.get("totals"))
+    return {
+        "items": items,
+        "totals": {
+            "adapters": _int_value(totals_raw.get("adapters"), fallback=len(items)),
+            "healthy": _int_value(
+                totals_raw.get("healthy"),
+                fallback=sum(1 for value in items if value["healthy"]),
+            ),
+            "unhealthy": _int_value(
+                totals_raw.get("unhealthy"),
+                fallback=sum(1 for value in items if not value["healthy"]),
+            ),
+            "authenticated": _int_value(
+                totals_raw.get("authenticated"),
+                fallback=sum(1 for value in items if value["authenticated"]),
+            ),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "status": {
+            "runtime_url": runtime_base_url,
+            "available": True,
+            "side_effect": "none",
+        },
+    }
+
+
+def _normalize_delivery_adapter_health_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    attributes = _mapping_or_empty(item.get("attributes"))
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    return {
+        "provider": _text(item.get("provider")),
+        "channel": _text(item.get("channel")),
+        "transport": _text(item.get("transport")),
+        "endpoint": _text(item.get("endpoint")),
+        "healthy": bool(item.get("healthy")),
+        "reachable": bool(item.get("reachable")),
+        "authenticated": bool(item.get("authenticated")),
+        "account_id": _text(item.get("account_id")),
+        "account_name": _text(item.get("account_name")),
+        "error_kind": _text(item.get("error_kind")),
+        "error_message": _text(item.get("error_message")),
+        "checked_at": _text(item.get("checked_at")),
+        "latency_ms": _int_value(item.get("latency_ms"), fallback=0),
+        "side_effect": _text(item.get("side_effect") or "none"),
+        "attributes": attributes,
+        "access_token_present": bool(item.get("access_token_present")),
+        "notes": [str(value) for value in notes_raw],
     }
 
 

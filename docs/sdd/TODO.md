@@ -73,6 +73,7 @@
 - [x] 增加可选 Go-owned local outbox delivery worker：默认关闭；开启 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 后由 Go state-store lease outbox、调用 Go DeliveryAdapter dispatch 并回写 succeeded/failed，减少 Python outbox worker 的确定性基础设施职责。
 - [x] 增加 Go-owned runtime worker diagnostics endpoint `GET /v1/runtime-workers`：Go 汇总 agent job recovery、local outbox worker、NATS shadow/dual-read/external-lease worker 的 enabled/running/config 状态，并接入 runtime overview dashboard。
 - [x] 增加 Go-owned delivery adapter live health endpoint `GET /v1/delivery-adapters/health`：Go 只读调用 OneBot `get_login_info` 与 Telegram `getMe`，返回 channel alias 是否 reachable/authenticated/account_id，side_effect 固定为 none，便于 QQ/NapCat live send 前验证连接。
+- [x] 将 delivery adapter live health 接入 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-adapter-health` 代理和 `Delivery Adapters` 详情页 Probe Health 按钮；不会在概览加载时自动 ping QQ/Telegram。
 
 ## 下一步
 

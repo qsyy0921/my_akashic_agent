@@ -19,6 +19,12 @@ interface RuntimeOverviewResponse {
   checkpoint_lag: Record<string, unknown>[];
 }
 
+interface DeliveryAdapterHealthResponse {
+  items: Record<string, unknown>[];
+  totals: Record<string, number>;
+  status: Record<string, unknown>;
+}
+
 function _runtimeStatusTag(status: string): string {
   const cls = `runtime-overview-status runtime-overview-${status || "muted"}`;
   return `<span class="${cls}">${escapeHtml(status || "muted")}</span>`;
@@ -87,6 +93,19 @@ window.AkashicDashboard.registerPlugin({
       return;
     }
     const card = item as unknown as RuntimeOverviewCard;
+    const adapterHealthSection = card.id === "delivery_adapters"
+      ? `
+        <div class="runtime-overview-section">
+          <div class="runtime-overview-section-header">
+            <div class="detail-label">Adapter Health</div>
+            <button class="runtime-overview-action" type="button" data-runtime-adapter-health>
+              Probe Health
+            </button>
+          </div>
+          <pre class="runtime-overview-json" data-runtime-adapter-health-output>${escapeHtml("Not checked")}</pre>
+        </div>
+      `
+      : "";
     container.innerHTML = `
       <div class="runtime-overview-detail">
         <div class="runtime-overview-toolbar">
@@ -99,8 +118,30 @@ window.AkashicDashboard.registerPlugin({
           <div class="detail-label">Detail</div>
           <pre class="runtime-overview-json">${escapeHtml(_formatJson(card.detail || {}))}</pre>
         </div>
+        ${adapterHealthSection}
       </div>
     `;
+    const button = container.querySelector<HTMLButtonElement>("[data-runtime-adapter-health]");
+    const output = container.querySelector<HTMLElement>("[data-runtime-adapter-health-output]");
+    if (button && output) {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        output.textContent = "Checking...";
+        try {
+          const payload = await api<DeliveryAdapterHealthResponse>(
+            "/api/dashboard/runtime-overview/delivery-adapter-health?timeout_seconds=3",
+          );
+          output.textContent = _formatJson(payload);
+        } catch (error) {
+          output.textContent = _formatJson({
+            error: error instanceof Error ? error.message : String(error),
+            side_effect: "none",
+          });
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
   },
 });
 

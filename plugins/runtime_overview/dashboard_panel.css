@@ -22,6 +22,29 @@
   padding: 10px;
 }
 
+.runtime-overview-section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.runtime-overview-action {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.runtime-overview-action:disabled {
+  color: var(--muted-text);
+  cursor: wait;
+}
+
 .runtime-overview-json {
   margin: 0;
   max-height: 320px;

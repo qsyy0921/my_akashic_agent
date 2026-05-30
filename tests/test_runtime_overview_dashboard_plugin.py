@@ -626,6 +626,72 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert seen_paths == ["/v1/runtime-overview"]
 
 
+def test_runtime_overview_dashboard_exposes_manual_adapter_health_probe(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    seen_paths: list[str] = []
+
+    def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
+        target = request.full_url if hasattr(request, "full_url") else str(request)
+        parsed = urlparse(target)
+        seen_paths.append(parsed.path)
+        query = parse_qs(parsed.query)
+        if parsed.path == "/v1/delivery-adapters/health":
+            assert query["timeout_seconds"] == ["2"]
+            assert timeout >= 2
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "items": [
+                                {
+                                    "provider": "onebot",
+                                    "channel": "qq_2365524513",
+                                    "transport": "websocket",
+                                    "healthy": True,
+                                    "reachable": True,
+                                    "authenticated": True,
+                                    "account_id": "2365524513",
+                                    "account_name": "bot-236",
+                                    "checked_at": "2026-05-31T12:00:00Z",
+                                    "latency_ms": 15,
+                                    "side_effect": "none",
+                                    "access_token_present": True,
+                                }
+                            ],
+                            "totals": {
+                                "adapters": 1,
+                                "healthy": 1,
+                                "unhealthy": 0,
+                                "authenticated": 1,
+                            },
+                        },
+                    }
+                )
+            )
+        raise AssertionError(f"unhandled runtime call: {parsed.path}")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+        response = client.get(
+            "/api/dashboard/runtime-overview/delivery-adapter-health",
+            params={"timeout_seconds": 2},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"]["available"] is True
+    assert payload["status"]["side_effect"] == "none"
+    assert payload["totals"]["healthy"] == 1
+    assert payload["items"][0]["channel"] == "qq_2365524513"
+    assert payload["items"][0]["account_id"] == "2365524513"
+    assert payload["items"][0]["side_effect"] == "none"
+    assert seen_paths == ["/v1/delivery-adapters/health"]
+
+
 def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
         target = request.full_url if hasattr(request, "full_url") else str(request)
@@ -666,6 +732,8 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert plugin_panels["runtime_overview"][0]["has_css"] is True
     assert js_response.status_code == 200
     assert css_response.status_code == 200
+    assert "/api/dashboard/runtime-overview/delivery-adapter-health" in js_response.text
+    assert "Probe Health" in js_response.text
 
 
 def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(

@@ -101,6 +101,16 @@ WebSocket action transport. Telegram health uses `getMe`. The response reports
 `latency_ms`, and `side_effect=none` per channel alias. This is a pre-send
 readiness check, not a substitute for the later live send smoke.
 
+The runtime overview dashboard exposes this through a manual proxy:
+
+```http
+GET /api/dashboard/runtime-overview/delivery-adapter-health?timeout_seconds=3
+```
+
+The normal overview load path does not call the live health endpoint. The
+operator must open the `Delivery Adapters` detail and click the health probe
+action.
+
 ## Routing Rules
 
 The dispatch planner maps an outbox delivery to platform steps:
@@ -167,6 +177,8 @@ For two-bot interaction, this slice relies on existing controls:
   channel aliases without leaking token values.
 - Delivery adapter health covers OneBot `get_login_info` and Telegram `getMe`
   without calling message send APIs.
+- Runtime overview dashboard exposes a manual health probe action without
+  automatically calling live adapter health during panel refresh.
 - `DeliveryDispatchStep` exposes `conversation_type` in the query view.
 - `config.example.toml` keeps QQ out of Go outbound by default and documents the
   env-gated cutover.

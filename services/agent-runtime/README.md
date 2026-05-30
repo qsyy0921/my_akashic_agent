@@ -258,6 +258,10 @@ WebSocket action transport. Telegram probes call `getMe`. The response reports
 `side_effect=none` for each channel alias. Use this before live QQ/NapCat send
 smoke to confirm that both account endpoints are reachable and authenticated.
 
+The browser dashboard exposes the same health probe from the `Runtime Overview`
+panel. Open the `Delivery Adapters` detail and use `Probe Health`; normal
+overview refreshes do not call live OneBot/Telegram health checks automatically.
+
 Register and query media/file metadata:
 
 ```text

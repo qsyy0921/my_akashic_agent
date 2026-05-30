@@ -25,6 +25,8 @@ runtime availability before cutting more responsibilities over to Go.
   semantics; Python only normalizes for display.
 - Keep the panel read-only; it must not send QQ/Telegram messages or mutate
   jobs.
+- Provide an explicit manual adapter health probe for operators, without
+  calling live platform APIs during normal overview loading.
 - Degrade gracefully when one runtime endpoint is unavailable.
 
 ## Runtime Reads
@@ -55,6 +57,16 @@ GET /v1/outbox-metrics
 GET /v1/runtime-workers
 ```
 
+The dashboard also exposes a manual, operator-triggered health proxy:
+
+```text
+GET /api/dashboard/runtime-overview/delivery-adapter-health?timeout_seconds=3
+```
+
+This proxy calls Go `GET /v1/delivery-adapters/health` only when the user clicks
+the `Delivery Adapters` detail action. It is intentionally not part of the
+automatic overview read path because it can touch live OneBot/Telegram APIs.
+
 It summarizes:
 
 - runtime health and endpoint errors;
@@ -77,6 +89,8 @@ It summarizes:
 - Go-owned runtime worker enabled/running/config state for agent job recovery,
   local outbox dispatch, NATS shadow publish, NATS dual-read compare, and NATS
   external lease cutover.
+- Manual delivery adapter live health results, including reachable,
+  authenticated, account id/name, latency, and `side_effect=none`.
 - Go-owned aggregate cards and summary fields for runtime overview. Python
   keeps only display normalization and fallback compatibility.
 
@@ -106,6 +120,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
 ## Acceptance
 
 - `/api/dashboard/runtime-overview` returns an aggregate summary and cards.
+- `/api/dashboard/runtime-overview/delivery-adapter-health` returns normalized
+  adapter health only when called explicitly.
 - `GET /v1/runtime-overview` returns the Go-owned aggregate summary and cards.
 - The panel is discoverable via `/api/dashboard/plugins`.
 - Endpoint failures are returned in `status.errors` without breaking the whole
@@ -117,3 +133,5 @@ remain in the specific job/outbox plugins where mutation is explicit.
   metrics, and Go-owned runtime worker diagnostics.
 - Tests cover Python fallback to the old multi-endpoint path when the Go
   aggregate is unavailable.
+- Tests cover the manual adapter health proxy and confirm normal overview
+  loading does not call the health endpoint.
