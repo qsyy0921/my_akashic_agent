@@ -142,6 +142,21 @@ compatibility layer until the platform adapter cutover is reviewed.
 It returns the next queued delivery, or an expired `dispatching` delivery, as
 `dispatching` with `lease_owner` and `lease_expires_at` set.
 
+Failure requests accept structured diagnostics:
+
+```json
+{
+  "error_kind": "platform_timeout",
+  "error_message": "platform timeout"
+}
+```
+
+Known `error_kind` values are `unknown`, `platform_error`,
+`platform_timeout`, `route_error`, `unsupported_media`,
+`sender_unavailable`, and `validation_error`. Omitted or unrecognized values are
+normalized to `unknown` by the domain layer. `retry`, `dispatching`, and
+`succeeded` clear previous failure details.
+
 Register and query media/file metadata:
 
 ```text

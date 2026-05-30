@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -79,7 +79,11 @@ func (s *OutboxService) MarkSucceeded(ctx context.Context, cmd command.MarkOutbo
 
 func (s *OutboxService) MarkFailed(ctx context.Context, cmd command.MarkOutboxFailedCommand) (query.OutboxDeliveryView, error) {
 	return s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
-		return delivery.MarkFailed(cmd.ErrorMessage, now)
+		return delivery.MarkFailedWithKind(
+			model.NormalizeDeliveryErrorKind(cmd.ErrorKind),
+			cmd.ErrorMessage,
+			now,
+		)
 	})
 }
 

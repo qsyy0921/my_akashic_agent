@@ -1,4 +1,4 @@
-﻿package command
+package command
 
 import "time"
 
@@ -14,6 +14,7 @@ type MarkOutboxSucceededCommand struct {
 
 type MarkOutboxFailedCommand struct {
 	EventID      string
+	ErrorKind    string
 	ErrorMessage string
 	Timestamp    time.Time
 }

@@ -353,6 +353,7 @@ func OutboxStateHandler(outbox inport.OutboxManager) http.Handler {
 		case "failed":
 			item, err = outbox.MarkFailed(r.Context(), command.MarkOutboxFailedCommand{
 				EventID:      eventID,
+				ErrorKind:    request.ErrorKind,
 				ErrorMessage: request.ErrorMessage,
 				Timestamp:    timestamp,
 			})

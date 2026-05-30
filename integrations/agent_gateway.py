@@ -253,12 +253,16 @@ class AgentGatewayClient:
         event_id: str,
         *,
         error_message: str,
+        error_kind: str = "",
     ) -> dict[str, Any]:
         encoded_id = quote(str(event_id), safe="")
+        body: dict[str, Any] = {"error_message": error_message}
+        if error_kind:
+            body["error_kind"] = str(error_kind)
         return await self._request(
             "POST",
             f"/v1/outbox/{encoded_id}/failed",
-            json_body={"error_message": error_message},
+            json_body=body,
         )
 
     async def _request(

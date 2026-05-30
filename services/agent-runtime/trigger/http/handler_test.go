@@ -208,12 +208,15 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-http-1/failed", bytes.NewReader([]byte(`{"error_message":"platform timeout"}`))))
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-http-1/failed", bytes.NewReader([]byte(`{"error_kind":"platform_timeout","error_message":"platform timeout"}`))))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected failed 200, got %d: %s", response.Code, response.Body.String())
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"failed"`)) {
 		t.Fatalf("failed response missing status: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"error_kind":"platform_timeout"`)) {
+		t.Fatalf("failed response missing error kind: %s", response.Body.String())
 	}
 
 	response = httptest.NewRecorder()

@@ -1,4 +1,4 @@
-﻿package dto
+package dto
 
 type SendMessageRequest struct {
 	EventID         string            `json:"event_id"`
@@ -15,6 +15,7 @@ type SendMessageRequest struct {
 
 type OutboxStateRequest struct {
 	Timestamp    string `json:"timestamp,omitempty"`
+	ErrorKind    string `json:"error_kind,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 }
 

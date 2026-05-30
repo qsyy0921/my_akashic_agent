@@ -27,7 +27,7 @@ func TestOutboxStorePersistsDeliveriesAcrossRestarts(t *testing.T) {
 	if err := deliveryB.MarkDispatching(now.Add(2 * time.Minute)); err != nil {
 		t.Fatalf("mark dispatching: %v", err)
 	}
-	if err := deliveryB.MarkFailed("platform timeout", now.Add(3*time.Minute)); err != nil {
+	if err := deliveryB.MarkFailedWithKind(model.DeliveryErrorPlatformTimeout, "platform timeout", now.Add(3*time.Minute)); err != nil {
 		t.Fatalf("mark failed: %v", err)
 	}
 	if err := repo.SaveOutboxDelivery(ctx, deliveryB); err != nil {
@@ -53,6 +53,9 @@ func TestOutboxStorePersistsDeliveriesAcrossRestarts(t *testing.T) {
 	}
 	if stored.ErrorMessage != "platform timeout" {
 		t.Fatalf("expected error message to persist, got %q", stored.ErrorMessage)
+	}
+	if stored.ErrorKind != model.DeliveryErrorPlatformTimeout {
+		t.Fatalf("expected error kind to persist, got %q", stored.ErrorKind)
 	}
 	items, err := reloaded.ListOutboxDeliveries(ctx, 10)
 	if err != nil {

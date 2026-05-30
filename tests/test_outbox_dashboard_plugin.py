@@ -20,7 +20,9 @@ class _MemoryAdmin:
         return None
 
 
-def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path) -> None:
+def test_outbox_dashboard_plugin_reads_filters_and_actions(
+    monkeypatch, tmp_path
+) -> None:
     deliveries = [
         _delivery("outbox:1", "failed", "1049511700", "2365524513", "platform timeout"),
         _delivery("outbox:2", "queued", "2365524513", "1049511700", ""),
@@ -36,13 +38,26 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
 
         if method == "GET" and path == "/v1/outbox":
             assert int(query.get("limit", ["0"])[0]) >= 1
-            return _fake_urlopen_response(json.dumps({"code": "OK", "data": deliveries}))
+            return _fake_urlopen_response(
+                json.dumps({"code": "OK", "data": deliveries})
+            )
         if method == "GET" and path.startswith("/v1/outbox/"):
             event_id = path.removeprefix("/v1/outbox/")
-            item = next((delivery for delivery in deliveries if delivery["event_id"] == event_id), None)
-            return _fake_urlopen_response(json.dumps({"code": "OK", "data": item or {}}))
+            item = next(
+                (
+                    delivery
+                    for delivery in deliveries
+                    if delivery["event_id"] == event_id
+                ),
+                None,
+            )
+            return _fake_urlopen_response(
+                json.dumps({"code": "OK", "data": item or {}})
+            )
         if method == "POST" and path == "/v1/outbox/lease-next":
-            raw = request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            raw = (
+                request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            )
             body = json.loads(raw)
             calls.append(("", "lease-next", body))
             item = _delivery("outbox:2", "dispatching", "2365524513", "1049511700", "")
@@ -51,16 +66,27 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": item}))
         if method == "POST" and path.startswith("/v1/outbox/"):
             event_id, action = path.removeprefix("/v1/outbox/").rsplit("/", 1)
-            raw = request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            raw = (
+                request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            )
             body = json.loads(raw)
             calls.append((event_id, action, body))
-            item = _delivery(event_id, "queued" if action == "retry" else action, "1049511700", "2365524513", body.get("error_message", ""))
+            item = _delivery(
+                event_id,
+                "queued" if action == "retry" else action,
+                "1049511700",
+                "2365524513",
+                body.get("error_message", ""),
+            )
+            item["error_kind"] = body.get("error_kind", "")
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": item}))
         raise AssertionError(f"unhandled runtime call: {method} {path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
 
-    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+    with TestClient(
+        create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())
+    ) as client:
         list_response = client.get(
             "/api/dashboard/outbox",
             params={
@@ -83,13 +109,17 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
 
         detail_response = client.get("/api/dashboard/outbox/outbox%3A1")
         assert detail_response.status_code == 200
+        assert detail_response.json()["error_kind"] == "platform_timeout"
         assert detail_response.json()["error_message"] == "platform timeout"
         assert detail_response.json()["lease_expires_at"] == "2026-05-30T10:05:00+08:00"
 
         retry_response = client.post("/api/dashboard/outbox/outbox%3A1/retry", json={})
         fail_response = client.post(
             "/api/dashboard/outbox/outbox%3A1/failed",
-            json={"error_message": "manual test failure"},
+            json={
+                "error_kind": "validation_error",
+                "error_message": "manual test failure",
+            },
         )
         lease_response = client.post(
             "/api/dashboard/outbox/outbox%3A1/lease-next",
@@ -103,8 +133,16 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
         assert lease_response.json()["lease_owner"] == "dashboard-test"
 
     assert ("outbox:1", "retry", {}) in calls
-    assert ("outbox:1", "failed", {"error_message": "manual test failure"}) in calls
-    assert ("", "lease-next", {"worker_id": "dashboard-test", "ttl_seconds": 120}) in calls
+    assert (
+        "outbox:1",
+        "failed",
+        {"error_kind": "validation_error", "error_message": "manual test failure"},
+    ) in calls
+    assert (
+        "",
+        "lease-next",
+        {"worker_id": "dashboard-test", "ttl_seconds": 120},
+    ) in calls
 
 
 def test_outbox_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
@@ -119,12 +157,12 @@ def test_outbox_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
 
-    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+    with TestClient(
+        create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())
+    ) as client:
         plugins = client.get("/api/dashboard/plugins").json()
         plugin_panels = {
-            item["id"]: item["panels"]
-            for item in plugins
-            if item["id"] == "outbox"
+            item["id"]: item["panels"] for item in plugins if item["id"] == "outbox"
         }
         js_response = client.get("/plugins/outbox/dashboard_panel.js")
         css_response = client.get("/plugins/outbox/dashboard_panel.css")
@@ -157,6 +195,7 @@ def _delivery(
         "max_attempts": 2,
         "lease_owner": "worker-1" if status == "failed" else "",
         "lease_expires_at": "2026-05-30T10:05:00+08:00" if status == "failed" else "",
+        "error_kind": "platform_timeout" if error_message else "",
         "error_message": error_message,
         "metadata": {"source": "test"},
         "created_at": "2026-05-30T10:00:00+08:00",

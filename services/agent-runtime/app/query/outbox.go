@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 type OutboxAttachmentView struct {
 	ID        string `json:"id,omitempty"`
@@ -26,6 +26,7 @@ type OutboxDeliveryView struct {
 	MaxAttempts    int                    `json:"max_attempts"`
 	LeaseOwner     string                 `json:"lease_owner,omitempty"`
 	LeaseExpiresAt string                 `json:"lease_expires_at,omitempty"`
+	ErrorKind      string                 `json:"error_kind,omitempty"`
 	ErrorMessage   string                 `json:"error_message,omitempty"`
 	CreatedAt      string                 `json:"created_at"`
 	UpdatedAt      string                 `json:"updated_at"`

@@ -214,7 +214,10 @@ async def test_agent_gateway_client_leases_and_updates_outbox_delivery():
             assert body == {}
             return _ok({"event_id": "qq:private:1", "status": "succeeded"})
         if request.url.path == "/v1/outbox/qq:private:2/failed":
-            assert body == {"error_message": "platform timeout"}
+            assert body == {
+                "error_kind": "platform_timeout",
+                "error_message": "platform timeout",
+            }
             return _ok({"event_id": "qq:private:2", "status": "failed"})
         return httpx.Response(404, text="not found")
 
@@ -224,6 +227,7 @@ async def test_agent_gateway_client_leases_and_updates_outbox_delivery():
     succeeded = await client.mark_outbox_succeeded("qq:private:1")
     failed = await client.mark_outbox_failed(
         "qq:private:2",
+        error_kind="platform_timeout",
         error_message="platform timeout",
     )
 

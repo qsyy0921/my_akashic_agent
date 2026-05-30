@@ -28,6 +28,7 @@ The aggregate records:
 - status: `queued`, `dispatching`, `succeeded`, `failed`, or `dead_lettered`;
 - attempts and max attempts;
 - lease owner and lease expiry for dispatcher workers;
+- structured failure kind for adapter and route diagnostics;
 - last error message;
 - created and updated timestamps.
 
@@ -85,6 +86,7 @@ Failure requests include:
 
 ```json
 {
+  "error_kind": "platform_timeout",
   "error_message": "platform timeout"
 }
 ```
@@ -98,6 +100,9 @@ Failure requests include:
 - `dispatching` deliveries are leaseable only after `lease_expires_at`.
 - A lease increments attempts and records the worker id.
 - `succeeded`, `failed`, and `retry` clear lease fields.
+- `failed` records both `error_kind` and `error_message`; unknown or omitted
+  kinds are normalized to `unknown`.
+- `dispatching`, `succeeded`, and `retry` clear prior failure details.
 - Exhausted attempts become `dead_lettered`.
 - The endpoint is not a production platform sender yet.
 - Python compatibility senders may still deliver messages until adapter cutover
@@ -114,6 +119,8 @@ Failure requests include:
   exposes/update states.
 - HTTP test proves `/v1/outbox/lease-next` leases the next delivery with owner
   and expiry fields.
+- HTTP and app-service tests prove structured failure kind survives state
+  updates and is cleared by retry.
 - Infrastructure test proves file-backed outbox delivery state and queued retry
   ids survive runtime restarts.
 - Infrastructure test proves leased state persists and expired leases become

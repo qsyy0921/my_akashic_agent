@@ -1,4 +1,4 @@
-﻿package model_test
+package model_test
 
 import (
 	"testing"
@@ -23,11 +23,14 @@ func TestOutboxDeliveryLifecycleDeadLettersAfterMaxAttempts(t *testing.T) {
 	if delivery.Attempts != 1 {
 		t.Fatalf("expected 1 attempt, got %d", delivery.Attempts)
 	}
-	if err := delivery.MarkFailed("first failure", now.Add(2*time.Second)); err != nil {
+	if err := delivery.MarkFailedWithKind(model.DeliveryErrorPlatformTimeout, "first failure", now.Add(2*time.Second)); err != nil {
 		t.Fatalf("mark failed: %v", err)
 	}
 	if delivery.Status != model.DeliveryFailed {
 		t.Fatalf("expected failed, got %s", delivery.Status)
+	}
+	if delivery.ErrorKind != model.DeliveryErrorPlatformTimeout {
+		t.Fatalf("expected timeout failure kind, got %s", delivery.ErrorKind)
 	}
 
 	if err := delivery.Retry(now.Add(3 * time.Second)); err != nil {
@@ -36,11 +39,17 @@ func TestOutboxDeliveryLifecycleDeadLettersAfterMaxAttempts(t *testing.T) {
 	if err := delivery.MarkDispatching(now.Add(4 * time.Second)); err != nil {
 		t.Fatalf("second dispatch: %v", err)
 	}
+	if delivery.ErrorKind != "" {
+		t.Fatalf("expected dispatching to clear failure kind, got %s", delivery.ErrorKind)
+	}
 	if err := delivery.MarkFailed("second failure", now.Add(5*time.Second)); err != nil {
 		t.Fatalf("second failure: %v", err)
 	}
 	if delivery.Status != model.DeliveryDeadLettered {
 		t.Fatalf("expected dead letter, got %s", delivery.Status)
+	}
+	if delivery.ErrorKind != model.DeliveryErrorUnknown {
+		t.Fatalf("expected fallback failure kind, got %s", delivery.ErrorKind)
 	}
 }
 
@@ -96,6 +105,29 @@ func TestOutboxDeliveryLeaseExpiresAndCanBeReLeased(t *testing.T) {
 	}
 	if delivery.Attempts != 2 {
 		t.Fatalf("expected second attempt after re-lease, got %d", delivery.Attempts)
+	}
+}
+
+func TestOutboxDeliveryNormalizesUnknownFailureKind(t *testing.T) {
+	now := time.Date(2026, 5, 30, 3, 0, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(sampleOutbound(now), 3, now)
+	if err != nil {
+		t.Fatalf("new delivery: %v", err)
+	}
+	if err := delivery.MarkDispatching(now.Add(time.Second)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if err := delivery.MarkFailedWithKind("strange-kind", "bad adapter", now.Add(2*time.Second)); err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	if delivery.ErrorKind != model.DeliveryErrorUnknown {
+		t.Fatalf("expected unknown kind, got %s", delivery.ErrorKind)
+	}
+	if err := delivery.Retry(now.Add(3 * time.Second)); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if delivery.ErrorKind != "" || delivery.ErrorMessage != "" {
+		t.Fatalf("expected retry to clear failure details, got kind=%q message=%q", delivery.ErrorKind, delivery.ErrorMessage)
 	}
 }
 

@@ -52,7 +52,9 @@ class OutboxDashboardReader:
     ) -> dict[str, Any]:
         safe_page = max(1, page)
         safe_page_size = max(1, min(page_size, _MAX_PAGE_SIZE))
-        requested_limit = min(max(safe_page * safe_page_size, safe_page_size), _DEFAULT_LIST_LIMIT)
+        requested_limit = min(
+            max(safe_page * safe_page_size, safe_page_size), _DEFAULT_LIST_LIMIT
+        )
         status_meta: dict[str, Any] = {
             "runtime_url": self.runtime_base_url,
             "runtime_available": False,
@@ -81,7 +83,10 @@ class OutboxDashboardReader:
         sort_key = sort_by if sort_by else "updated_at"
         reverse = str(sort_order).lower() != "asc"
         items.sort(
-            key=lambda item: (_sort_value(item, sort_key), str(item.get("event_id") or "")),
+            key=lambda item: (
+                _sort_value(item, sort_key),
+                str(item.get("event_id") or ""),
+            ),
             reverse=reverse,
         )
         total = len(items)
@@ -97,7 +102,9 @@ class OutboxDashboardReader:
     def get_delivery(self, event_id: str) -> dict[str, Any] | None:
         if not self.runtime_base_url:
             raise HTTPException(status_code=503, detail="agent-runtime 未配置")
-        url = f"{self.runtime_base_url}/v1/outbox/{urllib.parse.quote(event_id, safe='')}"
+        url = (
+            f"{self.runtime_base_url}/v1/outbox/{urllib.parse.quote(event_id, safe='')}"
+        )
         data, error = self._request_json(url)
         if error:
             raise HTTPException(status_code=502, detail=error)
@@ -110,6 +117,7 @@ class OutboxDashboardReader:
         event_id: str,
         action: str,
         *,
+        error_kind: str = "",
         error_message: str = "",
         worker_id: str = "dashboard",
         ttl_seconds: int = 300,
@@ -120,6 +128,7 @@ class OutboxDashboardReader:
             raise HTTPException(status_code=503, detail="agent-runtime 未配置")
         body: dict[str, Any] = {}
         if action == "failed":
+            body["error_kind"] = error_kind or "validation_error"
             body["error_message"] = error_message or "manual failure from dashboard"
         if action == "lease-next":
             body["worker_id"] = worker_id or "dashboard"
@@ -131,10 +140,15 @@ class OutboxDashboardReader:
         if error:
             raise HTTPException(status_code=502, detail=error)
         if not isinstance(data, Mapping):
-            raise HTTPException(status_code=502, detail="runtime outbox action response is not an object")
+            raise HTTPException(
+                status_code=502,
+                detail="runtime outbox action response is not an object",
+            )
         return _normalize_delivery(data)
 
-    def _read_runtime_deliveries(self, *, limit: int) -> tuple[list[dict[str, Any]], str | None]:
+    def _read_runtime_deliveries(
+        self, *, limit: int
+    ) -> tuple[list[dict[str, Any]], str | None]:
         if not self.runtime_base_url:
             return [], "runtime base url is empty"
         url = f"{self.runtime_base_url}/v1/outbox?{urllib.parse.urlencode({'limit': max(1, limit)})}"
@@ -143,7 +157,9 @@ class OutboxDashboardReader:
             return [], error
         if not isinstance(data, list):
             return [], "runtime /v1/outbox response is not a list"
-        return [_normalize_delivery(item) for item in data if isinstance(item, Mapping)], None
+        return [
+            _normalize_delivery(item) for item in data if isinstance(item, Mapping)
+        ], None
 
     def _request_json(
         self,
@@ -161,7 +177,9 @@ class OutboxDashboardReader:
             headers=headers if method == "POST" else {},
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.request_timeout_seconds) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.request_timeout_seconds
+            ) as response:
                 raw = response.read().decode("utf-8")
         except (TimeoutError, OSError, urllib.error.URLError) as exc:
             return None, str(exc)
@@ -218,11 +236,14 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
         return item
 
     @app.post("/api/dashboard/outbox/{event_id:path}/{action}")
-    def run_outbox_action(event_id: str, action: str, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def run_outbox_action(
+        event_id: str, action: str, payload: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         body = dict(payload or {})
         return reader.run_action(
             event_id,
             action,
+            error_kind=_text(body.get("error_kind")),
             error_message=_text(body.get("error_message")),
             worker_id=_text(body.get("worker_id")) or "dashboard",
             ttl_seconds=_int_value(body.get("ttl_seconds"), fallback=300),
@@ -242,12 +263,17 @@ def _normalize_delivery(item: Mapping[str, Any]) -> dict[str, Any]:
         "conversation_id": _text(channel.get("conversation_id")),
         "conversation_type": _text(channel.get("conversation_type")),
         "content": _text(item.get("content")),
-        "attachments": [dict(attachment) for attachment in attachments if isinstance(attachment, Mapping)],
+        "attachments": [
+            dict(attachment)
+            for attachment in attachments
+            if isinstance(attachment, Mapping)
+        ],
         "status": _text(item.get("status") or "unknown"),
         "attempts": _int_value(item.get("attempts"), fallback=0),
         "max_attempts": _int_value(item.get("max_attempts"), fallback=0),
         "lease_owner": _text(item.get("lease_owner")),
         "lease_expires_at": _text(item.get("lease_expires_at")),
+        "error_kind": _text(item.get("error_kind")),
         "error_message": _text(item.get("error_message")),
         "created_at": _text(item.get("created_at")),
         "updated_at": _text(item.get("updated_at")),
@@ -287,6 +313,7 @@ def _matches_delivery_filters(
             _text(item.get("conversation_type")),
             _text(item.get("content")),
             _text(item.get("status")),
+            _text(item.get("error_kind")),
             _text(item.get("error_message")),
             json.dumps(item.get("metadata") or {}, ensure_ascii=False),
             json.dumps(item.get("attachments") or [], ensure_ascii=False),

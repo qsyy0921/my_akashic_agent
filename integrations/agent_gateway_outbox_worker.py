@@ -14,6 +14,12 @@ from integrations.agent_gateway import (
 logger = logging.getLogger(__name__)
 
 
+class DeliveryDispatchError(RuntimeError):
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind or "unknown"
+
+
 class AgentGatewayOutboxWorker:
     def __init__(
         self,
@@ -57,14 +63,16 @@ class AgentGatewayOutboxWorker:
             }
         except Exception as exc:
             message = str(exc)
+            error_kind = getattr(exc, "kind", "unknown")
             logger.exception(
                 "[agent_runtime_outbox_worker] delivery failed event_id=%s", event_id
             )
-            await self._safe_fail(event_id, message)
+            await self._safe_fail(event_id, message, error_kind=str(error_kind))
             return {
                 "processed": True,
                 "event_id": event_id,
                 "failed": True,
+                "error_kind": str(error_kind),
                 "error": message,
             }
 
@@ -107,9 +115,15 @@ class AgentGatewayOutboxWorker:
         channel_name = self._resolve_channel_name(route)
         chat_id = str(route.get("conversation_id") or "").strip()
         if not channel_name:
-            raise RuntimeError("outbox delivery missing channel kind")
+            raise DeliveryDispatchError(
+                "route_error",
+                "outbox delivery missing channel kind",
+            )
         if not chat_id:
-            raise RuntimeError("outbox delivery missing conversation_id")
+            raise DeliveryDispatchError(
+                "route_error",
+                "outbox delivery missing conversation_id",
+            )
 
         content = str(delivery.get("content") or "")
         attachments = _delivery_attachments(delivery)
@@ -164,14 +178,24 @@ class AgentGatewayOutboxWorker:
         result = await self._push_tool.execute(**kwargs)
         text = str(result or "")
         if _is_send_failure(text):
-            raise RuntimeError(text)
+            raise DeliveryDispatchError(_failure_kind(text), text)
         return text
 
-    async def _safe_fail(self, event_id: str, message: str) -> None:
+    async def _safe_fail(
+        self,
+        event_id: str,
+        message: str,
+        *,
+        error_kind: str,
+    ) -> None:
         if not event_id:
             return
         try:
-            await self._client.mark_outbox_failed(event_id, error_message=message)
+            await self._client.mark_outbox_failed(
+                event_id,
+                error_kind=error_kind,
+                error_message=message,
+            )
         except Exception:
             logger.warning(
                 "[agent_runtime_outbox_worker] fail update failed event_id=%s",
@@ -222,3 +246,20 @@ def _is_send_failure(result: str) -> bool:
             "错误：",
         )
     )
+
+
+def _failure_kind(result: str) -> str:
+    text = str(result or "").lower()
+    if "未注册" in result:
+        return "route_error"
+    if "不支持" in result:
+        return "unsupported_media"
+    if "没有可用" in result:
+        return "sender_unavailable"
+    if "timeout" in text or "timed out" in text or "超时" in result:
+        return "platform_timeout"
+    if "至少提供一个" in result or "错误：" in result:
+        return "validation_error"
+    if "发送失败" in result:
+        return "platform_error"
+    return "unknown"

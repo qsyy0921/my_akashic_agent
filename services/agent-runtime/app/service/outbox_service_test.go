@@ -1,4 +1,4 @@
-﻿package service_test
+package service_test
 
 import (
 	"context"
@@ -37,6 +37,7 @@ func TestOutboxServiceTransitionsAndRetry(t *testing.T) {
 
 	failed, err := service.MarkFailed(ctx, command.MarkOutboxFailedCommand{
 		EventID:      "outbox-1",
+		ErrorKind:    string(model.DeliveryErrorPlatformTimeout),
 		ErrorMessage: "platform timeout",
 		Timestamp:    now.Add(2 * time.Second),
 	})
@@ -45,6 +46,9 @@ func TestOutboxServiceTransitionsAndRetry(t *testing.T) {
 	}
 	if failed.Status != string(model.DeliveryFailed) {
 		t.Fatalf("expected failed, got %s", failed.Status)
+	}
+	if failed.ErrorKind != string(model.DeliveryErrorPlatformTimeout) {
+		t.Fatalf("expected timeout failure kind, got %s", failed.ErrorKind)
 	}
 
 	retried, err := service.Retry(ctx, command.RetryOutboxCommand{
@@ -56,6 +60,9 @@ func TestOutboxServiceTransitionsAndRetry(t *testing.T) {
 	}
 	if retried.Status != string(model.DeliveryQueued) {
 		t.Fatalf("expected queued, got %s", retried.Status)
+	}
+	if retried.ErrorKind != "" || retried.ErrorMessage != "" {
+		t.Fatalf("expected retry to clear failure details, got kind=%q message=%q", retried.ErrorKind, retried.ErrorMessage)
 	}
 	if len(store.OutboxQueue()) != 1 {
 		t.Fatalf("expected retried delivery to be enqueued, got %d", len(store.OutboxQueue()))

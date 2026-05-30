@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 )
 
 type DeliveryStatus string
+type DeliveryErrorKind string
 
 const (
 	DeliveryQueued       DeliveryStatus = "queued"
@@ -16,6 +17,16 @@ const (
 	DeliveryDeadLettered DeliveryStatus = "dead_lettered"
 )
 
+const (
+	DeliveryErrorUnknown           DeliveryErrorKind = "unknown"
+	DeliveryErrorPlatform          DeliveryErrorKind = "platform_error"
+	DeliveryErrorPlatformTimeout   DeliveryErrorKind = "platform_timeout"
+	DeliveryErrorRoute             DeliveryErrorKind = "route_error"
+	DeliveryErrorUnsupportedMedia  DeliveryErrorKind = "unsupported_media"
+	DeliveryErrorSenderUnavailable DeliveryErrorKind = "sender_unavailable"
+	DeliveryErrorValidation        DeliveryErrorKind = "validation_error"
+)
+
 type OutboxDelivery struct {
 	Message        OutboundMessage
 	Status         DeliveryStatus
@@ -23,6 +34,7 @@ type OutboxDelivery struct {
 	MaxAttempts    int
 	LeaseOwner     string
 	LeaseExpiresAt time.Time
+	ErrorKind      DeliveryErrorKind
 	ErrorMessage   string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -74,6 +86,9 @@ func (d OutboxDelivery) Validate() error {
 	if !d.LeaseExpiresAt.IsZero() && strings.TrimSpace(d.LeaseOwner) == "" {
 		return errors.New("outbox delivery lease expiry requires owner")
 	}
+	if d.ErrorKind != "" && NormalizeDeliveryErrorKind(string(d.ErrorKind)) != d.ErrorKind {
+		return errors.New("outbox delivery has invalid error kind")
+	}
 	switch d.Status {
 	case DeliveryQueued, DeliveryDispatching, DeliverySucceeded, DeliveryFailed, DeliveryDeadLettered:
 		return nil
@@ -104,6 +119,7 @@ func (d *OutboxDelivery) MarkDispatching(now time.Time) error {
 	d.Status = DeliveryDispatching
 	d.LeaseOwner = ""
 	d.LeaseExpiresAt = time.Time{}
+	d.ErrorKind = ""
 	d.ErrorMessage = ""
 	d.UpdatedAt = now
 	return d.Validate()
@@ -151,6 +167,7 @@ func (d *OutboxDelivery) Lease(workerID string, ttl time.Duration, now time.Time
 	d.Status = DeliveryDispatching
 	d.LeaseOwner = workerID
 	d.LeaseExpiresAt = now.Add(ttl)
+	d.ErrorKind = ""
 	d.ErrorMessage = ""
 	d.UpdatedAt = now
 	return d.Validate()
@@ -169,12 +186,17 @@ func (d *OutboxDelivery) MarkSucceeded(now time.Time) error {
 	d.Status = DeliverySucceeded
 	d.LeaseOwner = ""
 	d.LeaseExpiresAt = time.Time{}
+	d.ErrorKind = ""
 	d.ErrorMessage = ""
 	d.UpdatedAt = now
 	return d.Validate()
 }
 
 func (d *OutboxDelivery) MarkFailed(message string, now time.Time) error {
+	return d.MarkFailedWithKind(DeliveryErrorUnknown, message, now)
+}
+
+func (d *OutboxDelivery) MarkFailedWithKind(kind DeliveryErrorKind, message string, now time.Time) error {
 	if d == nil {
 		return errors.New("outbox delivery is nil")
 	}
@@ -196,6 +218,7 @@ func (d *OutboxDelivery) MarkFailed(message string, now time.Time) error {
 	}
 	d.LeaseOwner = ""
 	d.LeaseExpiresAt = time.Time{}
+	d.ErrorKind = NormalizeDeliveryErrorKind(string(kind))
 	d.ErrorMessage = message
 	d.UpdatedAt = now
 	if d.Attempts >= d.MaxAttempts {
@@ -219,7 +242,29 @@ func (d *OutboxDelivery) Retry(now time.Time) error {
 	d.Status = DeliveryQueued
 	d.LeaseOwner = ""
 	d.LeaseExpiresAt = time.Time{}
+	d.ErrorKind = ""
 	d.ErrorMessage = ""
 	d.UpdatedAt = now
 	return d.Validate()
+}
+
+func NormalizeDeliveryErrorKind(value string) DeliveryErrorKind {
+	switch DeliveryErrorKind(strings.TrimSpace(value)) {
+	case DeliveryErrorPlatform:
+		return DeliveryErrorPlatform
+	case DeliveryErrorPlatformTimeout:
+		return DeliveryErrorPlatformTimeout
+	case DeliveryErrorRoute:
+		return DeliveryErrorRoute
+	case DeliveryErrorUnsupportedMedia:
+		return DeliveryErrorUnsupportedMedia
+	case DeliveryErrorSenderUnavailable:
+		return DeliveryErrorSenderUnavailable
+	case DeliveryErrorValidation:
+		return DeliveryErrorValidation
+	case DeliveryErrorUnknown, "":
+		return DeliveryErrorUnknown
+	default:
+		return DeliveryErrorUnknown
+	}
 }

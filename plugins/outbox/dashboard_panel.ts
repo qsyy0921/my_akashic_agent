@@ -21,6 +21,7 @@ interface OutboxDelivery {
   max_attempts: number;
   lease_owner: string;
   lease_expires_at: string;
+  error_kind: string;
   error_message: string;
   created_at: string;
   updated_at: string;
@@ -101,8 +102,11 @@ function _renderFilters(container: HTMLElement, dispatch: PluginDispatch): void 
   });
 }
 
-async function _runAction(eventId: string, action: string, errorMessage = ""): Promise<OutboxDelivery> {
-  const body = action === "failed" ? { error_message: errorMessage || "manual failure from dashboard" } : {};
+async function _runAction(eventId: string, action: string, errorMessage = "", errorKind = ""): Promise<OutboxDelivery> {
+  const body = action === "failed" ? {
+    error_kind: errorKind || "validation_error",
+    error_message: errorMessage || "manual failure from dashboard",
+  } : {};
   return api<OutboxDelivery>(`/api/dashboard/outbox/${encodePath(eventId)}/${action}`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -141,6 +145,7 @@ window.AkashicDashboard.registerPlugin({
     { key: "content", label: "Content", width: 180, renderCell: (value) => escapeHtml(_short(value, 64)), cellClass: "content-preview" },
     { key: "attempts", label: "Attempts", width: 92, fmt: "outbox-attempts", cellClass: "mono cell-metric", align: "right", sortable: true },
     { key: "lease_owner", label: "Lease", width: 120, renderCell: (value) => escapeHtml(_short(value || "-", 32)), cellClass: "mono cell-id" },
+    { key: "error_kind", label: "Kind", width: 132, renderCell: (value) => escapeHtml(_short(value || "-", 42)), cellClass: "mono cell-id" },
     { key: "error_message", label: "Error", width: 170, renderCell: (value) => escapeHtml(_short(value, 64)), cellClass: "content-preview" },
     { key: "updated_at", label: "Updated", width: 150, fmt: "mono-time", cellClass: "mono cell-time", sortable: true },
   ],
@@ -248,6 +253,10 @@ window.AkashicDashboard.registerPlugin({
               <div class="outbox-label">Error</div>
               <div class="outbox-value outbox-error">${escapeHtml(delivery.error_message || "-")}</div>
             </div>
+            <div>
+              <div class="outbox-label">Error Kind</div>
+              <div class="outbox-value mono">${escapeHtml(delivery.error_kind || "-")}</div>
+            </div>
           </div>
         </div>
 
@@ -261,6 +270,10 @@ window.AkashicDashboard.registerPlugin({
           <label class="outbox-filter">
             <span>Error Message</span>
             <input data-outbox-failed-message value="${escapeHtml(delivery.error_message || "manual failure from dashboard")}" />
+          </label>
+          <label class="outbox-filter">
+            <span>Error Kind</span>
+            <input data-outbox-failed-kind value="${escapeHtml(delivery.error_kind || "validation_error")}" />
           </label>
           <div class="outbox-action-row">
             <button class="danger-ghost" type="button" data-outbox-action="failed">Mark Failed</button>
@@ -286,10 +299,16 @@ window.AkashicDashboard.registerPlugin({
         const action = button.getAttribute("data-outbox-action") || "";
         if (!eventId || !action) return;
         const errorInput = container.querySelector<HTMLInputElement>("[data-outbox-failed-message]");
+        const errorKindInput = container.querySelector<HTMLInputElement>("[data-outbox-failed-kind]");
         button.disabled = true;
         if (result) result.textContent = "提交中";
         try {
-          await _runAction(eventId, action, errorInput?.value.trim() || "");
+          await _runAction(
+            eventId,
+            action,
+            errorInput?.value.trim() || "",
+            errorKindInput?.value.trim() || "",
+          );
           _scheduleRefresh();
           if (result) result.textContent = `已提交 ${action}`;
         } catch (error) {

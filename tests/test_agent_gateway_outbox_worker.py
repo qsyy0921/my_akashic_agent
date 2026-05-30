@@ -28,8 +28,9 @@ class _FakeClient:
         event_id: str,
         *,
         error_message: str,
+        error_kind: str = "",
     ) -> dict[str, Any]:
-        self.calls.append(("mark_outbox_failed", event_id, error_message))
+        self.calls.append(("mark_outbox_failed", event_id, error_kind, error_message))
         return {"event_id": event_id, "status": "failed"}
 
 
@@ -133,10 +134,32 @@ async def test_outbox_worker_marks_failed_when_push_tool_returns_error():
     result = await worker.process_once()
 
     assert result["failed"] is True
+    assert result["error_kind"] == "platform_timeout"
     assert client.calls[-1] == (
         "mark_outbox_failed",
         "qq:private:1",
+        "platform_timeout",
         "发送失败：platform timeout",
+    )
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_classifies_route_errors():
+    client = _FakeClient(
+        _delivery(channel={"kind": "", "conversation_id": "1049511700"})
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["failed"] is True
+    assert result["error_kind"] == "route_error"
+    assert client.calls[-1] == (
+        "mark_outbox_failed",
+        "qq:private:1",
+        "route_error",
+        "outbox delivery missing channel kind",
     )
 
 

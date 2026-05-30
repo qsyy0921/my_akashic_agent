@@ -1,4 +1,4 @@
-﻿package assembler
+package assembler
 
 import (
 	"time"
@@ -35,6 +35,7 @@ func ToOutboxDeliveryView(delivery model.OutboxDelivery) query.OutboxDeliveryVie
 		MaxAttempts:    delivery.MaxAttempts,
 		LeaseOwner:     delivery.LeaseOwner,
 		LeaseExpiresAt: formatTime(delivery.LeaseExpiresAt),
+		ErrorKind:      string(delivery.ErrorKind),
 		ErrorMessage:   delivery.ErrorMessage,
 		CreatedAt:      formatTime(delivery.CreatedAt),
 		UpdatedAt:      formatTime(delivery.UpdatedAt),
