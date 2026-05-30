@@ -66,3 +66,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-17-ragflow-runtime-inbox-source.md`
 - `2026-05-30-phase8-18-knowledge-checkpoints.md`
 - `2026-05-30-phase8-19-runtime-json-utf8.md`
+- `2026-05-30-phase8-20-knowledge-checkpoint-dashboard.md`

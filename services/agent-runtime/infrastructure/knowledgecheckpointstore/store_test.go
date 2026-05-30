@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/knowledgecheckpointstore"
 )
@@ -39,5 +40,16 @@ func TestKnowledgeCheckpointStorePersistsCheckpoint(t *testing.T) {
 	}
 	if !ok || found.Cursor != 42 || found.Metadata["group_id"] != "27234224" {
 		t.Fatalf("unexpected persisted checkpoint: ok=%v checkpoint=%+v", ok, found)
+	}
+
+	items, err := reopened.ListKnowledgeCheckpoints(context.Background(), query.KnowledgeCheckpointFilter{
+		Limit:  10,
+		Prefix: "ragflow:qq:",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].CheckpointID != "ragflow:qq:27234224:ds1" {
+		t.Fatalf("unexpected checkpoint list: %+v", items)
 	}
 }

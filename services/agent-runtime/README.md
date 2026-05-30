@@ -236,6 +236,7 @@ workers still execute image generation, RAG, and memory extraction.
 Read and advance knowledge/RAG checkpoints:
 
 ```text
+GET /v1/knowledge-checkpoints?limit=50&prefix=ragflow:qq:
 GET /v1/knowledge-checkpoints/{checkpoint_id}
 PUT /v1/knowledge-checkpoints/{checkpoint_id}
 ```

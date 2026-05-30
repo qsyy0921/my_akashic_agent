@@ -57,6 +57,7 @@ func RegisterKnowledgeCheckpointRoutes(
 	mux *http.ServeMux,
 	checkpoints inport.KnowledgeCheckpointManager,
 ) {
+	mux.Handle("/v1/knowledge-checkpoints", KnowledgeCheckpointsHandler(checkpoints))
 	mux.Handle("/v1/knowledge-checkpoints/", KnowledgeCheckpointStateHandler(checkpoints))
 }
 
@@ -256,6 +257,28 @@ func KnowledgeCheckpointStateHandler(checkpoints inport.KnowledgeCheckpointManag
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+}
+
+func KnowledgeCheckpointsHandler(checkpoints inport.KnowledgeCheckpointManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checkpoints == nil {
+			http.Error(w, "knowledge checkpoint manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := checkpoints.List(r.Context(), query.KnowledgeCheckpointFilter{
+			Limit:  parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			Prefix: r.URL.Query().Get("prefix"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
 	})
 }
 

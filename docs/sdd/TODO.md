@@ -19,10 +19,10 @@ Last updated: 2026-05-30
 - [x] Move group-memory and RAGFlow source replay to the Go inbox API.
 - [x] Add Go-owned knowledge checkpoints for RAGFlow `rag_ingest` cursors.
 - [x] Fix Go runtime JSON responses to declare UTF-8 for PowerShell clients.
+- [x] Add dashboard visibility for Go-owned knowledge checkpoints.
 
 ## Next
 
-- [ ] Add dashboard visibility for Go-owned knowledge checkpoints.
 - [ ] Add Go-owned generic job checkpoint/list diagnostics for memory and RAG
   workers.
 - [ ] Add a Go-owned queue adapter or durable stream behind current in-process

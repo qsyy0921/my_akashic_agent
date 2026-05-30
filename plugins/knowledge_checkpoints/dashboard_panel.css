@@ -1,0 +1,70 @@
+.knowledge-checkpoint-filter-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.knowledge-checkpoint-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.knowledge-checkpoint-filter span {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.knowledge-checkpoint-filter input {
+  width: 100%;
+}
+
+.knowledge-checkpoint-empty,
+.knowledge-checkpoint-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.knowledge-checkpoint-empty .detail-subtext,
+.knowledge-checkpoint-label {
+  color: var(--muted-text);
+}
+
+.knowledge-checkpoint-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.knowledge-checkpoint-section {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.knowledge-checkpoint-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.knowledge-checkpoint-label {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.knowledge-checkpoint-value {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.knowledge-checkpoint-json {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+}

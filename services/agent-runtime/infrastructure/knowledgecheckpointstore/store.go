@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
@@ -67,6 +68,28 @@ func (s *Store) FindKnowledgeCheckpoint(_ context.Context, checkpointID string) 
 
 	checkpoint, ok := s.checkpoints[checkpointID]
 	return checkpoint, ok, nil
+}
+
+func (s *Store) ListKnowledgeCheckpoints(_ context.Context, filter query.KnowledgeCheckpointFilter) ([]model.KnowledgeCheckpoint, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	prefix := strings.TrimSpace(filter.Prefix)
+	items := make([]model.KnowledgeCheckpoint, 0, limit)
+	for i := len(s.order) - 1; i >= 0 && len(items) < limit; i-- {
+		checkpointID := s.order[i]
+		if prefix != "" && !strings.HasPrefix(checkpointID, prefix) {
+			continue
+		}
+		if checkpoint, ok := s.checkpoints[checkpointID]; ok {
+			items = append(items, checkpoint)
+		}
+	}
+	return items, nil
 }
 
 func (s *Store) load() error {

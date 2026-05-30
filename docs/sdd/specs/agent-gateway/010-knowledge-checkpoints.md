@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented initial RAGFlow cursor slice.
+Implemented initial RAGFlow cursor slice and dashboard visibility.
 
 ## Context
 
@@ -47,6 +47,7 @@ Inbound app port:
 
 ```text
 KnowledgeCheckpointManager
+├── List(filter)
 ├── Get(checkpoint_id)
 └── Upsert(checkpoint_id, cursor, metadata)
 ```
@@ -57,11 +58,13 @@ Outbound app port:
 KnowledgeCheckpointRepository
 ├── SaveKnowledgeCheckpoint(checkpoint)
 └── FindKnowledgeCheckpoint(checkpoint_id)
+└── ListKnowledgeCheckpoints(filter)
 ```
 
 ## HTTP API
 
 ```text
+GET /v1/knowledge-checkpoints?limit=50&prefix=ragflow:qq:
 GET /v1/knowledge-checkpoints/{checkpoint_id}
 PUT /v1/knowledge-checkpoints/{checkpoint_id}
 ```
@@ -95,6 +98,7 @@ value `memory` keeps the development in-memory store.
 - Successful ingest with messages advances the checkpoint to the uploaded
   `end_seq`.
 - Empty ingest succeeds without advancing the checkpoint.
+- Dashboard can list and inspect Go-owned checkpoints through the runtime API.
 - Go tests cover domain regression protection, app service behavior, HTTP API,
   and file-backed persistence.
 

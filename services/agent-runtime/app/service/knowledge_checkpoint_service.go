@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,34 @@ type KnowledgeCheckpointService struct {
 
 func NewKnowledgeCheckpointService(repository outport.KnowledgeCheckpointRepository) *KnowledgeCheckpointService {
 	return &KnowledgeCheckpointService{repository: repository}
+}
+
+func (s *KnowledgeCheckpointService) List(ctx context.Context, filter query.KnowledgeCheckpointFilter) ([]query.KnowledgeCheckpointView, error) {
+	if s == nil || s.repository == nil {
+		return nil, errors.New("knowledge checkpoint service requires repository")
+	}
+	checkpoints, err := s.repository.ListKnowledgeCheckpoints(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(checkpoints, func(i, j int) bool {
+		if checkpoints[i].UpdatedAt.Equal(checkpoints[j].UpdatedAt) {
+			return checkpoints[i].CheckpointID > checkpoints[j].CheckpointID
+		}
+		return checkpoints[i].UpdatedAt.After(checkpoints[j].UpdatedAt)
+	})
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if len(checkpoints) > limit {
+		checkpoints = checkpoints[:limit]
+	}
+	views := make([]query.KnowledgeCheckpointView, 0, len(checkpoints))
+	for _, checkpoint := range checkpoints {
+		views = append(views, assembler.ToKnowledgeCheckpointView(checkpoint))
+	}
+	return views, nil
 }
 
 func (s *KnowledgeCheckpointService) Get(ctx context.Context, checkpointID string) (query.KnowledgeCheckpointView, error) {

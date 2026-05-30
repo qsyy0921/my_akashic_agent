@@ -654,6 +654,28 @@ func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"checkpoint_id":"ragflow:qq:27234224:ds1"`)) {
 		t.Fatalf("checkpoint get missing id: %s", response.Body.String())
 	}
+
+	body = []byte(`{"cursor":43,"metadata":{"group_id":"3219982","dataset_id":"ds1"}}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodPut, "/v1/knowledge-checkpoints/ragflow%3Aqq%3A3219982%3Ads1", bytes.NewReader(body)),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected second checkpoint upsert 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/v1/knowledge-checkpoints?prefix=ragflow%3Aqq%3A&limit=10", nil),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected checkpoint list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"checkpoint_id":"ragflow:qq:3219982:ds1"`)) {
+		t.Fatalf("checkpoint list missing newest item: %s", response.Body.String())
+	}
 }
 
 func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
