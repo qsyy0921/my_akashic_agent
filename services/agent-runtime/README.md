@@ -233,6 +233,22 @@ POST /v1/jobs/{job_id}/cancel
 The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
 workers still execute image generation, RAG, and memory extraction.
 
+Persist generic job lifecycle events as a JSONL stream:
+
+```powershell
+$env:AKASHIC_AGENT_JOB_EVENTS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\agent-job-events.jsonl"
+```
+
+With this environment variable set, every `/v1/jobs` create, lease, running,
+succeeded, failed, retry, and cancel transition appends an `AgentJobEvent`.
+Inspect the stream through:
+
+```text
+GET /v1/job-events?limit=50
+GET /v1/job-events?job_id=rag_ingest:qq:3219982:ds1:1
+GET /v1/job-events?type=rag_ingest&event=failed
+```
+
 Read and advance knowledge/RAG checkpoints:
 
 ```text

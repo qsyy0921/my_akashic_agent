@@ -11,6 +11,7 @@ import (
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
+	agentjobeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobeventstore"
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
@@ -47,6 +48,10 @@ func main() {
 	agentJobRepository, err := newAgentJobRepository()
 	if err != nil {
 		log.Fatalf("init agent job repository: %v", err)
+	}
+	agentJobEventStore, err := newAgentJobEventStore()
+	if err != nil {
+		log.Fatalf("init agent job event store: %v", err)
 	}
 	mediaAssetRepository, err := newMediaAssetRepository()
 	if err != nil {
@@ -87,7 +92,8 @@ func main() {
 		log.Fatalf("init media content reader: %v", err)
 	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
-	agentJobs := appservice.NewAgentJobService(agentJobRepository)
+	agentJobs := appservice.NewAgentJobServiceWithEvents(agentJobRepository, agentJobEventStore)
+	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
@@ -98,6 +104,7 @@ func main() {
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
+	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -124,6 +131,20 @@ func newAgentJobRepository() (outport.AgentJobRepository, error) {
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOBS_PATH")); path != "" {
 		return agentjobstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newAgentJobEventStore() (outport.AgentJobEventStore, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOB_EVENTS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return agentjobeventstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOB_EVENTS_PATH")); path != "" {
+		return agentjobeventstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

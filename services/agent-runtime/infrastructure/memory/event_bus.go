@@ -33,6 +33,7 @@ type Store struct {
 	checkpointIDs []string
 	agentJobs     map[string]model.AgentJob
 	agentJobOrder []string
+	jobEvents     []model.AgentJobEvent
 }
 
 type ObservedEvent struct {
@@ -503,6 +504,43 @@ func (s *Store) FindLeaseableAgentJob(_ context.Context, jobType string, now tim
 		}
 	}
 	return model.AgentJob{}, false, nil
+}
+
+func (s *Store) AppendAgentJobEvent(_ context.Context, event model.AgentJobEvent) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.jobEvents = append(s.jobEvents, event)
+	return nil
+}
+
+func (s *Store) ListAgentJobEvents(_ context.Context, filter query.AgentJobEventFilter) ([]model.AgentJobEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.AgentJobEvent, 0, limit)
+	for i := len(s.jobEvents) - 1; i >= 0 && len(items) < limit; i-- {
+		event := s.jobEvents[i]
+		if filter.JobID != "" && event.JobID != filter.JobID {
+			continue
+		}
+		if filter.JobType != "" && string(event.JobType) != filter.JobType {
+			continue
+		}
+		if filter.EventType != "" && string(event.EventType) != filter.EventType {
+			continue
+		}
+		items = append(items, event)
+	}
+	return items, nil
 }
 
 func (s *Store) RecentlySent(botID string, conversationID string, contentHash string, window time.Duration) bool {

@@ -68,6 +68,13 @@ func RegisterKnowledgeDiagnosticsRoutes(
 	mux.Handle("/v1/knowledge-worker-diagnostics", KnowledgeWorkerDiagnosticsHandler(diagnostics))
 }
 
+func RegisterAgentJobEventRoutes(
+	mux *http.ServeMux,
+	jobEvents inport.AgentJobEventViewer,
+) {
+	mux.Handle("/v1/job-events", AgentJobEventsHandler(jobEvents))
+}
+
 func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: map[string]string{"status": "ok"}})
@@ -781,6 +788,26 @@ func KnowledgeWorkerDiagnosticsHandler(diagnostics inport.KnowledgeWorkerDiagnos
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func AgentJobEventsHandler(jobEvents inport.AgentJobEventViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := jobEvents.List(r.Context(), query.AgentJobEventFilter{
+			JobID:     r.URL.Query().Get("job_id"),
+			JobType:   r.URL.Query().Get("type"),
+			EventType: r.URL.Query().Get("event"),
+			Limit:     parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
 	})
 }
 

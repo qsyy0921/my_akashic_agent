@@ -1,8 +1,9 @@
-﻿package service
+package service
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,10 +16,18 @@ import (
 
 type AgentJobService struct {
 	repository outport.AgentJobRepository
+	events     outport.AgentJobEventSink
 }
 
 func NewAgentJobService(repository outport.AgentJobRepository) *AgentJobService {
 	return &AgentJobService{repository: repository}
+}
+
+func NewAgentJobServiceWithEvents(
+	repository outport.AgentJobRepository,
+	events outport.AgentJobEventSink,
+) *AgentJobService {
+	return &AgentJobService{repository: repository, events: events}
 }
 
 func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJobCommand) (query.AgentJobView, error) {
@@ -50,6 +59,9 @@ func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJob
 	if err := s.repository.SaveAgentJob(ctx, job); err != nil {
 		return query.AgentJobView{}, err
 	}
+	if err := s.recordEvent(ctx, job, model.AgentJobEventCreated, cmd.Timestamp); err != nil {
+		return query.AgentJobView{}, err
+	}
 	return assembler.ToAgentJobView(job), nil
 }
 
@@ -73,7 +85,7 @@ func (s *AgentJobService) Get(ctx context.Context, jobID string) (query.AgentJob
 }
 
 func (s *AgentJobService) Lease(ctx context.Context, cmd command.AgentJobLeaseCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventLeased, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.Lease(cmd.WorkerID, time.Duration(cmd.TTLSeconds)*time.Second, now)
 	})
 }
@@ -98,35 +110,38 @@ func (s *AgentJobService) LeaseNext(ctx context.Context, cmd command.AgentJobLea
 	if err := s.repository.SaveAgentJob(ctx, job); err != nil {
 		return query.AgentJobView{}, err
 	}
+	if err := s.recordEvent(ctx, job, model.AgentJobEventLeased, cmd.Timestamp); err != nil {
+		return query.AgentJobView{}, err
+	}
 	return assembler.ToAgentJobView(job), nil
 }
 
 func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventRunning, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.MarkRunning(now)
 	})
 }
 
 func (s *AgentJobService) Complete(ctx context.Context, cmd command.CompleteAgentJobCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventSucceeded, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.MarkSucceeded(cmd.Result, now)
 	})
 }
 
 func (s *AgentJobService) Fail(ctx context.Context, cmd command.FailAgentJobCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventFailed, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.MarkFailed(cmd.ErrorMessage, now)
 	})
 }
 
 func (s *AgentJobService) Retry(ctx context.Context, cmd command.RetryAgentJobCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventRetry, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.Retry(now)
 	})
 }
 
 func (s *AgentJobService) Cancel(ctx context.Context, cmd command.CancelAgentJobCommand) (query.AgentJobView, error) {
-	return s.update(ctx, cmd.JobID, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventCancelled, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.Cancel(now)
 	})
 }
@@ -134,6 +149,7 @@ func (s *AgentJobService) Cancel(ctx context.Context, cmd command.CancelAgentJob
 func (s *AgentJobService) update(
 	ctx context.Context,
 	jobID string,
+	eventType model.AgentJobEventType,
 	timestamp time.Time,
 	mutate func(job *model.AgentJob, now time.Time) error,
 ) (query.AgentJobView, error) {
@@ -150,7 +166,35 @@ func (s *AgentJobService) update(
 	if err := s.repository.SaveAgentJob(ctx, job); err != nil {
 		return query.AgentJobView{}, err
 	}
+	if err := s.recordEvent(ctx, job, eventType, timestamp); err != nil {
+		return query.AgentJobView{}, err
+	}
 	return assembler.ToAgentJobView(job), nil
+}
+
+func (s *AgentJobService) recordEvent(
+	ctx context.Context,
+	job model.AgentJob,
+	eventType model.AgentJobEventType,
+	timestamp time.Time,
+) error {
+	if s == nil || s.events == nil {
+		return nil
+	}
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	eventID := fmt.Sprintf(
+		"agent-job-event:%s:%s:%d",
+		job.JobID,
+		eventType,
+		timestamp.UTC().UnixNano(),
+	)
+	event, err := model.NewAgentJobEventFromJob(eventID, eventType, job, timestamp)
+	if err != nil {
+		return err
+	}
+	return s.events.AppendAgentJobEvent(ctx, event)
 }
 
 func (s *AgentJobService) getModel(ctx context.Context, jobID string) (model.AgentJob, error) {
@@ -170,4 +214,3 @@ func (s *AgentJobService) getModel(ctx context.Context, jobID string) (model.Age
 	}
 	return job, nil
 }
-

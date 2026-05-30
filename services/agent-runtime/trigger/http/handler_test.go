@@ -622,6 +622,65 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	}
 }
 
+func TestAgentJobEventsEndpointListsLifecycleStream(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	jobEvents := appservice.NewAgentJobEventService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+	httptrigger.RegisterAgentJobEventRoutes(mux, jobEvents)
+
+	body := []byte(`{
+		"job_id":"job-events-http-1",
+		"job_type":"rag_ingest",
+		"agent_id":"main",
+		"route":{
+			"platform":"qq",
+			"account_id":"1049511700",
+			"conversation_id":"27234224",
+			"conversation_type":"group"
+		},
+		"payload":{"source":"group"},
+		"max_attempts":2
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/lease-next", bytes.NewReader([]byte(`{"worker_id":"worker-events","job_type":"rag_ingest","ttl_seconds":60}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/job-events?job_id=job-events-http-1&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected events 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"leased"`)) {
+		t.Fatalf("events response missing leased event: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"created"`)) {
+		t.Fatalf("events response missing created event: %s", response.Body.String())
+	}
+}
+
 func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	store := memory.NewStore()
 	mux := http.NewServeMux()

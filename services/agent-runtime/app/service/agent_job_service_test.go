@@ -83,6 +83,57 @@ func TestAgentJobServiceDuplicateCreateIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAgentJobServiceWritesLifecycleEvents(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobServiceWithEvents(store, store)
+	events := appservice.NewAgentJobEventService(store)
+	now := time.Date(2026, 5, 30, 7, 30, 0, 0, time.UTC)
+
+	created, err := service.Create(ctx, sampleCreateAgentJobCommand(now))
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if _, err := service.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      created.JobID,
+		WorkerID:   "worker-events",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease job: %v", err)
+	}
+	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:     created.JobID,
+		Timestamp: now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	if _, err := service.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:     created.JobID,
+		Result:    map[string]string{"ok": "true"},
+		Timestamp: now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	items, err := events.List(ctx, query.AgentJobEventFilter{
+		JobID: created.JobID,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if got := len(items); got != 4 {
+		t.Fatalf("expected 4 events, got %d: %+v", got, items)
+	}
+	if items[0].EventType != "succeeded" || items[1].EventType != "running" || items[2].EventType != "leased" || items[3].EventType != "created" {
+		t.Fatalf("unexpected event order: %+v", items)
+	}
+	if items[0].Status != "succeeded" || items[2].LeaseOwner != "worker-events" {
+		t.Fatalf("unexpected event payloads: %+v", items)
+	}
+}
+
 func TestKnowledgeWorkerDiagnosticsServiceSummarizesMemoryAndRAGJobs(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

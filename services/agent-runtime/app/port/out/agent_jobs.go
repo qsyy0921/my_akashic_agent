@@ -1,4 +1,4 @@
-﻿package outport
+package outport
 
 import (
 	"context"
@@ -15,3 +15,11 @@ type AgentJobRepository interface {
 	FindLeaseableAgentJob(ctx context.Context, jobType string, now time.Time) (model.AgentJob, bool, error)
 }
 
+type AgentJobEventSink interface {
+	AppendAgentJobEvent(ctx context.Context, event model.AgentJobEvent) error
+}
+
+type AgentJobEventStore interface {
+	AgentJobEventSink
+	ListAgentJobEvents(ctx context.Context, filter query.AgentJobEventFilter) ([]model.AgentJobEvent, error)
+}

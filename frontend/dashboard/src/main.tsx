@@ -840,7 +840,11 @@ function attachmentName(path: string): string {
 }
 
 function mediaAssetUrl(asset: MessageMediaAsset): string {
-  return asset.content_url || asset.url || "";
+  if (asset.content_url) return asset.content_url;
+  if (asset.asset_id) {
+    return `/api/dashboard/media-assets/content?asset_id=${encodeURIComponent(asset.asset_id)}`;
+  }
+  return asset.url || "";
 }
 
 function mediaAssetName(asset: MessageMediaAsset, index: number): string {
