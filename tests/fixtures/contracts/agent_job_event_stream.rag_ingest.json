@@ -18,16 +18,18 @@
     {
       "event_type": "leased",
       "sequence": 2,
-      "status": "running",
+      "status": "leased",
       "lease_owner": "python-knowledge-worker",
       "timestamp": "2026-05-30T01:02:05+08:00"
     },
     {
-      "event_type": "checkpoint_committed",
+      "event_type": "succeeded",
       "sequence": 3,
       "status": "succeeded",
-      "checkpoint_id": "checkpoint:ragflow:qq:2365524513:group:27234224:thread-summary",
-      "timestamp": "2026-05-30T01:03:00+08:00"
+      "timestamp": "2026-05-30T01:03:00+08:00",
+      "metadata": {
+        "checkpoint_id": "ragflow:qq:27234224:thread-summary"
+      }
     }
   ],
   "timestamp": "2026-05-30T01:03:01+08:00",

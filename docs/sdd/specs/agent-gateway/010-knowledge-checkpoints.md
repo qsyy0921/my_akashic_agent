@@ -99,6 +99,8 @@ value `memory` keeps the development in-memory store.
   `end_seq`.
 - Empty ingest succeeds without advancing the checkpoint.
 - Dashboard can list and inspect Go-owned checkpoints through the runtime API.
+- Dashboard can calculate checkpoint lag from `cursor` plus metadata such as
+  `latest_source_seq` without changing Go's integer cursor contract.
 - Go tests cover domain regression protection, app service behavior, HTTP API,
   and file-backed persistence.
 

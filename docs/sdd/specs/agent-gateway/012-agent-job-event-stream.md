@@ -101,6 +101,15 @@ GET /v1/job-events?type=rag_ingest&event=failed
 
 The API is read-only. Mutations still happen only through `/v1/jobs`.
 
+Dashboard proxy:
+
+```text
+GET /api/dashboard/agent-jobs/{job_id}/events?limit=50
+```
+
+The dashboard endpoint reads the Go runtime stream and normalizes the event
+fields for plugin panels and contract smoke tests.
+
 ## Acceptance
 
 - Creating, leasing, running, succeeding, failing, retrying, and cancelling jobs
@@ -108,5 +117,6 @@ The API is read-only. Mutations still happen only through `/v1/jobs`.
 - The JSONL stream persists events across runtime restarts.
 - `/v1/job-events` lists newest events first and supports job/type/event
   filters.
+- The dashboard can read a job's event stream without mutating job state.
 - Existing job lifecycle tests still pass.
 - No Python worker API changes are required.

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from fastapi.testclient import TestClient
 
 from bootstrap.dashboard_api import create_dashboard_app
+
+CONTRACT_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "contracts"
 
 
 class _MemoryAdmin:
@@ -120,6 +123,53 @@ def test_knowledge_checkpoints_panel_assets_are_exposed(monkeypatch, tmp_path) -
     assert css_response.status_code == 200
 
 
+def test_knowledge_checkpoint_contract_fixture_exposes_dashboard_lag(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fixture = _load_contract("knowledge_checkpoint.ragflow.qq.json")
+    runtime_item = {
+        "checkpoint_id": fixture["checkpoint_id"],
+        "cursor": fixture["cursor"],
+        "updated_at": fixture["timestamp"],
+        "metadata": fixture["metadata"],
+    }
+
+    def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
+        target = request.full_url if hasattr(request, "full_url") else str(request)
+        parsed = urlparse(target)
+        if parsed.path == "/v1/knowledge-checkpoints":
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": [runtime_item]}))
+        if parsed.path.startswith("/v1/knowledge-checkpoints/"):
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": runtime_item}))
+        raise AssertionError(f"unhandled runtime call: {parsed.path}")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+        response = client.get(
+            "/api/dashboard/knowledge-checkpoints",
+            params={
+                "prefix": "ragflow:qq:",
+                "group_id": fixture["conversation_id"],
+                "page_size": 10,
+            },
+        )
+        detail_response = client.get(
+            f"/api/dashboard/knowledge-checkpoints/{fixture['checkpoint_id']}"
+        )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["checkpoint_id"] == fixture["checkpoint_id"]
+    assert item["checkpoint_lag_messages"] == 17
+    assert item["latest_source_seq"] == 119
+    assert detail_response.status_code == 200
+    assert detail_response.json()["metadata"]["ragflow_document_id"] == (
+        "ragflow-doc:hardware-thread-001"
+    )
+
+
 def _fake_urlopen_response(payload: str):
     class _Resp:
         def __enter__(self):
@@ -132,3 +182,7 @@ def _fake_urlopen_response(payload: str):
             return payload.encode("utf-8")
 
     return _Resp()
+
+
+def _load_contract(name: str) -> dict[str, Any]:
+    return json.loads((CONTRACT_DIR / name).read_text(encoding="utf-8"))

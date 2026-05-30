@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from bootstrap.dashboard_api import create_dashboard_app
+
+CONTRACT_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "contracts"
 
 
 class _MemoryAdmin:
@@ -159,6 +162,53 @@ def test_agent_jobs_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
     assert css_response.status_code == 200
 
 
+def test_agent_job_event_contract_fixture_is_readable_from_dashboard(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fixture = _load_contract("agent_job_event_stream.rag_ingest.json")
+    events = [
+        {
+            "event_id": f"{fixture['job_id']}:{event['sequence']}",
+            "job_id": fixture["job_id"],
+            "job_type": fixture["job_type"],
+            "event_type": event["event_type"],
+            "status": event["status"],
+            "attempt": 1 if event["event_type"] != "created" else 0,
+            "max_attempts": 2,
+            "lease_owner": event.get("lease_owner", ""),
+            "occurred_at": event["timestamp"],
+            "metadata": event.get("metadata", {}),
+        }
+        for event in fixture["events"]
+    ]
+
+    def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
+        target = request.full_url if hasattr(request, "full_url") else str(request)
+        parsed = urlparse(target)
+        query = parse_qs(parsed.query)
+        assert parsed.path == "/v1/job-events"
+        assert query["job_id"] == [fixture["job_id"]]
+        assert query["limit"] == ["10"]
+        return _fake_urlopen_response(json.dumps({"code": "OK", "data": events}))
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+        response = client.get(
+            f"/api/dashboard/agent-jobs/{fixture['job_id']}/events",
+            params={"limit": 10},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 3
+    assert payload["items"][1]["event_type"] == "leased"
+    assert payload["items"][-1]["metadata"]["checkpoint_id"] == (
+        "ragflow:qq:27234224:thread-summary"
+    )
+
+
 def _fake_urlopen_response(payload: str):
     class _Resp:
         def __enter__(self):
@@ -171,3 +221,7 @@ def _fake_urlopen_response(payload: str):
             return payload.encode("utf-8")
 
     return _Resp()
+
+
+def _load_contract(name: str) -> dict[str, Any]:
+    return json.loads((CONTRACT_DIR / name).read_text(encoding="utf-8"))

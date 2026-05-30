@@ -7,6 +7,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime
+from pathlib import Path
 import urllib.error
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -17,6 +18,8 @@ from plugins.default_memory.engine import DefaultMemoryEngine
 from memory2.store import MemoryStore2
 from proactive_v2.state import ProactiveStateStore
 from session.store import SessionStore
+
+CONTRACT_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "contracts"
 
 
 class _TrackedTestClient(_RawTestClient):
@@ -668,6 +671,41 @@ def test_dashboard_media_asset_content_falls_back_by_runtime_asset_metadata(
     ]
 
 
+def test_dashboard_media_asset_content_proxies_contract_fixture(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    fixture = _load_contract("media_asset_content.qq.image.json")
+    access = fixture["content_access"]
+    asset_id = fixture["asset_id"]
+    encoded_asset_id = quote(asset_id, safe="")
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        assert parsed.path == f"/v1/media-assets/{encoded_asset_id}/content"
+        return _fake_urlopen_binary_response(
+            b"contract image bytes",
+            headers={
+                "Content-Type": access["mime_type"],
+                "Content-Disposition": "inline; filename=benchmark.png",
+            },
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": asset_id},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"contract image bytes"
+    assert response.headers["content-type"] == access["mime_type"]
+    assert "inline" in response.headers["content-disposition"]
+
+
 def test_dashboard_messages_are_enriched_with_runtime_media_assets(
     tmp_path,
     monkeypatch,
@@ -1146,3 +1184,28 @@ def _fake_urlopen_response(payload: dict[str, object]):
             return raw
 
     return _Resp()
+
+
+def _fake_urlopen_binary_response(
+    payload: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+):
+    class _Resp:
+        def __init__(self) -> None:
+            self.headers = headers or {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return payload
+
+    return _Resp()
+
+
+def _load_contract(name: str) -> dict[str, object]:
+    return json.loads((CONTRACT_DIR / name).read_text(encoding="utf-8"))

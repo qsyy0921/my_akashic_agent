@@ -188,9 +188,14 @@ def _normalize_checkpoint(item: Mapping[str, Any]) -> dict[str, Any]:
     group_id = _text(metadata.get("group_id")) or parsed.get("group_id", "")
     dataset_id = _text(metadata.get("dataset_id")) or parsed.get("dataset_id", "")
     source = _text(metadata.get("source")) or parsed.get("source", "")
+    cursor = _int_value(item.get("cursor"), fallback=-1)
+    latest_source_seq = _int_value(metadata.get("latest_source_seq"), fallback=-1)
+    checkpoint_lag_messages = None
+    if cursor >= 0 and latest_source_seq >= 0:
+        checkpoint_lag_messages = max(0, latest_source_seq - cursor)
     return {
         "checkpoint_id": checkpoint_id,
-        "cursor": _int_value(item.get("cursor"), fallback=-1),
+        "cursor": cursor,
         "updated_at": _text(item.get("updated_at")),
         "metadata": metadata,
         "source": source,
@@ -198,6 +203,8 @@ def _normalize_checkpoint(item: Mapping[str, Any]) -> dict[str, Any]:
         "dataset_id": dataset_id,
         "kind": parsed.get("kind", ""),
         "target": parsed.get("target", ""),
+        "latest_source_seq": latest_source_seq if latest_source_seq >= 0 else None,
+        "checkpoint_lag_messages": checkpoint_lag_messages,
     }
 
 

@@ -15,7 +15,8 @@
     "filename": "benchmark.png",
     "size_bytes": 184320,
     "sha256": "8a7b6c5d4e3f2019aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "access_path": "/api/runtime/media/assets/asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1/content",
+    "access_path": "/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1",
+    "runtime_path": "/v1/media-assets/asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1/content",
     "content_disposition": "inline",
     "storage_key": "uploads/akashic_qq_benchmark.png",
     "preview_ready": true

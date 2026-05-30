@@ -101,6 +101,32 @@ class AgentJobsDashboardReader:
             raise HTTPException(status_code=502, detail=error)
         return job
 
+    def list_job_events(
+        self,
+        job_id: str,
+        *,
+        limit: int = 50,
+        event_type: str = "",
+    ) -> dict[str, Any]:
+        items, error = self._read_gateway_job_events(
+            job_id=job_id,
+            limit=limit,
+            event_type=event_type,
+        )
+        status_meta: dict[str, Any] = {
+            "gateway_url": self.gateway_base_url,
+            "gateway_available": error is None,
+        }
+        if error:
+            status_meta["gateway_error"] = error
+            items = []
+        return {
+            "items": items,
+            "total": len(items),
+            "job_id": job_id,
+            "status": status_meta,
+        }
+
     def retry_job(self, job_id: str) -> dict[str, Any]:
         job, error = self._post_job_action(job_id, "retry")
         if error:
@@ -145,6 +171,33 @@ class AgentJobsDashboardReader:
         if not isinstance(data, Mapping):
             return None, "gateway /v1/jobs/{job_id} response is not an object"
         return _normalize_agent_job(data), None
+
+    def _read_gateway_job_events(
+        self,
+        *,
+        job_id: str,
+        limit: int,
+        event_type: str,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if not self.gateway_base_url:
+            return [], "gateway base url is empty"
+        params = {
+            "job_id": job_id,
+            "limit": max(1, min(int(limit or 50), _DEFAULT_LIST_LIMIT)),
+        }
+        if event_type:
+            params["event"] = event_type
+        url = f"{self.gateway_base_url}/v1/job-events?{urllib.parse.urlencode(params)}"
+        data, error = self._request_json(url)
+        if error:
+            return [], error
+        if not isinstance(data, list):
+            return [], "gateway /v1/job-events response is not a list"
+        return [
+            _normalize_agent_job_event(item)
+            for item in data
+            if isinstance(item, Mapping)
+        ], None
 
     def _post_job_action(
         self,
@@ -224,6 +277,18 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
             sort_order=sort_order,
         )
 
+    @app.get("/api/dashboard/agent-jobs/{job_id:path}/events")
+    def list_agent_job_events(
+        job_id: str,
+        limit: int = Query(50, ge=1, le=_DEFAULT_LIST_LIMIT),
+        event_type: str = "",
+    ) -> dict[str, Any]:
+        return reader.list_job_events(
+            job_id,
+            limit=limit,
+            event_type=event_type,
+        )
+
     @app.get("/api/dashboard/agent-jobs/{job_id:path}")
     def get_agent_job(job_id: str) -> dict[str, Any]:
         item = reader.get_job(job_id)
@@ -264,6 +329,22 @@ def _normalize_agent_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "metadata": _mapping_or_empty(item.get("metadata")),
         "created_at": _text(item.get("created_at")),
         "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_agent_job_event(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": _text(item.get("event_id")),
+        "job_id": _text(item.get("job_id")),
+        "job_type": _text(item.get("job_type")),
+        "event_type": _text(item.get("event_type")),
+        "status": _text(item.get("status")),
+        "attempt": _int_value(item.get("attempt"), fallback=0),
+        "max_attempts": _int_value(item.get("max_attempts"), fallback=0),
+        "lease_owner": _text(item.get("lease_owner")),
+        "lease_expires_at": _text(item.get("lease_expires_at")),
+        "occurred_at": _text(item.get("occurred_at") or item.get("timestamp")),
+        "metadata": _mapping_or_empty(item.get("metadata")),
     }
 
 

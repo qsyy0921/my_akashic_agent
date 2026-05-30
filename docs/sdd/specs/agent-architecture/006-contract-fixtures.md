@@ -36,7 +36,7 @@ Python tests.
 | `image_job.lifecycle.json` | pending/running/succeeded/failed image job states |
 | `memory_extract_job.group_thread.json` | group memory extraction job |
 | `rag_ingest_job.thread_summary.json` | RAG indexing job for thread summary |
-| `knowledge_checkpoint.ragflow.qq.json` | Go-owned RAGFlow checkpoint cursor committed by Python worker |
+| `knowledge_checkpoint.ragflow.qq.json` | Go-owned RAGFlow checkpoint cursor committed by Python worker; `cursor` matches the runtime integer API and extended cursor details live in metadata |
 | `inbox_replay.observe_only.qq.json` | Go inbox replay window for observe-only group memory extraction |
 | `outbox_delivery.qq.private.text.json` | Go outbox delivery state, OneBot adapter result, and echo-loop guard |
 | `media_asset_content.qq.image.json` | Go media content access contract for dashboard previews/downloads |
@@ -67,6 +67,8 @@ Before implementation:
 - Go test loads every fixture and validates domain/application DTOs.
 - Python test loads every fixture into typed dataclasses.
 - Unknown metadata fields are preserved.
+- Dashboard/worker smoke tests consume the same fixtures for checkpoint lag,
+  media content proxying, RAG worker cursor reads, and job event stream reads.
 - Required fields fail fast with clear error messages.
 - Round-trip serialization preserves ids and source refs.
 

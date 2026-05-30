@@ -124,7 +124,9 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
             assert key in data, f"{name} missing {key}"
 
     checkpoint = _load_json(CONTRACT_DIR / "knowledge_checkpoint.ragflow.qq.json")
-    assert checkpoint["cursor"]["last_message_id"] in checkpoint["source_message_ids"]
+    assert isinstance(checkpoint["cursor"], int)
+    assert checkpoint["checkpoint_id"].startswith("ragflow:qq:")
+    assert checkpoint["metadata"]["last_message_id"] in checkpoint["source_message_ids"]
 
     replay = _load_json(CONTRACT_DIR / "inbox_replay.observe_only.qq.json")
     assert replay["replay"]["observe_only"] is True
@@ -136,8 +138,9 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
 
     media_content = _load_json(CONTRACT_DIR / "media_asset_content.qq.image.json")
     assert media_content["content_access"]["access_path"].startswith(
-        "/api/runtime/media/assets/"
+        "/api/dashboard/media-assets/content"
     )
+    assert media_content["content_access"]["runtime_path"].startswith("/v1/media-assets/")
     assert media_content["content_access"]["preview_ready"] is True
 
     event_stream = _load_json(CONTRACT_DIR / "agent_job_event_stream.rag_ingest.json")

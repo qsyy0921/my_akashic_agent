@@ -80,3 +80,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-31-onebot-delivery-adapter.md`
 - `2026-05-30-phase8-32-onebot-websocket-delivery.md`
 - `2026-05-30-phase8-33-runtime-contract-fixtures.md`
+- `2026-05-30-phase8-34-dashboard-worker-contract-smoke.md`

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from integrations.agent_gateway import AgentGatewayNoJob
 from integrations.agent_gateway_knowledge_worker import AgentGatewayKnowledgeWorker
+
+CONTRACT_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "contracts"
 
 
 class _Stats:
@@ -221,6 +224,39 @@ async def test_knowledge_worker_uses_rag_ingest_checkpoint_cursor():
 
 
 @pytest.mark.asyncio
+async def test_knowledge_worker_uses_checkpoint_contract_fixture_cursor():
+    fixture = _load_contract("knowledge_checkpoint.ragflow.qq.json")
+    indexer = _FakeRagflowIndexer()
+    client = _FakeGatewayClient(
+        jobs=[
+            {
+                "job_id": "rag-contract-1",
+                "job_type": "rag_ingest",
+                "payload": {
+                    "group_id": fixture["conversation_id"],
+                    "dataset_id": fixture["metadata"]["dataset_id"],
+                },
+            }
+        ]
+    )
+    client.checkpoints[fixture["checkpoint_id"]] = {
+        "checkpoint_id": fixture["checkpoint_id"],
+        "cursor": fixture["cursor"],
+        "metadata": fixture["metadata"],
+    }
+    worker = _worker(client, ragflow_indexer=indexer)
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert indexer.calls[0]["group_id"] == fixture["conversation_id"]
+    assert indexer.calls[0]["dataset_id"] == fixture["metadata"]["dataset_id"]
+    assert indexer.calls[0]["since_seq"] == fixture["cursor"] + 1
+    update = next(call for call in client.calls if call[0] == "update_knowledge_checkpoint")
+    assert update[1] == fixture["checkpoint_id"]
+
+
+@pytest.mark.asyncio
 async def test_knowledge_worker_fails_job_when_ragflow_errors():
     client = _FakeGatewayClient(
         jobs=[
@@ -247,3 +283,7 @@ async def test_knowledge_worker_returns_idle_when_no_jobs():
     result = await worker.process_once()
 
     assert result == {"processed": False, "reason": "no_job"}
+
+
+def _load_contract(name: str) -> dict[str, Any]:
+    return json.loads((CONTRACT_DIR / name).read_text(encoding="utf-8"))

@@ -1,20 +1,15 @@
 {
   "schema_version": "2026-05-30.v1",
   "kind": "KnowledgeCheckpoint",
-  "event_id": "checkpoint-event:ragflow:qq:2365524513:27234224:thread-summary:v1",
-  "checkpoint_id": "checkpoint:ragflow:qq:2365524513:group:27234224:thread-summary",
+  "event_id": "checkpoint-event:ragflow:qq:27234224:thread-summary:v1",
+  "checkpoint_id": "ragflow:qq:27234224:thread-summary",
   "platform": "qq",
   "account_id": "2365524513",
   "conversation_id": "27234224",
   "conversation_type": "group",
   "agent_id": "hardware-observer",
   "status": "committed",
-  "cursor": {
-    "cursor_type": "message_time",
-    "last_message_id": "qq:2365524513:group:27234224:msg-102",
-    "last_message_time": "2026-05-30T00:58:40+08:00",
-    "ragflow_document_id": "ragflow-doc:hardware-thread-001"
-  },
+  "cursor": 102,
   "timestamp": "2026-05-30T01:03:00+08:00",
   "source_message_ids": [
     "qq:2365524513:group:27234224:msg-100",
@@ -25,6 +20,13 @@
   "metadata": {
     "owner": "agent-runtime",
     "worker": "python-ragflow-indexer",
-    "checkpoint_scope": "thread_summary"
+    "checkpoint_scope": "thread_summary",
+    "source": "qq",
+    "group_id": "27234224",
+    "dataset_id": "thread-summary",
+    "latest_source_seq": "119",
+    "last_message_id": "qq:2365524513:group:27234224:msg-102",
+    "last_message_time": "2026-05-30T00:58:40+08:00",
+    "ragflow_document_id": "ragflow-doc:hardware-thread-001"
   }
 }
