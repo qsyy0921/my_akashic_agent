@@ -350,6 +350,11 @@ The same recovery path can run as an optional runtime background job:
   runtime process.
 - The runner is disabled by default so existing Python state-store workers and
   heartbeat behavior are unchanged unless the operator opts in.
+- The Agent Jobs dashboard can also invoke the same Go recovery endpoint
+  manually. This is an operational control-plane action only: it scans Go job
+  state, clears expired lease metadata according to domain rules, returns
+  scanned/recovered/dead-lettered counts, and does not run Python workers or
+  acknowledge external queue messages.
 
 Agent-job result acknowledgement now has a safe Go mapping:
 

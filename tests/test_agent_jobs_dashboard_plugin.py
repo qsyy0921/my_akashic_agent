@@ -66,6 +66,7 @@ def test_agent_jobs_dashboard_plugin_reads_filtered_gateway_jobs(monkeypatch, tm
             "attempts": 1,
             "max_attempts": 2,
             "lease_owner": "worker-1",
+            "lease_token": "lease-token-1",
             "lease_expires_at": "2026-05-30T10:05:00+08:00",
             "result": {},
             "error_message": "",
@@ -97,6 +98,29 @@ def test_agent_jobs_dashboard_plugin_reads_filtered_gateway_jobs(monkeypatch, tm
             job_id = path.removeprefix("/v1/jobs/")
             job = next((item for item in jobs if item["job_id"] == job_id), jobs[0])
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": job}))
+        if method == "POST" and path == "/v1/jobs/recover-expired":
+            raw = request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            body = json.loads(raw)
+            calls.append((method, f"{path}?limit={body.get('limit')}"))
+            recovered = dict(jobs[1])
+            recovered["status"] = "pending"
+            recovered["lease_owner"] = ""
+            recovered["lease_token"] = ""
+            recovered["lease_expires_at"] = ""
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "timestamp": "2026-05-30T10:06:00+08:00",
+                            "scanned": 2,
+                            "recovered": 1,
+                            "dead_lettered": 0,
+                            "items": [{"action": "recovered", "job": recovered}],
+                        },
+                    }
+                )
+            )
         if method == "POST" and (path.endswith("/retry") or path.endswith("/cancel")):
             calls.append((method, path))
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"job_id": path.split("/")[-2], "status": "running"}}))
@@ -126,13 +150,25 @@ def test_agent_jobs_dashboard_plugin_reads_filtered_gateway_jobs(monkeypatch, tm
         assert detail.status_code == 200
         detail_data = detail.json()
         assert detail_data["payload"]["group_id"] == "27234224"
+        assert detail_data["lease_token_present"] is False
 
         retry_response = client.post("/api/dashboard/agent-jobs/group_memory_extract:qq:27234224:1/retry")
         cancel_response = client.post("/api/dashboard/agent-jobs/group_memory_extract:qq:27234224:1/cancel")
+        recover_response = client.post(
+            "/api/dashboard/agent-jobs/recover-expired",
+            json={"limit": 25},
+        )
         assert retry_response.status_code == 200
         assert cancel_response.status_code == 200
+        assert recover_response.status_code == 200
         assert retry_response.json()["status"] == "running"
         assert cancel_response.json()["status"] == "running"
+        recovery = recover_response.json()
+        assert recovery["scanned"] == 2
+        assert recovery["recovered"] == 1
+        assert recovery["items"][0]["action"] == "recovered"
+        assert recovery["items"][0]["job"]["lease_token_present"] is False
+        assert ("POST", "/v1/jobs/recover-expired?limit=25") in calls
 
 
 def test_agent_jobs_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:

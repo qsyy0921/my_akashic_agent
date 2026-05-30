@@ -16,6 +16,7 @@ interface AgentJob {
   attempts: number;
   max_attempts: number;
   lease_owner: string;
+  lease_token_present?: boolean;
   lease_expires_at: string;
   error_message: string;
   source_event_ids: string[];
@@ -34,6 +35,14 @@ interface AgentJob {
 interface AgentJobListResponse {
   items: AgentJob[];
   total: number;
+}
+
+interface AgentJobRecoveryResponse {
+  timestamp: string;
+  scanned: number;
+  recovered: number;
+  dead_lettered: number;
+  items: Array<{ action: string; job: AgentJob }>;
 }
 
 function _jobRoute(item: AgentJob): string {
@@ -109,6 +118,14 @@ function _renderFilters(container: HTMLElement, dispatch: PluginDispatch): void 
 async function _runJobAction(jobId: string, action: "retry" | "cancel"): Promise<void> {
   await api(`/api/dashboard/agent-jobs/${encodePath(jobId)}/${action}`, {
     method: "POST",
+  });
+}
+
+async function _recoverExpiredJobs(limit = 50): Promise<AgentJobRecoveryResponse> {
+  return api<AgentJobRecoveryResponse>("/api/dashboard/agent-jobs/recover-expired", {
+    method: "POST",
+    body: JSON.stringify({ limit }),
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -222,6 +239,7 @@ window.AkashicDashboard.registerPlugin({
             <div class="detail-subtext">${escapeHtml(job.job_type || "-")} · ${escapeHtml(job.status || "-")}</div>
           </div>
           <div class="agent-job-detail-actions">
+            <button class="ghost" type="button" data-agent-job-recover-expired>恢复过期租约</button>
             <button class="primary" type="button" data-agent-job-refresh-run>重试</button>
             <button class="danger-ghost" type="button" data-agent-job-refresh-cancel>取消</button>
             <span class="muted-text" data-agent-job-action-result></span>
@@ -241,6 +259,10 @@ window.AkashicDashboard.registerPlugin({
             <div>
               <div class="agent-job-label">Lease</div>
               <div class="agent-job-value mono">${escapeHtml(job.lease_owner || "-")}</div>
+            </div>
+            <div>
+              <div class="agent-job-label">Lease Token</div>
+              <div class="agent-job-value mono">${escapeHtml(job.lease_token_present ? "present" : "-")}</div>
             </div>
             <div>
               <div class="agent-job-label">Expires</div>
@@ -281,8 +303,26 @@ window.AkashicDashboard.registerPlugin({
     const actionResult = container.querySelector<HTMLElement>("[data-agent-job-action-result]");
     const retryButton = container.querySelector<HTMLButtonElement>("[data-agent-job-refresh-run]");
     const cancelButton = container.querySelector<HTMLButtonElement>("[data-agent-job-refresh-cancel]");
+    const recoverButton = container.querySelector<HTMLButtonElement>("[data-agent-job-recover-expired]");
     const jobId = String(job.job_id || "");
     if (actionResult) actionResult.textContent = "";
+
+    if (recoverButton) {
+      recoverButton.addEventListener("click", async () => {
+        recoverButton.disabled = true;
+        try {
+          const result = await _recoverExpiredJobs(50);
+          _scheduleRefresh();
+          if (actionResult) {
+            actionResult.textContent = `已扫描 ${result.scanned || 0}，恢复 ${result.recovered || 0}，死信 ${result.dead_lettered || 0}`;
+          }
+        } catch (error) {
+          if (actionResult) actionResult.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          recoverButton.disabled = false;
+        }
+      });
+    }
 
     if (retryButton) {
       retryButton.addEventListener("click", async () => {

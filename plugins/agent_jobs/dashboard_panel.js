@@ -70,6 +70,13 @@
       method: "POST"
     });
   }
+  async function _recoverExpiredJobs(limit = 50) {
+    return api("/api/dashboard/agent-jobs/recover-expired", {
+      method: "POST",
+      body: JSON.stringify({ limit }),
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   function _scheduleRefresh() {
     window.dispatchEvent(new CustomEvent("akashic-dashboard-refresh"));
   }
@@ -168,6 +175,7 @@
             <div class="detail-subtext">${escapeHtml(job.job_type || "-")} \xB7 ${escapeHtml(job.status || "-")}</div>
           </div>
           <div class="agent-job-detail-actions">
+            <button class="ghost" type="button" data-agent-job-recover-expired>\u6062\u590D\u8FC7\u671F\u79DF\u7EA6</button>
             <button class="primary" type="button" data-agent-job-refresh-run>\u91CD\u8BD5</button>
             <button class="danger-ghost" type="button" data-agent-job-refresh-cancel>\u53D6\u6D88</button>
             <span class="muted-text" data-agent-job-action-result></span>
@@ -187,6 +195,10 @@
             <div>
               <div class="agent-job-label">Lease</div>
               <div class="agent-job-value mono">${escapeHtml(job.lease_owner || "-")}</div>
+            </div>
+            <div>
+              <div class="agent-job-label">Lease Token</div>
+              <div class="agent-job-value mono">${escapeHtml(job.lease_token_present ? "present" : "-")}</div>
             </div>
             <div>
               <div class="agent-job-label">Expires</div>
@@ -227,8 +239,25 @@
       const actionResult = container.querySelector("[data-agent-job-action-result]");
       const retryButton = container.querySelector("[data-agent-job-refresh-run]");
       const cancelButton = container.querySelector("[data-agent-job-refresh-cancel]");
+      const recoverButton = container.querySelector("[data-agent-job-recover-expired]");
       const jobId = String(job.job_id || "");
       if (actionResult) actionResult.textContent = "";
+      if (recoverButton) {
+        recoverButton.addEventListener("click", async () => {
+          recoverButton.disabled = true;
+          try {
+            const result = await _recoverExpiredJobs(50);
+            _scheduleRefresh();
+            if (actionResult) {
+              actionResult.textContent = `\u5DF2\u626B\u63CF ${result.scanned || 0}\uFF0C\u6062\u590D ${result.recovered || 0}\uFF0C\u6B7B\u4FE1 ${result.dead_lettered || 0}`;
+            }
+          } catch (error) {
+            if (actionResult) actionResult.textContent = error instanceof Error ? error.message : String(error);
+          } finally {
+            recoverButton.disabled = false;
+          }
+        });
+      }
       if (retryButton) {
         retryButton.addEventListener("click", async () => {
           if (!jobId) return;

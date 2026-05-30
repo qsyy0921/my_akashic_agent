@@ -22,8 +22,10 @@ Implemented:
   group-memory/RAG fixtures, writing metrics back to generic job results.
 - Agent jobs can be persisted in a file-backed store via `AKASHIC_AGENT_JOBS_DSN`
   (or `AKASHIC_AGENT_JOBS_PATH`) and recovered across gateway restarts.
-- Dashboard panel plugin (`plugins/agent_jobs`) provides job list/detail/retry/cancel
-  views under `/api/dashboard/agent-jobs` and exposes `dashboard_panel.*` assets.
+- Dashboard panel plugin (`plugins/agent_jobs`) provides job
+  list/detail/retry/cancel views under `/api/dashboard/agent-jobs`, exposes
+  `dashboard_panel.*` assets, and can trigger Go-owned expired lease recovery
+  without exposing raw lease token values.
 
 Pending:
 
@@ -121,6 +123,7 @@ POST /v1/jobs/{job_id}/succeeded
 POST /v1/jobs/{job_id}/failed
 POST /v1/jobs/{job_id}/retry
 POST /v1/jobs/{job_id}/cancel
+POST /v1/jobs/recover-expired
 ```
 
 ## Worker Boundary
@@ -146,7 +149,9 @@ Go owns:
 - status visibility;
 - dead-letter decisions;
 - source event/asset linkage;
-- dashboard job queries.
+- dashboard job queries;
+- expired lease recovery results and token-presence diagnostics surfaced through
+  the Agent Jobs dashboard.
 
 ## Safety Rules
 
@@ -166,6 +171,8 @@ Go owns:
 - Failed jobs retry until max attempts, then dead-letter.
 - Cancelled jobs cannot be leased or retried.
 - Group-memory and RAG job fixtures include source citations.
+- Dashboard recover-expired action delegates to Go `/v1/jobs/recover-expired`
+  and never reveals raw `lease_token` values.
 
 ## Migration Plan
 

@@ -139,6 +139,24 @@ class AgentJobsDashboardReader:
             raise HTTPException(status_code=502, detail=error)
         return job
 
+    def recover_expired_jobs(self, *, limit: int = 50) -> dict[str, Any]:
+        if not self.gateway_base_url:
+            raise HTTPException(status_code=503, detail="agent-runtime 未配置")
+        url = f"{self.gateway_base_url}/v1/jobs/recover-expired"
+        data, error = self._request_json(
+            url,
+            method="POST",
+            body={"limit": max(1, min(int(limit or 50), _DEFAULT_LIST_LIMIT))},
+        )
+        if error:
+            raise HTTPException(status_code=502, detail=error)
+        if not isinstance(data, Mapping):
+            raise HTTPException(
+                status_code=502,
+                detail="gateway recover-expired response is not an object",
+            )
+        return _normalize_agent_job_recovery(data)
+
     def _read_gateway_jobs(
         self,
         *,
@@ -296,6 +314,15 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
             raise HTTPException(status_code=404, detail="agent job 不存在")
         return item
 
+    @app.post("/api/dashboard/agent-jobs/recover-expired")
+    def recover_expired_agent_jobs(
+        payload: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body = dict(payload or {})
+        return reader.recover_expired_jobs(
+            limit=_int_value(body.get("limit"), fallback=50),
+        )
+
     @app.post("/api/dashboard/agent-jobs/{job_id:path}/retry")
     def retry_agent_job(job_id: str) -> dict[str, Any]:
         return reader.retry_job(job_id)
@@ -323,12 +350,38 @@ def _normalize_agent_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "attempts": _int_value(item.get("attempts"), fallback=0),
         "max_attempts": _int_value(item.get("max_attempts"), fallback=0),
         "lease_owner": _text(item.get("lease_owner")),
+        "lease_token_present": bool(_text(item.get("lease_token"))),
         "lease_expires_at": _text(item.get("lease_expires_at")),
         "result": _mapping_or_empty(item.get("result")),
         "error_message": _text(item.get("error_message")),
         "metadata": _mapping_or_empty(item.get("metadata")),
         "created_at": _text(item.get("created_at")),
         "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_agent_job_recovery(item: Mapping[str, Any]) -> dict[str, Any]:
+    items = item.get("items")
+    if not isinstance(items, list):
+        items = []
+    return {
+        "timestamp": _text(item.get("timestamp")),
+        "scanned": _int_value(item.get("scanned"), fallback=0),
+        "recovered": _int_value(item.get("recovered"), fallback=0),
+        "dead_lettered": _int_value(item.get("dead_lettered"), fallback=0),
+        "items": [
+            _normalize_agent_job_recovery_item(entry)
+            for entry in items
+            if isinstance(entry, Mapping)
+        ],
+    }
+
+
+def _normalize_agent_job_recovery_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    job = item.get("job")
+    return {
+        "action": _text(item.get("action")),
+        "job": _normalize_agent_job(job) if isinstance(job, Mapping) else {},
     }
 
 
