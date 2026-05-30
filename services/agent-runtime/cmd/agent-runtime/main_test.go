@@ -155,6 +155,7 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002")
 	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq=NcatBot,qq_2365524513=NcatBot")
 	t.Setenv("AKASHIC_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token-fallback")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
 
@@ -181,6 +182,17 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	}
 	if tokenEnv.ValueRedacted == "qq=NcatBot,qq_2365524513=NcatBot" {
 		t.Fatalf("token value was not redacted: %#v", tokenEnv)
+	}
+	if tokenEnv.ValueRedacted != "qq=redacted,qq_2365524513=redacted" {
+		t.Fatalf("token value should be fully redacted: %#v", tokenEnv)
+	}
+	strictTokenFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")
+	if strictTokenFlag.Secret || strictTokenFlag.ValueRedacted != "true" {
+		t.Fatalf("strict lease token flag is a boolean config, not a secret: %#v", strictTokenFlag)
+	}
+	telegramToken := findRuntimeEnvVar(t, view.Environment, "TELEGRAM_BOT_TOKEN")
+	if telegramToken.ValueRedacted != "redacted" {
+		t.Fatalf("telegram token should be fully redacted: %#v", telegramToken)
 	}
 }
 

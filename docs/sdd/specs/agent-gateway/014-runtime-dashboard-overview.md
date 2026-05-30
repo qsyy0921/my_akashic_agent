@@ -45,8 +45,11 @@ GET /v1/runtime-config
 
 This endpoint reports the current process address, address source, bot ids,
 selected OneBot/Telegram environment variables, expected OneBot channel aliases,
-missing aliases, worker/cutover flags, and `side_effect=none`. Secret values are
-never returned; only presence and redacted values are exposed.
+missing aliases, worker/cutover flags, and `side_effect=none`. Token and secret
+values are never returned, including partial token prefixes/suffixes; only
+presence plus `redacted` or `channel=redacted` markers are exposed. Boolean
+flags whose names contain `TOKEN`, such as `AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN`,
+remain visible as true/false configuration flags rather than secrets.
 
 When this endpoint is unavailable or returns an invalid shape, the dashboard
 falls back to the older multi-endpoint read path:

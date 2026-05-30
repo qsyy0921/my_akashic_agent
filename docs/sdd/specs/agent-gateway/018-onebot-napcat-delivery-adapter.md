@@ -100,7 +100,9 @@ aliases, configured endpoint aliases, missing aliases, token presence, worker
 flags, and `side_effect=none`. For the current two-account deployment the
 default expectation is `qq` for the primary local account plus `qq_<bot id>` for
 additional bot ids. Operators can override this with
-`AKASHIC_ONEBOT_EXPECTED_CHANNELS`.
+`AKASHIC_ONEBOT_EXPECTED_CHANNELS`. Token/secret environment values are fully
+redacted as `redacted` or `channel=redacted`; the endpoint does not expose token
+prefixes or suffixes.
 
 Read live adapter health without sending messages:
 

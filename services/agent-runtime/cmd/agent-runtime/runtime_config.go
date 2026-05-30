@@ -166,15 +166,44 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 }
 
 func runtimeConfigSecretEnv(key string) bool {
+	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" {
+		return false
+	}
 	upper := strings.ToUpper(key)
 	return strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") || strings.Contains(upper, "DSN")
 }
 
 func runtimeConfigRedactedEnvValue(key string, value string) string {
-	if runtimeConfigSecretEnv(key) || strings.Contains(strings.ToUpper(key), "URL") {
+	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" {
+		return value
+	}
+	upper := strings.ToUpper(key)
+	if strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") {
+		return redactSecretKeyValueCSV(value)
+	}
+	if strings.Contains(upper, "DSN") || strings.Contains(upper, "URL") {
 		return redactKeyValueCSVOrDSN(value)
 	}
 	return value
+}
+
+func redactSecretKeyValueCSV(value string) string {
+	if strings.Contains(value, "=") && strings.Contains(value, ",") {
+		parts := strings.Split(value, ",")
+		for index, item := range parts {
+			key, _, ok := strings.Cut(strings.TrimSpace(item), "=")
+			if !ok {
+				parts[index] = "redacted"
+				continue
+			}
+			parts[index] = strings.TrimSpace(key) + "=redacted"
+		}
+		return strings.Join(parts, ",")
+	}
+	if key, _, ok := strings.Cut(strings.TrimSpace(value), "="); ok {
+		return strings.TrimSpace(key) + "=redacted"
+	}
+	return "redacted"
 }
 
 func redactKeyValueCSVOrDSN(value string) string {
