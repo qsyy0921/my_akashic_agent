@@ -106,6 +106,22 @@ Allowed roots are configured by `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated
 list. If omitted, the local runtime defaults to Akashic workspace upload
 directories under the repository root.
 
+Default root discovery must not depend on one fixed working directory. The
+runtime may be launched from `services/agent-runtime`, from the repository root,
+or from a built binary under `.tmp/bin`. When `AKASHIC_MEDIA_ASSET_ROOTS` is not
+set, Go discovers Akashic roots by walking upward from the current working
+directory and executable directory, then allows only these media directories:
+
+```text
+{repo}/.akashic-workspace/uploads
+{repo}/.akashic-workspace/generated_images
+{repo}/generated_images
+```
+
+Windows `file:///E:/...` URLs registered by QQ media mirroring are normalized
+before safe-root checks. A registered file must still resolve inside one of the
+allowed roots before bytes are served.
+
 Dashboard must use same-origin links and treat Go as the authority for media
 bytes:
 

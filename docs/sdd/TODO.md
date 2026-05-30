@@ -20,6 +20,8 @@ Last updated: 2026-05-30
 - [x] Add Go-owned knowledge checkpoints for RAGFlow `rag_ingest` cursors.
 - [x] Fix Go runtime JSON responses to declare UTF-8 for PowerShell clients.
 - [x] Add dashboard visibility for Go-owned knowledge checkpoints.
+- [x] Fix Go media content safe-root discovery for Windows local runtime starts
+  so QQ image/file attachments open from the dashboard.
 
 ## Next
 

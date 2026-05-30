@@ -209,18 +209,79 @@ func newKnowledgeCheckpointRepository() (outport.KnowledgeCheckpointRepository, 
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
 	roots := csvEnvOrDefault("AKASHIC_MEDIA_ASSET_ROOTS", nil)
 	if len(roots) == 0 {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		repoRoot := filepath.Clean(filepath.Join(cwd, "..", ".."))
-		roots = []string{
-			filepath.Join(repoRoot, ".akashic-workspace", "uploads"),
-			filepath.Join(repoRoot, ".akashic-workspace", "generated_images"),
-			filepath.Join(repoRoot, "generated_images"),
-		}
+		roots = defaultMediaAssetRoots()
 	}
 	return localmedia.NewReader(roots)
+}
+
+func defaultMediaAssetRoots() []string {
+	starts := make([]string, 0, 2)
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
+	}
+	if executable, err := os.Executable(); err == nil {
+		starts = append(starts, filepath.Dir(executable))
+	}
+	return defaultMediaAssetRootsFrom(starts)
+}
+
+func defaultMediaAssetRootsFrom(starts []string) []string {
+	roots := make([]string, 0, 6)
+	seen := make(map[string]struct{})
+	for _, start := range starts {
+		for _, repoRoot := range discoverAkashicRoots(start) {
+			for _, candidate := range []string{
+				filepath.Join(repoRoot, ".akashic-workspace", "uploads"),
+				filepath.Join(repoRoot, ".akashic-workspace", "generated_images"),
+				filepath.Join(repoRoot, "generated_images"),
+			} {
+				cleaned := filepath.Clean(candidate)
+				key := strings.ToLower(cleaned)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				roots = append(roots, cleaned)
+			}
+		}
+	}
+	return roots
+}
+
+func discoverAkashicRoots(start string) []string {
+	if strings.TrimSpace(start) == "" {
+		return nil
+	}
+	current, err := filepath.Abs(start)
+	if err != nil {
+		return nil
+	}
+	current = filepath.Clean(current)
+	roots := make([]string, 0, 1)
+	for {
+		if isAkashicRoot(current) {
+			roots = append(roots, current)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return roots
+}
+
+func isAkashicRoot(path string) bool {
+	if stat, err := os.Stat(filepath.Join(path, ".akashic-workspace")); err == nil && stat.IsDir() {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(path, "pyproject.toml")); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(path, "services", "agent-runtime", "go.mod")); err != nil {
+		return false
+	}
+	return true
 }
 
 func csvEnvOrDefault(key string, fallback []string) []string {
