@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from datetime import datetime
 import urllib.error
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from fastapi.testclient import TestClient as _RawTestClient
 
@@ -614,6 +614,58 @@ def test_dashboard_media_asset_content_falls_back_to_workspace_upload_name(
     assert response.status_code == 200
     assert response.content == b"qq image bytes"
     assert denied.status_code == 404
+
+
+def test_dashboard_media_asset_content_falls_back_by_runtime_asset_metadata(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    attachment = uploads / "akashic_qq_image.jpg"
+    attachment.write_bytes(b"runtime metadata image bytes")
+    asset_id = "asset:qq:image:187890369:f8d1c56aa3919741:1"
+    encoded_asset_id = quote(asset_id, safe="")
+    calls: list[str] = []
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        calls.append(parsed.path)
+        if parsed.path.endswith("/content"):
+            raise urllib.error.HTTPError(
+                str(url),
+                403,
+                "Forbidden",
+                hdrs=None,
+                fp=io.BytesIO(b"media asset content forbidden"),
+            )
+        assert parsed.path == f"/v1/media-assets/{encoded_asset_id}"
+        return _fake_urlopen_response(
+            {
+                "code": "OK",
+                "data": {
+                    "asset_id": asset_id,
+                    "name": "akashic_qq_image.jpg",
+                    "url": f"file:///{attachment.as_posix()}",
+                },
+            }
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": asset_id},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"runtime metadata image bytes"
+    assert calls == [
+        f"/v1/media-assets/{encoded_asset_id}/content",
+        f"/v1/media-assets/{encoded_asset_id}",
+    ]
 
 
 def test_dashboard_messages_are_enriched_with_runtime_media_assets(

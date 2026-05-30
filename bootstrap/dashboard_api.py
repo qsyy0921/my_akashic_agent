@@ -126,6 +126,87 @@ def _workspace_upload_response_for_asset_name(
     return FileResponse(candidate, media_type=media_type or "application/octet-stream")
 
 
+def _workspace_upload_response_for_media_asset(
+    workspace: Path,
+    *,
+    asset_id: str,
+    runtime_base_url: str,
+) -> FileResponse | None:
+    direct = _workspace_upload_response_for_asset_name(workspace, asset_id)
+    if direct is not None:
+        return direct
+    asset = _fetch_media_asset_from_runtime_by_id(runtime_base_url, asset_id)
+    for name in _media_asset_upload_name_candidates(asset):
+        fallback = _workspace_upload_response_for_asset_name(workspace, name)
+        if fallback is not None:
+            return fallback
+    return None
+
+
+def _fetch_media_asset_from_runtime_by_id(
+    runtime_base_url: str,
+    asset_id: str,
+) -> dict[str, Any]:
+    if not runtime_base_url:
+        return {}
+    encoded_asset_id = urllib.parse.quote(asset_id, safe="")
+    url = f"{runtime_base_url}/v1/media-assets/{encoded_asset_id}"
+    try:
+        with urllib.request.urlopen(
+            url,
+            timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+        return {}
+    data = payload.get("data") if isinstance(payload, Mapping) else payload
+    return dict(data) if isinstance(data, Mapping) else {}
+
+
+def _media_asset_upload_name_candidates(asset: Mapping[str, Any]) -> list[str]:
+    if not asset:
+        return []
+    candidates: list[str] = []
+    for raw in (
+        asset.get("name"),
+        asset.get("url"),
+        _mapping_value(asset.get("metadata"), "local_path"),
+        _mapping_value(asset.get("metadata"), "file_path"),
+        _mapping_value(asset.get("metadata"), "path"),
+    ):
+        for name in _upload_name_candidates(raw):
+            if name not in candidates:
+                candidates.append(name)
+    return candidates
+
+
+def _mapping_value(value: Any, key: str) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return None
+
+
+def _upload_name_candidates(value: Any) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    parsed = urllib.parse.urlparse(raw)
+    if parsed.scheme == "file":
+        unquoted = urllib.parse.unquote(parsed.path or "")
+        names = [
+            Path(unquoted).name,
+            PureWindowsPath(unquoted).name,
+        ]
+    elif "://" in raw:
+        return []
+    else:
+        names = [
+            Path(raw).name,
+            PureWindowsPath(raw).name,
+        ]
+    return [name for name in names if name and name not in {".", ".."}]
+
+
 def _enrich_messages_with_media_assets(messages: list[dict[str, Any]]) -> None:
     cache: dict[tuple[tuple[str, str], ...], list[dict[str, Any]]] = {}
     for message in messages:
@@ -1048,7 +1129,11 @@ def create_dashboard_app(
             if raw:
                 detail = raw[:500]
             if exc.code in {403, 404}:
-                fallback = _workspace_upload_response_for_asset_name(workspace, asset_id)
+                fallback = _workspace_upload_response_for_media_asset(
+                    workspace,
+                    asset_id=asset_id,
+                    runtime_base_url=runtime_base_url,
+                )
                 if fallback is not None:
                     return fallback
             raise HTTPException(status_code=exc.code, detail=detail) from exc

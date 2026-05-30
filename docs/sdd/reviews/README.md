@@ -75,3 +75,5 @@ Current architecture review sequence:
 - `2026-05-30-phase8-26-dashboard-media-filename-fallback.md`
 - `2026-05-30-phase8-27-delivery-dispatch-plan.md`
 - `2026-05-30-phase8-28-telegram-delivery-adapter.md`
+- `2026-05-30-phase8-29-runtime-backed-message-push.md`
+- `2026-05-30-phase8-30-dashboard-media-asset-metadata-fallback.md`

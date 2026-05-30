@@ -155,6 +155,15 @@ legacy `/api/dashboard/attachments?path=...` only as a fallback when Go has no
 registered asset. This keeps the long-term UI contract asset-id based while
 preserving old messages during migration.
 
+For local Windows runs, the Python dashboard proxy also has a constrained
+compatibility fallback: if Go content access returns `403` or `404`, the proxy
+may query `GET /v1/media-assets/{asset_id}` and serve only a same-named file
+that already exists under the current workspace `uploads` directory. This
+fallback is for mirrored QQ images/files whose metadata is registered but whose
+Go media root configuration is stale. It must not use raw local paths directly
+unless the resulting response still resolves through the workspace `uploads`
+allow-list.
+
 ## Asset ID
 
 Asset ids are stable and account-aware:
@@ -200,6 +209,9 @@ Akashic asset id remains the primary contract.
   message's platform id to registered media assets.
 - Go media asset list supports route/source filters so callers do not scan local
   filesystem paths or depend on raw platform URLs.
+- Dashboard media proxy can recover a registered QQ asset from runtime metadata
+  when Go content access rejects the bytes but the mirrored upload file is
+  safely present in the current workspace.
 
 ## Migration Plan
 
