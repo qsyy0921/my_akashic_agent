@@ -82,7 +82,7 @@
 - [x] 增加 Go-owned observe target diagnostics：Python 启动时将 `config.toml` 中 observe-only QQ 群同步到 Go `/v1/observe-targets/sync`，Go 负责 source-bound 保存、校验、`GET /v1/observe-targets` 查询和 runtime overview `Observe Targets` 卡片；不改变当前 QQ 收消息和回复逻辑。
 - [x] 重建并重启当前本地 Go `agent-runtime` 与 dashboard，确认 runtime overview 显示 6 个 observe-only QQ 群：`164369633`、`187890369`、`27234224`、`284331268`、`3219982`、`956393163`，`side_effect=none`。
 - [x] 恢复当前本地 QQ 观察链路：Docker API 已恢复，两个 NapCat 容器在线；重启 Python 主服务后 `1049511700 -> ws://localhost:3001`、`2365524513 -> ws://localhost:3002` 均成功启动，Go delivery adapter health 显示 OneBot/Telegram 4 个 adapter 全部 authenticated，runtime overview 已记录 `3219982` 的 observe-only 群消息。
-- [x] 增加 Go-owned receiver status diagnostics：Python QQ/Telegram 接收端启动、失败和 Telegram polling conflict 会上报到 Go `/v1/receiver-statuses/report`；Go 负责校验、聚合、`GET /v1/receiver-statuses` 和 runtime overview `Receiver Statuses` 卡片。当前 live smoke 显示 3 个 connected receiver：`qq:1049511700:qq`、`qq:2365524513:qq_2365524513`、`telegram:7689386159:telegram`。
+- [x] 增加 Go-owned receiver status diagnostics：Python QQ/Telegram 接收端启动、失败和 Telegram polling conflict 会上报到 Go `/v1/receiver-statuses/report`；Go 负责校验、聚合、`GET /v1/receiver-statuses` 和 runtime overview `Receiver Statuses` 卡片。当前 live smoke 显示两个 QQ receiver connected：`qq:1049511700:qq`、`qq:2365524513:qq_2365524513`，并正确记录 Telegram `status=suspended`、`reason=getupdates_conflict`。
 
 ## 下一步
 
