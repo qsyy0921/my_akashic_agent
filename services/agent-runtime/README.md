@@ -263,6 +263,10 @@ POST /v1/jobs/{job_id}/cancel
 
 The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
 workers still execute image generation, RAG, and memory extraction.
+Each lease response includes a `lease_token`. New Python workers pass that token
+back to `running`, `succeeded`, and `failed` transitions so Go can reject stale
+writebacks after an expired lease is re-leased by another worker. Empty-token
+updates remain accepted during the compatibility phase.
 
 Persist generic job lifecycle events as a JSONL stream:
 

@@ -78,10 +78,15 @@ class AgentGatewayRagEvalWorker:
             return {"processed": False, "reason": "no_job"}
 
         job_id = str(job.get("job_id") or "")
+        lease_token = _lease_token(job)
         try:
-            await self._client.mark_running(job_id)
+            await self._client.mark_running(job_id, lease_token=lease_token)
             result = await self._evaluator.execute(job)
-            await self._client.complete_job(job_id, result=_string_result(result))
+            await self._client.complete_job(
+                job_id,
+                lease_token=lease_token,
+                result=_string_result(result),
+            )
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -95,7 +100,11 @@ class AgentGatewayRagEvalWorker:
                 job_id,
             )
             if job_id:
-                await self._client.fail_job(job_id, error_message=message)
+                await self._client.fail_job(
+                    job_id,
+                    lease_token=lease_token,
+                    error_message=message,
+                )
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -142,6 +151,10 @@ class AgentGatewayRagEvalWorker:
 def _payload(job: dict[str, Any]) -> dict[str, Any]:
     payload = job.get("payload")
     return payload if isinstance(payload, dict) else {}
+
+
+def _lease_token(job: dict[str, Any]) -> str:
+    return str(job.get("lease_token") or "")
 
 
 def _string_result(result: dict[str, Any]) -> dict[str, str]:

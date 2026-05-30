@@ -1,4 +1,4 @@
-﻿package agentjobstore_test
+package agentjobstore_test
 
 import (
 	"context"
@@ -124,7 +124,7 @@ func TestAgentJobStoreListAndPersistUpdatedState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new job: %v", err)
 	}
-	if err := job.Lease("old-worker", time.Minute, now); err != nil {
+	if err := job.Lease("old-worker", time.Minute, "lease-token-old", now); err != nil {
 		t.Fatalf("lease job: %v", err)
 	}
 	if err := job.MarkRunning(now.Add(time.Second)); err != nil {
@@ -160,4 +160,3 @@ func TestAgentJobStoreListAndPersistUpdatedState(t *testing.T) {
 		t.Fatalf("did not expect running job to be leaseable before expiry, got %s", pending.JobID)
 	}
 }
-

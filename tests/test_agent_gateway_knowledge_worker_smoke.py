@@ -78,7 +78,12 @@ class _FakeGatewayService:
                 )
         raise AgentGatewayNoJob("no leaseable agent job")
 
-    async def mark_running(self, job_id: str) -> dict[str, Any]:
+    async def mark_running(
+        self,
+        job_id: str,
+        *,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
         if job_id not in self.jobs:
             raise AgentGatewayError("missing job")
         return self._set_status(job_id, "running")
@@ -88,13 +93,20 @@ class _FakeGatewayService:
         job_id: str,
         *,
         result: dict[str, str] | None = None,
+        lease_token: str | None = None,
     ) -> dict[str, Any]:
         if job_id not in self.jobs:
             raise AgentGatewayError("missing job")
         updates = {"result": dict(result or {}), "lease_owner": "", "lease_expires_at": ""}
         return self._set_status(job_id, "succeeded", **updates)
 
-    async def fail_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
+    async def fail_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
         if job_id not in self.jobs:
             raise AgentGatewayError("missing job")
         job = self.jobs[job_id]
@@ -172,14 +184,39 @@ class _AdapterClient(AgentGatewayClient):
     async def lease_next(self, **kwargs: Any) -> dict[str, Any]:
         return await self._fake.lease_next(**kwargs)
 
-    async def mark_running(self, job_id: str) -> dict[str, Any]:
-        return await self._fake.mark_running(job_id)
+    async def mark_running(
+        self,
+        job_id: str,
+        *,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._fake.mark_running(job_id, lease_token=lease_token)
 
-    async def complete_job(self, job_id: str, *, result: dict[str, str] | None = None) -> dict[str, Any]:
-        return await self._fake.complete_job(job_id, result=result)
+    async def complete_job(
+        self,
+        job_id: str,
+        *,
+        result: dict[str, str] | None = None,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._fake.complete_job(
+            job_id,
+            result=result,
+            lease_token=lease_token,
+        )
 
-    async def fail_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
-        return await self._fake.fail_job(job_id, error_message=error_message)
+    async def fail_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._fake.fail_job(
+            job_id,
+            error_message=error_message,
+            lease_token=lease_token,
+        )
 
     async def get_knowledge_checkpoint(self, checkpoint_id: str) -> dict[str, Any] | None:
         return await self._fake.get_knowledge_checkpoint(checkpoint_id)

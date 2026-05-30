@@ -260,6 +260,20 @@ must wait until the Python worker has completed or failed the job. Moving
 - contract smoke that proves duplicate queue deliveries do not duplicate Python
   side effects.
 
+Current compatibility slice implements the first fencing primitive:
+
+- `AgentJob` stores a generated `lease_token` for each lease attempt.
+- `POST /v1/jobs/lease-next` and `POST /v1/jobs/{job_id}/lease` return that
+  token in the job view.
+- `POST /v1/jobs/{job_id}/running|succeeded|failed` accept optional
+  `lease_token`. When present, Go rejects stale or mismatched tokens before
+  applying the state transition.
+- Python image, knowledge, and RAG-eval workers pass the token from lease to
+  running/succeeded/failed writeback.
+- Empty-token state updates remain accepted for compatibility with older
+  workers; strict token mode is a later cutover gate before external queue
+  execution.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

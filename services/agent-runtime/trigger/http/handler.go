@@ -895,6 +895,7 @@ func AgentJobLeaseNextHandler(agentJobs inport.AgentJobManager) http.Handler {
 		job, err := agentJobs.LeaseNext(r.Context(), command.AgentJobLeaseNextCommand{
 			WorkerID:   request.WorkerID,
 			JobType:    request.JobType,
+			LeaseToken: request.LeaseToken,
 			TTLSeconds: request.TTLSeconds,
 			Timestamp:  timestamp,
 		})
@@ -1264,15 +1265,30 @@ func AgentJobStateHandler(agentJobs inport.AgentJobManager) http.Handler {
 			job, err = agentJobs.Lease(r.Context(), command.AgentJobLeaseCommand{
 				JobID:      jobID,
 				WorkerID:   lease.WorkerID,
+				LeaseToken: lease.LeaseToken,
 				TTLSeconds: lease.TTLSeconds,
 				Timestamp:  timestamp,
 			})
 		case "running":
-			job, err = agentJobs.MarkRunning(r.Context(), command.MarkAgentJobRunningCommand{JobID: jobID, Timestamp: timestamp})
+			job, err = agentJobs.MarkRunning(r.Context(), command.MarkAgentJobRunningCommand{
+				JobID:      jobID,
+				LeaseToken: state.LeaseToken,
+				Timestamp:  timestamp,
+			})
 		case "succeeded":
-			job, err = agentJobs.Complete(r.Context(), command.CompleteAgentJobCommand{JobID: jobID, Result: state.Result, Timestamp: timestamp})
+			job, err = agentJobs.Complete(r.Context(), command.CompleteAgentJobCommand{
+				JobID:      jobID,
+				LeaseToken: state.LeaseToken,
+				Result:     state.Result,
+				Timestamp:  timestamp,
+			})
 		case "failed":
-			job, err = agentJobs.Fail(r.Context(), command.FailAgentJobCommand{JobID: jobID, ErrorMessage: state.ErrorMessage, Timestamp: timestamp})
+			job, err = agentJobs.Fail(r.Context(), command.FailAgentJobCommand{
+				JobID:        jobID,
+				LeaseToken:   state.LeaseToken,
+				ErrorMessage: state.ErrorMessage,
+				Timestamp:    timestamp,
+			})
 		case "retry":
 			job, err = agentJobs.Retry(r.Context(), command.RetryAgentJobCommand{JobID: jobID, Timestamp: timestamp})
 		case "cancel":

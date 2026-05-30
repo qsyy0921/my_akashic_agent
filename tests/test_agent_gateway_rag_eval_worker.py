@@ -44,8 +44,13 @@ class _FakeGatewayClient:
         assert kwargs["job_type"] == "rag_eval"
         return job
 
-    async def mark_running(self, job_id: str) -> dict[str, Any]:
-        self.calls.append(("mark_running", job_id))
+    async def mark_running(
+        self,
+        job_id: str,
+        *,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(("mark_running", job_id, lease_token))
         return {"job_id": job_id, "status": "running"}
 
     async def complete_job(
@@ -53,12 +58,19 @@ class _FakeGatewayClient:
         job_id: str,
         *,
         result: dict[str, str] | None = None,
+        lease_token: str | None = None,
     ) -> dict[str, Any]:
-        self.calls.append(("complete_job", job_id, result))
+        self.calls.append(("complete_job", job_id, result, lease_token))
         return {"job_id": job_id, "status": "succeeded"}
 
-    async def fail_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
-        self.calls.append(("fail_job", job_id, error_message))
+    async def fail_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(("fail_job", job_id, error_message, lease_token))
         return {"job_id": job_id, "status": "failed"}
 
 

@@ -44,9 +44,10 @@ class AgentGatewayImageWorker:
             return {"processed": False, "reason": "no_job"}
 
         job_id = str(job.get("job_id") or "")
+        lease_token = _lease_token(job)
         legacy_job_id = _legacy_image_job_id(job)
         try:
-            await self._client.mark_running(job_id)
+            await self._client.mark_running(job_id, lease_token=lease_token)
             if legacy_job_id:
                 await self._client.mark_image_job_running(legacy_job_id)
             tool_result = await self._execute_image_tool(job)
@@ -66,6 +67,7 @@ class AgentGatewayImageWorker:
                 )
             await self._client.complete_job(
                 job_id,
+                lease_token=lease_token,
                 result={
                     "legacy_image_job_id": legacy_job_id,
                     "paths": json.dumps(
@@ -84,7 +86,7 @@ class AgentGatewayImageWorker:
         except Exception as exc:
             message = str(exc)
             logger.exception("[agent_runtime_image_worker] job failed job_id=%s", job_id)
-            await self._safe_fail(job_id, legacy_job_id, message)
+            await self._safe_fail(job_id, legacy_job_id, lease_token, message)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -144,6 +146,7 @@ class AgentGatewayImageWorker:
         self,
         job_id: str,
         legacy_job_id: str,
+        lease_token: str,
         message: str,
     ) -> None:
         if legacy_job_id:
@@ -157,7 +160,11 @@ class AgentGatewayImageWorker:
                 )
         if job_id:
             try:
-                await self._client.fail_job(job_id, error_message=message)
+                await self._client.fail_job(
+                    job_id,
+                    lease_token=lease_token,
+                    error_message=message,
+                )
             except Exception:
                 logger.warning(
                     "[agent_runtime_image_worker] generic fail update failed job_id=%s",
@@ -175,6 +182,10 @@ def _legacy_image_job_id(job: dict[str, Any]) -> str:
         or job.get("job_id")
         or ""
     )
+
+
+def _lease_token(job: dict[str, Any]) -> str:
+    return str(job.get("lease_token") or "")
 
 
 def _attachments_from_result(result: dict[str, Any]) -> list[dict[str, Any]]:

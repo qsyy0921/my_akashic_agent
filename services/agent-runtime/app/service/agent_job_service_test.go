@@ -37,9 +37,13 @@ func TestAgentJobServiceCreateLeaseAndComplete(t *testing.T) {
 	if leased.JobID != "job-svc-1" || leased.Status != string(model.AgentJobLeased) {
 		t.Fatalf("unexpected lease result: %+v", leased)
 	}
+	if leased.LeaseToken == "" {
+		t.Fatalf("expected lease token in lease result: %+v", leased)
+	}
 	running, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
-		JobID:     "job-svc-1",
-		Timestamp: now.Add(2 * time.Second),
+		JobID:      "job-svc-1",
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(2 * time.Second),
 	})
 	if err != nil {
 		t.Fatalf("mark running: %v", err)
@@ -48,15 +52,69 @@ func TestAgentJobServiceCreateLeaseAndComplete(t *testing.T) {
 		t.Fatalf("expected running, got %s", running.Status)
 	}
 	done, err := service.Complete(ctx, command.CompleteAgentJobCommand{
-		JobID:     "job-svc-1",
-		Result:    map[string]string{"indexed": "true"},
-		Timestamp: now.Add(3 * time.Second),
+		JobID:      "job-svc-1",
+		LeaseToken: leased.LeaseToken,
+		Result:     map[string]string{"indexed": "true"},
+		Timestamp:  now.Add(3 * time.Second),
 	})
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 	if done.Status != string(model.AgentJobSucceeded) || done.Result["indexed"] != "true" {
 		t.Fatalf("unexpected completed job: %+v", done)
+	}
+	if done.LeaseToken != "" || done.LeaseOwner != "" || done.LeaseExpiresAt != "" {
+		t.Fatalf("expected completed job to clear active lease: %+v", done)
+	}
+}
+
+func TestAgentJobServiceRejectsStaleLeaseToken(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobService(store)
+	now := time.Date(2026, 5, 30, 6, 45, 0, 0, time.UTC)
+
+	if _, err := service.Create(ctx, sampleCreateAgentJobCommand(now)); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	first, err := service.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
+		WorkerID:   "worker-1",
+		JobType:    "rag_ingest",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("first lease: %v", err)
+	}
+	second, err := service.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
+		WorkerID:   "worker-2",
+		JobType:    "rag_ingest",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("second lease after expiry: %v", err)
+	}
+	if first.LeaseToken == "" || second.LeaseToken == "" || first.LeaseToken == second.LeaseToken {
+		t.Fatalf("expected unique lease tokens: first=%+v second=%+v", first, second)
+	}
+	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      "job-svc-1",
+		LeaseToken: first.LeaseToken,
+		Timestamp:  now.Add(2*time.Minute + time.Second),
+	}); err == nil {
+		t.Fatal("expected stale lease token to be rejected")
+	}
+	running, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      "job-svc-1",
+		LeaseToken: second.LeaseToken,
+		Timestamp:  now.Add(2*time.Minute + 2*time.Second),
+	})
+	if err != nil {
+		t.Fatalf("mark running with current token: %v", err)
+	}
+	if running.Status != string(model.AgentJobRunning) {
+		t.Fatalf("expected running, got %+v", running)
 	}
 }
 
@@ -97,21 +155,24 @@ func TestAgentJobServiceWritesLifecycleEvents(t *testing.T) {
 	if _, err := service.Lease(ctx, command.AgentJobLeaseCommand{
 		JobID:      created.JobID,
 		WorkerID:   "worker-events",
+		LeaseToken: "lease-events",
 		TTLSeconds: 60,
 		Timestamp:  now.Add(time.Second),
 	}); err != nil {
 		t.Fatalf("lease job: %v", err)
 	}
 	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
-		JobID:     created.JobID,
-		Timestamp: now.Add(2 * time.Second),
+		JobID:      created.JobID,
+		LeaseToken: "lease-events",
+		Timestamp:  now.Add(2 * time.Second),
 	}); err != nil {
 		t.Fatalf("mark running: %v", err)
 	}
 	if _, err := service.Complete(ctx, command.CompleteAgentJobCommand{
-		JobID:     created.JobID,
-		Result:    map[string]string{"ok": "true"},
-		Timestamp: now.Add(3 * time.Second),
+		JobID:      created.JobID,
+		LeaseToken: "lease-events",
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(3 * time.Second),
 	}); err != nil {
 		t.Fatalf("complete: %v", err)
 	}

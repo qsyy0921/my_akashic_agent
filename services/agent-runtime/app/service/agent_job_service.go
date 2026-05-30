@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -96,7 +98,7 @@ func (s *AgentJobService) Get(ctx context.Context, jobID string) (query.AgentJob
 
 func (s *AgentJobService) Lease(ctx context.Context, cmd command.AgentJobLeaseCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventLeased, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
-		return job.Lease(cmd.WorkerID, time.Duration(cmd.TTLSeconds)*time.Second, now)
+		return job.Lease(cmd.WorkerID, time.Duration(cmd.TTLSeconds)*time.Second, agentJobLeaseToken(cmd.LeaseToken), now)
 	})
 }
 
@@ -114,7 +116,7 @@ func (s *AgentJobService) LeaseNext(ctx context.Context, cmd command.AgentJobLea
 	if !ok {
 		return query.AgentJobView{}, errors.New("no leaseable agent job found")
 	}
-	if err := job.Lease(cmd.WorkerID, time.Duration(cmd.TTLSeconds)*time.Second, cmd.Timestamp); err != nil {
+	if err := job.Lease(cmd.WorkerID, time.Duration(cmd.TTLSeconds)*time.Second, agentJobLeaseToken(cmd.LeaseToken), cmd.Timestamp); err != nil {
 		return query.AgentJobView{}, err
 	}
 	if err := s.repository.SaveAgentJob(ctx, job); err != nil {
@@ -128,18 +130,27 @@ func (s *AgentJobService) LeaseNext(ctx context.Context, cmd command.AgentJobLea
 
 func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventRunning, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		return job.MarkRunning(now)
 	})
 }
 
 func (s *AgentJobService) Complete(ctx context.Context, cmd command.CompleteAgentJobCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventSucceeded, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		return job.MarkSucceeded(cmd.Result, now)
 	})
 }
 
 func (s *AgentJobService) Fail(ctx context.Context, cmd command.FailAgentJobCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventFailed, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {
+			return err
+		}
 		return job.MarkFailed(cmd.ErrorMessage, now)
 	})
 }
@@ -230,4 +241,16 @@ func (s *AgentJobService) getModel(ctx context.Context, jobID string) (model.Age
 		return model.AgentJob{}, errors.New("agent job not found")
 	}
 	return job, nil
+}
+
+func agentJobLeaseToken(value string) string {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		return value
+	}
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err == nil {
+		return hex.EncodeToString(raw)
+	}
+	return fmt.Sprintf("agent-job-lease:%d", time.Now().UTC().UnixNano())
 }

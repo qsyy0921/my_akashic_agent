@@ -207,34 +207,58 @@ class AgentGatewayClient:
         job_id: str,
         *,
         worker_id: str | None = None,
+        lease_token: str | None = None,
         ttl_seconds: int | None = None,
     ) -> dict[str, Any]:
         body = {
             "worker_id": worker_id or self._config.worker_id,
             "ttl_seconds": int(ttl_seconds or self._config.lease_ttl_seconds),
         }
+        if lease_token:
+            body["lease_token"] = str(lease_token)
         return await self._request("POST", f"/v1/jobs/{job_id}/lease", json_body=body)
 
-    async def mark_running(self, job_id: str) -> dict[str, Any]:
-        return await self._request("POST", f"/v1/jobs/{job_id}/running", json_body={})
+    async def mark_running(
+        self,
+        job_id: str,
+        *,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if lease_token:
+            body["lease_token"] = str(lease_token)
+        return await self._request("POST", f"/v1/jobs/{job_id}/running", json_body=body)
 
     async def complete_job(
         self,
         job_id: str,
         *,
         result: dict[str, str] | None = None,
+        lease_token: str | None = None,
     ) -> dict[str, Any]:
+        body: dict[str, Any] = {"result": result or {}}
+        if lease_token:
+            body["lease_token"] = str(lease_token)
         return await self._request(
             "POST",
             f"/v1/jobs/{job_id}/succeeded",
-            json_body={"result": result or {}},
+            json_body=body,
         )
 
-    async def fail_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
+    async def fail_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        lease_token: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"error_message": error_message}
+        if lease_token:
+            body["lease_token"] = str(lease_token)
         return await self._request(
             "POST",
             f"/v1/jobs/{job_id}/failed",
-            json_body={"error_message": error_message},
+            json_body=body,
         )
 
     async def mark_image_job_running(self, job_id: str) -> dict[str, Any]:

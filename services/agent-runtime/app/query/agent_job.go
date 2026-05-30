@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 type AgentJobFilter struct {
 	JobType string
@@ -25,6 +25,7 @@ type AgentJobView struct {
 	Attempts       int               `json:"attempts"`
 	MaxAttempts    int               `json:"max_attempts"`
 	LeaseOwner     string            `json:"lease_owner,omitempty"`
+	LeaseToken     string            `json:"lease_token,omitempty"`
 	LeaseExpiresAt string            `json:"lease_expires_at,omitempty"`
 	Result         map[string]string `json:"result,omitempty"`
 	ErrorMessage   string            `json:"error_message,omitempty"`
@@ -32,4 +33,3 @@ type AgentJobView struct {
 	UpdatedAt      string            `json:"updated_at"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 }
-

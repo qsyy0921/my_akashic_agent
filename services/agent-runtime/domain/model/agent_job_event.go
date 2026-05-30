@@ -1,6 +1,8 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -73,6 +75,9 @@ func NewAgentJobEventFromJob(eventID string, eventType AgentJobEventType, job Ag
 	if job.ErrorMessage != "" {
 		metadata["error_message"] = job.ErrorMessage
 	}
+	if strings.TrimSpace(job.LeaseToken) != "" {
+		metadata["lease_token_hash"] = hashAgentJobLeaseToken(job.LeaseToken)
+	}
 	return NewAgentJobEvent(AgentJobEventSpec{
 		EventID:        eventID,
 		JobID:          job.JobID,
@@ -119,4 +124,9 @@ func (e AgentJobEvent) Validate() error {
 		return errors.New("agent job event requires occurred_at")
 	}
 	return nil
+}
+
+func hashAgentJobLeaseToken(token string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
+	return hex.EncodeToString(sum[:])
 }

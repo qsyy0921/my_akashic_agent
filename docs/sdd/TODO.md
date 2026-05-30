@@ -47,12 +47,13 @@
 - [x] 完成 `external_lease` 本地 smoke：使用 NATS + fake adapter 验证 outbox 成功 ack、可重试失败延迟 nack、终态失败 ack、unsupported work term；不触发真实 QQ/Telegram 发送。
 - [x] 配置并验证本机开发镜像源：Go 使用 `GOPROXY=https://goproxy.cn,direct`，Docker Desktop 用户级配置加入 `docker.m.daocloud.io` / `docker.1ms.run` registry mirror，并通过镜像域名直拉 `nats:2-alpine` 验证可用。
 - [x] 完成 `agent_job` 外部租约评估并固化 Go 诊断门禁：`external_lease` 目前只允许 `outbox_delivery`，`agent_job` 继续走 Go state-store lease，直到补齐精确 job_id lease token、Python worker 心跳、幂等结果回写和 ack-after-result 协议。
+- [x] 实现 `agent_job` result-ack 第一阶段：Go 生成并持久化 `lease_token`，HTTP 返回给 Python worker；running/succeeded/failed 支持 token fencing，Python image/knowledge/rag_eval worker 自动回传 token，旧 worker 不带 token 仍保持兼容。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 设计 `agent_job` NATS external lease 的 result-ack 协议：按 job_id 精确租约、lease token、Python worker heartbeat、幂等 complete/fail、超时恢复、ack/nack/term 映射和 contract smoke。
+- [ ] 补齐 `agent_job` NATS external lease 的剩余 result-ack 能力：按 job_id 精确租约、Python worker heartbeat / lease renew、严格 token 模式、超时恢复、ack/nack/term 映射和 contract smoke。
 
 ## 边界约束
 

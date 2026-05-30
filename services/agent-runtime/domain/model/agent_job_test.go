@@ -1,4 +1,4 @@
-﻿package model_test
+package model_test
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ func TestAgentJobLeaseFailureRetryAndDeadLetter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new job: %v", err)
 	}
-	if err := job.Lease("worker-1", time.Minute, now.Add(time.Second)); err != nil {
+	if err := job.Lease("worker-1", time.Minute, "lease-1", now.Add(time.Second)); err != nil {
 		t.Fatalf("lease: %v", err)
 	}
 	if job.Status != model.AgentJobLeased || job.Attempts != 1 {
@@ -31,7 +31,7 @@ func TestAgentJobLeaseFailureRetryAndDeadLetter(t *testing.T) {
 	if err := job.Retry(now.Add(4 * time.Second)); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
-	if err := job.Lease("worker-1", time.Minute, now.Add(5*time.Second)); err != nil {
+	if err := job.Lease("worker-1", time.Minute, "lease-2", now.Add(5*time.Second)); err != nil {
 		t.Fatalf("second lease: %v", err)
 	}
 	if err := job.MarkFailed("again", now.Add(6*time.Second)); err != nil {
@@ -48,13 +48,13 @@ func TestAgentJobExpiredLeaseCanBeLeasedAgain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new job: %v", err)
 	}
-	if err := job.Lease("worker-1", time.Minute, now); err != nil {
+	if err := job.Lease("worker-1", time.Minute, "lease-1", now); err != nil {
 		t.Fatalf("lease: %v", err)
 	}
 	if !job.CanLease(now.Add(2 * time.Minute)) {
 		t.Fatal("expected expired lease to be leaseable")
 	}
-	if err := job.Lease("worker-2", time.Minute, now.Add(2*time.Minute)); err != nil {
+	if err := job.Lease("worker-2", time.Minute, "lease-2", now.Add(2*time.Minute)); err != nil {
 		t.Fatalf("re-lease expired job: %v", err)
 	}
 	if job.LeaseOwner != "worker-2" {
@@ -71,7 +71,7 @@ func TestCancelledAgentJobCannotBeLeased(t *testing.T) {
 	if err := job.Cancel(now.Add(time.Second)); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	if err := job.Lease("worker", time.Minute, now.Add(2*time.Second)); err == nil {
+	if err := job.Lease("worker", time.Minute, "lease-1", now.Add(2*time.Second)); err == nil {
 		t.Fatal("expected cancelled job lease to fail")
 	}
 }
@@ -92,4 +92,3 @@ func sampleAgentJobSpec(maxAttempts int) model.AgentJobSpec {
 		MaxAttempts:    maxAttempts,
 	}
 }
-

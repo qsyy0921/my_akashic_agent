@@ -55,11 +55,12 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
                 "job_type": "image_generation",
                 "ttl_seconds": 120,
             }
-            return _ok({"job_id": "job-1", "status": "leased"})
+            return _ok({"job_id": "job-1", "status": "leased", "lease_token": "tok-1"})
         if request.url.path == "/v1/jobs/job-1/running":
+            assert body == {"lease_token": "tok-1"}
             return _ok({"job_id": "job-1", "status": "running"})
         if request.url.path == "/v1/jobs/job-1/succeeded":
-            assert body == {"result": {"asset_id": "asset-1"}}
+            assert body == {"result": {"asset_id": "asset-1"}, "lease_token": "tok-1"}
             return _ok({"job_id": "job-1", "status": "succeeded"})
         return httpx.Response(404, text="not found")
 
@@ -79,8 +80,12 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
         max_attempts=2,
     )
     leased = await client.lease_next(job_type="image_generation")
-    running = await client.mark_running("job-1")
-    succeeded = await client.complete_job("job-1", result={"asset_id": "asset-1"})
+    running = await client.mark_running("job-1", lease_token=leased["lease_token"])
+    succeeded = await client.complete_job(
+        "job-1",
+        lease_token=leased["lease_token"],
+        result={"asset_id": "asset-1"},
+    )
 
     assert created["status"] == "pending"
     assert leased["status"] == "leased"

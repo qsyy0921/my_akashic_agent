@@ -1,4 +1,4 @@
-﻿package assembler
+package assembler
 
 import (
 	"time"
@@ -25,6 +25,7 @@ func ToAgentJobView(job model.AgentJob) query.AgentJobView {
 		Attempts:       job.Attempts,
 		MaxAttempts:    job.MaxAttempts,
 		LeaseOwner:     job.LeaseOwner,
+		LeaseToken:     job.LeaseToken,
 		LeaseExpiresAt: formatAgentJobTime(job.LeaseExpiresAt),
 		Result:         job.Result,
 		ErrorMessage:   job.ErrorMessage,
@@ -48,4 +49,3 @@ func formatAgentJobTime(value time.Time) string {
 	}
 	return value.Format(time.RFC3339Nano)
 }
-

@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"errors"
@@ -41,6 +41,7 @@ type AgentJob struct {
 	Attempts       int
 	MaxAttempts    int
 	LeaseOwner     string
+	LeaseToken     string
 	LeaseExpiresAt time.Time
 	Result         map[string]string
 	ErrorMessage   string
@@ -151,7 +152,7 @@ func (j AgentJob) CanLease(now time.Time) bool {
 	return false
 }
 
-func (j *AgentJob) Lease(owner string, ttl time.Duration, now time.Time) error {
+func (j *AgentJob) Lease(owner string, ttl time.Duration, leaseToken string, now time.Time) error {
 	if j == nil {
 		return errors.New("agent job is nil")
 	}
@@ -159,6 +160,7 @@ func (j *AgentJob) Lease(owner string, ttl time.Duration, now time.Time) error {
 	if owner == "" {
 		return errors.New("agent job lease requires owner")
 	}
+	leaseToken = strings.TrimSpace(leaseToken)
 	if ttl <= 0 {
 		ttl = 5 * time.Minute
 	}
@@ -176,10 +178,25 @@ func (j *AgentJob) Lease(owner string, ttl time.Duration, now time.Time) error {
 	j.Attempts++
 	j.Status = AgentJobLeased
 	j.LeaseOwner = owner
+	j.LeaseToken = leaseToken
 	j.LeaseExpiresAt = now.Add(ttl)
 	j.ErrorMessage = ""
 	j.UpdatedAt = now
 	return j.Validate()
+}
+
+func (j AgentJob) ValidateLeaseToken(leaseToken string) error {
+	leaseToken = strings.TrimSpace(leaseToken)
+	if leaseToken == "" {
+		return nil
+	}
+	if strings.TrimSpace(j.LeaseToken) == "" {
+		return errors.New("agent job has no active lease token")
+	}
+	if leaseToken != j.LeaseToken {
+		return errors.New("agent job lease token mismatch")
+	}
+	return nil
 }
 
 func (j *AgentJob) MarkRunning(now time.Time) error {
@@ -210,6 +227,9 @@ func (j *AgentJob) MarkSucceeded(result map[string]string, now time.Time) error 
 	j.Status = AgentJobSucceeded
 	j.Result = result
 	j.ErrorMessage = ""
+	j.LeaseOwner = ""
+	j.LeaseToken = ""
+	j.LeaseExpiresAt = time.Time{}
 	j.UpdatedAt = now
 	return j.Validate()
 }
@@ -229,6 +249,9 @@ func (j *AgentJob) MarkFailed(message string, now time.Time) error {
 		now = time.Now().UTC()
 	}
 	j.ErrorMessage = message
+	j.LeaseOwner = ""
+	j.LeaseToken = ""
+	j.LeaseExpiresAt = time.Time{}
 	j.UpdatedAt = now
 	if j.Attempts >= j.MaxAttempts {
 		j.Status = AgentJobDeadLettered
@@ -250,6 +273,7 @@ func (j *AgentJob) Retry(now time.Time) error {
 	}
 	j.Status = AgentJobPending
 	j.LeaseOwner = ""
+	j.LeaseToken = ""
 	j.LeaseExpiresAt = time.Time{}
 	j.ErrorMessage = ""
 	j.UpdatedAt = now
@@ -267,6 +291,9 @@ func (j *AgentJob) Cancel(now time.Time) error {
 		now = time.Now().UTC()
 	}
 	j.Status = AgentJobCancelled
+	j.LeaseOwner = ""
+	j.LeaseToken = ""
+	j.LeaseExpiresAt = time.Time{}
 	j.UpdatedAt = now
 	return j.Validate()
 }
@@ -281,4 +308,3 @@ func cleanList(items []string) []string {
 	}
 	return cleaned
 }
-

@@ -1,4 +1,4 @@
-﻿package command
+package command
 
 import "time"
 
@@ -18,6 +18,7 @@ type CreateAgentJobCommand struct {
 type AgentJobLeaseCommand struct {
 	JobID      string
 	WorkerID   string
+	LeaseToken string
 	TTLSeconds int
 	Timestamp  time.Time
 }
@@ -25,23 +26,27 @@ type AgentJobLeaseCommand struct {
 type AgentJobLeaseNextCommand struct {
 	WorkerID   string
 	JobType    string
+	LeaseToken string
 	TTLSeconds int
 	Timestamp  time.Time
 }
 
 type MarkAgentJobRunningCommand struct {
-	JobID     string
-	Timestamp time.Time
+	JobID      string
+	LeaseToken string
+	Timestamp  time.Time
 }
 
 type CompleteAgentJobCommand struct {
-	JobID     string
-	Result    map[string]string
-	Timestamp time.Time
+	JobID      string
+	LeaseToken string
+	Result     map[string]string
+	Timestamp  time.Time
 }
 
 type FailAgentJobCommand struct {
 	JobID        string
+	LeaseToken   string
 	ErrorMessage string
 	Timestamp    time.Time
 }
@@ -55,4 +60,3 @@ type CancelAgentJobCommand struct {
 	JobID     string
 	Timestamp time.Time
 }
-

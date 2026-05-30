@@ -1,4 +1,4 @@
-﻿package dto
+package dto
 
 type CreateAgentJobRequest struct {
 	JobID          string            `json:"job_id"`
@@ -16,13 +16,14 @@ type CreateAgentJobRequest struct {
 type AgentJobLeaseRequest struct {
 	WorkerID   string `json:"worker_id"`
 	JobType    string `json:"job_type,omitempty"`
+	LeaseToken string `json:"lease_token,omitempty"`
 	TTLSeconds int    `json:"ttl_seconds,omitempty"`
 	Timestamp  string `json:"timestamp,omitempty"`
 }
 
 type AgentJobStateRequest struct {
 	Timestamp    string            `json:"timestamp,omitempty"`
+	LeaseToken   string            `json:"lease_token,omitempty"`
 	Result       map[string]string `json:"result,omitempty"`
 	ErrorMessage string            `json:"error_message,omitempty"`
 }
-
