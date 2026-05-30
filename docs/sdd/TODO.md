@@ -79,9 +79,12 @@
 - [x] 强化 `GET /v1/runtime-config` 脱敏策略：token/secret 类环境变量只返回 `redacted` 或 `channel=redacted`，不再暴露首尾片段；`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN` 作为布尔配置保留 true/false 可见性。
 - [x] 增加 Go-owned delivery smoke readiness 矩阵 `POST /v1/delivery-smoke/readiness`：在未创建 outbox、未触发 QQ/Telegram 平台发送的情况下，复用 Go dispatch planner 检查双 QQ 私聊、可选群文本、合成图片和文件 case 是否有可用 DeliveryAdapter，并返回 `side_effect=none`、missing channel 与阻断原因。
 - [x] 将 delivery smoke readiness 接入 Python `AgentGatewayClient` 和 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-smoke-readiness` 代理与 `Delivery Adapters` 详情页 Smoke Readiness 操作，可输入群号并触发 Go 只读预检，仍不执行平台发送。
+- [x] 增加 Go-owned observe target diagnostics：Python 启动时将 `config.toml` 中 observe-only QQ 群同步到 Go `/v1/observe-targets/sync`，Go 负责 source-bound 保存、校验、`GET /v1/observe-targets` 查询和 runtime overview `Observe Targets` 卡片；不改变当前 QQ 收消息和回复逻辑。
+- [x] 重建并重启当前本地 Go `agent-runtime` 与 dashboard，确认 runtime overview 显示 6 个 observe-only QQ 群：`164369633`、`187890369`、`27234224`、`284331268`、`3219982`、`956393163`，`side_effect=none`。
 
 ## 下一步
 
+- [ ] 恢复 NapCat/Docker Desktop 运行态后再验证 QQ 群实时收集：当前 Docker API 返回 500，`ws://localhost:3001/3002` opening handshake 超时，Python QQ channel 已降级跳过，所以 dashboard 虽然可用但新的 QQ 群消息暂时不会进入 inbox。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 

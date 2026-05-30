@@ -322,6 +322,7 @@ class RuntimeOverviewDashboardReader:
             "diagnostics": diagnostics,
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
+            "observe_targets": _normalize_observe_targets({}),
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -970,6 +971,9 @@ def _normalize_go_runtime_overview(
     runtime_workers = _normalize_runtime_workers(
         _mapping_or_empty(item.get("runtime_workers"))
     )
+    observe_targets = _normalize_observe_targets(
+        _mapping_or_empty(item.get("observe_targets"))
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1014,6 +1018,7 @@ def _normalize_go_runtime_overview(
         "queue_backend": queue_backend,
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
+        "observe_targets": observe_targets,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -1056,6 +1061,11 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "runtime_workers": 0,
         "runtime_workers_enabled": 0,
         "runtime_workers_running": 0,
+        "observe_targets": 0,
+        "observe_targets_enabled": 0,
+        "observe_targets_observe_only": 0,
+        "observe_targets_reply_allowed": 0,
+        "observe_target_groups": 0,
         "send_ledger_records": 0,
         "send_ledger_repeated_hashes": 0,
         "inbox_metric_events": 0,
@@ -1091,6 +1101,73 @@ def _normalize_runtime_workers(item: Mapping[str, Any]) -> dict[str, Any]:
             "disabled": _int_value(_mapping_or_empty(item.get("totals")).get("disabled"), fallback=0),
         },
         "notes": [str(value) for value in notes_raw],
+    }
+
+
+def _normalize_observe_targets(item: Mapping[str, Any]) -> dict[str, Any]:
+    targets_raw = item.get("targets")
+    if not isinstance(targets_raw, list):
+        targets_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    targets = [
+        _normalize_observe_target(value)
+        for value in targets_raw
+        if isinstance(value, Mapping)
+    ]
+    return {
+        "targets": targets,
+        "totals": {
+            "targets": _int_value(totals.get("targets"), fallback=len(targets)),
+            "enabled": _int_value(
+                totals.get("enabled"),
+                fallback=sum(1 for value in targets if value["enabled"]),
+            ),
+            "disabled": _int_value(totals.get("disabled"), fallback=0),
+            "observe_only": _int_value(
+                totals.get("observe_only"),
+                fallback=sum(1 for value in targets if value["observe_only"]),
+            ),
+            "reply_allowed": _int_value(
+                totals.get("reply_allowed"),
+                fallback=sum(1 for value in targets if value["reply_allowed"]),
+            ),
+            "groups": _int_value(
+                totals.get("groups"),
+                fallback=sum(
+                    1
+                    for value in targets
+                    if value["channel"]["conversation_type"] == "group"
+                ),
+            ),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_observe_target(item: Mapping[str, Any]) -> dict[str, Any]:
+    channel = _mapping_or_empty(item.get("channel"))
+    return {
+        "target_id": _text(item.get("target_id")),
+        "channel": {
+            "kind": _text(channel.get("kind")),
+            "account_id": _text(channel.get("account_id")),
+            "conversation_id": _text(channel.get("conversation_id")),
+            "conversation_type": _text(channel.get("conversation_type")),
+        },
+        "observe_only": bool(item.get("observe_only")),
+        "reply_allowed": bool(item.get("reply_allowed")),
+        "require_at": bool(item.get("require_at")),
+        "allow_from": [str(value) for value in item.get("allow_from", [])]
+        if isinstance(item.get("allow_from"), list)
+        else [],
+        "enabled": bool(item.get("enabled")),
+        "source": _text(item.get("source")),
+        "metadata": _mapping_or_empty(item.get("metadata")),
+        "updated_at": _text(item.get("updated_at")),
     }
 
 

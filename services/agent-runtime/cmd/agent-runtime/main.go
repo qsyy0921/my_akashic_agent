@@ -226,6 +226,7 @@ func main() {
 	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
 	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
+	observeTargets := appservice.NewObserveTargetService()
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -244,6 +245,7 @@ func main() {
 		OutboxMetrics:        outboxMetrics,
 		KnowledgeDiagnostics: knowledgeDiagnostics,
 		RuntimeWorkers:       runtimeWorkers,
+		ObserveTargets:       observeTargets,
 	})
 
 	mux := http.NewServeMux()
@@ -262,6 +264,7 @@ func main() {
 	httptrigger.RegisterDeliverySmokeRoutes(mux, deliverySmokeReadiness)
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
+	httptrigger.RegisterObserveTargetRoutes(mux, observeTargets)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 

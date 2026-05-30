@@ -483,6 +483,44 @@ class AgentGatewayClient:
             )
         return data
 
+    async def sync_observe_targets(
+        self,
+        *,
+        targets: list[dict[str, Any]],
+        source: str = "python_config",
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "PUT",
+            "/v1/observe-targets/sync",
+            json_body={
+                "source": str(source or "python_config"),
+                "targets": targets,
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime observe target sync response is not an object"
+            )
+        observe_targets = data.get("targets")
+        if not isinstance(observe_targets, list):
+            raise AgentGatewayError(
+                "agent runtime observe target sync response has no targets"
+            )
+        return data
+
+    async def list_observe_targets(self) -> dict[str, Any]:
+        data = await self._request("GET", "/v1/observe-targets")
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime observe target response is not an object"
+            )
+        observe_targets = data.get("targets")
+        if not isinstance(observe_targets, list):
+            raise AgentGatewayError(
+                "agent runtime observe target response has no targets"
+            )
+        return data
+
     async def get_queue_backend(self) -> dict[str, Any]:
         data = await self._request("GET", "/v1/queue-backend")
         if not isinstance(data, dict):

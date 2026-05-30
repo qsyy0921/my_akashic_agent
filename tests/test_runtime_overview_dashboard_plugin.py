@@ -422,6 +422,34 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "totals": {"workers": 3, "enabled": 2, "running": 1, "disabled": 1},
         "notes": ["read-only runtime diagnostics"],
     }
+    observe_targets = {
+        "targets": [
+            {
+                "target_id": "qq:1049511700:group:27234224",
+                "channel": {
+                    "kind": "qq",
+                    "account_id": "1049511700",
+                    "conversation_id": "27234224",
+                    "conversation_type": "group",
+                },
+                "observe_only": True,
+                "reply_allowed": False,
+                "require_at": False,
+                "enabled": True,
+                "source": "python_config",
+                "metadata": {"channel_name": "qq"},
+            }
+        ],
+        "totals": {
+            "targets": 1,
+            "enabled": 1,
+            "disabled": 0,
+            "observe_only": 1,
+            "reply_allowed": 0,
+            "groups": 1,
+        },
+        "side_effect": "none",
+    }
     go_overview = {
         "summary": {
             "jobs_total": 3,
@@ -447,6 +475,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "runtime_workers": 3,
             "runtime_workers_enabled": 2,
             "runtime_workers_running": 1,
+            "observe_targets": 1,
+            "observe_targets_enabled": 1,
+            "observe_targets_observe_only": 1,
+            "observe_targets_reply_allowed": 0,
+            "observe_target_groups": 1,
             "send_ledger_records": 4,
             "send_ledger_repeated_hashes": 1,
             "inbox_metric_events": 9,
@@ -466,6 +499,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "status": "warn",
             },
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
+            {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
@@ -474,6 +508,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "delivery_adapters": delivery_adapters,
         "queue_backend": queue_backend,
         "runtime_workers": runtime_workers,
+        "observe_targets": observe_targets,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -573,6 +608,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["runtime_workers"] == 3
     assert payload["summary"]["runtime_workers_enabled"] == 2
     assert payload["summary"]["runtime_workers_running"] == 1
+    assert payload["summary"]["observe_targets"] == 1
+    assert payload["summary"]["observe_targets_observe_only"] == 1
+    assert payload["summary"]["observe_target_groups"] == 1
     assert payload["summary"]["send_ledger_records"] == 4
     assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
@@ -597,6 +635,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert runtime_worker_card["status"] == "warn"
     assert payload["runtime_workers"]["totals"]["running"] == 1
     assert payload["runtime_workers"]["workers"][1]["worker_id"] == "runtime-outbox-a"
+    observe_card = next(item for item in payload["cards"] if item["id"] == "observe_targets")
+    assert observe_card["status"] == "ok"
+    assert payload["observe_targets"]["targets"][0]["channel"]["conversation_id"] == "27234224"
+    assert payload["observe_targets"]["side_effect"] == "none"
     send_ledger_card = next(
         item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
     )

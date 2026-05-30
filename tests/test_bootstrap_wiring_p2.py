@@ -1317,6 +1317,53 @@ def test_bootstrap_runtime_worker_entry_points_are_first_class(
     assert legacy_worker is not None
 
 
+def test_bootstrap_builds_agent_runtime_observe_targets_from_qq_config():
+    from bootstrap.app import _agent_runtime_observe_targets
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        ChannelsConfig,
+        Config,
+        QQChannelConfig,
+        QQGroupConfig,
+    )
+
+    config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            qq=QQChannelConfig(
+                bot_uin="1049511700",
+                channel_name="qq",
+                groups=[
+                    QQGroupConfig(group_id="27234224", observe_only=True, require_at=False),
+                    QQGroupConfig(group_id="reply-group", observe_only=False),
+                ],
+            ),
+            qq_accounts=[
+                QQChannelConfig(
+                    bot_uin="2365524513",
+                    channel_name="qq_2365524513",
+                    groups=[QQGroupConfig(group_id="3219982", observe_only=True)],
+                )
+            ],
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(enabled=True),
+    )
+
+    targets = _agent_runtime_observe_targets(config)
+
+    assert [target["target_id"] for target in targets] == [
+        "qq:1049511700:group:27234224",
+        "qq:2365524513:group:3219982",
+    ]
+    assert targets[0]["observe_only"] is True
+    assert targets[0]["reply_allowed"] is False
+    assert targets[0]["metadata"] == {"channel_name": "qq"}
+    assert targets[1]["metadata"] == {"channel_name": "qq_2365524513"}
+
+
 def test_bootstrap_runtime_outbox_worker_is_opt_in():
     from bootstrap.app import (
         _build_agent_gateway_outbox_worker_tasks,

@@ -144,6 +144,14 @@ func RegisterDeliverySmokeRoutes(
 	mux.Handle("/v1/delivery-smoke/readiness", DeliverySmokeReadinessHandler(checker))
 }
 
+func RegisterObserveTargetRoutes(
+	mux *http.ServeMux,
+	manager inport.ObserveTargetManager,
+) {
+	mux.Handle("/v1/observe-targets/sync", ObserveTargetsSyncHandler(manager))
+	mux.Handle("/v1/observe-targets", ObserveTargetsHandler(manager))
+}
+
 func RegisterRuntimeOverviewRoutes(
 	mux *http.ServeMux,
 	viewer inport.RuntimeOverviewViewer,
@@ -906,6 +914,78 @@ func DeliverySmokeReadinessHandler(checker inport.DeliverySmokeReadinessChecker)
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
 	})
+}
+
+func ObserveTargetsHandler(manager inport.ObserveTargetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "observe target manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := manager.ListObserveTargets(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ObserveTargetsSyncHandler(manager inport.ObserveTargetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "observe target manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.SyncObserveTargetsRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		view, err := manager.SyncObserveTargets(r.Context(), command.SyncObserveTargetsCommand{
+			Source:  request.Source,
+			Targets: observeTargetCommands(request.Targets),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func observeTargetCommands(items []dto.ObserveTargetRequest) []command.ObserveTargetCommand {
+	commands := make([]command.ObserveTargetCommand, 0, len(items))
+	for _, item := range items {
+		commands = append(commands, command.ObserveTargetCommand{
+			TargetID: item.TargetID,
+			Channel: command.ChannelCommand{
+				Kind:             item.Channel.RoutePlatform(),
+				AccountID:        item.Channel.AccountID,
+				ConversationID:   item.Channel.ConversationID,
+				ConversationType: item.Channel.ConversationType,
+			},
+			ObserveOnly:  item.ObserveOnly,
+			ReplyAllowed: item.ReplyAllowed,
+			RequireAt:    item.RequireAt,
+			AllowFrom:    item.AllowFrom,
+			Enabled:      item.Enabled,
+			Source:       item.Source,
+			Metadata:     item.Metadata,
+		})
+	}
+	return commands
 }
 
 func deliverySmokeCaseCommands(items []dto.DeliverySmokeCaseRequest) []command.DeliverySmokeCaseCommand {

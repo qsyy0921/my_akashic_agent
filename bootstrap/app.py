@@ -177,6 +177,7 @@ class AppRuntime:
                 self.session_manager._store,
             )
             self.tasks.extend(group_memory_tasks)
+            await _sync_agent_runtime_observe_targets(self.config)
             knowledge_worker_tasks, self.agent_runtime_knowledge_worker = (
                 _build_agent_runtime_knowledge_worker_tasks(
                     self.config,
@@ -534,6 +535,76 @@ def _observe_only_qq_group_accounts(config: Config) -> dict[str, str]:
             if group_id and group_id not in result:
                 result[group_id] = account_id
     return result
+
+
+async def _sync_agent_runtime_observe_targets(config: Config) -> None:
+    agent_runtime = _get_agent_runtime_config(config)
+    if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
+        return
+    if not str(getattr(agent_runtime, "base_url", "")).strip():
+        return
+    targets = _agent_runtime_observe_targets(config)
+    if not targets:
+        return
+    try:
+        from integrations.agent_runtime import AgentRuntimeClient
+
+        client = AgentRuntimeClient(agent_runtime)
+        await client.sync_observe_targets(targets=targets, source="python_config")
+        logger.info("synced %d observe targets to agent_runtime", len(targets))
+    except Exception as exc:
+        logger.warning("agent_runtime observe target sync failed: %s", exc)
+
+
+def _agent_runtime_observe_targets(config: Config) -> list[dict[str, object]]:
+    channels = getattr(config, "channels", None)
+    if channels is None:
+        return []
+    accounts = []
+    qq = getattr(channels, "qq", None)
+    if qq is not None:
+        accounts.append(qq)
+    accounts.extend(getattr(channels, "qq_accounts", []) or [])
+
+    targets: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for account in accounts:
+        account_id = str(getattr(account, "bot_uin", "")).strip()
+        channel_name = str(getattr(account, "channel_name", "")).strip()
+        if not account_id:
+            continue
+        for group in getattr(account, "groups", []) or []:
+            if not bool(getattr(group, "observe_only", False)):
+                continue
+            group_id = str(getattr(group, "group_id", "")).strip()
+            if not group_id:
+                continue
+            target_id = f"qq:{account_id}:group:{group_id}"
+            if target_id in seen:
+                continue
+            seen.add(target_id)
+            targets.append(
+                {
+                    "target_id": target_id,
+                    "channel": {
+                        "kind": "qq",
+                        "account_id": account_id,
+                        "conversation_id": group_id,
+                        "conversation_type": "group",
+                    },
+                    "observe_only": True,
+                    "reply_allowed": False,
+                    "require_at": bool(getattr(group, "require_at", True)),
+                    "allow_from": list(getattr(group, "allow_from", []) or []),
+                    "enabled": True,
+                    "source": "python_config",
+                    "metadata": {
+                        "channel_name": channel_name,
+                    },
+                }
+            )
+    targets.sort(key=lambda item: str(item.get("target_id", "")))
+    return targets
 
 
 def _outbox_channel_names_by_account(config: Config) -> dict[str, str]:

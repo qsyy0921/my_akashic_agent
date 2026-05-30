@@ -59,4 +59,6 @@ execution.
   provider-neutral ports.
 - `022-send-ledger-metrics.md`: Go-owned recent-send ledger metrics for
   bot-to-bot loop guard observability.
+- `023-observe-target-diagnostics.md`: Go-owned runtime diagnostics for
+  configured observe-only QQ group targets synced from Python config.
 - Agent architecture boundary specs live under `../agent-architecture/`.

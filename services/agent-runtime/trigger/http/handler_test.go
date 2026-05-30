@@ -201,6 +201,53 @@ func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestObserveTargetsEndpointSyncsAndListsConfiguredTargets(t *testing.T) {
+	manager := appservice.NewObserveTargetService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterObserveTargetRoutes(mux, manager)
+
+	body := []byte(`{
+		"source": "python_config",
+		"targets": [{
+			"channel": {
+				"kind": "qq",
+				"account_id": "1049511700",
+				"conversation_id": "27234224",
+				"conversation_type": "group"
+			},
+			"observe_only": true,
+			"reply_allowed": false,
+			"enabled": true,
+			"metadata": {"channel_name": "qq"}
+		}]
+	}`)
+	syncResponse := httptest.NewRecorder()
+	mux.ServeHTTP(syncResponse, httptest.NewRequest(http.MethodPut, "/v1/observe-targets/sync", bytes.NewReader(body)))
+	if syncResponse.Code != http.StatusOK {
+		t.Fatalf("expected sync 200, got %d: %s", syncResponse.Code, syncResponse.Body.String())
+	}
+	if !bytes.Contains(syncResponse.Body.Bytes(), []byte(`"side_effect":"none"`)) ||
+		!bytes.Contains(syncResponse.Body.Bytes(), []byte(`"target_id":"qq:1049511700:group:27234224"`)) {
+		t.Fatalf("sync response missing target diagnostics: %s", syncResponse.Body.String())
+	}
+
+	listResponse := httptest.NewRecorder()
+	mux.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/v1/observe-targets", nil))
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", listResponse.Code, listResponse.Body.String())
+	}
+	for _, expected := range []string{
+		`"observe_only":1`,
+		`"reply_allowed":0`,
+		`"groups":1`,
+		`"channel_name":"qq"`,
+	} {
+		if !bytes.Contains(listResponse.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("list response missing %s: %s", expected, listResponse.Body.String())
+		}
+	}
+}
+
 func TestDeliveryAdapterHealthEndpointReturnsReadOnlyProbeResults(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterHealthService(staticHTTPDeliveryHealthProbe{
 		items: []query.DeliveryAdapterHealthView{{

@@ -81,6 +81,22 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				{Name: "nats_dual_read_compare", Enabled: true, Running: false},
 			},
 		}},
+		ObserveTargets: staticObserveTargets{view: query.ObserveTargetsView{
+			Targets: []query.ObserveTargetView{{
+				TargetID: "qq:1049511700:group:27234224",
+				Channel: query.ObserveTargetChannelView{
+					Kind:             "qq",
+					AccountID:        "1049511700",
+					ConversationID:   "27234224",
+					ConversationType: "group",
+				},
+				ObserveOnly: true,
+				Enabled:     true,
+				Source:      "python_config",
+			}},
+			Totals:     map[string]int{"targets": 1, "enabled": 1, "observe_only": 1, "reply_allowed": 0, "groups": 1},
+			SideEffect: "none",
+		}},
 	})
 
 	view, err := service.Get(context.Background(), query.RuntimeOverviewFilter{
@@ -112,10 +128,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["runtime_config_blockers"] != 1 || view.Summary["runtime_config_onebot_missing"] != 1 {
 		t.Fatalf("unexpected runtime config summary: %#v", view.Summary)
 	}
+	if view.Summary["observe_targets"] != 1 || view.Summary["observe_target_groups"] != 1 {
+		t.Fatalf("unexpected observe target summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
@@ -203,5 +223,13 @@ type staticRuntimeWorkerDiagnostics struct {
 }
 
 func (s staticRuntimeWorkerDiagnostics) GetRuntimeWorkers(context.Context) (query.RuntimeWorkerDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticObserveTargets struct {
+	view query.ObserveTargetsView
+}
+
+func (s staticObserveTargets) ListObserveTargets(context.Context) (query.ObserveTargetsView, error) {
 	return s.view, nil
 }

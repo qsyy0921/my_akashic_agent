@@ -455,6 +455,65 @@ async def test_agent_gateway_client_checks_delivery_smoke_readiness():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_syncs_and_lists_observe_targets():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        if request.url.path == "/v1/observe-targets/sync":
+            assert request.method == "PUT"
+            assert body["source"] == "python_config"
+            assert body["targets"][0]["channel"]["conversation_id"] == "27234224"
+            return _ok(
+                {
+                    "targets": body["targets"],
+                    "totals": {"targets": 1, "observe_only": 1},
+                    "side_effect": "none",
+                }
+            )
+        if request.url.path == "/v1/observe-targets":
+            assert request.method == "GET"
+            return _ok(
+                {
+                    "targets": [
+                        {
+                            "target_id": "qq:1049511700:group:27234224",
+                            "observe_only": True,
+                        }
+                    ],
+                    "totals": {"targets": 1, "observe_only": 1},
+                    "side_effect": "none",
+                }
+            )
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+    synced = await client.sync_observe_targets(
+        targets=[
+            {
+                "channel": {
+                    "kind": "qq",
+                    "account_id": "1049511700",
+                    "conversation_id": "27234224",
+                    "conversation_type": "group",
+                },
+                "observe_only": True,
+                "enabled": True,
+            }
+        ]
+    )
+    listed = await client.list_observe_targets()
+
+    assert synced["side_effect"] == "none"
+    assert listed["targets"][0]["target_id"] == "qq:1049511700:group:27234224"
+    assert [call[1] for call in calls] == [
+        "/v1/observe-targets/sync",
+        "/v1/observe-targets",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

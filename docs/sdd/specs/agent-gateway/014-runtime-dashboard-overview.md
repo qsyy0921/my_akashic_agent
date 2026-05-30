@@ -6,7 +6,7 @@ Implemented read-only dashboard plugin with a Go-owned runtime overview
 aggregate, runtime config diagnostics, delivery adapter, queue backend,
 Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
 Go-owned agent job metrics diagnostics, Go-owned outbox metrics diagnostics,
-and Go-owned runtime worker diagnostics.
+Go-owned runtime worker diagnostics, and Go-owned observe target diagnostics.
 
 ## Context
 
@@ -71,6 +71,7 @@ GET /v1/inbox-metrics
 GET /v1/job-metrics
 GET /v1/outbox-metrics
 GET /v1/runtime-workers
+GET /v1/observe-targets
 ```
 
 The dashboard also exposes a manual, operator-triggered health proxy:
@@ -115,6 +116,8 @@ It summarizes:
 - Go-owned runtime worker enabled/running/config state for agent job recovery,
   local outbox dispatch, NATS shadow publish, NATS dual-read compare, and NATS
   external lease cutover.
+- Go-owned observe target totals and target metadata for configured
+  observe-only QQ groups synced from Python config.
 - Go-owned sanitized runtime config state for OneBot aliases, token presence,
   worker flags, and pre-smoke blockers.
 - Manual delivery adapter live health results, including reachable,
@@ -138,6 +141,8 @@ Go owns:
 - outbox metrics semantics and bounded operational samples.
 - runtime worker diagnostics semantics, including enabled/running counters and
   queue worker configuration.
+- observe target diagnostics semantics, including source-bound sync, target
+  validation, reply-disabled observe-only rules, and `side_effect=none`.
 - runtime config diagnostics semantics, including secret redaction, expected
   OneBot alias readiness, and side-effect-free preflight blockers.
 
