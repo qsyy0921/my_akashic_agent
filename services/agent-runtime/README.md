@@ -320,6 +320,11 @@ Go state stores; NATS is not allowed to execute or lease work in this phase.
 The `/v1/queue-backend` response includes `shadow_publish` diagnostics with
 publish attempts, success/failure counts, per-subject counts, and sampled
 reconciliation deltas against the Go state store and lifecycle event stream.
+When `AKASHIC_QUEUE_MODE=dual_read_compare`, the runtime also starts a NATS pull
+consumer. It consumes work notifications with a bounded goroutine worker pool,
+checks whether each candidate is leaseable in the Go authoritative state store,
+acks after recording diagnostics, and does not dispatch platform sends or Python
+workers.
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple
@@ -331,6 +336,12 @@ Shadow publish subjects:
 ```text
 akashic.work.outbox.{channel_kind}.{account_id}
 akashic.work.agent_job.{job_type}
+```
+
+Optional dual-read durable consumer name:
+
+```powershell
+$env:AKASHIC_QUEUE_DUAL_READ_DURABLE = "AKASHIC_DUAL_READ_COMPARE"
 ```
 
 Persist proactive scheduling state across runtime restarts:

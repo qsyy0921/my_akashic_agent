@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 
+	inport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/in"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 )
@@ -14,6 +15,7 @@ const queueDiagnosticsSampleLimit = 200
 type QueueBackendService struct {
 	view           query.QueueBackendView
 	diagnostics    outport.WorkQueuePublishDiagnosticReader
+	compare        inport.WorkQueueCompareDiagnosticReader
 	outboxRepo     outport.OutboxRepository
 	outboxEvents   outport.OutboxDeliveryEventStore
 	agentJobRepo   outport.AgentJobRepository
@@ -26,6 +28,7 @@ func NewQueueBackendService(view query.QueueBackendView) *QueueBackendService {
 
 type QueueBackendDiagnosticsDeps struct {
 	Diagnostics    outport.WorkQueuePublishDiagnosticReader
+	Compare        inport.WorkQueueCompareDiagnosticReader
 	OutboxRepo     outport.OutboxRepository
 	OutboxEvents   outport.OutboxDeliveryEventStore
 	AgentJobRepo   outport.AgentJobRepository
@@ -36,6 +39,7 @@ func NewQueueBackendServiceWithDiagnostics(view query.QueueBackendView, deps Que
 	return &QueueBackendService{
 		view:           view,
 		diagnostics:    deps.Diagnostics,
+		compare:        deps.Compare,
 		outboxRepo:     deps.OutboxRepo,
 		outboxEvents:   deps.OutboxEvents,
 		agentJobRepo:   deps.AgentJobRepo,
@@ -51,14 +55,44 @@ func (s *QueueBackendService) Get(ctx context.Context) (query.QueueBackendView, 
 		return query.QueueBackendView{}, errors.New("queue backend service is nil")
 	}
 	view := s.view
-	if view.Mode == "shadow_publish" {
+	if view.Mode == "shadow_publish" || view.Mode == "dual_read_compare" {
 		diagnostics, err := s.shadowPublishDiagnostics(ctx)
 		if err != nil {
 			return query.QueueBackendView{}, err
 		}
 		view.ShadowPublish = &diagnostics
 	}
+	if view.Mode == "dual_read_compare" {
+		diagnostics, err := s.dualReadDiagnostics(ctx)
+		if err != nil {
+			return query.QueueBackendView{}, err
+		}
+		view.DualReadCompare = &diagnostics
+	}
 	return view, nil
+}
+
+func (s *QueueBackendService) dualReadDiagnostics(ctx context.Context) (query.QueueDualReadDiagnostics, error) {
+	diagnostics := query.QueueDualReadDiagnostics{
+		Enabled:     s != nil && s.compare != nil,
+		SampleLimit: queueCompareRecentLimit,
+		Notes: []string{
+			"dual_read_compare is compare-only and must not execute queue side effects",
+		},
+	}
+	if s == nil {
+		return diagnostics, nil
+	}
+	if s.compare == nil {
+		diagnostics.Notes = append(diagnostics.Notes, "no active queue candidate compare recorder")
+		return diagnostics, nil
+	}
+	snapshot, err := s.compare.SnapshotDualReadDiagnostics(ctx)
+	if err != nil {
+		return query.QueueDualReadDiagnostics{}, err
+	}
+	snapshot.Notes = append(diagnostics.Notes, snapshot.Notes...)
+	return snapshot, nil
 }
 
 func (s *QueueBackendService) shadowPublishDiagnostics(ctx context.Context) (query.QueueShadowPublishDiagnostics, error) {

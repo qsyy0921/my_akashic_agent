@@ -173,6 +173,26 @@ func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
 	}
 }
 
+func TestQueueBackendViewFromEnvSupportsDualReadCompareMode(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "dual_read_compare")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_CONSUMER_CONCURRENCY", "6")
+	t.Setenv("AKASHIC_QUEUE_MAX_IN_FLIGHT", "24")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.Provider != "nats_jetstream" || view.Mode != "dual_read_compare" || view.MigrationPhase != "dual_read_compare" {
+		t.Fatalf("unexpected dual-read queue backend: %#v", view)
+	}
+	if view.ConsumerConcurrency != 6 || view.MaxInFlight != 24 {
+		t.Fatalf("unexpected consumer sizing: %#v", view)
+	}
+}
+
 func TestQueueBackendViewFromEnvRejectsUnknownProvider(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "kafka")
 

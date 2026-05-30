@@ -6,7 +6,10 @@ In progress. The first implementation slice exposed read-only runtime
 diagnostics. The second slice added NATS JetStream `shadow_publish` for outbox
 deliveries and generic agent jobs while keeping local state stores
 authoritative. The third slice adds shadow publish diagnostics and
-state/event-stream reconciliation.
+state/event-stream reconciliation. The fourth slice adds NATS JetStream
+`dual_read_compare`, which consumes queue notifications with a bounded Go
+worker pool and compares candidates against Go authoritative state without
+executing side effects.
 
 ## Context
 
@@ -96,7 +99,11 @@ message or is disabled, Go can still discover leaseable work from state.
    - Workers still execute leases through Go state store.
    - Queue consumer reads candidate ids and compares them against leaseable
      state before execution.
-   - Mismatches are recorded as diagnostics, never silently executed.
+   - A bounded goroutine worker pool consumes NATS pull messages.
+   - Matches and mismatches are recorded as diagnostics, never silently
+     executed.
+   - Queue messages are acked after compare-only diagnostics are recorded so
+     this mode cannot repeatedly execute or re-drive side effects.
 
 5. `external_lease`
    - Queue consumer groups become the work discovery mechanism.
@@ -143,6 +150,15 @@ When `mode=shadow_publish`, the response also contains `shadow_publish`:
 - per-work-kind reconciliation for `outbox_delivery` and `agent_job`;
 - sampled Go state count, sampled lifecycle event count, and their deltas
   against successful queue publishes.
+
+When `mode=dual_read_compare`, the response also contains
+`dual_read_compare`:
+
+- total compared queue candidates;
+- match and mismatch counts;
+- mismatch reasons such as `missing_state`, `not_leaseable`, or
+  `unsupported_work_kind`;
+- recent candidate comparison samples.
 
 ## Concurrent Consumption
 
@@ -206,8 +222,18 @@ Notification payloads include:
 The payload is intentionally a work notification. Consumers must read/lease the
 authoritative aggregate through Go APIs before executing side effects.
 
-Add consumer/ack ports only when implementing `dual_read_compare` or
-`external_lease`:
+`dual_read_compare` adds an inbound compare-only application port:
+
+```go
+type WorkQueueCandidateComparer interface {
+    CompareWorkQueueCandidate(ctx context.Context, cmd CompareWorkQueueCandidateCommand) (QueueCandidateComparisonView, error)
+}
+```
+
+This port validates candidate ids against Go state stores and updates
+diagnostics. It does not acquire leases or execute side effects.
+
+Add consumer/ack ports only when implementing `external_lease`:
 
 ```go
 type WorkQueueConsumer interface {
@@ -228,6 +254,8 @@ type WorkQueueConsumer interface {
 - Worker execution must still transition Go lifecycle state before platform or
   Python side effects.
 - Duplicate queue messages are harmless because aggregate ids are idempotent.
+- `dual_read_compare` must not call platform adapters, Python workers, or
+  delivery dispatch.
 - Switching provider must not change HTTP contracts for `/v1/outbox`,
   `/v1/jobs`, `/v1/job-events`, or `/v1/outbox-events`.
 
@@ -243,6 +271,9 @@ type WorkQueueConsumer interface {
 - `shadow_publish` exposes publish success/failure diagnostics by subject.
 - `shadow_publish` reconciles sampled queue publish counts against Go state
   stores and lifecycle event streams.
+- `dual_read_compare` starts a bounded NATS pull consumer when configured.
+- `dual_read_compare` records match/mismatch diagnostics without acquiring
+  external leases or executing side effects.
 - Existing outbox/job tests continue to pass.
-- TODO and review records document that `dual_read_compare` and
-  `external_lease` remain separate migration slices.
+- TODO and review records document that `external_lease` remains a separate
+  migration slice.

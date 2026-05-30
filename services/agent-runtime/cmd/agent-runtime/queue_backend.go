@@ -137,7 +137,7 @@ func queueMigrationPhase(provider string, mode string) string {
 	case "shadow_publish":
 		return "shadow_ready"
 	case "dual_read_compare":
-		return "dual_read_design"
+		return "dual_read_compare"
 	case "external_lease":
 		return "external_lease_design"
 	default:
@@ -156,7 +156,7 @@ func queueBackendNotes(provider string, mode string, dsnConfigured bool) []strin
 	if !dsnConfigured {
 		notes = append(notes, "external provider selected without AKASHIC_QUEUE_DSN; runtime remains local-only")
 	} else {
-		notes = append(notes, "AKASHIC_QUEUE_DSN is configured for migration diagnostics only")
+		notes = append(notes, "AKASHIC_QUEUE_DSN is configured for staged queue migration")
 	}
 	if provider == "nats_jetstream" {
 		notes = append(notes, "NATS JetStream is the recommended first external backend for event-subject routing and Go-native runtime infrastructure")
@@ -194,7 +194,7 @@ func redactQueueDSN(raw string) string {
 }
 
 func newWorkQueuePublisher(view query.QueueBackendView) (outport.WorkQueuePublisher, func(), error) {
-	if view.Provider != "nats_jetstream" || view.Mode != "shadow_publish" || !view.DSNConfigured {
+	if view.Provider != "nats_jetstream" || !queueModePublishesWork(view.Mode) || !view.DSNConfigured {
 		return nil, nil, nil
 	}
 	timeoutSeconds, err := positiveIntEnv("AKASHIC_QUEUE_TIMEOUT_SECONDS", 3, 60)
@@ -223,4 +223,31 @@ func newWorkQueuePublisher(view query.QueueBackendView) (outport.WorkQueuePublis
 		return nil, nil, err
 	}
 	return recorder, publisher.Close, nil
+}
+
+func newWorkQueueCompareConsumer(view query.QueueBackendView) (*natsqueue.CompareConsumer, func(), error) {
+	if view.Provider != "nats_jetstream" || view.Mode != "dual_read_compare" || !view.DSNConfigured {
+		return nil, nil, nil
+	}
+	timeoutSeconds, err := positiveIntEnv("AKASHIC_QUEUE_TIMEOUT_SECONDS", 3, 60)
+	if err != nil {
+		return nil, nil, err
+	}
+	consumer, err := natsqueue.NewCompareConsumer(natsqueue.CompareConsumerConfig{
+		URL:                 strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
+		Stream:              view.Stream,
+		SubjectPrefix:       view.SubjectPrefix,
+		Durable:             strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DUAL_READ_DURABLE")),
+		Timeout:             time.Duration(timeoutSeconds) * time.Second,
+		ConsumerConcurrency: view.ConsumerConcurrency,
+		MaxInFlight:         view.MaxInFlight,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return consumer, consumer.Close, nil
+}
+
+func queueModePublishesWork(mode string) bool {
+	return mode == "shadow_publish" || mode == "dual_read_compare"
 }

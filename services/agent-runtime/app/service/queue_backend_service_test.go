@@ -97,6 +97,37 @@ func TestQueueBackendServiceReconcilesShadowPublishAgainstStateAndEvents(t *test
 	}
 }
 
+func TestQueueBackendServiceExposesDualReadDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	compare := NewWorkQueueCompareService(memory.NewStore(), memory.NewStore())
+	if _, err := compare.CompareWorkQueueCandidate(ctx, command.CompareWorkQueueCandidateCommand{
+		WorkKind:   "agent_job",
+		WorkID:     "missing-job",
+		Subject:    "akashic.work.agent_job.rag_ingest",
+		ObservedAt: time.Date(2026, 5, 30, 23, 46, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("compare candidate: %v", err)
+	}
+	service := NewQueueBackendServiceWithDiagnostics(query.QueueBackendView{
+		Provider:       "nats_jetstream",
+		Mode:           "dual_read_compare",
+		MigrationPhase: "dual_read_compare",
+	}, QueueBackendDiagnosticsDeps{
+		Compare: compare,
+	})
+
+	view, err := service.Get(ctx)
+	if err != nil {
+		t.Fatalf("get queue backend: %v", err)
+	}
+	if view.DualReadCompare == nil || !view.DualReadCompare.Enabled {
+		t.Fatalf("expected dual read diagnostics: %+v", view.DualReadCompare)
+	}
+	if view.DualReadCompare.ComparedTotal != 1 || view.DualReadCompare.MismatchedTotal != 1 {
+		t.Fatalf("unexpected dual read totals: %+v", view.DualReadCompare)
+	}
+}
+
 type fakeQueueDiagnosticsReader struct {
 	snapshot query.QueueShadowPublishDiagnostics
 }

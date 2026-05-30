@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -103,12 +104,32 @@ func main() {
 	}
 	if workQueue != nil {
 		queueBackendView.ExternalQueueActive = true
-		queueBackendView.MigrationPhase = "shadow_publish"
-		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream shadow_publish adapter is active")
+		queueBackendView.MigrationPhase = queueBackendActivePhase(queueBackendView.Mode)
+		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream work notification publisher is active")
 	}
 	var workQueueDiagnostics outport.WorkQueuePublishDiagnosticReader
 	if diagnostics, ok := workQueue.(outport.WorkQueuePublishDiagnosticReader); ok {
 		workQueueDiagnostics = diagnostics
+	}
+	queueCompare := appservice.NewWorkQueueCompareService(outboxRepository, agentJobRepository)
+	compareConsumer, closeCompareConsumer, err := newWorkQueueCompareConsumer(queueBackendView)
+	if err != nil {
+		log.Fatalf("init work queue compare consumer: %v", err)
+	}
+	if closeCompareConsumer != nil {
+		defer closeCompareConsumer()
+	}
+	if compareConsumer != nil {
+		queueBackendView.ExternalQueueActive = true
+		queueBackendView.MigrationPhase = "dual_read_compare"
+		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream dual_read_compare consumer is active")
+		compareCtx, cancelCompare := context.WithCancel(context.Background())
+		defer cancelCompare()
+		go func() {
+			if err := compareConsumer.Run(compareCtx, queueCompare); err != nil && err != context.Canceled {
+				log.Printf("work queue dual_read_compare consumer stopped: %v", err)
+			}
+		}()
 	}
 
 	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
@@ -141,6 +162,7 @@ func main() {
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
+		Compare:        queueCompare,
 		OutboxRepo:     outboxRepository,
 		OutboxEvents:   outboxEventStore,
 		AgentJobRepo:   agentJobRepository,
@@ -168,6 +190,13 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func queueBackendActivePhase(mode string) string {
+	if mode == "dual_read_compare" {
+		return "dual_read_compare"
+	}
+	return "shadow_publish"
 }
 
 func envOrFirstDefaultWithSource(keys []string, fallback string) (string, string) {

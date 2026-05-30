@@ -21,6 +21,7 @@ type QueueBackendView struct {
 	SupportedProviders      []string                       `json:"supported_providers"`
 	Notes                   []string                       `json:"notes,omitempty"`
 	ShadowPublish           *QueueShadowPublishDiagnostics `json:"shadow_publish,omitempty"`
+	DualReadCompare         *QueueDualReadDiagnostics      `json:"dual_read_compare,omitempty"`
 }
 
 type QueueShadowPublishDiagnostics struct {
@@ -64,4 +65,42 @@ type QueuePublishSubjectStats struct {
 	LastPublishedAt string `json:"last_published_at,omitempty"`
 	LastFailedAt    string `json:"last_failed_at,omitempty"`
 	LastError       string `json:"last_error,omitempty"`
+}
+
+type QueueDualReadDiagnostics struct {
+	Enabled           bool                           `json:"enabled"`
+	SampleLimit       int                            `json:"sample_limit"`
+	ComparedTotal     int                            `json:"compared_total"`
+	MatchedTotal      int                            `json:"matched_total"`
+	MismatchedTotal   int                            `json:"mismatched_total"`
+	LastComparedAt    string                         `json:"last_compared_at,omitempty"`
+	LastMismatchAt    string                         `json:"last_mismatch_at,omitempty"`
+	Reasons           []QueueCompareReasonStats      `json:"reasons,omitempty"`
+	WorkKinds         []QueueCompareWorkKindStats    `json:"work_kinds,omitempty"`
+	RecentComparisons []QueueCandidateComparisonView `json:"recent_comparisons,omitempty"`
+	Notes             []string                       `json:"notes,omitempty"`
+}
+
+type QueueCompareReasonStats struct {
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
+}
+
+type QueueCompareWorkKindStats struct {
+	WorkKind      string `json:"work_kind"`
+	ComparedCount int    `json:"compared_count"`
+	MatchedCount  int    `json:"matched_count"`
+	MismatchCount int    `json:"mismatch_count"`
+}
+
+type QueueCandidateComparisonView struct {
+	WorkKind    string `json:"work_kind"`
+	WorkID      string `json:"work_id"`
+	AggregateID string `json:"aggregate_id,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	Matched     bool   `json:"matched"`
+	Reason      string `json:"reason"`
+	StateStatus string `json:"state_status,omitempty"`
+	ObservedAt  string `json:"observed_at"`
+	ComparedAt  string `json:"compared_at"`
 }

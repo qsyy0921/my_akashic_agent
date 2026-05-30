@@ -40,12 +40,14 @@
 - [x] 评估并设计外部队列后端：确定 NATS JetStream 作为第一实现目标，支持后续多 goroutine 并发消费，保留 Redis Streams/RabbitMQ 适配边界，并新增 `/v1/queue-backend` 只读迁移诊断。
 - [x] 实现 NATS JetStream `shadow_publish` 适配器：创建 outbox/generic job 时先写 Go state store，再发布 work notification；当前不执行外部租约。
 - [x] 增加 NATS JetStream `shadow_publish` 诊断对账：记录发布成功/失败、按 subject 的通知数，并在 `/v1/queue-backend` 中对比 Go state store 与 event stream 的样本差异。
+- [x] 实现 NATS JetStream `dual_read_compare`：Go 以多 goroutine 消费 MQ work notification，并只读校验 queue candidate 与 Go outbox/job 权威状态，不执行发送或 Python worker 副作用。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 设计并实现 NATS JetStream `dual_read_compare`：Go 消费 MQ work notification 但仍通过 state store lease 校验，只记录队列候选与权威状态的差异，不执行外部租约。
+- [ ] 做本地 NATS JetStream live smoke：启动本地 NATS 后验证 `shadow_publish` 与 `dual_read_compare` 在 `/v1/queue-backend` 的发布/比较计数变化。
+- [ ] 设计 `external_lease` 切换门：明确 ack/nack、lease acquisition、失败重试、dead-letter 和回滚策略，再开始把实际 work discovery 从 state-store lease 迁移到 MQ consumer。
 
 ## 边界约束
 
