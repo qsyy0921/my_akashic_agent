@@ -1,0 +1,51 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "OutboxDeliveryEventStream",
+  "event_id": "outbox-event-stream:qq:1049511700:private:2365524513:reply-001",
+  "delivery_id": "outbox-delivery:qq:1049511700:private:2365524513:reply-001",
+  "platform": "qq",
+  "account_id": "1049511700",
+  "conversation_id": "2365524513",
+  "conversation_type": "private",
+  "agent_id": "qq-private-agent",
+  "channel": {
+    "kind": "qq",
+    "account_id": "1049511700",
+    "conversation_id": "2365524513",
+    "conversation_type": "private"
+  },
+  "events": [
+    {
+      "event_type": "queued",
+      "sequence": 1,
+      "status": "queued",
+      "attempt": 0,
+      "timestamp": "2026-05-30T01:04:10+08:00"
+    },
+    {
+      "event_type": "leased",
+      "sequence": 2,
+      "status": "dispatching",
+      "attempt": 1,
+      "lease_owner": "outbox-worker",
+      "timestamp": "2026-05-30T01:04:11+08:00"
+    },
+    {
+      "event_type": "succeeded",
+      "sequence": 3,
+      "status": "succeeded",
+      "attempt": 1,
+      "timestamp": "2026-05-30T01:04:12+08:00"
+    }
+  ],
+  "timestamp": "2026-05-30T01:04:12+08:00",
+  "source_message_ids": [
+    "qq:1049511700:private:2365524513:msg-9001"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "owner": "agent-runtime",
+    "stream_store": "jsonl",
+    "consumer": "dashboard"
+  }
+}

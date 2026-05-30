@@ -25,6 +25,7 @@ type Store struct {
 	outbox                 map[string]model.OutboxDelivery
 	outboxOrder            []string
 	outboxQueue            []string
+	outboxEvents           []model.OutboxDeliveryEvent
 	mediaAssets            map[string]model.MediaAsset
 	mediaOrder             []string
 	inboxEvents            map[string]model.InboxEvent
@@ -539,6 +540,43 @@ func (s *Store) ListAgentJobEvents(_ context.Context, filter query.AgentJobEvent
 			continue
 		}
 		if filter.JobType != "" && string(event.JobType) != filter.JobType {
+			continue
+		}
+		if filter.EventType != "" && string(event.EventType) != filter.EventType {
+			continue
+		}
+		items = append(items, event)
+	}
+	return items, nil
+}
+
+func (s *Store) AppendOutboxDeliveryEvent(_ context.Context, event model.OutboxDeliveryEvent) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.outboxEvents = append(s.outboxEvents, event)
+	return nil
+}
+
+func (s *Store) ListOutboxDeliveryEvents(_ context.Context, filter query.OutboxDeliveryEventFilter) ([]model.OutboxDeliveryEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.OutboxDeliveryEvent, 0, limit)
+	for i := len(s.outboxEvents) - 1; i >= 0 && len(items) < limit; i-- {
+		event := s.outboxEvents[i]
+		if filter.DeliveryID != "" && event.DeliveryID != filter.DeliveryID {
+			continue
+		}
+		if filter.Status != "" && string(event.Status) != filter.Status {
 			continue
 		}
 		if filter.EventType != "" && string(event.EventType) != filter.EventType {

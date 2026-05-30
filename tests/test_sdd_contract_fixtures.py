@@ -27,6 +27,7 @@ REQUIRED_CONTRACTS = {
     "knowledge_checkpoint.ragflow.qq.json",
     "inbox_replay.observe_only.qq.json",
     "outbox_delivery.qq.private.text.json",
+    "outbox_delivery_event.qq.text.json",
     "media_asset_content.qq.image.json",
     "agent_job_event_stream.rag_ingest.json",
     "group_thread.hardware.json",
@@ -108,6 +109,10 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
             "kind": "OutboxDelivery",
             "required_keys": {"delivery", "content"},
         },
+        "outbox_delivery_event.qq.text.json": {
+            "kind": "OutboxDeliveryEventStream",
+            "required_keys": {"delivery_id", "events"},
+        },
         "media_asset_content.qq.image.json": {
             "kind": "MediaAssetContent",
             "required_keys": {"asset_id", "content_access"},
@@ -140,6 +145,11 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
     outbox = _load_json(CONTRACT_DIR / "outbox_delivery.qq.private.text.json")
     assert outbox["delivery"]["status"] == "succeeded"
     assert outbox["delivery"]["echo_loop_guard"]["ttl_seconds"] > 0
+
+    outbox_events = _load_json(CONTRACT_DIR / "outbox_delivery_event.qq.text.json")
+    assert [event["sequence"] for event in outbox_events["events"]] == [1, 2, 3]
+    assert outbox_events["events"][0]["event_type"] == "queued"
+    assert outbox_events["events"][-1]["status"] == "succeeded"
 
     media_content = _load_json(CONTRACT_DIR / "media_asset_content.qq.image.json")
     assert media_content["content_access"]["access_path"].startswith(

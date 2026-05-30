@@ -144,6 +144,24 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "occurred_at": "2026-05-30T08:12:00Z",
         },
     ]
+    outbox_events = [
+        {
+            "event_id": "outbox-event:outbox:dispatching:leased:1",
+            "delivery_id": "outbox:dispatching",
+            "channel": {
+                "kind": "telegram",
+                "account_id": "bot",
+                "conversation_id": "123",
+                "conversation_type": "private",
+            },
+            "event_type": "leased",
+            "status": "dispatching",
+            "attempt": 1,
+            "max_attempts": 3,
+            "lease_owner": "outbox-worker",
+            "occurred_at": "2026-05-30T08:31:00Z",
+        }
+    ]
     diagnostics = {
         "generated_at": "2026-05-30T08:50:00Z",
         "stale_after_seconds": 60,
@@ -177,6 +195,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         if parsed.path == "/v1/job-events":
             assert query["limit"] == ["10"]
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": events}))
+        if parsed.path == "/v1/outbox-events":
+            assert query["limit"] == ["10"]
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": outbox_events}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -201,11 +222,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["dead_letters"] == 2
     assert payload["summary"]["checkpoint_lag_max"] == 17
     assert payload["summary"]["job_events"] == 2
+    assert payload["summary"]["outbox_events"] == 1
     assert payload["summary"]["rag_eval_failures"] == 1
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
-    assert {"/healthz", "/v1/jobs", "/v1/outbox", "/v1/job-events"}.issubset(set(seen_paths))
+    assert {"/healthz", "/v1/jobs", "/v1/outbox", "/v1/job-events", "/v1/outbox-events"}.issubset(set(seen_paths))
 
 
 def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:

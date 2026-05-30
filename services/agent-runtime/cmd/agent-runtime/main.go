@@ -21,6 +21,7 @@ import (
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
+	outboxeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxeventstore"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
@@ -69,6 +70,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init outbox repository: %v", err)
 	}
+	outboxEventStore, err := newOutboxEventStore()
+	if err != nil {
+		log.Fatalf("init outbox event store: %v", err)
+	}
 	deliveryAdapters, err := newDeliveryAdapters()
 	if err != nil {
 		log.Fatalf("init delivery adapters: %v", err)
@@ -96,9 +101,10 @@ func main() {
 		mediaAssetRepository,
 		inboxEventRepository,
 	)
-	sender := appservice.NewMessageSendService(store, sendLedgerRepository, outboxRepository, outboxQueue)
+	sender := appservice.NewMessageSendServiceWithOutboxEvents(store, sendLedgerRepository, outboxRepository, outboxQueue, outboxEventStore)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
-	outbox := appservice.NewOutboxService(outboxRepository, outboxQueue)
+	outbox := appservice.NewOutboxServiceWithEvents(outboxRepository, outboxQueue, outboxEventStore)
+	outboxEvents := appservice.NewOutboxDeliveryEventService(outboxEventStore)
 	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(outboxRepository, deliveryAdapters...)
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
@@ -119,6 +125,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
+	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 
@@ -352,6 +359,20 @@ func newOutboxStore() (outport.OutboxRepository, outport.OutboxQueue, error) {
 	}
 	store := memory.NewStore()
 	return store, store, nil
+}
+
+func newOutboxEventStore() (outport.OutboxDeliveryEventStore, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_EVENTS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return outboxeventstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_EVENTS_PATH")); path != "" {
+		return outboxeventstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
 }
 
 func newInboxEventRepository() (outport.InboxEventRepository, error) {

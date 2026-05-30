@@ -25,6 +25,7 @@ var requiredContractFixtures = []string{
 	"knowledge_checkpoint.ragflow.qq.json",
 	"inbox_replay.observe_only.qq.json",
 	"outbox_delivery.qq.private.text.json",
+	"outbox_delivery_event.qq.text.json",
 	"media_asset_content.qq.image.json",
 	"agent_job_event_stream.rag_ingest.json",
 	"group_thread.hardware.json",
@@ -88,6 +89,10 @@ func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
 		"outbox_delivery.qq.private.text.json": {
 			"delivery",
 			"content",
+		},
+		"outbox_delivery_event.qq.text.json": {
+			"delivery_id",
+			"events",
 		},
 		"media_asset_content.qq.image.json": {
 			"asset_id",

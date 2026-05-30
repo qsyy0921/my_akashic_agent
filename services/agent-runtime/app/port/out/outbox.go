@@ -1,9 +1,10 @@
-﻿package outport
+package outport
 
 import (
 	"context"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
@@ -16,4 +17,13 @@ type OutboxRepository interface {
 
 type OutboxQueue interface {
 	EnqueueOutboxDelivery(ctx context.Context, delivery model.OutboxDelivery) error
+}
+
+type OutboxDeliveryEventSink interface {
+	AppendOutboxDeliveryEvent(ctx context.Context, event model.OutboxDeliveryEvent) error
+}
+
+type OutboxDeliveryEventStore interface {
+	OutboxDeliveryEventSink
+	ListOutboxDeliveryEvents(ctx context.Context, filter query.OutboxDeliveryEventFilter) ([]model.OutboxDeliveryEvent, error)
 }

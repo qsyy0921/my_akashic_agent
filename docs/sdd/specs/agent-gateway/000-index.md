@@ -51,4 +51,6 @@ execution.
   dispatch.
 - `019-rag-eval-dashboard.md`: read-only dashboard panel for Go-owned
   `rag_eval` quality gates, metrics, trend points, and per-question results.
+- `020-outbox-event-stream.md`: Go-owned durable lifecycle event stream for
+  outbox delivery state transitions.
 - Agent architecture boundary specs live under `../agent-architecture/`.

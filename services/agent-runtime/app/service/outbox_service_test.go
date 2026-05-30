@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
@@ -155,6 +156,51 @@ func TestOutboxServiceDeadLettersNonRetryableFailureKind(t *testing.T) {
 		Timestamp: now.Add(3 * time.Second),
 	}); err == nil {
 		t.Fatalf("expected retry to fail for dead-lettered delivery")
+	}
+}
+
+func TestOutboxServiceRecordsLifecycleEvents(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 30, 6, 0, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(sampleOutboxMessage(now), 3, now)
+	if err != nil {
+		t.Fatalf("new delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("save delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("enqueue delivery: %v", err)
+	}
+
+	service := appservice.NewOutboxServiceWithEvents(store, store, store)
+	if _, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:   "outbox-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if _, err := service.MarkSucceeded(ctx, command.MarkOutboxSucceededCommand{
+		EventID:   "outbox-1",
+		Timestamp: now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark succeeded: %v", err)
+	}
+
+	events, err := store.ListOutboxDeliveryEvents(ctx, query.OutboxDeliveryEventFilter{
+		DeliveryID: "outbox-1",
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatalf("list outbox events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 outbox events, got %d", len(events))
+	}
+	if events[0].EventType != model.OutboxDeliveryEventSucceeded || events[1].EventType != model.OutboxDeliveryEventLeased {
+		t.Fatalf("unexpected event order/types: %#v", events)
 	}
 }
 

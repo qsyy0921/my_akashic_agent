@@ -280,6 +280,23 @@ GET /v1/job-events?job_id=rag_ingest:qq:3219982:ds1:1
 GET /v1/job-events?type=rag_ingest&event=failed
 ```
 
+Persist outbox delivery lifecycle events as a JSONL stream:
+
+```powershell
+$env:AKASHIC_OUTBOX_EVENTS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\outbox-events.jsonl"
+```
+
+With this environment variable set, outbound creation, lease, dispatching,
+succeeded, failed, and retry transitions append an `OutboxDeliveryEvent`.
+Inspect the stream through:
+
+```text
+GET /v1/outbox-events?limit=50
+GET /v1/outbox-events?delivery_id=outbox-http-1
+GET /v1/outbox-events?status=dead_lettered
+GET /v1/outbox-events?event=failed
+```
+
 Persist proactive scheduling state across runtime restarts:
 
 ```powershell

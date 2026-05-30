@@ -75,6 +75,13 @@ func RegisterAgentJobEventRoutes(
 	mux.Handle("/v1/job-events", AgentJobEventsHandler(jobEvents))
 }
 
+func RegisterOutboxEventRoutes(
+	mux *http.ServeMux,
+	outboxEvents inport.OutboxDeliveryEventViewer,
+) {
+	mux.Handle("/v1/outbox-events", OutboxDeliveryEventsHandler(outboxEvents))
+}
+
 func RegisterDeliveryDispatchRoutes(
 	mux *http.ServeMux,
 	planner inport.DeliveryDispatchPlanner,
@@ -921,6 +928,26 @@ func AgentJobEventsHandler(jobEvents inport.AgentJobEventViewer) http.Handler {
 			JobType:   r.URL.Query().Get("type"),
 			EventType: r.URL.Query().Get("event"),
 			Limit:     parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func OutboxDeliveryEventsHandler(outboxEvents inport.OutboxDeliveryEventViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := outboxEvents.List(r.Context(), query.OutboxDeliveryEventFilter{
+			DeliveryID: r.URL.Query().Get("delivery_id"),
+			Status:     r.URL.Query().Get("status"),
+			EventType:  r.URL.Query().Get("event"),
+			Limit:      parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

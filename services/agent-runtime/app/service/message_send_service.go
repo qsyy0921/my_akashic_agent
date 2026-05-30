@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -18,6 +18,7 @@ type MessageSendService struct {
 	sendLedger        outport.SendLedger
 	outboxRepository  outport.OutboxRepository
 	outboxQueue       outport.OutboxQueue
+	outboxEvents      outport.OutboxDeliveryEventSink
 	defaultMaxAttempt int
 }
 
@@ -34,6 +35,18 @@ func NewMessageSendService(
 		outboxQueue:       outboxQueue,
 		defaultMaxAttempt: 3,
 	}
+}
+
+func NewMessageSendServiceWithOutboxEvents(
+	eventBus outport.MessageEventBus,
+	sendLedger outport.SendLedger,
+	outboxRepository outport.OutboxRepository,
+	outboxQueue outport.OutboxQueue,
+	outboxEvents outport.OutboxDeliveryEventSink,
+) *MessageSendService {
+	service := NewMessageSendService(eventBus, sendLedger, outboxRepository, outboxQueue)
+	service.outboxEvents = outboxEvents
+	return service
 }
 
 func (s *MessageSendService) Send(ctx context.Context, cmd command.SendMessageCommand) error {
@@ -91,9 +104,33 @@ func (s *MessageSendService) Send(ctx context.Context, cmd command.SendMessageCo
 				return err
 			}
 		}
+		if err := s.recordOutboxEvent(ctx, delivery, model.OutboxDeliveryEventQueued, cmd.Timestamp); err != nil {
+			return err
+		}
 	}
 
 	return s.eventBus.PublishOutbound(ctx, outbound)
+}
+
+func (s *MessageSendService) recordOutboxEvent(
+	ctx context.Context,
+	delivery model.OutboxDelivery,
+	eventType model.OutboxDeliveryEventType,
+	timestamp time.Time,
+) error {
+	if s == nil || s.outboxEvents == nil {
+		return nil
+	}
+	event, err := model.NewOutboxDeliveryEventFromDelivery(
+		outboxDeliveryEventID(delivery.Message.EventID, eventType, timestamp),
+		eventType,
+		delivery,
+		timestamp,
+	)
+	if err != nil {
+		return err
+	}
+	return s.outboxEvents.AppendOutboxDeliveryEvent(ctx, event)
 }
 
 func maxAttempts(metadata map[string]string, fallback int) int {
@@ -113,4 +150,3 @@ func maxAttempts(metadata map[string]string, fallback int) int {
 	}
 	return parsed
 }
-

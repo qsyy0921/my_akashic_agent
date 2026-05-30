@@ -36,12 +36,13 @@
 - [x] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 opt-in eval worker 执行离线 group-memory/RAG fixture 并回写指标。
 - [x] 增加运行态 dashboard 总览面板，聚合 runtime health、worker leases、stale jobs、dead letters、checkpoint lag、job event stream 和 `rag_eval` 失败摘要。
 - [x] 为 dashboard 增加 `rag_eval` 结果趋势与质量门摘要面板，区分质量门失败和基础设施失败，并展示 per-question 评测结果。
+- [x] 将 outbox delivery state 接入 Go-owned durable lifecycle event stream，新增 `/v1/outbox-events`、JSONL 持久化和 runtime overview 聚合。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 评估是否把 outbox delivery state 也接入同一类 lifecycle event stream，再引入外部队列后端。
+- [ ] 评估并设计外部队列后端（NATS / Redis Streams / RabbitMQ 取舍），让 Go outbox 与 generic jobs 可从本地 JSON 持久化平滑迁移到真正队列。
 
 ## 边界约束
 

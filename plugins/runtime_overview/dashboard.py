@@ -113,6 +113,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        outbox_events_raw, error = self._read_list(
+            "/v1/outbox-events",
+            {"limit": safe_event_limit},
+        )
+        if error:
+            errors.append({"endpoint": "outbox-events", "error": error})
+            outbox_events_raw = []
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -123,6 +133,11 @@ class RuntimeOverviewDashboardReader:
         events = [
             _normalize_job_event(item)
             for item in events_raw
+            if isinstance(item, Mapping)
+        ]
+        outbox_events = [
+            _normalize_outbox_event(item)
+            for item in outbox_events_raw
             if isinstance(item, Mapping)
         ]
 
@@ -162,6 +177,7 @@ class RuntimeOverviewDashboardReader:
             "dead_letters": len(dead_jobs) + len(dead_outbox),
             "checkpoint_lag_max": checkpoint_lag_max,
             "job_events": len(events),
+            "outbox_events": len(outbox_events),
             "rag_eval_failures": len(rag_eval_failures),
         }
 
@@ -176,6 +192,7 @@ class RuntimeOverviewDashboardReader:
             dead_outbox=dead_outbox,
             lagged_checkpoints=lagged_checkpoints,
             events=events,
+            outbox_events=outbox_events,
             diagnostics=diagnostics,
             rag_eval_failures=rag_eval_failures,
         )
@@ -197,6 +214,7 @@ class RuntimeOverviewDashboardReader:
             },
             "checkpoint_lag": lagged_checkpoints,
             "recent_events": events,
+            "recent_outbox_events": outbox_events,
             "diagnostics": diagnostics,
             "status": {
                 "runtime_url": self.runtime_base_url,
@@ -371,6 +389,29 @@ def _normalize_job_event(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_outbox_event(item: Mapping[str, Any]) -> dict[str, Any]:
+    channel = _mapping_or_empty(item.get("channel"))
+    return {
+        "event_id": _text(item.get("event_id")),
+        "delivery_id": _text(item.get("delivery_id")),
+        "channel": channel,
+        "channel_kind": _text(channel.get("kind")),
+        "account_id": _text(channel.get("account_id")),
+        "conversation_id": _text(channel.get("conversation_id")),
+        "conversation_type": _text(channel.get("conversation_type")),
+        "event_type": _text(item.get("event_type")),
+        "status": _text(item.get("status")),
+        "attempt": _int_value(item.get("attempt"), fallback=0),
+        "max_attempts": _int_value(item.get("max_attempts"), fallback=0),
+        "lease_owner": _text(item.get("lease_owner")),
+        "lease_expires_at": _text(item.get("lease_expires_at")),
+        "error_kind": _text(item.get("error_kind")),
+        "error_message": _text(item.get("error_message")),
+        "occurred_at": _text(item.get("occurred_at")),
+        "metadata": _mapping_or_empty(item.get("metadata")),
+    }
+
+
 def _overview_cards(
     *,
     health: Mapping[str, Any],
@@ -383,6 +424,7 @@ def _overview_cards(
     dead_outbox: list[dict[str, Any]],
     lagged_checkpoints: list[dict[str, Any]],
     events: list[dict[str, Any]],
+    outbox_events: list[dict[str, Any]],
     diagnostics: Mapping[str, Any],
     rag_eval_failures: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -429,6 +471,13 @@ def _overview_cards(
             summary.get("job_events", 0),
             "ok" if summary.get("job_events") else "muted",
             {"recent_events": events},
+        ),
+        _card(
+            "outbox_events",
+            "Outbox Events",
+            summary.get("outbox_events", 0),
+            "ok" if summary.get("outbox_events") else "muted",
+            {"recent_events": outbox_events},
         ),
         _card(
             "rag_eval_failures",

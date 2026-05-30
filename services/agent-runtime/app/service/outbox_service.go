@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,10 +17,19 @@ import (
 type OutboxService struct {
 	repository outport.OutboxRepository
 	queue      outport.OutboxQueue
+	events     outport.OutboxDeliveryEventSink
 }
 
 func NewOutboxService(repository outport.OutboxRepository, queue outport.OutboxQueue) *OutboxService {
 	return &OutboxService{repository: repository, queue: queue}
+}
+
+func NewOutboxServiceWithEvents(
+	repository outport.OutboxRepository,
+	queue outport.OutboxQueue,
+	events outport.OutboxDeliveryEventSink,
+) *OutboxService {
+	return &OutboxService{repository: repository, queue: queue, events: events}
 }
 
 func (s *OutboxService) List(ctx context.Context, limit int) ([]query.OutboxDeliveryView, error) {
@@ -62,23 +72,26 @@ func (s *OutboxService) LeaseNext(ctx context.Context, cmd command.LeaseNextOutb
 	if err := s.repository.SaveOutboxDelivery(ctx, delivery); err != nil {
 		return query.OutboxDeliveryView{}, err
 	}
+	if err := s.recordEvent(ctx, delivery, model.OutboxDeliveryEventLeased, cmd.Timestamp); err != nil {
+		return query.OutboxDeliveryView{}, err
+	}
 	return assembler.ToOutboxDeliveryView(delivery), nil
 }
 
 func (s *OutboxService) MarkDispatching(ctx context.Context, cmd command.MarkOutboxDispatchingCommand) (query.OutboxDeliveryView, error) {
-	return s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
+	return s.update(ctx, cmd.EventID, model.OutboxDeliveryEventDispatching, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
 		return delivery.MarkDispatching(now)
 	})
 }
 
 func (s *OutboxService) MarkSucceeded(ctx context.Context, cmd command.MarkOutboxSucceededCommand) (query.OutboxDeliveryView, error) {
-	return s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
+	return s.update(ctx, cmd.EventID, model.OutboxDeliveryEventSucceeded, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
 		return delivery.MarkSucceeded(now)
 	})
 }
 
 func (s *OutboxService) MarkFailed(ctx context.Context, cmd command.MarkOutboxFailedCommand) (query.OutboxDeliveryView, error) {
-	return s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
+	return s.update(ctx, cmd.EventID, model.OutboxDeliveryEventFailed, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
 		return delivery.MarkFailedWithKind(
 			model.NormalizeDeliveryErrorKind(cmd.ErrorKind),
 			cmd.ErrorMessage,
@@ -88,7 +101,7 @@ func (s *OutboxService) MarkFailed(ctx context.Context, cmd command.MarkOutboxFa
 }
 
 func (s *OutboxService) Retry(ctx context.Context, cmd command.RetryOutboxCommand) (query.OutboxDeliveryView, error) {
-	view, err := s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
+	view, err := s.update(ctx, cmd.EventID, model.OutboxDeliveryEventRetry, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
 		return delivery.Retry(now)
 	})
 	if err != nil {
@@ -109,6 +122,7 @@ func (s *OutboxService) Retry(ctx context.Context, cmd command.RetryOutboxComman
 func (s *OutboxService) update(
 	ctx context.Context,
 	eventID string,
+	eventType model.OutboxDeliveryEventType,
 	timestamp time.Time,
 	mutate func(delivery *model.OutboxDelivery, now time.Time) error,
 ) (query.OutboxDeliveryView, error) {
@@ -128,7 +142,47 @@ func (s *OutboxService) update(
 	if err := s.repository.SaveOutboxDelivery(ctx, delivery); err != nil {
 		return query.OutboxDeliveryView{}, err
 	}
+	if err := s.recordEvent(ctx, delivery, eventType, timestamp); err != nil {
+		return query.OutboxDeliveryView{}, err
+	}
 	return assembler.ToOutboxDeliveryView(delivery), nil
+}
+
+func (s *OutboxService) recordEvent(
+	ctx context.Context,
+	delivery model.OutboxDelivery,
+	eventType model.OutboxDeliveryEventType,
+	timestamp time.Time,
+) error {
+	if s == nil || s.events == nil {
+		return nil
+	}
+	event, err := model.NewOutboxDeliveryEventFromDelivery(
+		outboxDeliveryEventID(delivery.Message.EventID, eventType, timestamp),
+		eventType,
+		delivery,
+		timestamp,
+	)
+	if err != nil {
+		return err
+	}
+	return s.events.AppendOutboxDeliveryEvent(ctx, event)
+}
+
+func outboxDeliveryEventID(
+	deliveryID string,
+	eventType model.OutboxDeliveryEventType,
+	timestamp time.Time,
+) string {
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	return fmt.Sprintf(
+		"outbox-event:%s:%s:%d",
+		deliveryID,
+		eventType,
+		timestamp.UTC().UnixNano(),
+	)
 }
 
 func (s *OutboxService) getModel(ctx context.Context, eventID string) (model.OutboxDelivery, error) {

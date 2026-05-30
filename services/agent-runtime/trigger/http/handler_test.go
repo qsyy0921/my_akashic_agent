@@ -889,6 +889,76 @@ func TestAgentJobEventsEndpointListsLifecycleStream(t *testing.T) {
 	}
 }
 
+func TestOutboxEventsEndpointListsLifecycleStream(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendServiceWithOutboxEvents(store, store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxServiceWithEvents(store, store, store)
+	outboxEvents := appservice.NewOutboxDeliveryEventService(store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
+
+	body := map[string]any{
+		"event_id": "outbox-events-http-1",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "2365524513",
+			"conversation_type": "private",
+		},
+		"content":   "generated image is ready",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/lease-next", bytes.NewReader([]byte(`{"worker_id":"outbox-worker","ttl_seconds":60}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease-next 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-events-http-1/succeeded", bytes.NewReader([]byte(`{}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected succeeded 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/outbox-events?delivery_id=outbox-events-http-1&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected outbox events 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"queued"`)) {
+		t.Fatalf("events response missing queued event: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"leased"`)) {
+		t.Fatalf("events response missing leased event: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"succeeded"`)) {
+		t.Fatalf("events response missing succeeded event: %s", response.Body.String())
+	}
+}
+
 func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	store := memory.NewStore()
 	mux := http.NewServeMux()
