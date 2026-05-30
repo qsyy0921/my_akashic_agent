@@ -363,6 +363,30 @@ async def test_agent_gateway_client_checks_private_echo():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_lists_delivery_adapters():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/delivery-adapters"
+        return _ok(
+            [
+                {
+                    "provider": "onebot",
+                    "channel": "qq_2365524513",
+                    "transport": "websocket",
+                    "enabled": True,
+                    "endpoint_configured": True,
+                    "access_token_configured": True,
+                }
+            ]
+        )
+
+    adapters = await _client(handler).list_delivery_adapters()
+
+    assert adapters[0]["channel"] == "qq_2365524513"
+    assert adapters[0]["transport"] == "websocket"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_sends_outbound_to_runtime():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

@@ -425,6 +425,14 @@ class AgentGatewayClient:
             )
         return data
 
+    async def list_delivery_adapters(self) -> list[dict[str, Any]]:
+        data = await self._request("GET", "/v1/delivery-adapters")
+        if not isinstance(data, list):
+            raise AgentGatewayError(
+                "agent runtime delivery adapter response is not a list"
+            )
+        return data
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 

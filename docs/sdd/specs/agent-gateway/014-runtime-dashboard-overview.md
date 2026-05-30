@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented initial read-only dashboard plugin.
+Implemented read-only dashboard plugin with delivery adapter diagnostics.
 
 ## Context
 
@@ -35,6 +35,7 @@ GET /v1/knowledge-checkpoints
 GET /v1/knowledge-worker-diagnostics
 GET /v1/job-events
 GET /v1/outbox-events
+GET /v1/delivery-adapters
 ```
 
 It summarizes:
@@ -47,6 +48,7 @@ It summarizes:
 - recent job lifecycle event count;
 - recent outbox lifecycle event count;
 - `rag_eval` quality failures.
+- configured delivery adapter count, enabled count, and disabled count.
 
 ## Boundaries
 
@@ -72,4 +74,5 @@ remain in the specific job/outbox plugins where mutation is explicit.
 - Endpoint failures are returned in `status.errors` without breaking the whole
   overview when other endpoints still respond.
 - Tests cover summary fields for leases, stale jobs, dead letters, checkpoint
-  lag, job events, outbox events, and `rag_eval` failures.
+  lag, job events, outbox events, `rag_eval` failures, and delivery adapter
+  visibility.

@@ -173,6 +173,25 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "workers": [],
     }
+    delivery_adapters = [
+        {
+            "provider": "onebot",
+            "channel": "qq_2365524513",
+            "transport": "websocket",
+            "enabled": True,
+            "endpoint_configured": True,
+            "access_token_configured": True,
+            "endpoint": "ws://127.0.0.1:3002",
+        },
+        {
+            "provider": "onebot",
+            "channel": "qq_1049511700",
+            "transport": "websocket",
+            "enabled": False,
+            "endpoint_configured": False,
+            "access_token_configured": False,
+        },
+    ]
     seen_paths: list[str] = []
 
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
@@ -198,6 +217,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         if parsed.path == "/v1/outbox-events":
             assert query["limit"] == ["10"]
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": outbox_events}))
+        if parsed.path == "/v1/delivery-adapters":
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": delivery_adapters}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -224,10 +245,23 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["job_events"] == 2
     assert payload["summary"]["outbox_events"] == 1
     assert payload["summary"]["rag_eval_failures"] == 1
+    assert payload["summary"]["delivery_adapters"] == 2
+    assert payload["summary"]["delivery_adapters_enabled"] == 1
+    assert payload["summary"]["delivery_adapters_disabled"] == 1
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
-    assert {"/healthz", "/v1/jobs", "/v1/outbox", "/v1/job-events", "/v1/outbox-events"}.issubset(set(seen_paths))
+    assert payload["delivery_adapters"][0]["channel"] == "qq_2365524513"
+    adapter_card = next(item for item in payload["cards"] if item["id"] == "delivery_adapters")
+    assert adapter_card["status"] == "warn"
+    assert {
+        "/healthz",
+        "/v1/jobs",
+        "/v1/outbox",
+        "/v1/job-events",
+        "/v1/outbox-events",
+        "/v1/delivery-adapters",
+    }.issubset(set(seen_paths))
 
 
 def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:

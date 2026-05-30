@@ -123,6 +123,13 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        delivery_adapters_raw, error = self._read_list("/v1/delivery-adapters")
+        if error:
+            errors.append({"endpoint": "delivery-adapters", "error": error})
+            delivery_adapters_raw = []
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -138,6 +145,11 @@ class RuntimeOverviewDashboardReader:
         outbox_events = [
             _normalize_outbox_event(item)
             for item in outbox_events_raw
+            if isinstance(item, Mapping)
+        ]
+        delivery_adapters = [
+            _normalize_delivery_adapter(item)
+            for item in delivery_adapters_raw
             if isinstance(item, Mapping)
         ]
 
@@ -165,6 +177,8 @@ class RuntimeOverviewDashboardReader:
             for item in jobs
             if item.get("job_type") == "rag_eval" and _is_failed_rag_eval(item)
         ]
+        enabled_adapters = [item for item in delivery_adapters if item["enabled"]]
+        disabled_adapters = [item for item in delivery_adapters if not item["enabled"]]
 
         summary = {
             "jobs_total": len(jobs),
@@ -179,6 +193,9 @@ class RuntimeOverviewDashboardReader:
             "job_events": len(events),
             "outbox_events": len(outbox_events),
             "rag_eval_failures": len(rag_eval_failures),
+            "delivery_adapters": len(delivery_adapters),
+            "delivery_adapters_enabled": len(enabled_adapters),
+            "delivery_adapters_disabled": len(disabled_adapters),
         }
 
         cards = _overview_cards(
@@ -195,6 +212,8 @@ class RuntimeOverviewDashboardReader:
             outbox_events=outbox_events,
             diagnostics=diagnostics,
             rag_eval_failures=rag_eval_failures,
+            delivery_adapters=delivery_adapters,
+            disabled_adapters=disabled_adapters,
         )
 
         return {
@@ -216,6 +235,7 @@ class RuntimeOverviewDashboardReader:
             "recent_events": events,
             "recent_outbox_events": outbox_events,
             "diagnostics": diagnostics,
+            "delivery_adapters": delivery_adapters,
             "status": {
                 "runtime_url": self.runtime_base_url,
                 "runtime_available": successful_reads > 0,
@@ -412,6 +432,21 @@ def _normalize_outbox_event(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_delivery_adapter(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": _text(item.get("provider")),
+        "channel": _text(item.get("channel")),
+        "transport": _text(item.get("transport")),
+        "enabled": bool(item.get("enabled")),
+        "endpoint_configured": bool(item.get("endpoint_configured")),
+        "access_token_configured": bool(item.get("access_token_configured")),
+        "endpoint": _text(item.get("endpoint")),
+        "notes": [str(value) for value in item.get("notes", [])]
+        if isinstance(item.get("notes"), list)
+        else [],
+    }
+
+
 def _overview_cards(
     *,
     health: Mapping[str, Any],
@@ -427,6 +462,8 @@ def _overview_cards(
     outbox_events: list[dict[str, Any]],
     diagnostics: Mapping[str, Any],
     rag_eval_failures: list[dict[str, Any]],
+    delivery_adapters: list[dict[str, Any]],
+    disabled_adapters: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     health_status = _text(health.get("status")) or ("degraded" if errors else "unknown")
     return [
@@ -485,6 +522,17 @@ def _overview_cards(
             summary.get("rag_eval_failures", 0),
             "danger" if summary.get("rag_eval_failures") else "ok",
             {"items": rag_eval_failures},
+        ),
+        _card(
+            "delivery_adapters",
+            "Delivery Adapters",
+            summary.get("delivery_adapters_enabled", 0),
+            "warn" if disabled_adapters else ("ok" if delivery_adapters else "muted"),
+            {
+                "enabled_count": summary.get("delivery_adapters_enabled", 0),
+                "disabled_count": summary.get("delivery_adapters_disabled", 0),
+                "items": delivery_adapters,
+            },
         ),
     ]
 

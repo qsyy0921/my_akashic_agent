@@ -106,3 +106,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-57-agent-job-nats-flow-smoke.md`
 - `2026-05-31-phase8-58-delivery-adapter-diagnostics.md`
 - `2026-05-31-phase8-59-private-echo-ledger.md`
+- `2026-05-31-phase8-60-runtime-adapter-dashboard.md`
