@@ -61,6 +61,7 @@
 - [x] 增加 Go-owned 私聊 echo 只读判断接口 `GET /v1/send-ledger/private-echo`：Go 统一处理文本回流以及空文本图片/文件/转发 marker 回流判断，Python QQ channel 优先调用该接口并保留旧 `recently_sent` fallback。
 - [x] 将 Go-owned delivery adapter 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可直接看到 Telegram/OneBot adapter enabled/disabled 状态，不需要依赖日志确认。
 - [x] 将 Go-owned queue backend 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可查看 NATS/本地队列 provider、mode、多 goroutine consumer concurrency、max-in-flight 与 external lease gate 阻断原因。
+- [x] 增加 Go-owned delivery dispatch readiness 只读接口 `POST /v1/delivery-dispatch/readiness`：Go 统一判断 outbox 路由计划是否有可用 DeliveryAdapter，返回 missing channel 和 side_effect=none，Python client 可读取但不改变现有发送行为。
 
 ## 下一步
 

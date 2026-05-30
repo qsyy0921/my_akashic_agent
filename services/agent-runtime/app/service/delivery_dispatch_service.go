@@ -43,6 +43,46 @@ func (s *DeliveryDispatchService) Plan(ctx context.Context, cmd command.PlanDeli
 	return assembler.ToDeliveryDispatchPlanView(plan), nil
 }
 
+func (s *DeliveryDispatchService) Readiness(ctx context.Context, cmd command.CheckDeliveryDispatchReadinessCommand) (query.DeliveryDispatchReadinessView, error) {
+	plan, err := s.planModel(ctx, cmd.EventID, cmd.ChannelByAccount)
+	if err != nil {
+		return query.DeliveryDispatchReadinessView{}, err
+	}
+	missingChannels := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, step := range plan.Steps {
+		channel := strings.TrimSpace(step.Channel)
+		if channel == "" {
+			continue
+		}
+		if _, ok := seen[channel]; ok {
+			continue
+		}
+		seen[channel] = struct{}{}
+		if _, ok := s.adapterFor(channel); !ok {
+			missingChannels = append(missingChannels, channel)
+		}
+	}
+	reason := "delivery_adapter_ready"
+	ready := len(missingChannels) == 0
+	if !ready {
+		reason = "delivery_adapter_unavailable"
+	}
+	return query.DeliveryDispatchReadinessView{
+		EventID:         plan.EventID,
+		Channel:         plan.Channel,
+		Ready:           ready,
+		Reason:          reason,
+		MissingChannels: missingChannels,
+		Plan:            assembler.ToDeliveryDispatchPlanView(plan),
+		Attributes: map[string]string{
+			"planned_by":  plan.Attributes["planned_by"],
+			"checked_by":  "agent_runtime_delivery_readiness",
+			"side_effect": "none",
+		},
+	}, nil
+}
+
 func (s *DeliveryDispatchService) Dispatch(ctx context.Context, cmd command.DispatchDeliveryCommand) (query.DeliveryDispatchResultView, error) {
 	plan, err := s.planModel(ctx, cmd.EventID, cmd.ChannelByAccount)
 	if err != nil {

@@ -9,5 +9,6 @@ import (
 
 type DeliveryDispatchPlanner interface {
 	Plan(ctx context.Context, cmd command.PlanDeliveryDispatchCommand) (query.DeliveryDispatchPlanView, error)
+	Readiness(ctx context.Context, cmd command.CheckDeliveryDispatchReadinessCommand) (query.DeliveryDispatchReadinessView, error)
 	Dispatch(ctx context.Context, cmd command.DispatchDeliveryCommand) (query.DeliveryDispatchResultView, error)
 }

@@ -519,6 +519,41 @@ class AgentGatewayClient:
             raise AgentGatewayError("agent runtime dispatch plan response has no steps")
         return data
 
+    async def check_outbox_dispatch_readiness(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            data = await self._request(
+                "POST",
+                "/v1/delivery-dispatch/readiness",
+                json_body={
+                    "event_id": str(event_id),
+                    "channel_by_account": channel_by_account or {},
+                },
+            )
+        except AgentGatewayHTTPError as exc:
+            kind = ""
+            message = exc.text
+            if isinstance(exc.payload, dict):
+                message = str(exc.payload.get("message") or message)
+                error_data = exc.payload.get("data")
+                if isinstance(error_data, dict):
+                    kind = str(error_data.get("error_kind") or "")
+            if kind:
+                raise AgentGatewayDeliveryPlanError(kind, message) from exc
+            raise
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime dispatch readiness response is not an object"
+            )
+        plan = data.get("plan")
+        if not isinstance(plan, dict):
+            raise AgentGatewayError("agent runtime dispatch readiness has no plan")
+        return data
+
     async def dispatch_outbox_delivery(
         self,
         event_id: str,

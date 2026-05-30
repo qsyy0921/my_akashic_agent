@@ -20,6 +20,16 @@ type DeliveryDispatchPlanView struct {
 	Attributes map[string]string          `json:"attributes,omitempty"`
 }
 
+type DeliveryDispatchReadinessView struct {
+	EventID         string                   `json:"event_id"`
+	Channel         string                   `json:"channel"`
+	Ready           bool                     `json:"ready"`
+	Reason          string                   `json:"reason"`
+	MissingChannels []string                 `json:"missing_channels,omitempty"`
+	Plan            DeliveryDispatchPlanView `json:"plan"`
+	Attributes      map[string]string        `json:"attributes,omitempty"`
+}
+
 type DeliveryDispatchResultStepView struct {
 	StepIndex         int               `json:"step_index"`
 	Kind              string            `json:"kind"`

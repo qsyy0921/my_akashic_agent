@@ -97,6 +97,7 @@ func RegisterDeliveryDispatchRoutes(
 	planner inport.DeliveryDispatchPlanner,
 ) {
 	mux.Handle("/v1/delivery-dispatch/plan", DeliveryDispatchPlanHandler(planner))
+	mux.Handle("/v1/delivery-dispatch/readiness", DeliveryDispatchReadinessHandler(planner))
 	mux.Handle("/v1/delivery-dispatch/send", DeliveryDispatchSendHandler(planner))
 }
 
@@ -706,6 +707,41 @@ func DeliveryDispatchSendHandler(planner inport.DeliveryDispatchPlanner) http.Ha
 		})
 		if err != nil {
 			writeDeliveryDispatchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
+	})
+}
+
+func DeliveryDispatchReadinessHandler(planner inport.DeliveryDispatchPlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "delivery dispatch planner disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.PlanDeliveryDispatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		result, err := planner.Readiness(r.Context(), command.CheckDeliveryDispatchReadinessCommand{
+			EventID:          request.EventID,
+			ChannelByAccount: request.ChannelByAccount,
+		})
+		if err != nil {
+			kind := deliveryDispatchErrorKind(err)
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+				Data: map[string]string{
+					"error_kind": kind,
+				},
+			})
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})

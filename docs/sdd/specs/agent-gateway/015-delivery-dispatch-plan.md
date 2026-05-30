@@ -21,6 +21,11 @@ Introduce a Go-owned `DeliveryPlanner` that turns one outbox delivery into a
 stable dispatch plan. Python remains a platform sender for this slice, but it
 must execute the Go plan when the runtime is available.
 
+A follow-up read-only readiness check lets Go answer whether the current
+runtime has a DeliveryAdapter for the planned channel. This moves route and
+adapter readiness decisions behind the Go runtime without sending a platform
+message.
+
 ## Non-Goals
 
 - Do not replace `message_push` or NcatBot/Telegram SDK sends in this slice.
@@ -38,6 +43,46 @@ Content-Type: application/json
   "event_id": "outbox event id",
   "channel_by_account": {
     "2365524513": "qq_2365524513"
+  }
+}
+```
+
+Readiness check:
+
+```http
+POST /v1/delivery-dispatch/readiness
+Content-Type: application/json
+
+{
+  "event_id": "outbox event id",
+  "channel_by_account": {
+    "2365524513": "qq_2365524513"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "code": "OK",
+  "data": {
+    "event_id": "outbox event id",
+    "channel": "qq_2365524513",
+    "ready": false,
+    "reason": "delivery_adapter_unavailable",
+    "missing_channels": ["qq_2365524513"],
+    "plan": {
+      "event_id": "outbox event id",
+      "channel": "qq_2365524513",
+      "chat_id": "1049511700",
+      "step_count": 1,
+      "steps": []
+    },
+    "attributes": {
+      "checked_by": "agent_runtime_delivery_readiness",
+      "side_effect": "none"
+    }
   }
 }
 ```
@@ -97,12 +142,15 @@ outbox failure classification:
    `message_push` can pass them to channel adapters.
 7. Route errors are non-retryable and are surfaced as `route_error`; malformed
    delivery records are surfaced as `validation_error`.
+8. Readiness checks must not call `DispatchDeliveryStep`; they inspect the
+   planned channels and adapter support only.
 
 ## Layering
 
 - `domain/service`: pure `DeliveryPlanner`.
 - `app/service`: loads the outbox delivery and maps domain plan to query view.
-- `trigger/http`: exposes the plan endpoint and serializes error kind.
+- `trigger/http`: exposes the plan/readiness endpoints and serializes error
+  kind.
 - `integrations`: Python compatibility worker asks Go for a plan, then executes
   platform sends through the existing tool.
 
@@ -110,6 +158,9 @@ outbox failure classification:
 
 - Go unit tests cover account mapping, text/image/file split, and route errors.
 - Go HTTP tests cover the dispatch plan endpoint.
+- Go HTTP tests cover readiness with configured and missing adapters, proving
+  no adapter send method is called.
 - Python client tests cover plan request and Go error-kind propagation.
+- Python client tests cover readiness response validation.
 - Python worker tests prove runtime plan execution is preferred and errors are
   written back to outbox with the Go-provided kind.

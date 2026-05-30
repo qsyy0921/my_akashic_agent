@@ -524,6 +524,53 @@ async def test_agent_gateway_client_requests_outbox_dispatch_plan():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_checks_outbox_dispatch_readiness():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        assert request.url.path == "/v1/delivery-dispatch/readiness"
+        assert body == {
+            "event_id": "qq:private:1",
+            "channel_by_account": {"2365524513": "qq_2365524513"},
+        }
+        return _ok(
+            {
+                "event_id": "qq:private:1",
+                "channel": "qq_2365524513",
+                "ready": False,
+                "reason": "delivery_adapter_unavailable",
+                "missing_channels": ["qq_2365524513"],
+                "plan": {
+                    "event_id": "qq:private:1",
+                    "channel": "qq_2365524513",
+                    "chat_id": "1049511700",
+                    "step_count": 1,
+                    "steps": [
+                        {
+                            "step_index": 1,
+                            "kind": "text",
+                            "channel": "qq_2365524513",
+                            "chat_id": "1049511700",
+                            "message": "hello",
+                        }
+                    ],
+                },
+            }
+        )
+
+    readiness = await _client(handler).check_outbox_dispatch_readiness(
+        "qq:private:1",
+        channel_by_account={"2365524513": "qq_2365524513"},
+    )
+
+    assert readiness["ready"] is False
+    assert readiness["missing_channels"] == ["qq_2365524513"]
+    assert calls[0][1] == "/v1/delivery-dispatch/readiness"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_maps_dispatch_plan_error_kind():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/delivery-dispatch/plan"

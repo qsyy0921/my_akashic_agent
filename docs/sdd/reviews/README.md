@@ -108,3 +108,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-59-private-echo-ledger.md`
 - `2026-05-31-phase8-60-runtime-adapter-dashboard.md`
 - `2026-05-31-phase8-61-runtime-queue-dashboard.md`
+- `2026-05-31-phase8-62-delivery-dispatch-readiness.md`

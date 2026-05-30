@@ -570,6 +570,130 @@ func TestDeliveryDispatchPlanEndpointBuildsSendSteps(t *testing.T) {
 	}
 }
 
+func TestDeliveryDispatchReadinessEndpointChecksAdaptersWithoutSending(t *testing.T) {
+	store := memory.NewStore()
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	adapter := &fakeDeliveryAdapter{channel: "qq_2365524513"}
+	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(store, adapter)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(
+		mux,
+		nil,
+		nil,
+		nil,
+		sender,
+		appservice.NewImageJobService(store, store),
+		outbox,
+		appservice.NewMediaAssetService(store),
+		appservice.NewAgentJobService(store),
+		appservice.NewSendLedgerService(store),
+		appservice.NewInboxEventService(store),
+	)
+	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+
+	body := map[string]any{
+		"event_id": "outbox-dispatch-ready-1",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "2365524513",
+			"conversation_id":   "1049511700",
+			"conversation_type": "private",
+		},
+		"content":   "hello readiness",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	request := []byte(`{"event_id":"outbox-dispatch-ready-1","channel_by_account":{"2365524513":"qq_2365524513"}}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-dispatch/readiness", bytes.NewReader(request)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected readiness 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"event_id":"outbox-dispatch-ready-1"`,
+		`"channel":"qq_2365524513"`,
+		`"ready":true`,
+		`"reason":"delivery_adapter_ready"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+	if len(adapter.steps) != 0 {
+		t.Fatalf("readiness must not dispatch adapter steps: %+v", adapter.steps)
+	}
+}
+
+func TestDeliveryDispatchReadinessEndpointReportsMissingAdapter(t *testing.T) {
+	store := memory.NewStore()
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	deliveryDispatch := appservice.NewDeliveryDispatchService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(
+		mux,
+		nil,
+		nil,
+		nil,
+		sender,
+		appservice.NewImageJobService(store, store),
+		appservice.NewOutboxService(store, store),
+		appservice.NewMediaAssetService(store),
+		appservice.NewAgentJobService(store),
+		appservice.NewSendLedgerService(store),
+		appservice.NewInboxEventService(store),
+	)
+	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+
+	body := map[string]any{
+		"event_id": "outbox-dispatch-not-ready-1",
+		"channel": map[string]any{
+			"platform":          "telegram",
+			"account_id":        "telegram-bot",
+			"conversation_id":   "8655199155",
+			"conversation_type": "private",
+		},
+		"content":   "hello telegram",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-dispatch/readiness", bytes.NewReader([]byte(`{"event_id":"outbox-dispatch-not-ready-1"}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected readiness 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"ready":false`,
+		`"reason":"delivery_adapter_unavailable"`,
+		`"missing_channels":["telegram"]`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
