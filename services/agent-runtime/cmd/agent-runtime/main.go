@@ -22,6 +22,7 @@ import (
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
 
@@ -66,6 +67,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init outbox repository: %v", err)
 	}
+	deliveryAdapters, err := newDeliveryAdapters()
+	if err != nil {
+		log.Fatalf("init delivery adapters: %v", err)
+	}
 	inboxEventRepository, err := newInboxEventRepository()
 	if err != nil {
 		log.Fatalf("init inbox event repository: %v", err)
@@ -92,7 +97,7 @@ func main() {
 	sender := appservice.NewMessageSendService(store, sendLedgerRepository, outboxRepository, outboxQueue)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxService(outboxRepository, outboxQueue)
-	deliveryDispatch := appservice.NewDeliveryDispatchService(outboxRepository)
+	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(outboxRepository, deliveryAdapters...)
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
@@ -128,6 +133,29 @@ func envOrFirstDefaultWithSource(keys []string, fallback string) (string, string
 		}
 	}
 	return fallback, "default"
+}
+
+func newDeliveryAdapters() ([]outport.DeliveryAdapter, error) {
+	adapters := make([]outport.DeliveryAdapter, 0, 1)
+	token := strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_BOT_TOKEN"))
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	}
+	if token == "" {
+		return adapters, nil
+	}
+	channels := csvEnvOrDefault("AKASHIC_TELEGRAM_CHANNELS", []string{"telegram"})
+	adapter, err := telegramdelivery.NewAdapter(telegramdelivery.Config{
+		Token:    token,
+		BaseURL:  strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_API_BASE_URL")),
+		Channels: channels,
+	})
+	if err != nil {
+		return nil, err
+	}
+	adapters = append(adapters, adapter)
+	log.Printf("telegram delivery adapter enabled for channels=%s", strings.Join(channels, ","))
+	return adapters, nil
 }
 
 func newAgentJobRepository() (outport.AgentJobRepository, error) {

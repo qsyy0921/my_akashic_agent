@@ -7,6 +7,8 @@ from urllib.parse import unquote, urlparse
 
 from integrations.agent_gateway import (
     AgentGatewayClient,
+    AgentGatewayDeliveryDispatchError,
+    AgentGatewayDeliveryDispatchUnavailable,
     AgentGatewayDeliveryPlanError,
     AgentGatewayError,
     AgentGatewayNoJob,
@@ -112,6 +114,28 @@ class AgentGatewayOutboxWorker:
         self._stopped.set()
 
     async def _dispatch_delivery(self, delivery: dict[str, Any]) -> list[str]:
+        if self._should_try_runtime_dispatch(delivery):
+            dispatch_method = getattr(self._client, "dispatch_outbox_delivery", None)
+            if callable(dispatch_method):
+                try:
+                    result = await dispatch_method(
+                        str(delivery.get("event_id") or ""),
+                        channel_by_account=self._channel_by_account,
+                    )
+                    return _runtime_dispatch_results(result)
+                except AgentGatewayDeliveryDispatchUnavailable:
+                    logger.warning(
+                        "[agent_runtime_outbox_worker] runtime delivery adapter unavailable; falling back to python sender",
+                        exc_info=True,
+                    )
+                except AgentGatewayDeliveryDispatchError as exc:
+                    raise DeliveryDispatchError(exc.kind, str(exc)) from exc
+                except AgentGatewayError:
+                    logger.warning(
+                        "[agent_runtime_outbox_worker] runtime dispatch failed before platform send; falling back to python sender",
+                        exc_info=True,
+                    )
+
         plan_method = getattr(self._client, "plan_outbox_dispatch", None)
         if callable(plan_method):
             try:
@@ -128,6 +152,12 @@ class AgentGatewayOutboxWorker:
                     exc_info=True,
                 )
         return await self._dispatch_delivery_legacy(delivery)
+
+    def _should_try_runtime_dispatch(self, delivery: dict[str, Any]) -> bool:
+        route = _delivery_route(delivery)
+        route_kind = str(route.get("kind") or "").strip().lower()
+        channel_name = self._resolve_channel_name(route).strip().lower()
+        return route_kind == "telegram" or channel_name == "telegram" or channel_name.startswith("telegram_")
 
     async def _dispatch_runtime_plan(self, plan: dict[str, Any]) -> list[str]:
         steps = plan.get("steps")
@@ -268,6 +298,20 @@ def _delivery_attachments(delivery: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
     return [item for item in raw if isinstance(item, dict) and item.get("url")]
+
+
+def _runtime_dispatch_results(result: dict[str, Any]) -> list[str]:
+    raw_results = result.get("results")
+    if not isinstance(raw_results, list):
+        raise DeliveryDispatchError(
+            "validation_error",
+            "agent runtime dispatch response has no results",
+        )
+    return [
+        f"{str(item.get('provider') or 'runtime')}:{str(item.get('status') or 'sent')}"
+        for item in raw_results
+        if isinstance(item, dict)
+    ]
 
 
 def _normalise_attachment_uri(attachment: dict[str, Any]) -> str:

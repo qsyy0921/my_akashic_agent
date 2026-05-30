@@ -25,10 +25,11 @@
 - [x] 将 Python proactive loop 接入 Go proactive scheduling state，并保留 SQLite fallback。
 - [x] 修复 dashboard 旧附件链接兼容问题：Go media content 404/403 时，仅对 workspace uploads 内的文件名做安全回退。
 - [x] 增加 Go-owned DeliveryAdapter dispatch plan：Go 负责 outbox 路由解析、附件拆分和 file URI 规范化，Python 兼容 worker 只执行平台发送。
+- [x] 增加 Go-owned Telegram DeliveryAdapter：Go 通过 Telegram Bot API 执行 outbox text/photo/document 发送，Python worker 对 Telegram 优先走 Go，adapter 不可用时回退旧发送链路。
 
 ## 下一步
 
-- [ ] 将 Telegram/QQ platform sender 逐步迁到 Go `DeliveryAdapter`，先做 Telegram HTTP adapter，再评估 OneBot/NapCat 发送适配。
+- [ ] 评估并实现 QQ/NapCat Go `DeliveryAdapter`：先明确 OneBot HTTP/WebSocket 发送边界、双账号路由、二维码登录状态和防循环交互策略。
 - [ ] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream。
 - [ ] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 eval worker。
 - [ ] 增加运行态 dashboard 面板，展示 runtime health、worker leases、stale jobs、dead letters、checkpoint lag、job event stream。

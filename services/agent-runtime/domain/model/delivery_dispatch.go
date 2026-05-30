@@ -26,3 +26,27 @@ type DeliveryDispatchPlan struct {
 	Steps      []DeliveryDispatchStep
 	Attributes map[string]string
 }
+
+type DeliveryDispatchResultStatus string
+
+const (
+	DeliveryDispatchSent DeliveryDispatchResultStatus = "sent"
+)
+
+type DeliveryDispatchResult struct {
+	StepIndex         int
+	Kind              DeliveryDispatchStepKind
+	Channel           string
+	ChatID            string
+	Status            DeliveryDispatchResultStatus
+	Provider          string
+	ProviderMessageID string
+	Attributes        map[string]string
+}
+
+type DeliveryDispatchExecution struct {
+	EventID    string
+	StepCount  int
+	Results    []DeliveryDispatchResult
+	Attributes map[string]string
+}

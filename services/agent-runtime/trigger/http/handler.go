@@ -80,6 +80,7 @@ func RegisterDeliveryDispatchRoutes(
 	planner inport.DeliveryDispatchPlanner,
 ) {
 	mux.Handle("/v1/delivery-dispatch/plan", DeliveryDispatchPlanHandler(planner))
+	mux.Handle("/v1/delivery-dispatch/send", DeliveryDispatchSendHandler(planner))
 }
 
 func RegisterProactiveStateRoutes(
@@ -602,6 +603,34 @@ func DeliveryDispatchPlanHandler(planner inport.DeliveryDispatchPlanner) http.Ha
 	})
 }
 
+func DeliveryDispatchSendHandler(planner inport.DeliveryDispatchPlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "delivery dispatch planner disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.DispatchDeliveryRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		result, err := planner.Dispatch(r.Context(), command.DispatchDeliveryCommand{
+			EventID:          request.EventID,
+			ChannelByAccount: request.ChannelByAccount,
+		})
+		if err != nil {
+			writeDeliveryDispatchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
+	})
+}
+
 func deliveryDispatchErrorKind(err error) string {
 	if err == nil {
 		return ""
@@ -610,6 +639,30 @@ func deliveryDispatchErrorKind(err error) string {
 		return strings.TrimSpace(kinded.DeliveryErrorKind())
 	}
 	return "unknown"
+}
+
+func writeDeliveryDispatchError(w http.ResponseWriter, err error) {
+	kind := deliveryDispatchErrorKind(err)
+	writeJSON(w, deliveryDispatchErrorStatus(kind), types.Result{
+		Code:    types.ErrorCodeInvalidArgument,
+		Message: err.Error(),
+		Data: map[string]string{
+			"error_kind": kind,
+		},
+	})
+}
+
+func deliveryDispatchErrorStatus(kind string) int {
+	switch kind {
+	case "sender_unavailable":
+		return http.StatusNotImplemented
+	case "platform_timeout":
+		return http.StatusGatewayTimeout
+	case "platform_error", "unknown":
+		return http.StatusBadGateway
+	default:
+		return http.StatusBadRequest
+	}
 }
 
 func parseOutboxPath(path string) (string, string) {

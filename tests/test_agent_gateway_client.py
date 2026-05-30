@@ -9,6 +9,8 @@ import pytest
 from agent.config_models import AgentGatewayIntegrationConfig
 from integrations.agent_gateway import (
     AgentGatewayClient,
+    AgentGatewayDeliveryDispatchError,
+    AgentGatewayDeliveryDispatchUnavailable,
     AgentGatewayDeliveryPlanError,
     AgentGatewayError,
     AgentGatewayNoJob,
@@ -354,6 +356,83 @@ async def test_agent_gateway_client_maps_dispatch_plan_error_kind():
         await _client(handler).plan_outbox_dispatch("qq:private:bad")
 
     assert raised.value.kind == "route_error"
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_client_dispatches_outbox_delivery():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        assert request.url.path == "/v1/delivery-dispatch/send"
+        return _ok(
+            {
+                "event_id": "telegram:private:1",
+                "results": [
+                    {
+                        "step_index": 1,
+                        "kind": "text",
+                        "channel": "telegram",
+                        "chat_id": "8655199155",
+                        "status": "sent",
+                        "provider": "telegram",
+                        "provider_message_id": "123",
+                    }
+                ],
+            }
+        )
+
+    result = await _client(handler).dispatch_outbox_delivery(
+        "telegram:private:1",
+        channel_by_account={"bot": "telegram"},
+    )
+
+    assert result["results"][0]["provider_message_id"] == "123"
+    assert calls[0] == (
+        "POST",
+        "/v1/delivery-dispatch/send",
+        {
+            "event_id": "telegram:private:1",
+            "channel_by_account": {"bot": "telegram"},
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_client_maps_dispatch_unavailable_to_fallback_signal():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/delivery-dispatch/send"
+        return httpx.Response(
+            501,
+            json={
+                "code": "INVALID_ARGUMENT",
+                "message": "delivery adapter unavailable for channel \"telegram\"",
+                "data": {"error_kind": "sender_unavailable"},
+            },
+        )
+
+    with pytest.raises(AgentGatewayDeliveryDispatchUnavailable):
+        await _client(handler).dispatch_outbox_delivery("telegram:private:1")
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_client_maps_dispatch_error_kind():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/delivery-dispatch/send"
+        return httpx.Response(
+            502,
+            json={
+                "code": "INVALID_ARGUMENT",
+                "message": "telegram platform error",
+                "data": {"error_kind": "platform_error"},
+            },
+        )
+
+    with pytest.raises(AgentGatewayDeliveryDispatchError) as raised:
+        await _client(handler).dispatch_outbox_delivery("telegram:private:1")
+
+    assert raised.value.kind == "platform_error"
 
 
 @pytest.mark.asyncio

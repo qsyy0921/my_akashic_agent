@@ -37,6 +37,16 @@ class AgentGatewayDeliveryPlanError(AgentGatewayError):
         self.kind = kind or "unknown"
 
 
+class AgentGatewayDeliveryDispatchUnavailable(AgentGatewayError):
+    pass
+
+
+class AgentGatewayDeliveryDispatchError(AgentGatewayError):
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind or "unknown"
+
+
 class AgentGatewayClient:
     def __init__(
         self,
@@ -361,6 +371,41 @@ class AgentGatewayClient:
         steps = data.get("steps")
         if not isinstance(steps, list):
             raise AgentGatewayError("agent runtime dispatch plan response has no steps")
+        return data
+
+    async def dispatch_outbox_delivery(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            data = await self._request(
+                "POST",
+                "/v1/delivery-dispatch/send",
+                json_body={
+                    "event_id": str(event_id),
+                    "channel_by_account": channel_by_account or {},
+                },
+            )
+        except AgentGatewayHTTPError as exc:
+            kind = ""
+            message = exc.text
+            if isinstance(exc.payload, dict):
+                message = str(exc.payload.get("message") or message)
+                error_data = exc.payload.get("data")
+                if isinstance(error_data, dict):
+                    kind = str(error_data.get("error_kind") or "")
+            if exc.status_code == 501 and kind == "sender_unavailable":
+                raise AgentGatewayDeliveryDispatchUnavailable(message) from exc
+            if kind:
+                raise AgentGatewayDeliveryDispatchError(kind, message) from exc
+            raise
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime dispatch response is not an object")
+        results = data.get("results")
+        if not isinstance(results, list):
+            raise AgentGatewayError("agent runtime dispatch response has no results")
         return data
 
     async def mark_outbox_succeeded(self, event_id: str) -> dict[str, Any]:

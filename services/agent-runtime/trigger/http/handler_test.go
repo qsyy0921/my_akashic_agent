@@ -2,6 +2,7 @@ package httptrigger_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
@@ -517,6 +519,121 @@ func TestDeliveryDispatchPlanEndpointBuildsSendSteps(t *testing.T) {
 	}
 }
 
+func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	adapter := &fakeDeliveryAdapter{channel: "telegram"}
+	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(store, adapter)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+
+	body := map[string]any{
+		"event_id": "outbox-dispatch-send-1",
+		"channel": map[string]any{
+			"platform":          "telegram",
+			"account_id":        "telegram-bot",
+			"conversation_id":   "8655199155",
+			"conversation_type": "private",
+		},
+		"content":   "hello telegram",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-dispatch/send", bytes.NewReader([]byte(`{"event_id":"outbox-dispatch-send-1"}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected send 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"event_id":"outbox-dispatch-send-1"`,
+		`"status":"sent"`,
+		`"provider":"test-telegram"`,
+		`"provider_message_id":"msg-1"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("send response missing %s: %s", expected, bodyText)
+		}
+	}
+	if len(adapter.steps) != 1 || adapter.steps[0].Message != "hello telegram" {
+		t.Fatalf("adapter did not receive expected step: %+v", adapter.steps)
+	}
+}
+
+func TestDeliveryDispatchSendEndpointReturnsUnavailableForUnsupportedRoute(t *testing.T) {
+	store := memory.NewStore()
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	deliveryDispatch := appservice.NewDeliveryDispatchService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(
+		mux,
+		nil,
+		nil,
+		nil,
+		sender,
+		appservice.NewImageJobService(store, store),
+		appservice.NewOutboxService(store, store),
+		appservice.NewMediaAssetService(store),
+		appservice.NewAgentJobService(store),
+		appservice.NewSendLedgerService(store),
+		appservice.NewInboxEventService(store),
+	)
+	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+
+	body := map[string]any{
+		"event_id": "outbox-dispatch-send-unavailable",
+		"channel": map[string]any{
+			"platform":          "telegram",
+			"account_id":        "telegram-bot",
+			"conversation_id":   "8655199155",
+			"conversation_type": "private",
+		},
+		"content":   "hello telegram",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-dispatch/send", bytes.NewReader([]byte(`{"event_id":"outbox-dispatch-send-unavailable"}`))))
+	if response.Code != http.StatusNotImplemented {
+		t.Fatalf("expected send 501, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"error_kind":"sender_unavailable"`) {
+		t.Fatalf("expected sender_unavailable response: %s", response.Body.String())
+	}
+}
+
 func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	assetRoot := t.TempDir()
 	assetPath := filepath.Join(assetRoot, "qq-image.txt")
@@ -616,6 +733,28 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	if got := response.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("unexpected content type: %s", got)
 	}
+}
+
+type fakeDeliveryAdapter struct {
+	channel string
+	steps   []model.DeliveryDispatchStep
+}
+
+func (a *fakeDeliveryAdapter) SupportsDeliveryChannel(channel string) bool {
+	return strings.EqualFold(strings.TrimSpace(channel), a.channel)
+}
+
+func (a *fakeDeliveryAdapter) DispatchDeliveryStep(_ context.Context, step model.DeliveryDispatchStep) (model.DeliveryDispatchResult, error) {
+	a.steps = append(a.steps, step)
+	return model.DeliveryDispatchResult{
+		StepIndex:         step.StepIndex,
+		Kind:              step.Kind,
+		Channel:           step.Channel,
+		ChatID:            step.ChatID,
+		Status:            model.DeliveryDispatchSent,
+		Provider:          "test-telegram",
+		ProviderMessageID: "msg-1",
+	}, nil
 }
 
 func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {

@@ -35,4 +35,6 @@ execution.
   RAGFlow and future memory/RAG workers.
 - `015-delivery-dispatch-plan.md`: Go-owned outbound dispatch planning before
   Python compatibility workers perform platform sends.
+- `016-telegram-delivery-adapter.md`: Go-owned Telegram HTTP Bot API sender
+  behind the delivery dispatch boundary.
 - Agent architecture boundary specs live under `../agent-architecture/`.

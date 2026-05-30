@@ -74,3 +74,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-25-python-proactive-state-runtime-bridge.md`
 - `2026-05-30-phase8-26-dashboard-media-filename-fallback.md`
 - `2026-05-30-phase8-27-delivery-dispatch-plan.md`
+- `2026-05-30-phase8-28-telegram-delivery-adapter.md`

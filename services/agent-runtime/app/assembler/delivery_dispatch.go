@@ -27,3 +27,25 @@ func ToDeliveryDispatchPlanView(plan model.DeliveryDispatchPlan) query.DeliveryD
 		Attributes: plan.Attributes,
 	}
 }
+
+func ToDeliveryDispatchResultView(execution model.DeliveryDispatchExecution) query.DeliveryDispatchResultView {
+	results := make([]query.DeliveryDispatchResultStepView, 0, len(execution.Results))
+	for _, result := range execution.Results {
+		results = append(results, query.DeliveryDispatchResultStepView{
+			StepIndex:         result.StepIndex,
+			Kind:              string(result.Kind),
+			Channel:           result.Channel,
+			ChatID:            result.ChatID,
+			Status:            string(result.Status),
+			Provider:          result.Provider,
+			ProviderMessageID: result.ProviderMessageID,
+			Attributes:        result.Attributes,
+		})
+	}
+	return query.DeliveryDispatchResultView{
+		EventID:    execution.EventID,
+		StepCount:  execution.StepCount,
+		Results:    results,
+		Attributes: execution.Attributes,
+	}
+}

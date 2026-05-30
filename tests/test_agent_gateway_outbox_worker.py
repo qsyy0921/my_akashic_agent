@@ -4,6 +4,8 @@ from typing import Any
 
 import pytest
 
+from integrations.agent_gateway import AgentGatewayDeliveryDispatchError
+from integrations.agent_gateway import AgentGatewayDeliveryDispatchUnavailable
 from integrations.agent_gateway import AgentGatewayNoJob
 from integrations.agent_gateway import AgentGatewayDeliveryPlanError
 from integrations.agent_gateway_outbox_worker import AgentGatewayOutboxWorker
@@ -68,6 +70,45 @@ class _FakePlanClient(_FakeClient):
         return self.plan or {"event_id": event_id, "steps": []}
 
 
+class _FakeDispatchClient(_FakePlanClient):
+    def __init__(
+        self,
+        delivery: dict[str, Any],
+        dispatch: dict[str, Any] | None = None,
+        dispatch_error: Exception | None = None,
+        plan: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(delivery, plan=plan)
+        self.dispatch = dispatch
+        self.dispatch_error = dispatch_error
+
+    async def dispatch_outbox_delivery(
+        self,
+        event_id: str,
+        *,
+        channel_by_account: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            ("dispatch_outbox_delivery", event_id, channel_by_account or {})
+        )
+        if self.dispatch_error is not None:
+            raise self.dispatch_error
+        return self.dispatch or {
+            "event_id": event_id,
+            "results": [
+                {
+                    "step_index": 1,
+                    "kind": "text",
+                    "channel": "telegram",
+                    "chat_id": "8655199155",
+                    "status": "sent",
+                    "provider": "telegram",
+                    "provider_message_id": "123",
+                }
+            ],
+        }
+
+
 def _delivery(**overrides: Any) -> dict[str, Any]:
     value = {
         "event_id": "qq:private:1",
@@ -82,6 +123,19 @@ def _delivery(**overrides: Any) -> dict[str, Any]:
     }
     value.update(overrides)
     return value
+
+
+def _telegram_delivery(**overrides: Any) -> dict[str, Any]:
+    return _delivery(
+        event_id="telegram:private:1",
+        channel={
+            "kind": "telegram",
+            "account_id": "",
+            "conversation_id": "8655199155",
+            "conversation_type": "private",
+        },
+        **overrides,
+    )
 
 
 def _worker(
@@ -198,6 +252,87 @@ async def test_outbox_worker_prefers_runtime_dispatch_plan():
             "message": "done",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_prefers_go_runtime_dispatch_for_telegram():
+    client = _FakeDispatchClient(_telegram_delivery())
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert result["dispatch_count"] == 1
+    assert client.calls[1] == (
+        "dispatch_outbox_delivery",
+        "telegram:private:1",
+        {"2365524513": "qq_2365524513"},
+    )
+    assert push_tool.calls == []
+    assert client.calls[-1] == ("mark_outbox_succeeded", "telegram:private:1")
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_falls_back_when_go_runtime_dispatch_unavailable():
+    client = _FakeDispatchClient(
+        _telegram_delivery(),
+        dispatch_error=AgentGatewayDeliveryDispatchUnavailable(
+            "delivery adapter unavailable"
+        ),
+        plan={
+            "event_id": "telegram:private:1",
+            "steps": [
+                {
+                    "step_index": 1,
+                    "kind": "text",
+                    "channel": "telegram",
+                    "chat_id": "8655199155",
+                    "message": "hello",
+                }
+            ],
+        },
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["dispatch_count"] == 1
+    assert client.calls[1][0] == "dispatch_outbox_delivery"
+    assert client.calls[2][0] == "plan_outbox_dispatch"
+    assert push_tool.calls == [
+        {
+            "channel": "telegram",
+            "chat_id": "8655199155",
+            "message": "hello",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_uses_go_runtime_dispatch_error_kind():
+    client = _FakeDispatchClient(
+        _telegram_delivery(),
+        dispatch_error=AgentGatewayDeliveryDispatchError(
+            "platform_error",
+            "telegram platform error",
+        ),
+    )
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["failed"] is True
+    assert result["error_kind"] == "platform_error"
+    assert push_tool.calls == []
+    assert client.calls[-1] == (
+        "mark_outbox_failed",
+        "telegram:private:1",
+        "platform_error",
+        "telegram platform error",
+    )
 
 
 @pytest.mark.asyncio

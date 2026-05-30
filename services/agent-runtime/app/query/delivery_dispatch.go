@@ -18,3 +18,21 @@ type DeliveryDispatchPlanView struct {
 	Steps      []DeliveryDispatchStepView `json:"steps"`
 	Attributes map[string]string          `json:"attributes,omitempty"`
 }
+
+type DeliveryDispatchResultStepView struct {
+	StepIndex         int               `json:"step_index"`
+	Kind              string            `json:"kind"`
+	Channel           string            `json:"channel"`
+	ChatID            string            `json:"chat_id"`
+	Status            string            `json:"status"`
+	Provider          string            `json:"provider,omitempty"`
+	ProviderMessageID string            `json:"provider_message_id,omitempty"`
+	Attributes        map[string]string `json:"attributes,omitempty"`
+}
+
+type DeliveryDispatchResultView struct {
+	EventID    string                           `json:"event_id"`
+	StepCount  int                              `json:"step_count"`
+	Results    []DeliveryDispatchResultStepView `json:"results"`
+	Attributes map[string]string                `json:"attributes,omitempty"`
+}
