@@ -58,7 +58,7 @@ def build_proactive_runtime(
         return tasks, None
 
     # 2. 先准备 proactive 独立状态存储和配置快照。
-    proactive_state = ProactiveStateStore(workspace / "proactive.db")
+    proactive_state = _build_proactive_state_store(config, workspace)
     proactive_cfg = config.proactive
     proactive_provider = _build_proactive_provider(config, provider)
 
@@ -88,6 +88,25 @@ def build_proactive_runtime(
     tasks.append(proactive_loop.run())
 
     return tasks, proactive_loop
+
+
+def _build_proactive_state_store(config: Config, workspace: Path):
+    sqlite_state = ProactiveStateStore(workspace / "proactive.db")
+    agent_runtime = getattr(config, "agent_runtime", None) or getattr(
+        config,
+        "agent_gateway",
+        None,
+    )
+    if not bool(getattr(agent_runtime, "enabled", False)):
+        return sqlite_state
+    if not str(getattr(agent_runtime, "base_url", "") or "").strip():
+        return sqlite_state
+
+    from integrations.agent_runtime_proactive_state import (
+        AgentRuntimeProactiveStateStore,
+    )
+
+    return AgentRuntimeProactiveStateStore(agent_runtime, sqlite_state)
 
 
 def build_memory_optimizer_task(

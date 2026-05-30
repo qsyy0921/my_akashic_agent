@@ -259,6 +259,8 @@ $env:AKASHIC_PROACTIVE_STATE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\
 This state is deterministic runtime infrastructure: delivery dedupe,
 delivery-window counts, context-only send markers, and drift interval markers.
 Python still owns prompt selection, LLM decisions, and final proactive content.
+When `integrations.agent_runtime.enabled=true`, Python `ProactiveLoop` uses these
+routes for scheduling state and keeps SQLite as a compatibility fallback.
 
 ```text
 POST /v1/proactive/deliveries
