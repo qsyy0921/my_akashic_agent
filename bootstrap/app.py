@@ -78,6 +78,7 @@ class AppRuntime:
         self.group_memory_loop = None
         self.agent_runtime_image_worker = None
         self.agent_runtime_knowledge_worker = None
+        self.agent_runtime_rag_eval_worker = None
         self.agent_runtime_outbox_worker = None
         self.peer_process_manager = None
         self.peer_poller = None
@@ -184,6 +185,13 @@ class AppRuntime:
                 )
             )
             self.tasks.extend(knowledge_worker_tasks)
+            rag_eval_tasks, self.agent_runtime_rag_eval_worker = (
+                _build_agent_runtime_rag_eval_worker_tasks(
+                    self.config,
+                    self.workspace,
+                )
+            )
+            self.tasks.extend(rag_eval_tasks)
             image_worker_tasks, self.agent_runtime_image_worker = (
                 _build_agent_runtime_image_worker_tasks(
                     self.config,
@@ -251,6 +259,10 @@ class AppRuntime:
                 (
                     "agent_runtime_knowledge_worker.stop",
                     _loop_stop(self.agent_runtime_knowledge_worker),
+                ),
+                (
+                    "agent_runtime_rag_eval_worker.stop",
+                    _loop_stop(self.agent_runtime_rag_eval_worker),
                 ),
                 (
                     "agent_runtime_outbox_worker.stop",
@@ -393,6 +405,37 @@ def _build_agent_runtime_knowledge_worker_tasks(
         ),
         enqueue_interval_seconds=float(
             getattr(agent_runtime, "knowledge_job_interval_seconds", 60.0)
+        ),
+    )
+    return [worker.run()], worker
+
+
+def _build_agent_runtime_rag_eval_worker_tasks(
+    config: Config,
+    workspace: Path,
+) -> tuple[list[Awaitable[None]], object | None]:
+    agent_runtime = _get_agent_runtime_config(config)
+    if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
+        return [], None
+    if not bool(getattr(agent_runtime, "rag_eval_worker_enabled", False)):
+        return [], None
+    if not str(getattr(agent_runtime, "base_url", "")).strip():
+        logger.warning("agent_runtime 已启用但 base_url 为空，跳过 rag eval worker")
+        return [], None
+
+    from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_rag_eval_worker import (
+        AgentRuntimeRagEvalWorker,
+        GroupMemoryFixtureEvaluator,
+    )
+
+    worker = AgentRuntimeRagEvalWorker(
+        client=AgentRuntimeClient(agent_runtime),
+        evaluator=GroupMemoryFixtureEvaluator(workspace=workspace),
+        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
+        poll_interval_seconds=float(
+            getattr(agent_runtime, "poll_interval_seconds", 2.0)
         ),
     )
     return [worker.run()], worker

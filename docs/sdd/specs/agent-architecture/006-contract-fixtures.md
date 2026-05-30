@@ -36,6 +36,7 @@ Python tests.
 | `image_job.lifecycle.json` | pending/running/succeeded/failed image job states |
 | `memory_extract_job.group_thread.json` | group memory extraction job |
 | `rag_ingest_job.thread_summary.json` | RAG indexing job for thread summary |
+| `rag_eval_job.group_memory.json` | Go-owned RAG evaluation job executed by Python eval worker |
 | `knowledge_checkpoint.ragflow.qq.json` | Go-owned RAGFlow checkpoint cursor committed by Python worker; `cursor` matches the runtime integer API and extended cursor details live in metadata |
 | `inbox_replay.observe_only.qq.json` | Go inbox replay window for observe-only group memory extraction |
 | `outbox_delivery.qq.private.text.json` | Go outbox delivery state, OneBot adapter result, and echo-loop guard |

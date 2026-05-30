@@ -21,6 +21,7 @@ var requiredContractFixtures = []string{
 	"image_job.lifecycle.json",
 	"memory_extract_job.group_thread.json",
 	"rag_ingest_job.thread_summary.json",
+	"rag_eval_job.group_memory.json",
 	"knowledge_checkpoint.ragflow.qq.json",
 	"inbox_replay.observe_only.qq.json",
 	"outbox_delivery.qq.private.text.json",
@@ -95,6 +96,10 @@ func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
 		"agent_job_event_stream.rag_ingest.json": {
 			"job_type",
 			"events",
+		},
+		"rag_eval_job.group_memory.json": {
+			"job_type",
+			"payload",
 		},
 	}
 

@@ -144,6 +144,7 @@ class AgentGatewayIntegrationConfig:
     lease_ttl_seconds: int = 300
     poll_interval_seconds: float = 2.0
     knowledge_job_interval_seconds: float = 60.0
+    rag_eval_worker_enabled: bool = False
     outbox_worker_enabled: bool = False
     outbound_channels: list[str] = field(default_factory=lambda: ["telegram"])
 

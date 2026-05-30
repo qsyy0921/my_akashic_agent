@@ -23,6 +23,7 @@ REQUIRED_CONTRACTS = {
     "image_job.lifecycle.json",
     "memory_extract_job.group_thread.json",
     "rag_ingest_job.thread_summary.json",
+    "rag_eval_job.group_memory.json",
     "knowledge_checkpoint.ragflow.qq.json",
     "inbox_replay.observe_only.qq.json",
     "outbox_delivery.qq.private.text.json",
@@ -115,6 +116,10 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
             "kind": "AgentJobEventStream",
             "required_keys": {"job_type", "events"},
         },
+        "rag_eval_job.group_memory.json": {
+            "kind": "RagEvalJob",
+            "required_keys": {"job_type", "payload"},
+        },
     }
 
     for name, expectation in expectations.items():
@@ -146,6 +151,10 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
     event_stream = _load_json(CONTRACT_DIR / "agent_job_event_stream.rag_ingest.json")
     assert [event["sequence"] for event in event_stream["events"]] == [1, 2, 3]
     assert event_stream["events"][-1]["status"] == "succeeded"
+
+    rag_eval = _load_json(CONTRACT_DIR / "rag_eval_job.group_memory.json")
+    assert rag_eval["job_type"] == "rag_eval"
+    assert rag_eval["payload"]["fixture"].endswith("group_memory_open_strategy_dataset.json")
 
 
 def test_group_replay_fixture_manifest_is_complete() -> None:

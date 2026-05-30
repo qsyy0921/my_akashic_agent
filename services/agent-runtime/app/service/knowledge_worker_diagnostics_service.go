@@ -112,12 +112,16 @@ func (s *KnowledgeWorkerDiagnosticsService) workerDiagnostics(
 		recentJobs = append(recentJobs, assembler.ToAgentJobView(job))
 	}
 
-	checkpoints, err := s.checkpoints.ListKnowledgeCheckpoints(ctx, query.KnowledgeCheckpointFilter{
-		Limit:  limit,
-		Prefix: spec.checkpointPrefix,
-	})
-	if err != nil {
-		return query.KnowledgeWorkerDiagnosticView{}, err
+	var checkpoints []model.KnowledgeCheckpoint
+	if spec.checkpointPrefix != "" {
+		var err error
+		checkpoints, err = s.checkpoints.ListKnowledgeCheckpoints(ctx, query.KnowledgeCheckpointFilter{
+			Limit:  limit,
+			Prefix: spec.checkpointPrefix,
+		})
+		if err != nil {
+			return query.KnowledgeWorkerDiagnosticView{}, err
+		}
 	}
 	sort.SliceStable(checkpoints, func(i, j int) bool {
 		if checkpoints[i].UpdatedAt.Equal(checkpoints[j].UpdatedAt) {
@@ -163,6 +167,7 @@ func knowledgeWorkerSpecs() []knowledgeWorkerSpec {
 	return []knowledgeWorkerSpec{
 		{jobType: model.AgentJobGroupMemoryExtract, checkpointPrefix: "memory:"},
 		{jobType: model.AgentJobRagIngest, checkpointPrefix: "ragflow:"},
+		{jobType: model.AgentJobRagEval},
 	}
 }
 

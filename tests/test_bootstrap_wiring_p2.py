@@ -556,6 +556,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
                     "lease_ttl_seconds": 180,
                     "poll_interval_seconds": 3,
                     "knowledge_job_interval_seconds": 30,
+                    "rag_eval_worker_enabled": True,
                     "outbox_worker_enabled": True,
                     "outbound_channels": ["telegram", "qq_future"],
                 }
@@ -572,6 +573,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.lease_ttl_seconds == 180
     assert cfg.agent_gateway.poll_interval_seconds == 3
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
+    assert cfg.agent_gateway.rag_eval_worker_enabled is True
     assert cfg.agent_gateway.outbox_worker_enabled is True
     assert cfg.agent_gateway.outbound_channels == ["telegram", "qq_future"]
 
@@ -602,6 +604,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
                     "lease_ttl_seconds": 99,
                     "poll_interval_seconds": 4,
                     "knowledge_job_interval_seconds": 45,
+                    "rag_eval_worker_enabled": True,
                     "outbox_worker_enabled": True,
                     "outbound_channels": ["telegram"],
                 }
@@ -618,6 +621,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
     assert cfg.agent_gateway.lease_ttl_seconds == 99
     assert cfg.agent_gateway.poll_interval_seconds == 4
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 45
+    assert cfg.agent_gateway.rag_eval_worker_enabled is True
     assert cfg.agent_gateway.outbox_worker_enabled is True
     assert cfg.agent_gateway.outbound_channels == ["telegram"]
     assert cfg.agent_runtime is cfg.agent_gateway
@@ -1378,6 +1382,49 @@ def test_bootstrap_runtime_outbox_worker_is_opt_in():
     assert len(legacy_tasks) == 1
     assert runtime_worker is not None
     assert legacy_worker is not None
+
+
+def test_bootstrap_runtime_rag_eval_worker_is_opt_in(tmp_path: Path):
+    from bootstrap.app import _build_agent_runtime_rag_eval_worker_tasks
+    from agent.config_models import AgentGatewayIntegrationConfig, Config
+
+    disabled_config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            rag_eval_worker_enabled=False,
+        ),
+    )
+    disabled_tasks, disabled_worker = _build_agent_runtime_rag_eval_worker_tasks(
+        disabled_config,
+        tmp_path,
+    )
+    assert disabled_tasks == []
+    assert disabled_worker is None
+
+    enabled_config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            rag_eval_worker_enabled=True,
+        ),
+    )
+    tasks, worker = _build_agent_runtime_rag_eval_worker_tasks(
+        enabled_config,
+        tmp_path,
+    )
+    for task in tasks:
+        task.close()
+    assert len(tasks) == 1
+    assert worker is not None
 
 
 def test_bootstrap_configures_runtime_backed_message_push_channels():

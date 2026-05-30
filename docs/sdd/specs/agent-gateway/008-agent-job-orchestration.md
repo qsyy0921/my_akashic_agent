@@ -18,6 +18,8 @@ Implemented:
   `group_memory_extract` and optional `rag_ingest` jobs, lease them from Go,
   execute group memory/RAGFlow indexing, and write lifecycle results back to
   generic jobs.
+- Python RAG eval worker can lease `rag_eval` jobs from Go and execute offline
+  group-memory/RAG fixtures, writing metrics back to generic job results.
 - Agent jobs can be persisted in a file-backed store via `AKASHIC_AGENT_JOBS_DSN`
   (or `AKASHIC_AGENT_JOBS_PATH`) and recovered across gateway restarts.
 - Dashboard panel plugin (`plugins/agent_jobs`) provides job list/detail/retry/cancel
@@ -185,4 +187,5 @@ Go owns:
     messages from Go `/v1/inbox` when `agent_runtime` is enabled, keeping Python
     session store only as a compatibility fallback.
 - [x] Add persistence.
-- [ ] Add dashboard job panel.
+- [x] Add dashboard job panel.
+- [x] Add opt-in Python worker for `rag_eval` jobs.

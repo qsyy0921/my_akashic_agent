@@ -160,6 +160,15 @@ func TestKnowledgeWorkerDiagnosticsServiceSummarizesMemoryAndRAGJobs(t *testing.
 	)); err != nil {
 		t.Fatalf("create rag job: %v", err)
 	}
+	if _, err := jobs.Create(ctx, sampleKnowledgeJobCommand(
+		"rag_eval:qq:284331268:fixture:1",
+		"rag_eval",
+		"284331268",
+		map[string]string{"fixture": "tests/fixtures/group_memory_open_strategy_dataset.json"},
+		now.Add(-24*time.Minute),
+	)); err != nil {
+		t.Fatalf("create rag eval job: %v", err)
+	}
 	if _, err := jobs.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
 		WorkerID:   "knowledge-worker",
 		JobType:    "rag_ingest",
@@ -193,10 +202,10 @@ func TestKnowledgeWorkerDiagnosticsServiceSummarizesMemoryAndRAGJobs(t *testing.
 	if err != nil {
 		t.Fatalf("diagnostics: %v", err)
 	}
-	if view.Totals["jobs"] != 2 || view.Totals["checkpoints"] != 2 {
+	if view.Totals["jobs"] != 3 || view.Totals["checkpoints"] != 2 {
 		t.Fatalf("unexpected totals: %+v", view.Totals)
 	}
-	if view.Totals["stale_leases"] != 1 || view.Totals["leaseable_jobs"] != 2 {
+	if view.Totals["stale_leases"] != 1 || view.Totals["leaseable_jobs"] != 3 {
 		t.Fatalf("unexpected operational totals: %+v", view.Totals)
 	}
 	group := findKnowledgeWorkerDiagnostic(t, view, "group_memory_extract")
@@ -212,6 +221,10 @@ func TestKnowledgeWorkerDiagnosticsServiceSummarizesMemoryAndRAGJobs(t *testing.
 	}
 	if rag.LatestCheckpoint == nil || rag.LatestCheckpoint.Cursor != 128 {
 		t.Fatalf("unexpected rag checkpoint: %+v", rag.LatestCheckpoint)
+	}
+	ragEval := findKnowledgeWorkerDiagnostic(t, view, "rag_eval")
+	if ragEval.StatusCounts["pending"] != 1 || len(ragEval.Checkpoints) != 0 {
+		t.Fatalf("unexpected rag eval diagnostic: %+v", ragEval)
 	}
 }
 

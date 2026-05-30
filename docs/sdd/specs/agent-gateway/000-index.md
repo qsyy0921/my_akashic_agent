@@ -33,6 +33,10 @@ execution.
   for replay, dashboard queries, and group-memory source citations.
 - `010-knowledge-checkpoints.md`: Go-owned knowledge ingestion cursors for
   RAGFlow and future memory/RAG workers.
+- `012-agent-job-event-stream.md`: Go-owned durable lifecycle event stream for
+  generic agent jobs.
+- `013-rag-eval-jobs.md`: Go-owned `rag_eval` lifecycle with Python eval
+  worker execution.
 - `015-delivery-dispatch-plan.md`: Go-owned outbound dispatch planning before
   Python compatibility workers perform platform sends.
 - `016-telegram-delivery-adapter.md`: Go-owned Telegram HTTP Bot API sender

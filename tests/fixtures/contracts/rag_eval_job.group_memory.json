@@ -1,0 +1,31 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "RagEvalJob",
+  "job_id": "rag_eval:qq:284331268:open-strategy:v1",
+  "job_type": "rag_eval",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "284331268",
+  "conversation_type": "group",
+  "agent_id": "rag-eval-worker",
+  "status": "pending",
+  "payload": {
+    "suite": "group_memory_open_fixture",
+    "fixture": "tests/fixtures/group_memory_open_strategy_dataset.json",
+    "min_top1_accuracy": "1.0",
+    "min_evidence_coverage": "1.0"
+  },
+  "timestamp": "2026-05-30T01:10:00+08:00",
+  "source_message_ids": [
+    "fixture:group_memory_open_strategy_dataset:msg-1",
+    "fixture:group_memory_open_strategy_dataset:msg-2",
+    "fixture:group_memory_open_strategy_dataset:msg-3",
+    "fixture:group_memory_open_strategy_dataset:msg-4"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "owner": "agent-runtime",
+    "executor": "python-rag-eval-worker",
+    "quality_gate": "offline_group_memory"
+  }
+}
