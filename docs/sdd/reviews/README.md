@@ -55,3 +55,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-6-send-ledger-control-plane.md`
 - `2026-05-30-phase8-7-python-send-ledger-bridge.md`
 - `2026-05-30-phase8-8-send-ledger-dashboard-diagnostics.md`
+- `2026-05-30-phase8-9-go-outbox-persistence.md`

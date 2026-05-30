@@ -26,9 +26,9 @@ domain         -> types only when unavoidable
 types          -> none
 ```
 
-The implementation keeps message/event handling in-memory to keep startup simple,
-while durable control-plane job state can be enabled independently for
-`AgentJob` lifecycle records.
+The implementation keeps message event fanout in-memory to keep startup simple,
+while durable control-plane state can be enabled independently for `AgentJob`,
+media asset, send ledger, and outbox delivery records.
 
 ## Run Locally
 
@@ -181,6 +181,17 @@ the loop guard. Python compatibility senders should call this endpoint after a
 successful QQ/Telegram send until platform dispatch is fully cut over to Go.
 When `integrations.agent_runtime.enabled=true`, the Python QQ and Telegram
 compatibility channels record successful sends here on a best-effort basis.
+
+Persist outbound delivery state across runtime restarts:
+
+```powershell
+$env:AKASHIC_OUTBOX_DSN = "E:\agent\akashic\.akashic-workspace\runtime\outbox.json"
+```
+
+With this environment variable set, `/v1/outbound` and `/v1/outbox/*` use the
+file-backed outbox store. Queued, dispatching, failed, retried, succeeded, and
+dead-letter state remains inspectable after `agent-runtime` restarts. Use
+`memory` only for development runs where delivery recovery is not required.
 
 For controlled bot-to-bot interaction, set `with_bot_protocol=true` on outbound
 requests. The app layer prepends a visible protocol tag:

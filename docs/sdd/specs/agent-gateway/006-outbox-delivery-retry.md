@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for non-production control-plane migration.
+Accepted with file-backed recovery for non-production control-plane migration.
 
 ## Context
 
@@ -29,9 +29,11 @@ The aggregate records:
 - last error message;
 - created and updated timestamps.
 
-The initial implementation uses the in-memory infrastructure store. It is a
-control-plane slice that proves the domain, app, and HTTP contract. Production
-delivery cutover still requires a persistent store and platform adapters.
+The implementation supports both the in-memory infrastructure store and an
+optional file-backed store configured by `AKASHIC_OUTBOX_DSN` or
+`AKASHIC_OUTBOX_PATH`. It remains a control-plane slice: Go owns delivery state,
+attempts, retry, and recovery, while production platform sends still require
+adapter cutover.
 
 ## HTTP Contract
 
@@ -87,11 +89,12 @@ Failure requests include:
 - Application service test proves failed deliveries can be re-enqueued.
 - HTTP test proves `/v1/outbound` creates a delivery and `/v1/outbox/*`
   exposes/update states.
+- Infrastructure test proves file-backed outbox delivery state and queued retry
+  ids survive runtime restarts.
 - Go architecture tests continue to enforce DDD dependencies.
 
 ## Next Steps
 
-- Add JSONL or SQLite persistence for delivery state.
 - Add platform delivery adapters behind an outbound port.
 - Add dashboard outbox/error panel.
 - Cut Python channel direct sends only after adapter shadow delivery is proven.

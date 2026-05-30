@@ -16,6 +16,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
+	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
@@ -53,6 +54,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init send ledger repository: %v", err)
 	}
+	outboxRepository, outboxQueue, err := newOutboxStore()
+	if err != nil {
+		log.Fatalf("init outbox repository: %v", err)
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
 		store,
@@ -63,9 +68,9 @@ func main() {
 		loopGuard,
 		mediaAssetRepository,
 	)
-	sender := appservice.NewMessageSendService(store, sendLedgerRepository, store, store)
+	sender := appservice.NewMessageSendService(store, sendLedgerRepository, outboxRepository, outboxQueue)
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
-	outbox := appservice.NewOutboxService(store, store)
+	outbox := appservice.NewOutboxService(outboxRepository, outboxQueue)
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
@@ -133,6 +138,30 @@ func newSendLedgerRepository() (outport.SendLedger, error) {
 		return sendledgerstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
+}
+
+func newOutboxStore() (outport.OutboxRepository, outport.OutboxQueue, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			store := memory.NewStore()
+			return store, store, nil
+		}
+		store, err := outboxstore.NewStore(dsn)
+		if err != nil {
+			return nil, nil, err
+		}
+		return store, store, nil
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_PATH")); path != "" {
+		store, err := outboxstore.NewStore(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		return store, store, nil
+	}
+	store := memory.NewStore()
+	return store, store, nil
 }
 
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
