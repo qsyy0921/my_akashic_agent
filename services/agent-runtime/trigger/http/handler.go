@@ -53,6 +53,13 @@ func RegisterRoutes(
 	mux.Handle("/v1/inbox/", InboxEventStateHandler(inboxEvents))
 }
 
+func RegisterKnowledgeCheckpointRoutes(
+	mux *http.ServeMux,
+	checkpoints inport.KnowledgeCheckpointManager,
+) {
+	mux.Handle("/v1/knowledge-checkpoints/", KnowledgeCheckpointStateHandler(checkpoints))
+}
+
 func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: map[string]string{"status": "ok"}})
@@ -201,6 +208,54 @@ func InboxEventStateHandler(inboxEvents inport.InboxEventViewer) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func KnowledgeCheckpointStateHandler(checkpoints inport.KnowledgeCheckpointManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checkpoints == nil {
+			http.Error(w, "knowledge checkpoint manager disabled", http.StatusNotImplemented)
+			return
+		}
+		checkpointID := strings.TrimPrefix(r.URL.Path, "/v1/knowledge-checkpoints/")
+		checkpointID, err := url.PathUnescape(checkpointID)
+		if err != nil || strings.TrimSpace(checkpointID) == "" {
+			http.Error(w, "missing checkpoint id", http.StatusBadRequest)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			checkpoint, err := checkpoints.Get(r.Context(), checkpointID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: checkpoint})
+		case http.MethodPost, http.MethodPut:
+			var request dto.UpsertKnowledgeCheckpointRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			timestamp, err := parseOptionalTimestamp(request.Timestamp)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			checkpoint, err := checkpoints.Upsert(r.Context(), command.UpsertKnowledgeCheckpointCommand{
+				CheckpointID: checkpointID,
+				Cursor:       request.Cursor,
+				Metadata:     request.Metadata,
+				Timestamp:    timestamp,
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: checkpoint})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 }
 

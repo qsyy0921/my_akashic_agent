@@ -20,6 +20,7 @@ from session.manager import SessionManager
 class _FakeGatewayService:
     def __init__(self) -> None:
         self.jobs: dict[str, dict[str, Any]] = {}
+        self.checkpoints: dict[str, dict[str, Any]] = {}
         self._ordered: list[str] = []
 
     async def create_job(
@@ -104,6 +105,26 @@ class _FakeGatewayService:
     async def list_jobs(self, **_query: Any) -> list[dict[str, Any]]:
         return [copy.deepcopy(job) for job in self.jobs.values()]
 
+    async def get_knowledge_checkpoint(self, checkpoint_id: str) -> dict[str, Any] | None:
+        value = self.checkpoints.get(checkpoint_id)
+        return copy.deepcopy(value) if value is not None else None
+
+    async def update_knowledge_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        cursor: int,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        value = {
+            "checkpoint_id": checkpoint_id,
+            "cursor": int(cursor),
+            "metadata": dict(metadata or {}),
+            "updated_at": _now_iso(),
+        }
+        self.checkpoints[checkpoint_id] = value
+        return copy.deepcopy(value)
+
     def snapshot(self, job_id: str) -> dict[str, Any]:
         return copy.deepcopy(self.jobs[job_id])
 
@@ -121,11 +142,15 @@ class _FakeRagflowIndexer:
 
     async def execute(self, **kwargs: Any) -> str:
         self.calls.append(kwargs)
+        since_seq = int(kwargs.get("since_seq", 0))
+        end_seq = since_seq + 1
         return json.dumps(
             {
                 "ok": True,
                 "message_count": 2,
-                "display_name": "qq_group_284331268_seq1_3.txt",
+                "display_name": f"qq_group_284331268_seq{since_seq}_{end_seq}.txt",
+                "start_seq": since_seq,
+                "end_seq": end_seq,
                 "data": {
                     "dataset_id": kwargs.get("dataset_id"),
                     "document_ids": ["mock-doc-1"],
@@ -155,6 +180,22 @@ class _AdapterClient(AgentGatewayClient):
 
     async def fail_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
         return await self._fake.fail_job(job_id, error_message=error_message)
+
+    async def get_knowledge_checkpoint(self, checkpoint_id: str) -> dict[str, Any] | None:
+        return await self._fake.get_knowledge_checkpoint(checkpoint_id)
+
+    async def update_knowledge_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        cursor: int,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        return await self._fake.update_knowledge_checkpoint(
+            checkpoint_id,
+            cursor=cursor,
+            metadata=metadata,
+        )
 
 
 @pytest.mark.asyncio
@@ -233,6 +274,10 @@ async def test_smoke_knowledge_worker_end_to_end_with_real_group_memory_and_fake
 
     assert len(ragflow_indexer.calls) == 2
     assert {entry["result"]["dataset_id"] for entry in [second, third]} <= {"ds-smoke-1", "ds-smoke-2"}
+    assert sorted(fake_gateway.checkpoints) == [
+        "ragflow:qq:284331268:ds-smoke-1",
+        "ragflow:qq:284331268:ds-smoke-2",
+    ]
 
     failed = await worker.process_once()
     assert failed == {"processed": False, "reason": "no_job"}

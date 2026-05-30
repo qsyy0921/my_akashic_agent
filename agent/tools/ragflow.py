@@ -228,7 +228,17 @@ class RAGFlowIndexQQGroupTool(Tool):
                 if int(row.get("seq", -1)) >= int(since_seq) and str(row.get("role") or "") == "user"
             ][:limit]
             if not selected:
-                return _json_error(f"没有可索引的群消息: {session_key}")
+                return _json(
+                    {
+                        "ok": True,
+                        "session_key": session_key,
+                        "message_count": 0,
+                        "display_name": "",
+                        "start_seq": None,
+                        "end_seq": None,
+                        "data": {},
+                    }
+                )
             lines = [
                 f"# QQ Group {group_id}",
                 "",
@@ -263,6 +273,8 @@ class RAGFlowIndexQQGroupTool(Tool):
                     "session_key": session_key,
                     "message_count": len(selected),
                     "display_name": name,
+                    "start_seq": int(selected[0].get("seq", 0)),
+                    "end_seq": int(selected[-1].get("seq", 0)),
                     "data": data,
                 }
             )

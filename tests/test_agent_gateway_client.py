@@ -140,6 +140,36 @@ async def test_agent_gateway_client_lists_inbox_events_with_cursor_filters():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_gets_and_updates_knowledge_checkpoint():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        raw_path = request.url.raw_path.decode()
+        if request.method == "GET":
+            assert raw_path == "/v1/knowledge-checkpoints/ragflow%3Aqq%3A27234224%3Ads1"
+            return _ok({"checkpoint_id": "ragflow:qq:27234224:ds1", "cursor": 41})
+        if request.method == "PUT":
+            assert raw_path == "/v1/knowledge-checkpoints/ragflow%3Aqq%3A27234224%3Ads1"
+            assert body == {"cursor": 42, "metadata": {"group_id": "27234224"}}
+            return _ok({"checkpoint_id": "ragflow:qq:27234224:ds1", "cursor": 42})
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+    found = await client.get_knowledge_checkpoint("ragflow:qq:27234224:ds1")
+    updated = await client.update_knowledge_checkpoint(
+        "ragflow:qq:27234224:ds1",
+        cursor=42,
+        metadata={"group_id": "27234224"},
+    )
+
+    assert found["cursor"] == 41
+    assert updated["cursor"] == 42
+    assert [call[0] for call in calls] == ["GET", "PUT"]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_updates_legacy_image_job_state():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

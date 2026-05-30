@@ -14,6 +14,7 @@ import (
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
+	knowledgecheckpointstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/knowledgecheckpointstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
@@ -63,6 +64,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init inbox event repository: %v", err)
 	}
+	knowledgeCheckpointRepository, err := newKnowledgeCheckpointRepository()
+	if err != nil {
+		log.Fatalf("init knowledge checkpoint repository: %v", err)
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
 		store,
@@ -85,10 +90,12 @@ func main() {
 	agentJobs := appservice.NewAgentJobService(agentJobRepository)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
+	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
+	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -181,6 +188,20 @@ func newInboxEventRepository() (outport.InboxEventRepository, error) {
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_INBOX_PATH")); path != "" {
 		return inboxstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newKnowledgeCheckpointRepository() (outport.KnowledgeCheckpointRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_KNOWLEDGE_CHECKPOINTS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return knowledgecheckpointstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_KNOWLEDGE_CHECKPOINTS_PATH")); path != "" {
+		return knowledgecheckpointstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

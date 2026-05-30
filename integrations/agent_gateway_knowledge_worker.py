@@ -226,11 +226,19 @@ class AgentGatewayKnowledgeWorker:
         dataset_id = str(payload.get("dataset_id") or "").strip()
         if not group_id or not dataset_id:
             raise RuntimeError("rag_ingest job requires group_id and dataset_id")
+        checkpoint_id = f"ragflow:qq:{group_id}:{dataset_id}"
+        checkpoint = await self._client.get_knowledge_checkpoint(checkpoint_id)
+        checkpoint_cursor = _non_negative_int(
+            checkpoint.get("cursor") if isinstance(checkpoint, dict) else None,
+            -1,
+        )
+        requested_since_seq = _non_negative_int(payload.get("since_seq"), 0)
+        since_seq = max(requested_since_seq, checkpoint_cursor + 1)
         raw = await self._ragflow_indexer.execute(
             dataset_id=dataset_id,
             group_id=group_id,
             max_messages=_positive_int(payload.get("max_messages"), 1000),
-            since_seq=_non_negative_int(payload.get("since_seq"), 0),
+            since_seq=since_seq,
             parse=_bool_text(payload.get("parse"), True),
         )
         try:
@@ -239,9 +247,26 @@ class AgentGatewayKnowledgeWorker:
             raise RuntimeError(f"ragflow indexer returned non-json result: {raw[:500]}") from exc
         if not result.get("ok"):
             raise RuntimeError(str(result.get("error") or result))
+        end_seq = _optional_int(result.get("end_seq"))
+        message_count = _non_negative_int(result.get("message_count"), 0)
+        if message_count > 0 and end_seq is not None:
+            await self._client.update_knowledge_checkpoint(
+                checkpoint_id,
+                cursor=end_seq,
+                metadata={
+                    "job_type": "rag_ingest",
+                    "source": "qq",
+                    "group_id": group_id,
+                    "dataset_id": dataset_id,
+                    "display_name": str(result.get("display_name") or ""),
+                },
+            )
         return {
             "group_id": group_id,
             "dataset_id": dataset_id,
+            "checkpoint_id": checkpoint_id,
+            "since_seq": since_seq,
+            "end_seq": end_seq,
             "message_count": result.get("message_count"),
             "display_name": result.get("display_name"),
             "data": result.get("data"),
@@ -286,6 +311,15 @@ def _non_negative_int(value: Any, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return max(0, parsed)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _bool_text(value: Any, fallback: bool) -> bool:

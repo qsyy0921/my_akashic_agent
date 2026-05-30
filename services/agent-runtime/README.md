@@ -104,6 +104,17 @@ record normalized `InboxEvent` rows in a file-backed raw message store. Use
 `memory` only for development runs where replay and group-memory source
 recovery are not required.
 
+Persist knowledge/RAG ingestion checkpoints across runtime restarts:
+
+```powershell
+$env:AKASHIC_KNOWLEDGE_CHECKPOINTS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\knowledge-checkpoints.json"
+```
+
+With this environment variable set, `/v1/knowledge-checkpoints/*` stores
+per-source/per-target cursor state in Go. Python RAG workers read this state
+before choosing `since_seq` and advance it only after successful non-empty
+ingestion.
+
 ## HTTP Contracts
 
 Health:
@@ -221,6 +232,23 @@ POST /v1/jobs/{job_id}/cancel
 
 The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
 workers still execute image generation, RAG, and memory extraction.
+
+Read and advance knowledge/RAG checkpoints:
+
+```text
+GET /v1/knowledge-checkpoints/{checkpoint_id}
+PUT /v1/knowledge-checkpoints/{checkpoint_id}
+```
+
+For QQ group RAGFlow ingest, the checkpoint id convention is:
+
+```text
+ragflow:qq:{group_id}:{dataset_id}
+```
+
+The checkpoint API owns cursor durability and rejects backwards movement in the
+domain layer. RAGFlow upload, parsing, and external dataset behavior remain in
+Python.
 
 Record and query recent bot sends:
 

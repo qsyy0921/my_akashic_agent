@@ -121,6 +121,39 @@ class AgentGatewayClient:
             raise AgentGatewayError("agent runtime inbox response is not a list")
         return data
 
+    async def get_knowledge_checkpoint(self, checkpoint_id: str) -> dict[str, Any] | None:
+        try:
+            data = await self._request(
+                "GET",
+                f"/v1/knowledge-checkpoints/{quote(str(checkpoint_id), safe='')}",
+            )
+        except AgentGatewayError as exc:
+            if "HTTP 404" in str(exc):
+                return None
+            raise
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime checkpoint response is not an object")
+        return data
+
+    async def update_knowledge_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        cursor: int,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "PUT",
+            f"/v1/knowledge-checkpoints/{quote(str(checkpoint_id), safe='')}",
+            json_body={
+                "cursor": int(cursor),
+                "metadata": metadata or {},
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime checkpoint response is not an object")
+        return data
+
     async def lease_next(
         self,
         *,

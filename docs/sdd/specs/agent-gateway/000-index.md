@@ -31,4 +31,6 @@ execution.
   dead-letter control plane for image/RAG/memory jobs.
 - `009-inbox-raw-message-store.md`: Go-owned raw observed/inbound message store
   for replay, dashboard queries, and group-memory source citations.
+- `010-knowledge-checkpoints.md`: Go-owned knowledge ingestion cursors for
+  RAGFlow and future memory/RAG workers.
 - Agent architecture boundary specs live under `../agent-architecture/`.

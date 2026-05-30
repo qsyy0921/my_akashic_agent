@@ -145,6 +145,8 @@ async def test_ragflow_index_qq_group_exports_observed_messages(tmp_path):
 
     assert payload["ok"] is True
     assert payload["message_count"] == 1
+    assert payload["start_seq"] == 0
+    assert payload["end_seq"] == 0
     assert payload["data"]["document_ids"] == ["doc1"]
 
 
@@ -197,6 +199,8 @@ async def test_ragflow_index_qq_group_can_use_injected_message_source(tmp_path):
 
     assert payload["ok"] is True
     assert payload["message_count"] == 2
+    assert payload["start_seq"] == 5
+    assert payload["end_seq"] == 6
     assert payload["display_name"] == "qq_group_284331268_seq5_6.txt"
     assert source.calls == [
         {

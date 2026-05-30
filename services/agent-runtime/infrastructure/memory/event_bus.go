@@ -29,6 +29,8 @@ type Store struct {
 	mediaOrder    []string
 	inboxEvents   map[string]model.InboxEvent
 	inboxOrder    []string
+	checkpoints   map[string]model.KnowledgeCheckpoint
+	checkpointIDs []string
 	agentJobs     map[string]model.AgentJob
 	agentJobOrder []string
 }
@@ -50,6 +52,7 @@ func NewStore() *Store {
 		outbox:      make(map[string]model.OutboxDelivery),
 		mediaAssets: make(map[string]model.MediaAsset),
 		inboxEvents: make(map[string]model.InboxEvent),
+		checkpoints: make(map[string]model.KnowledgeCheckpoint),
 		agentJobs:   make(map[string]model.AgentJob),
 	}
 }
@@ -387,6 +390,29 @@ func inboxEventSeq(event model.InboxEvent) (int, bool) {
 		return 0, false
 	}
 	return seq, true
+}
+
+func (s *Store) SaveKnowledgeCheckpoint(_ context.Context, checkpoint model.KnowledgeCheckpoint) error {
+	if err := checkpoint.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	checkpointID := checkpoint.CheckpointID
+	if _, exists := s.checkpoints[checkpointID]; !exists {
+		s.checkpointIDs = append(s.checkpointIDs, checkpointID)
+	}
+	s.checkpoints[checkpointID] = checkpoint
+	return nil
+}
+
+func (s *Store) FindKnowledgeCheckpoint(_ context.Context, checkpointID string) (model.KnowledgeCheckpoint, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	checkpoint, ok := s.checkpoints[checkpointID]
+	return checkpoint, ok, nil
 }
 
 func (s *Store) SaveAgentJob(_ context.Context, job model.AgentJob) error {
