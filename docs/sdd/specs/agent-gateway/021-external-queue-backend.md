@@ -13,7 +13,9 @@ executing side effects. The fifth slice adds an `external_lease` cutover gate
 that documents and exposes required checks while keeping real external lease
 execution blocked. A local NATS JetStream smoke has validated
 `shadow_publish` + `dual_read_compare` with one outbox work notification,
-one matched comparison, and zero mismatches.
+one matched comparison, and zero mismatches. The sixth slice implements the
+first guarded `external_lease` executor for outbox delivery only; agent jobs
+remain on Go state-store leasing until their worker idempotency is audited.
 
 ## Context
 
@@ -114,7 +116,12 @@ message or is disabled, Go can still discover leaseable work from state.
      all cutover gates pass.
    - State store still validates idempotency and owns final aggregate state.
    - Failed/expired queue deliveries are reconciled against Go state.
-   - Current implementation exposes the gate and policies but blocks execution.
+   - Current implementation supports outbox delivery execution only.
+   - The consumer subscribes to `akashic.work.outbox.>` and does not execute
+     `agent_job` notifications.
+   - Retryable dispatch failures move through Go failure/retry state and then
+     NATS `nack`; succeeded or terminal failed deliveries NATS `ack`; malformed
+     or unsupported work is NATS `term`.
    - Do not add a new service solely for this phase; reuse `agent-runtime`
      application services until deployment or ownership boundaries justify a
      split.
@@ -129,6 +136,7 @@ $env:AKASHIC_QUEUE_STREAM = "AKASHIC_WORK"
 $env:AKASHIC_QUEUE_SUBJECT_PREFIX = "akashic.work"
 $env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
 $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
+$env:AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT = "1049511700=qq_1049511700,2365524513=qq_2365524513"
 ```
 
 For local Windows smoke runs, Go dependencies can use a domestic module mirror:
@@ -195,7 +203,13 @@ required checks include:
 - queue DSN configured;
 - `AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER=true`;
 - `AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED=true`;
+- `AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED=true`;
 - external lease executor implemented.
+
+The executor implemented in this slice is intentionally scoped to outbox
+delivery. It reuses `OutboxService`, `DeliveryDispatchService`, and configured
+DeliveryAdapters. It does not introduce a new service process and it does not
+execute generic `agent_job` work.
 
 ## Concurrent Consumption
 
@@ -280,9 +294,27 @@ type WorkQueueConsumer interface {
 }
 ```
 
-The first executor should be minimal and should reuse existing outbox/job app
-services. It should not introduce a new service or package tree unless the
-deployment boundary becomes independent.
+The first executor is minimal and reuses existing outbox delivery app services:
+
+```text
+NATS outbox notification
+        |
+        v
+ExternalLeaseConsumer
+        |
+        v
+WorkQueueExternalLeaseService
+        |
+        +--> OutboxService.Lease(work_id)
+        +--> DeliveryDispatchService.Dispatch(work_id)
+        +--> OutboxService.MarkSucceeded / MarkFailed / Retry
+        |
+        v
+NATS ack / nack / term
+```
+
+It should not introduce a new service or package tree unless the deployment
+boundary becomes independent.
 
 ## Invariants
 
@@ -299,6 +331,8 @@ deployment boundary becomes independent.
   delivery dispatch.
 - `external_lease` must remain blocked unless its gate reports
   `allow_execution=true`.
+- `external_lease` must consume only outbox subjects until agent job execution
+  has separate idempotency and worker-result review.
 - `external_lease` ack/nack policy must be visible before execution is enabled.
 - Switching provider must not change HTTP contracts for `/v1/outbox`,
   `/v1/jobs`, `/v1/job-events`, or `/v1/outbox-events`.
@@ -324,6 +358,12 @@ deployment boundary becomes independent.
   `dual_read_compare.mismatched_total = 0`.
 - `external_lease` mode exposes a blocked cutover gate with required checks and
   policies.
-- `external_lease` remains unable to execute until an executor is implemented
-  and explicit cutover flags pass.
+- `external_lease` reports `allow_execution=true` only after explicit cutover,
+  dual-read smoke, and legacy state-store lease worker shutdown flags pass.
+- `external_lease` outbox execution leases the Go aggregate by work id before
+  dispatching any DeliveryAdapter side effect.
+- `external_lease` maps delivery success to NATS `ack`, retryable delivery
+  failure to Go retry + NATS `nack`, terminal failure to NATS `ack`, and
+  malformed/unsupported work to NATS `term`.
+- `external_lease` does not execute generic `agent_job` work in this slice.
 - Existing outbox/job tests continue to pass.

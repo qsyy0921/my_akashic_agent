@@ -214,18 +214,19 @@ func TestQueueBackendViewFromEnvReportsExternalLeaseGate(t *testing.T) {
 	}
 	assertContainsString(t, view.ExternalLease.Blockers, "explicit_cutover")
 	assertContainsString(t, view.ExternalLease.Blockers, "dual_read_smoke_passed")
-	assertContainsString(t, view.ExternalLease.Blockers, "executor_implemented")
+	assertContainsString(t, view.ExternalLease.Blockers, "state_lease_workers_disabled")
 	if view.ExternalLease.AckPolicy != "ack_after_go_state_terminal" {
 		t.Fatalf("unexpected ack policy: %#v", view.ExternalLease)
 	}
 }
 
-func TestQueueBackendViewFromEnvKeepsExternalLeaseBlockedAfterCutoverUntilExecutorExists(t *testing.T) {
+func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
 	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
 	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
 	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
 	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
 
 	view, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -235,10 +236,10 @@ func TestQueueBackendViewFromEnvKeepsExternalLeaseBlockedAfterCutoverUntilExecut
 	if view.ExternalLease == nil || !view.ExternalLease.CutoverRequested {
 		t.Fatalf("expected cutover requested gate: %#v", view.ExternalLease)
 	}
-	if view.ExternalLease.AllowExecution {
-		t.Fatalf("external lease must remain blocked until executor exists: %#v", view.ExternalLease)
+	if !view.ExternalLease.AllowExecution || view.ExternalLease.GateState != "ready" {
+		t.Fatalf("external lease should be ready after explicit gates: %#v", view.ExternalLease)
 	}
-	if len(view.ExternalLease.Blockers) != 1 || view.ExternalLease.Blockers[0] != "executor_implemented" {
+	if len(view.ExternalLease.Blockers) != 0 {
 		t.Fatalf("unexpected blockers: %#v", view.ExternalLease.Blockers)
 	}
 }

@@ -56,3 +56,46 @@ func TestNormalizeCompareConsumerConfigUsesDedicatedDefaultDurable(t *testing.T)
 		t.Fatalf("max in-flight should be raised to concurrency, got %d", config.MaxInFlight)
 	}
 }
+
+func TestWorkLeaseCommandFromNATSMessageUsesWorkNotificationIDs(t *testing.T) {
+	notification := WorkNotification{
+		WorkKind:    "outbox_delivery",
+		WorkID:      "outbox:1",
+		AggregateID: "outbox:1",
+		Status:      "queued",
+		Subject:     "akashic.work.outbox.qq.1049511700",
+		Metadata:    map[string]string{"trace_id": "trace-lease-1"},
+	}
+	raw, err := json.Marshal(notification)
+	if err != nil {
+		t.Fatalf("marshal notification: %v", err)
+	}
+	observedAt := time.Date(2026, 5, 31, 0, 10, 0, 0, time.UTC)
+
+	cmd := WorkLeaseCommandFromNATSMessage("akashic.work.outbox.qq.1049511700", raw, observedAt)
+
+	if cmd.WorkKind != "outbox_delivery" || cmd.WorkID != "outbox:1" || cmd.AggregateID != "outbox:1" {
+		t.Fatalf("unexpected lease command ids: %+v", cmd)
+	}
+	if cmd.Subject != "akashic.work.outbox.qq.1049511700" || cmd.Metadata["trace_id"] != "trace-lease-1" {
+		t.Fatalf("unexpected lease command route: %+v", cmd)
+	}
+}
+
+func TestNormalizeExternalLeaseConsumerConfigUsesDedicatedDefaultDurable(t *testing.T) {
+	config := normalizeExternalLeaseConsumerConfig(ExternalLeaseConsumerConfig{
+		URL:                 "nats://127.0.0.1:4222",
+		ConsumerConcurrency: 4,
+		MaxInFlight:         1,
+	})
+
+	if config.Durable != defaultExternalLeaseDurable {
+		t.Fatalf("unexpected default durable: %q", config.Durable)
+	}
+	if config.MaxInFlight != 4 {
+		t.Fatalf("max in-flight should be raised to concurrency, got %d", config.MaxInFlight)
+	}
+	if config.WorkerID == "" || config.LeaseTTLSeconds <= 0 {
+		t.Fatalf("expected worker defaults, got %#v", config)
+	}
+}

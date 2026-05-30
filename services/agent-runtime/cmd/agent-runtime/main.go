@@ -147,6 +147,36 @@ func main() {
 	outbox := appservice.NewOutboxServiceWithEvents(outboxRepository, outboxQueue, outboxEventStore)
 	outboxEvents := appservice.NewOutboxDeliveryEventService(outboxEventStore)
 	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(outboxRepository, deliveryAdapters...)
+	externalLeaseConsumer, closeExternalLeaseConsumer, err := newWorkQueueExternalLeaseConsumer(queueBackendView)
+	if err != nil {
+		log.Fatalf("init work queue external lease consumer: %v", err)
+	}
+	if closeExternalLeaseConsumer != nil {
+		defer closeExternalLeaseConsumer()
+	}
+	if externalLeaseConsumer != nil {
+		queueBackendView.ExternalQueueActive = true
+		queueBackendView.MigrationPhase = "external_lease"
+		queueBackendView.LeaseOwner = "nats_jetstream"
+		queueBackendView.OutboxQueueSource = "nats_jetstream"
+		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream external lease outbox consumer is active")
+		externalLeaseExecutor := appservice.NewWorkQueueExternalLeaseService(
+			outbox,
+			deliveryDispatch,
+			appservice.WithExternalLeaseChannelByAccount(keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT")),
+			appservice.WithExternalLeaseWorker(
+				strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
+				positiveIntEnvOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_TTL_SECONDS", 300, 86400),
+			),
+		)
+		externalLeaseCtx, cancelExternalLease := context.WithCancel(context.Background())
+		defer cancelExternalLease()
+		go func() {
+			if err := externalLeaseConsumer.Run(externalLeaseCtx, externalLeaseExecutor); err != nil && err != context.Canceled {
+				log.Printf("work queue external lease consumer stopped: %v", err)
+			}
+		}()
+	}
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
@@ -195,6 +225,9 @@ func main() {
 func queueBackendActivePhase(mode string) string {
 	if mode == "dual_read_compare" {
 		return "dual_read_compare"
+	}
+	if mode == "external_lease" {
+		return "external_lease_gate"
 	}
 	return "shadow_publish"
 }

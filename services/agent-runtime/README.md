@@ -329,6 +329,12 @@ When `AKASHIC_QUEUE_MODE=external_lease`, the runtime only exposes a blocked
 cutover gate in `/v1/queue-backend`. It reports required checks plus ack, nack,
 retry, dead-letter, and rollback policies. Setting the mode alone does not move
 work discovery away from Go state-store leasing.
+After both explicit cutover flags pass, the first executor consumes only
+`outbox` NATS subjects. It leases the Go outbox aggregate by work id, dispatches
+through configured Go DeliveryAdapters, then maps success to NATS `ack`,
+retryable failure to Go retry + NATS `nack`, terminal failure to NATS `ack`, and
+malformed/unsupported work to NATS `term`. Generic `agent_job` work continues to
+use Go state-store leasing in this slice.
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple
@@ -354,12 +360,14 @@ External lease cutover flags are intentionally separate:
 $env:AKASHIC_QUEUE_MODE = "external_lease"
 $env:AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER = "true"
 $env:AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED = "true"
+$env:AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED = "true"
+$env:AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT = "1049511700=qq_1049511700,2365524513=qq_2365524513"
 ```
 
-The current runtime still reports `allow_execution=false` because the external
-lease executor has not been implemented. This keeps migration explicit and
-avoids adding another service boundary before the existing `agent-runtime`
-boundary is exhausted.
+The runtime still keeps migration explicit: `AKASHIC_QUEUE_MODE=external_lease`
+is not enough by itself. The executor starts only when the provider, DSN,
+cutover flag, dual-read smoke flag, and legacy state-store worker shutdown flag
+all pass.
 
 Persist proactive scheduling state across runtime restarts:
 

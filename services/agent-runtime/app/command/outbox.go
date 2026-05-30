@@ -29,3 +29,10 @@ type LeaseNextOutboxCommand struct {
 	TTLSeconds int
 	Timestamp  time.Time
 }
+
+type LeaseOutboxDeliveryCommand struct {
+	EventID    string
+	WorkerID   string
+	TTLSeconds int
+	Timestamp  time.Time
+}

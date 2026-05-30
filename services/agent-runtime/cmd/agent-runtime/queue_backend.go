@@ -175,7 +175,8 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	}
 	cutoverRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER")
 	dualReadSmokePassed := boolEnv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED")
-	executorImplemented := false
+	stateLeaseWorkersDisabled := boolEnv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED")
+	executorImplemented := true
 	gate := &query.QueueExternalLeaseGate{
 		Enabled:          true,
 		CutoverRequested: cutoverRequested,
@@ -187,14 +188,15 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 		RollbackPolicy:   envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_ROLLBACK_POLICY", "state_store_recovery_and_queue_replay"),
 		Notes: []string{
 			"external lease is a guarded cutover state, not enabled by AKASHIC_QUEUE_MODE alone",
-			"state store remains authoritative until external lease executor is implemented and all gates pass",
+			"state store remains authoritative and validates each queue candidate before side effects",
 		},
 	}
 	addExternalLeaseCheck(gate, "provider_supported", provider == "nats_jetstream", "first external lease target is NATS JetStream")
 	addExternalLeaseCheck(gate, "dsn_configured", dsnConfigured, "AKASHIC_QUEUE_DSN must point at the external queue")
 	addExternalLeaseCheck(gate, "explicit_cutover", cutoverRequested, "set AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER=true after smoke tests")
 	addExternalLeaseCheck(gate, "dual_read_smoke_passed", dualReadSmokePassed, "set AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED=true after local NATS smoke")
-	addExternalLeaseCheck(gate, "executor_implemented", executorImplemented, "external lease executor is intentionally not implemented in this slice")
+	addExternalLeaseCheck(gate, "state_lease_workers_disabled", stateLeaseWorkersDisabled, "set AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED=true after stopping legacy state-store lease workers")
+	addExternalLeaseCheck(gate, "executor_implemented", executorImplemented, "outbox delivery external lease executor is implemented in agent-runtime")
 	if len(gate.Blockers) == 0 {
 		gate.AllowExecution = true
 		gate.GateState = "ready"
@@ -314,6 +316,44 @@ func newWorkQueueCompareConsumer(view query.QueueBackendView) (*natsqueue.Compar
 	return consumer, consumer.Close, nil
 }
 
+func newWorkQueueExternalLeaseConsumer(view query.QueueBackendView) (*natsqueue.ExternalLeaseConsumer, func(), error) {
+	if view.Provider != "nats_jetstream" || view.Mode != "external_lease" || !view.DSNConfigured || view.ExternalLease == nil || !view.ExternalLease.AllowExecution {
+		return nil, nil, nil
+	}
+	timeoutSeconds, err := positiveIntEnv("AKASHIC_QUEUE_TIMEOUT_SECONDS", 3, 60)
+	if err != nil {
+		return nil, nil, err
+	}
+	ttlSeconds, err := positiveIntEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_TTL_SECONDS", 300, 86400)
+	if err != nil {
+		return nil, nil, err
+	}
+	consumer, err := natsqueue.NewExternalLeaseConsumer(natsqueue.ExternalLeaseConsumerConfig{
+		URL:                 strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
+		Stream:              view.Stream,
+		SubjectPrefix:       view.SubjectPrefix,
+		Durable:             strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_DURABLE")),
+		WorkerID:            strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
+		LeaseTTLSeconds:     ttlSeconds,
+		Timeout:             time.Duration(timeoutSeconds) * time.Second,
+		ConsumerConcurrency: view.ConsumerConcurrency,
+		MaxInFlight:         view.MaxInFlight,
+		ChannelByAccount:    keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return consumer, consumer.Close, nil
+}
+
 func queueModePublishesWork(mode string) bool {
-	return mode == "shadow_publish" || mode == "dual_read_compare"
+	return mode == "shadow_publish" || mode == "dual_read_compare" || mode == "external_lease"
+}
+
+func positiveIntEnvOrDefault(key string, fallback int, maxValue int) int {
+	value, err := positiveIntEnv(key, fallback, maxValue)
+	if err != nil {
+		return fallback
+	}
+	return value
 }
