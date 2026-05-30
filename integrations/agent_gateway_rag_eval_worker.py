@@ -13,6 +13,7 @@ from integrations.agent_gateway import (
     AgentGatewayError,
     AgentGatewayNoJob,
 )
+from integrations.agent_gateway_heartbeat import AgentJobLeaseHeartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class AgentGatewayRagEvalWorker:
         self._worker_id = str(worker_id or "akashic-python-worker")
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
+        self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
         self._stopped = asyncio.Event()
 
     async def process_once(self) -> dict[str, Any]:
@@ -79,8 +81,18 @@ class AgentGatewayRagEvalWorker:
 
         job_id = str(job.get("job_id") or "")
         lease_token = _lease_token(job)
+        heartbeat = AgentJobLeaseHeartbeat(
+            client=self._client,
+            job_id=job_id,
+            lease_token=lease_token,
+            ttl_seconds=self._lease_ttl,
+            interval_seconds=self._heartbeat_interval,
+            logger=logger,
+            label="agent_runtime_rag_eval_worker",
+        )
         try:
             await self._client.mark_running(job_id, lease_token=lease_token)
+            heartbeat.start()
             result = await self._evaluator.execute(job)
             await self._client.complete_job(
                 job_id,
@@ -94,6 +106,7 @@ class AgentGatewayRagEvalWorker:
                 "result": result,
             }
         except Exception as exc:
+            await heartbeat.stop()
             message = str(exc)
             logger.exception(
                 "[agent_runtime_rag_eval_worker] job failed job_id=%s",
@@ -112,6 +125,8 @@ class AgentGatewayRagEvalWorker:
                 "failed": True,
                 "error": message,
             }
+        finally:
+            await heartbeat.stop()
 
     async def run(self) -> None:
         logger.info(

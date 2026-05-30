@@ -118,6 +118,56 @@ func TestAgentJobServiceRejectsStaleLeaseToken(t *testing.T) {
 	}
 }
 
+func TestAgentJobServiceRenewsRunningLeaseWithToken(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobService(store)
+	now := time.Date(2026, 5, 30, 6, 50, 0, 0, time.UTC)
+
+	if _, err := service.Create(ctx, sampleCreateAgentJobCommand(now)); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	leased, err := service.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
+		WorkerID:   "worker-renew",
+		JobType:    "rag_ingest",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease job: %v", err)
+	}
+	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	renewed, err := service.RenewLease(ctx, command.RenewAgentJobLeaseCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		TTLSeconds: 300,
+		Timestamp:  now.Add(30 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("renew lease: %v", err)
+	}
+	if renewed.Status != string(model.AgentJobRunning) || renewed.Attempts != leased.Attempts {
+		t.Fatalf("renew should preserve running attempt state: %+v", renewed)
+	}
+	if renewed.LeaseExpiresAt <= leased.LeaseExpiresAt {
+		t.Fatalf("expected extended lease expiry, got old=%s new=%s", leased.LeaseExpiresAt, renewed.LeaseExpiresAt)
+	}
+	if _, err := service.RenewLease(ctx, command.RenewAgentJobLeaseCommand{
+		JobID:      leased.JobID,
+		LeaseToken: "stale-token",
+		TTLSeconds: 300,
+		Timestamp:  now.Add(31 * time.Second),
+	}); err == nil {
+		t.Fatal("expected stale renew token to be rejected")
+	}
+}
+
 func TestAgentJobServiceDuplicateCreateIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

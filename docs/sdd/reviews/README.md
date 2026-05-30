@@ -96,3 +96,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-47-dev-mirror-source.md`
 - `2026-05-31-phase8-48-agent-job-external-lease-gate.md`
 - `2026-05-31-phase8-49-agent-job-lease-token.md`
+- `2026-05-31-phase8-50-agent-job-lease-renew.md`

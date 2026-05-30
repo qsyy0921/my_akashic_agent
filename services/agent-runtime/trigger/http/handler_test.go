@@ -833,15 +833,38 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"leased"`)) {
 		t.Fatalf("lease response missing leased status: %s", response.Body.String())
 	}
+	var leasePayload struct {
+		Data struct {
+			LeaseToken string `json:"lease_token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &leasePayload); err != nil {
+		t.Fatalf("decode lease response: %v", err)
+	}
+	if leasePayload.Data.LeaseToken == "" {
+		t.Fatalf("lease response missing lease token: %s", response.Body.String())
+	}
+
+	renewBody := []byte(`{"lease_token":"` + leasePayload.Data.LeaseToken + `","ttl_seconds":120}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/renew", bytes.NewReader(renewBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected renew 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"leased"`)) {
+		t.Fatalf("renew response should preserve leased status: %s", response.Body.String())
+	}
 
 	response = httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/running", bytes.NewReader([]byte(`{}`))))
+	runningBody := []byte(`{"lease_token":"` + leasePayload.Data.LeaseToken + `"}`)
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/running", bytes.NewReader(runningBody)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected running 200, got %d: %s", response.Code, response.Body.String())
 	}
 
 	response = httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/succeeded", bytes.NewReader([]byte(`{"result":{"indexed":"true"}}`))))
+	succeededBody := []byte(`{"lease_token":"` + leasePayload.Data.LeaseToken + `","result":{"indexed":"true"}}`)
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/job-http-1/succeeded", bytes.NewReader(succeededBody)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected succeeded 200, got %d: %s", response.Code, response.Body.String())
 	}

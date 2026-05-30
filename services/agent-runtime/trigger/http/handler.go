@@ -1235,7 +1235,7 @@ func AgentJobStateHandler(agentJobs inport.AgentJobManager) http.Handler {
 
 		var state dto.AgentJobStateRequest
 		var lease dto.AgentJobLeaseRequest
-		if action == "lease" {
+		if action == "lease" || action == "renew" {
 			if err := json.NewDecoder(r.Body).Decode(&lease); err != nil {
 				http.Error(w, "invalid json body", http.StatusBadRequest)
 				return
@@ -1248,7 +1248,7 @@ func AgentJobStateHandler(agentJobs inport.AgentJobManager) http.Handler {
 		}
 
 		var timestampText string
-		if action == "lease" {
+		if action == "lease" || action == "renew" {
 			timestampText = lease.Timestamp
 		} else {
 			timestampText = state.Timestamp
@@ -1265,6 +1265,13 @@ func AgentJobStateHandler(agentJobs inport.AgentJobManager) http.Handler {
 			job, err = agentJobs.Lease(r.Context(), command.AgentJobLeaseCommand{
 				JobID:      jobID,
 				WorkerID:   lease.WorkerID,
+				LeaseToken: lease.LeaseToken,
+				TTLSeconds: lease.TTLSeconds,
+				Timestamp:  timestamp,
+			})
+		case "renew":
+			job, err = agentJobs.RenewLease(r.Context(), command.RenewAgentJobLeaseCommand{
+				JobID:      jobID,
 				LeaseToken: lease.LeaseToken,
 				TTLSeconds: lease.TTLSeconds,
 				Timestamp:  timestamp,

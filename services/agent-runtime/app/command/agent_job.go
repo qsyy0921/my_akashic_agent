@@ -31,6 +31,13 @@ type AgentJobLeaseNextCommand struct {
 	Timestamp  time.Time
 }
 
+type RenewAgentJobLeaseCommand struct {
+	JobID      string
+	LeaseToken string
+	TTLSeconds int
+	Timestamp  time.Time
+}
+
 type MarkAgentJobRunningCommand struct {
 	JobID      string
 	LeaseToken string

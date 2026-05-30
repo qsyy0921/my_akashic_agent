@@ -199,6 +199,34 @@ func (j AgentJob) ValidateLeaseToken(leaseToken string) error {
 	return nil
 }
 
+func (j *AgentJob) RenewLease(leaseToken string, ttl time.Duration, now time.Time) error {
+	if j == nil {
+		return errors.New("agent job is nil")
+	}
+	leaseToken = strings.TrimSpace(leaseToken)
+	if leaseToken == "" {
+		return errors.New("agent job lease renew requires lease token")
+	}
+	if err := j.ValidateLeaseToken(leaseToken); err != nil {
+		return err
+	}
+	if j.Status != AgentJobLeased && j.Status != AgentJobRunning {
+		return errors.New("only leased or running agent job can renew lease")
+	}
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if !j.LeaseExpiresAt.IsZero() && now.After(j.LeaseExpiresAt) {
+		return errors.New("expired agent job lease cannot be renewed")
+	}
+	j.LeaseExpiresAt = now.Add(ttl)
+	j.UpdatedAt = now
+	return j.Validate()
+}
+
 func (j *AgentJob) MarkRunning(now time.Time) error {
 	if j == nil {
 		return errors.New("agent job is nil")

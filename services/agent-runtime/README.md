@@ -254,6 +254,7 @@ GET  /v1/jobs?limit=50&type=rag_ingest&status=pending
 GET  /v1/jobs/{job_id}
 POST /v1/jobs/lease-next
 POST /v1/jobs/{job_id}/lease
+POST /v1/jobs/{job_id}/renew
 POST /v1/jobs/{job_id}/running
 POST /v1/jobs/{job_id}/succeeded
 POST /v1/jobs/{job_id}/failed
@@ -267,6 +268,9 @@ Each lease response includes a `lease_token`. New Python workers pass that token
 back to `running`, `succeeded`, and `failed` transitions so Go can reject stale
 writebacks after an expired lease is re-leased by another worker. Empty-token
 updates remain accepted during the compatibility phase.
+Long-running workers also call `POST /v1/jobs/{job_id}/renew` with the current
+token while the job is executing. Renew extends the lease without increasing the
+attempt count and emits a `renewed` lifecycle event.
 
 Persist generic job lifecycle events as a JSONL stream:
 

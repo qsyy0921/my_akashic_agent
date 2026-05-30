@@ -62,6 +62,46 @@ func TestAgentJobExpiredLeaseCanBeLeasedAgain(t *testing.T) {
 	}
 }
 
+func TestAgentJobRenewLeaseExtendsRunningLease(t *testing.T) {
+	now := time.Date(2026, 5, 30, 6, 10, 0, 0, time.UTC)
+	job, err := model.NewAgentJob(sampleAgentJobSpec(3), now)
+	if err != nil {
+		t.Fatalf("new job: %v", err)
+	}
+	if err := job.Lease("worker-1", time.Minute, "lease-1", now); err != nil {
+		t.Fatalf("lease: %v", err)
+	}
+	if err := job.MarkRunning(now.Add(10 * time.Second)); err != nil {
+		t.Fatalf("running: %v", err)
+	}
+	if err := job.RenewLease("lease-1", 5*time.Minute, now.Add(30*time.Second)); err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	if job.Status != model.AgentJobRunning || job.Attempts != 1 {
+		t.Fatalf("renew should preserve running attempt state: %+v", job)
+	}
+	if want := now.Add(30*time.Second + 5*time.Minute); !job.LeaseExpiresAt.Equal(want) {
+		t.Fatalf("unexpected renewed expiry: got %s want %s", job.LeaseExpiresAt, want)
+	}
+	if err := job.RenewLease("stale", time.Minute, now.Add(40*time.Second)); err == nil {
+		t.Fatal("expected stale renew token to fail")
+	}
+}
+
+func TestAgentJobRenewExpiredLeaseFails(t *testing.T) {
+	now := time.Date(2026, 5, 30, 6, 20, 0, 0, time.UTC)
+	job, err := model.NewAgentJob(sampleAgentJobSpec(3), now)
+	if err != nil {
+		t.Fatalf("new job: %v", err)
+	}
+	if err := job.Lease("worker-1", time.Minute, "lease-1", now); err != nil {
+		t.Fatalf("lease: %v", err)
+	}
+	if err := job.RenewLease("lease-1", time.Minute, now.Add(2*time.Minute)); err == nil {
+		t.Fatal("expected expired lease renew to fail")
+	}
+}
+
 func TestCancelledAgentJobCannotBeLeased(t *testing.T) {
 	now := time.Date(2026, 5, 30, 6, 0, 0, 0, time.UTC)
 	job, err := model.NewAgentJob(sampleAgentJobSpec(3), now)

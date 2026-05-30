@@ -59,6 +59,9 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
         if request.url.path == "/v1/jobs/job-1/running":
             assert body == {"lease_token": "tok-1"}
             return _ok({"job_id": "job-1", "status": "running"})
+        if request.url.path == "/v1/jobs/job-1/renew":
+            assert body == {"lease_token": "tok-1", "ttl_seconds": 120}
+            return _ok({"job_id": "job-1", "status": "running"})
         if request.url.path == "/v1/jobs/job-1/succeeded":
             assert body == {"result": {"asset_id": "asset-1"}, "lease_token": "tok-1"}
             return _ok({"job_id": "job-1", "status": "succeeded"})
@@ -81,6 +84,7 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
     )
     leased = await client.lease_next(job_type="image_generation")
     running = await client.mark_running("job-1", lease_token=leased["lease_token"])
+    renewed = await client.renew_job("job-1", lease_token=leased["lease_token"])
     succeeded = await client.complete_job(
         "job-1",
         lease_token=leased["lease_token"],
@@ -90,11 +94,13 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
     assert created["status"] == "pending"
     assert leased["status"] == "leased"
     assert running["status"] == "running"
+    assert renewed["status"] == "running"
     assert succeeded["status"] == "succeeded"
     assert [path for _, path, _ in calls] == [
         "/v1/jobs",
         "/v1/jobs/lease-next",
         "/v1/jobs/job-1/running",
+        "/v1/jobs/job-1/renew",
         "/v1/jobs/job-1/succeeded",
     ]
 

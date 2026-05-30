@@ -218,6 +218,19 @@ class AgentGatewayClient:
             body["lease_token"] = str(lease_token)
         return await self._request("POST", f"/v1/jobs/{job_id}/lease", json_body=body)
 
+    async def renew_job(
+        self,
+        job_id: str,
+        *,
+        lease_token: str,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        body = {
+            "lease_token": str(lease_token),
+            "ttl_seconds": int(ttl_seconds or self._config.lease_ttl_seconds),
+        }
+        return await self._request("POST", f"/v1/jobs/{job_id}/renew", json_body=body)
+
     async def mark_running(
         self,
         job_id: str,

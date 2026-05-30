@@ -13,6 +13,7 @@ type AgentJobEventType string
 const (
 	AgentJobEventCreated   AgentJobEventType = "created"
 	AgentJobEventLeased    AgentJobEventType = "leased"
+	AgentJobEventRenewed   AgentJobEventType = "renewed"
 	AgentJobEventRunning   AgentJobEventType = "running"
 	AgentJobEventSucceeded AgentJobEventType = "succeeded"
 	AgentJobEventFailed    AgentJobEventType = "failed"
@@ -105,7 +106,7 @@ func (e AgentJobEvent) Validate() error {
 		return errors.New("agent job event has invalid job type")
 	}
 	switch e.EventType {
-	case AgentJobEventCreated, AgentJobEventLeased, AgentJobEventRunning, AgentJobEventSucceeded, AgentJobEventFailed, AgentJobEventRetry, AgentJobEventCancelled:
+	case AgentJobEventCreated, AgentJobEventLeased, AgentJobEventRenewed, AgentJobEventRunning, AgentJobEventSucceeded, AgentJobEventFailed, AgentJobEventRetry, AgentJobEventCancelled:
 	default:
 		return errors.New("agent job event has invalid event type")
 	}

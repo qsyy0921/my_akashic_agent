@@ -11,6 +11,7 @@ from integrations.agent_gateway import (
     AgentGatewayError,
     AgentGatewayNoJob,
 )
+from integrations.agent_gateway_heartbeat import AgentJobLeaseHeartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class AgentGatewayKnowledgeWorker:
         ]
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
+        self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
         self._enqueue_interval = max(5.0, float(enqueue_interval_seconds or 60.0))
         self._now_fn = now_fn
         self._stopped = asyncio.Event()
@@ -90,8 +92,18 @@ class AgentGatewayKnowledgeWorker:
         job_id = str(job.get("job_id") or "")
         job_type = str(job.get("job_type") or "")
         lease_token = _lease_token(job)
+        heartbeat = AgentJobLeaseHeartbeat(
+            client=self._client,
+            job_id=job_id,
+            lease_token=lease_token,
+            ttl_seconds=self._lease_ttl,
+            interval_seconds=self._heartbeat_interval,
+            logger=logger,
+            label="agent_runtime_knowledge_worker",
+        )
         try:
             await self._client.mark_running(job_id, lease_token=lease_token)
+            heartbeat.start()
             if job_type == "group_memory_extract":
                 result = await self._process_group_memory_job(job)
             elif job_type == "rag_ingest":
@@ -110,6 +122,7 @@ class AgentGatewayKnowledgeWorker:
                 "result": result,
             }
         except Exception as exc:
+            await heartbeat.stop()
             message = str(exc)
             logger.exception("[agent_runtime_knowledge_worker] job failed job_id=%s", job_id)
             if job_id:
@@ -125,6 +138,8 @@ class AgentGatewayKnowledgeWorker:
                 "failed": True,
                 "error": message,
             }
+        finally:
+            await heartbeat.stop()
 
     async def run(self) -> None:
         logger.info(

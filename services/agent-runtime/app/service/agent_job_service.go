@@ -128,6 +128,12 @@ func (s *AgentJobService) LeaseNext(ctx context.Context, cmd command.AgentJobLea
 	return assembler.ToAgentJobView(job), nil
 }
 
+func (s *AgentJobService) RenewLease(ctx context.Context, cmd command.RenewAgentJobLeaseCommand) (query.AgentJobView, error) {
+	return s.update(ctx, cmd.JobID, model.AgentJobEventRenewed, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
+		return job.RenewLease(cmd.LeaseToken, time.Duration(cmd.TTLSeconds)*time.Second, now)
+	})
+}
+
 func (s *AgentJobService) MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventRunning, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		if err := job.ValidateLeaseToken(cmd.LeaseToken); err != nil {

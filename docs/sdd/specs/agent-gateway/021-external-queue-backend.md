@@ -274,6 +274,20 @@ Current compatibility slice implements the first fencing primitive:
   workers; strict token mode is a later cutover gate before external queue
   execution.
 
+The next compatibility slice adds renewable leases for long-running Python
+work:
+
+- `POST /v1/jobs/{job_id}/renew` extends the current lease without incrementing
+  attempts and records a `renewed` lifecycle event.
+- Renew requires a non-empty current `lease_token`; stale tokens are rejected.
+- Renew is allowed only for `leased` or `running` jobs whose lease has not
+  already expired.
+- Python image, knowledge, and RAG-eval workers run a background heartbeat while
+  executing a leased job. The heartbeat calls `/renew` before the lease TTL
+  expires and stops before result writeback or failure writeback.
+- This still keeps `agent_job` on Go state-store leasing; it does not yet allow
+  NATS to own generic job acknowledgement.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

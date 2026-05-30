@@ -1,4 +1,4 @@
-﻿package inport
+package inport
 
 import (
 	"context"
@@ -13,10 +13,10 @@ type AgentJobManager interface {
 	Get(ctx context.Context, jobID string) (query.AgentJobView, error)
 	Lease(ctx context.Context, cmd command.AgentJobLeaseCommand) (query.AgentJobView, error)
 	LeaseNext(ctx context.Context, cmd command.AgentJobLeaseNextCommand) (query.AgentJobView, error)
+	RenewLease(ctx context.Context, cmd command.RenewAgentJobLeaseCommand) (query.AgentJobView, error)
 	MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error)
 	Complete(ctx context.Context, cmd command.CompleteAgentJobCommand) (query.AgentJobView, error)
 	Fail(ctx context.Context, cmd command.FailAgentJobCommand) (query.AgentJobView, error)
 	Retry(ctx context.Context, cmd command.RetryAgentJobCommand) (query.AgentJobView, error)
 	Cancel(ctx context.Context, cmd command.CancelAgentJobCommand) (query.AgentJobView, error)
 }
-
