@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
@@ -136,26 +138,100 @@ func envOrFirstDefaultWithSource(keys []string, fallback string) (string, string
 }
 
 func newDeliveryAdapters() ([]outport.DeliveryAdapter, error) {
-	adapters := make([]outport.DeliveryAdapter, 0, 1)
+	adapters := make([]outport.DeliveryAdapter, 0, 2)
 	token := strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_BOT_TOKEN"))
 	if token == "" {
 		token = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	}
-	if token == "" {
-		return adapters, nil
+	if token != "" {
+		channels := csvEnvOrDefault("AKASHIC_TELEGRAM_CHANNELS", []string{"telegram"})
+		adapter, err := telegramdelivery.NewAdapter(telegramdelivery.Config{
+			Token:    token,
+			BaseURL:  strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_API_BASE_URL")),
+			Channels: channels,
+		})
+		if err != nil {
+			return nil, err
+		}
+		adapters = append(adapters, adapter)
+		log.Printf("telegram delivery adapter enabled for channels=%s", strings.Join(channels, ","))
 	}
-	channels := csvEnvOrDefault("AKASHIC_TELEGRAM_CHANNELS", []string{"telegram"})
-	adapter, err := telegramdelivery.NewAdapter(telegramdelivery.Config{
-		Token:    token,
-		BaseURL:  strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_API_BASE_URL")),
-		Channels: channels,
-	})
-	if err != nil {
-		return nil, err
+	onebotEndpoints := onebotEndpointsFromEnv()
+	if len(onebotEndpoints) > 0 {
+		adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{Endpoints: onebotEndpoints})
+		if err != nil {
+			return nil, err
+		}
+		adapters = append(adapters, adapter)
+		log.Printf("onebot delivery adapter enabled for channels=%s", strings.Join(sortedMapKeys(onebotEndpoints), ","))
 	}
-	adapters = append(adapters, adapter)
-	log.Printf("telegram delivery adapter enabled for channels=%s", strings.Join(channels, ","))
 	return adapters, nil
+}
+
+func onebotEndpointsFromEnv() map[string]onebotdelivery.EndpointConfig {
+	endpoints := make(map[string]onebotdelivery.EndpointConfig)
+	accessTokens := keyValueCSVEnv("AKASHIC_ONEBOT_ACCESS_TOKENS")
+	defaultToken := strings.TrimSpace(os.Getenv("AKASHIC_ONEBOT_ACCESS_TOKEN"))
+	for channel, baseURL := range keyValueCSVEnv("AKASHIC_ONEBOT_HTTP_BASE_URLS") {
+		if baseURL == "" {
+			continue
+		}
+		token := accessTokens[channel]
+		if token == "" {
+			token = defaultToken
+		}
+		endpoints[channel] = onebotdelivery.EndpointConfig{
+			BaseURL:     baseURL,
+			AccessToken: token,
+		}
+	}
+	if baseURL := strings.TrimSpace(os.Getenv("AKASHIC_ONEBOT_HTTP_BASE_URL")); baseURL != "" {
+		channels := csvEnvOrDefault("AKASHIC_ONEBOT_CHANNELS", []string{"qq"})
+		for _, channel := range channels {
+			channel = strings.TrimSpace(channel)
+			if channel == "" {
+				continue
+			}
+			token := accessTokens[channel]
+			if token == "" {
+				token = defaultToken
+			}
+			endpoints[channel] = onebotdelivery.EndpointConfig{
+				BaseURL:     baseURL,
+				AccessToken: token,
+			}
+		}
+	}
+	return endpoints
+}
+
+func keyValueCSVEnv(key string) map[string]string {
+	return parseKeyValueCSV(os.Getenv(key))
+}
+
+func parseKeyValueCSV(raw string) map[string]string {
+	result := make(map[string]string)
+	for _, item := range strings.Split(raw, ",") {
+		key, value, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			result[key] = value
+		}
+	}
+	return result
+}
+
+func sortedMapKeys[T any](items map[string]T) []string {
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func newAgentJobRepository() (outport.AgentJobRepository, error) {

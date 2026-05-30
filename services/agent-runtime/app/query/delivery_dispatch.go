@@ -1,13 +1,14 @@
 package query
 
 type DeliveryDispatchStepView struct {
-	StepIndex int    `json:"step_index"`
-	Kind      string `json:"kind"`
-	Channel   string `json:"channel"`
-	ChatID    string `json:"chat_id"`
-	Message   string `json:"message,omitempty"`
-	Image     string `json:"image,omitempty"`
-	File      string `json:"file,omitempty"`
+	StepIndex        int    `json:"step_index"`
+	Kind             string `json:"kind"`
+	Channel          string `json:"channel"`
+	ChatID           string `json:"chat_id"`
+	ConversationType string `json:"conversation_type,omitempty"`
+	Message          string `json:"message,omitempty"`
+	Image            string `json:"image,omitempty"`
+	File             string `json:"file,omitempty"`
 }
 
 type DeliveryDispatchPlanView struct {

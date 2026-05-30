@@ -158,10 +158,11 @@ POST /v1/outbox/{event_id}/failed
 POST /v1/outbox/{event_id}/retry
 ```
 
-The current outbox implementation is a control-plane migration slice. It owns
-delivery status, attempts, retry, worker lease, and dead-letter transitions in
-Go, while the actual QQ/Telegram SDK send path remains on the Python
-compatibility layer until the platform adapter cutover is reviewed.
+The outbox implementation owns delivery status, attempts, retry, worker lease,
+and dead-letter transitions in Go. Telegram can be dispatched directly through
+the Go Telegram adapter. QQ/NapCat can be dispatched through the Go OneBot HTTP
+adapter when OneBot endpoints are configured; otherwise the Python QQ
+compatibility sender remains the fallback path.
 
 `POST /v1/outbox/lease-next` accepts:
 
@@ -194,6 +195,24 @@ Retryability is also owned by the domain layer. `route_error`,
 `unsupported_media`, and `validation_error` are deterministic failures and move
 directly to `dead_lettered`; `unknown`, `platform_error`, `platform_timeout`,
 and `sender_unavailable` remain retryable until max attempts are exhausted.
+
+Enable QQ/NapCat OneBot HTTP delivery adapters explicitly:
+
+```powershell
+$env:AKASHIC_ONEBOT_HTTP_BASE_URLS = "qq_1049511700=http://127.0.0.1:3001,qq_2365524513=http://127.0.0.1:3002"
+$env:AKASHIC_ONEBOT_ACCESS_TOKENS = "qq_1049511700=NcatBot,qq_2365524513=NcatBot"
+```
+
+For a single endpoint shared by multiple channel aliases:
+
+```powershell
+$env:AKASHIC_ONEBOT_HTTP_BASE_URL = "http://127.0.0.1:3001"
+$env:AKASHIC_ONEBOT_CHANNELS = "qq,qq_1049511700"
+$env:AKASHIC_ONEBOT_ACCESS_TOKEN = "NcatBot"
+```
+
+Keep QQ aliases out of `integrations.agent_runtime.outbound_channels` until the
+NapCat HTTP endpoint has passed a live send smoke test.
 
 Register and query media/file metadata:
 

@@ -42,11 +42,13 @@ func TestDeliveryPlannerMapsAccountAndSplitsMediaSteps(t *testing.T) {
 	}
 	if plan.Steps[0].Kind != model.DeliveryDispatchStepImage ||
 		plan.Steps[0].Message != "hello" ||
+		plan.Steps[0].ConversationType != model.ConversationTypePrivate ||
 		plan.Steps[0].Image != "E:/agent/akashic/.tmp/a.png" {
 		t.Fatalf("unexpected image step: %+v", plan.Steps[0])
 	}
 	if plan.Steps[1].Kind != model.DeliveryDispatchStepFile ||
 		plan.Steps[1].Message != "" ||
+		plan.Steps[1].ConversationType != model.ConversationTypePrivate ||
 		plan.Steps[1].File != "E:/agent/akashic/.tmp/a.pdf" {
 		t.Fatalf("unexpected file step: %+v", plan.Steps[1])
 	}
@@ -77,6 +79,9 @@ func TestDeliveryPlannerCreatesTextStepWhenNoMedia(t *testing.T) {
 	}
 	if plan.Steps[0].Channel != "telegram" || plan.Steps[0].Message != "hello telegram" {
 		t.Fatalf("unexpected text step: %+v", plan.Steps[0])
+	}
+	if plan.Steps[0].ConversationType != model.ConversationTypePrivate {
+		t.Fatalf("expected private conversation type, got %+v", plan.Steps[0])
 	}
 }
 

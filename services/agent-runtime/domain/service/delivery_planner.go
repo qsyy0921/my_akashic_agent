@@ -72,30 +72,33 @@ func (DeliveryPlanner) Plan(delivery model.OutboxDelivery, config DeliveryPlanne
 	message := content
 	for _, image := range images {
 		steps = append(steps, model.DeliveryDispatchStep{
-			Kind:    model.DeliveryDispatchStepImage,
-			Channel: channel,
-			ChatID:  chatID,
-			Message: message,
-			Image:   image,
+			Kind:             model.DeliveryDispatchStepImage,
+			Channel:          channel,
+			ChatID:           chatID,
+			ConversationType: delivery.Message.Channel.ConversationType,
+			Message:          message,
+			Image:            image,
 		})
 		message = ""
 	}
 	for _, file := range files {
 		steps = append(steps, model.DeliveryDispatchStep{
-			Kind:    model.DeliveryDispatchStepFile,
-			Channel: channel,
-			ChatID:  chatID,
-			Message: message,
-			File:    file,
+			Kind:             model.DeliveryDispatchStepFile,
+			Channel:          channel,
+			ChatID:           chatID,
+			ConversationType: delivery.Message.Channel.ConversationType,
+			Message:          message,
+			File:             file,
 		})
 		message = ""
 	}
 	if message != "" || len(steps) == 0 {
 		steps = append(steps, model.DeliveryDispatchStep{
-			Kind:    model.DeliveryDispatchStepText,
-			Channel: channel,
-			ChatID:  chatID,
-			Message: message,
+			Kind:             model.DeliveryDispatchStepText,
+			Channel:          channel,
+			ChatID:           chatID,
+			ConversationType: delivery.Message.Channel.ConversationType,
+			Message:          message,
 		})
 	}
 	for index := range steps {

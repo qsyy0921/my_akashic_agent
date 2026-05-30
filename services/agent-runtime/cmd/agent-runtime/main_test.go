@@ -36,6 +36,59 @@ func TestDefaultMediaAssetRootsDiscoverRepoFromServiceOrBinDir(t *testing.T) {
 	}
 }
 
+func TestOneBotEndpointsFromEnvReadsMultiEndpointConfig(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_HTTP_BASE_URLS", "qq_1049511700=http://127.0.0.1:3001, qq_2365524513=http://127.0.0.1:3002")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq_1049511700=token-a,qq_2365524513=token-b")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKEN", "default-token")
+
+	endpoints := onebotEndpointsFromEnv()
+
+	if len(endpoints) != 2 {
+		t.Fatalf("expected two endpoints, got %#v", endpoints)
+	}
+	if got := endpoints["qq_1049511700"].BaseURL; got != "http://127.0.0.1:3001" {
+		t.Fatalf("unexpected endpoint A base url: %q", got)
+	}
+	if got := endpoints["qq_1049511700"].AccessToken; got != "token-a" {
+		t.Fatalf("unexpected endpoint A token: %q", got)
+	}
+	if got := endpoints["qq_2365524513"].BaseURL; got != "http://127.0.0.1:3002" {
+		t.Fatalf("unexpected endpoint B base url: %q", got)
+	}
+	if got := endpoints["qq_2365524513"].AccessToken; got != "token-b" {
+		t.Fatalf("unexpected endpoint B token: %q", got)
+	}
+}
+
+func TestOneBotEndpointsFromEnvReadsSingleEndpointConfig(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_HTTP_BASE_URL", "http://127.0.0.1:3001")
+	t.Setenv("AKASHIC_ONEBOT_CHANNELS", "qq,qq_2365524513")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKEN", "shared-token")
+
+	endpoints := onebotEndpointsFromEnv()
+
+	if len(endpoints) != 2 {
+		t.Fatalf("expected two channel aliases, got %#v", endpoints)
+	}
+	for _, channel := range []string{"qq", "qq_2365524513"} {
+		endpoint, ok := endpoints[channel]
+		if !ok {
+			t.Fatalf("missing endpoint for %s: %#v", channel, endpoints)
+		}
+		if endpoint.BaseURL != "http://127.0.0.1:3001" || endpoint.AccessToken != "shared-token" {
+			t.Fatalf("unexpected endpoint for %s: %#v", channel, endpoint)
+		}
+	}
+}
+
+func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {
+	got := parseKeyValueCSV("a=1, malformed, b = 2, =missing, c= ")
+
+	if len(got) != 2 || got["a"] != "1" || got["b"] != "2" {
+		t.Fatalf("unexpected parse result: %#v", got)
+	}
+}
+
 func fakeAkashicRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

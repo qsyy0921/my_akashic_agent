@@ -9,13 +9,14 @@ const (
 )
 
 type DeliveryDispatchStep struct {
-	StepIndex int
-	Kind      DeliveryDispatchStepKind
-	Channel   string
-	ChatID    string
-	Message   string
-	Image     string
-	File      string
+	StepIndex        int
+	Kind             DeliveryDispatchStepKind
+	Channel          string
+	ChatID           string
+	ConversationType ConversationType
+	Message          string
+	Image            string
+	File             string
 }
 
 type DeliveryDispatchPlan struct {

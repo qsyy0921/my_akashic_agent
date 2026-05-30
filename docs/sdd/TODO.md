@@ -28,10 +28,12 @@
 - [x] 增加 Go-owned DeliveryAdapter dispatch plan：Go 负责 outbox 路由解析、附件拆分和 file URI 规范化，Python 兼容 worker 只执行平台发送。
 - [x] 增加 Go-owned Telegram DeliveryAdapter：Go 通过 Telegram Bot API 执行 outbox text/photo/document 发送，Python worker 对 Telegram 优先走 Go，adapter 不可用时回退旧发送链路。
 - [x] 将普通 `message_push` / `OutboundPort` 发送路径接入 Go `/v1/outbound` + outbox worker；当前仅 Telegram 进入 Go outbound，QQ/NapCat 继续保留 Python direct fallback，避免未完成适配器导致双发或漏发。
+- [x] 增加 Go-owned QQ/NapCat OneBot HTTP `DeliveryAdapter`：Go 可按 `qq_1049511700` / `qq_2365524513` 等 channel alias 执行私聊/群聊文本、图片、文件发送；默认仍需显式配置 endpoint 后才启用，避免影响现有观察群链路。
 
 ## 下一步
 
-- [ ] 评估并实现 QQ/NapCat Go `DeliveryAdapter`：先明确 OneBot HTTP/WebSocket 发送边界、双账号路由、二维码登录状态和防循环交互策略。
+- [ ] 为当前 NapCat 容器确认/开启 OneBot HTTP endpoint，配置 `AKASHIC_ONEBOT_HTTP_BASE_URLS` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，再把通过 smoke 的 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`。
+- [ ] 做 QQ/NapCat Go adapter live smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream。
 - [ ] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 eval worker。
 - [ ] 增加运行态 dashboard 面板，展示 runtime health、worker leases、stale jobs、dead letters、checkpoint lag、job event stream。

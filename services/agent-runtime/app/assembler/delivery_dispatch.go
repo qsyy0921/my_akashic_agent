@@ -9,13 +9,14 @@ func ToDeliveryDispatchPlanView(plan model.DeliveryDispatchPlan) query.DeliveryD
 	steps := make([]query.DeliveryDispatchStepView, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
 		steps = append(steps, query.DeliveryDispatchStepView{
-			StepIndex: step.StepIndex,
-			Kind:      string(step.Kind),
-			Channel:   step.Channel,
-			ChatID:    step.ChatID,
-			Message:   step.Message,
-			Image:     step.Image,
-			File:      step.File,
+			StepIndex:        step.StepIndex,
+			Kind:             string(step.Kind),
+			Channel:          step.Channel,
+			ChatID:           step.ChatID,
+			ConversationType: string(step.ConversationType),
+			Message:          step.Message,
+			Image:            step.Image,
+			File:             step.File,
 		})
 	}
 	return query.DeliveryDispatchPlanView{

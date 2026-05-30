@@ -77,3 +77,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-28-telegram-delivery-adapter.md`
 - `2026-05-30-phase8-29-runtime-backed-message-push.md`
 - `2026-05-30-phase8-30-dashboard-media-asset-metadata-fallback.md`
+- `2026-05-30-phase8-31-onebot-delivery-adapter.md`
