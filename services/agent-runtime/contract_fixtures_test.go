@@ -1,4 +1,4 @@
-﻿package agentruntime_test
+package agentruntime_test
 
 import (
 	"encoding/json"
@@ -21,6 +21,11 @@ var requiredContractFixtures = []string{
 	"image_job.lifecycle.json",
 	"memory_extract_job.group_thread.json",
 	"rag_ingest_job.thread_summary.json",
+	"knowledge_checkpoint.ragflow.qq.json",
+	"inbox_replay.observe_only.qq.json",
+	"outbox_delivery.qq.private.text.json",
+	"media_asset_content.qq.image.json",
+	"agent_job_event_stream.rag_ingest.json",
 	"group_thread.hardware.json",
 	"group_thread.game_guide.json",
 	"source_citation.message_asset.json",
@@ -63,6 +68,45 @@ func TestContractFixturesLoadInGo(t *testing.T) {
 			if len(roundTripped.SourceAssetIDs) != len(fixture.SourceAssetIDs) {
 				t.Fatal("source_asset_ids changed during round-trip")
 			}
+			if len(roundTripped.Extra) != len(fixture.Extra) {
+				t.Fatal("extra contract fields changed during round-trip")
+			}
+		})
+	}
+}
+
+func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
+	checks := map[string][]string{
+		"knowledge_checkpoint.ragflow.qq.json": {
+			"checkpoint_id",
+			"cursor",
+		},
+		"inbox_replay.observe_only.qq.json": {
+			"replay",
+		},
+		"outbox_delivery.qq.private.text.json": {
+			"delivery",
+			"content",
+		},
+		"media_asset_content.qq.image.json": {
+			"asset_id",
+			"content_access",
+		},
+		"agent_job_event_stream.rag_ingest.json": {
+			"job_type",
+			"events",
+		},
+	}
+
+	dir := contractFixtureDir(t)
+	for name, keys := range checks {
+		t.Run(name, func(t *testing.T) {
+			fixture := loadContractFixture(t, filepath.Join(dir, name))
+			for _, key := range keys {
+				if _, ok := fixture.Extra[key]; !ok {
+					t.Fatalf("missing extra contract field %q", key)
+				}
+			}
 		})
 	}
 }
@@ -96,6 +140,22 @@ func TestMessageEnvelopeFixturesMatchGatewayDTO(t *testing.T) {
 	}
 }
 
+func loadContractFixture(t *testing.T, path string) dto.ContractFixture {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var fixture dto.ContractFixture
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	if err := fixture.Validate(); err != nil {
+		t.Fatalf("validate fixture: %v", err)
+	}
+	return fixture
+}
+
 func contractFixtureDir(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Clean(filepath.Join("..", "..", "tests", "fixtures", "contracts"))
@@ -111,4 +171,3 @@ func assertNonEmpty(t *testing.T, value string, field string) {
 		t.Fatalf("%s is required", field)
 	}
 }
-

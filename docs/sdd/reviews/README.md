@@ -79,3 +79,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-30-dashboard-media-asset-metadata-fallback.md`
 - `2026-05-30-phase8-31-onebot-delivery-adapter.md`
 - `2026-05-30-phase8-32-onebot-websocket-delivery.md`
+- `2026-05-30-phase8-33-runtime-contract-fixtures.md`

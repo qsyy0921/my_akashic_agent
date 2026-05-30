@@ -36,6 +36,11 @@ Python tests.
 | `image_job.lifecycle.json` | pending/running/succeeded/failed image job states |
 | `memory_extract_job.group_thread.json` | group memory extraction job |
 | `rag_ingest_job.thread_summary.json` | RAG indexing job for thread summary |
+| `knowledge_checkpoint.ragflow.qq.json` | Go-owned RAGFlow checkpoint cursor committed by Python worker |
+| `inbox_replay.observe_only.qq.json` | Go inbox replay window for observe-only group memory extraction |
+| `outbox_delivery.qq.private.text.json` | Go outbox delivery state, OneBot adapter result, and echo-loop guard |
+| `media_asset_content.qq.image.json` | Go media content access contract for dashboard previews/downloads |
+| `agent_job_event_stream.rag_ingest.json` | Go durable job lifecycle event stream for RAG ingest jobs |
 | `group_thread.hardware.json` | segmented hardware discussion |
 | `group_thread.game_guide.json` | segmented game攻略 discussion |
 | `source_citation.message_asset.json` | citation linking answer to message and asset |
@@ -70,4 +75,3 @@ Before implementation:
 No Go adapter migration, Python bus replacement, media registry implementation,
 or group-memory worker implementation can start until these fixtures are written
 and loaded by both runtimes.
-

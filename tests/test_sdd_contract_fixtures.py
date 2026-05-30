@@ -23,6 +23,11 @@ REQUIRED_CONTRACTS = {
     "image_job.lifecycle.json",
     "memory_extract_job.group_thread.json",
     "rag_ingest_job.thread_summary.json",
+    "knowledge_checkpoint.ragflow.qq.json",
+    "inbox_replay.observe_only.qq.json",
+    "outbox_delivery.qq.private.text.json",
+    "media_asset_content.qq.image.json",
+    "agent_job_event_stream.rag_ingest.json",
     "group_thread.hardware.json",
     "group_thread.game_guide.json",
     "source_citation.message_asset.json",
@@ -74,6 +79,7 @@ def test_contract_fixtures_round_trip_through_python_contract_model() -> None:
         assert round_tripped.source_message_ids == data["source_message_ids"]
         assert round_tripped.source_asset_ids == data["source_asset_ids"]
         assert round_tripped.metadata == data["metadata"]
+        assert round_tripped.extra == fixture.extra
 
 
 def test_contract_channel_fields_match_top_level_route() -> None:
@@ -85,6 +91,58 @@ def test_contract_channel_fields_match_top_level_route() -> None:
             assert channel["account_id"] == data["account_id"]
             assert channel["conversation_id"] == data["conversation_id"]
             assert channel["conversation_type"] == data["conversation_type"]
+
+
+def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
+    expectations = {
+        "knowledge_checkpoint.ragflow.qq.json": {
+            "kind": "KnowledgeCheckpoint",
+            "required_keys": {"checkpoint_id", "cursor"},
+        },
+        "inbox_replay.observe_only.qq.json": {
+            "kind": "InboxReplay",
+            "required_keys": {"replay"},
+        },
+        "outbox_delivery.qq.private.text.json": {
+            "kind": "OutboxDelivery",
+            "required_keys": {"delivery", "content"},
+        },
+        "media_asset_content.qq.image.json": {
+            "kind": "MediaAssetContent",
+            "required_keys": {"asset_id", "content_access"},
+        },
+        "agent_job_event_stream.rag_ingest.json": {
+            "kind": "AgentJobEventStream",
+            "required_keys": {"job_type", "events"},
+        },
+    }
+
+    for name, expectation in expectations.items():
+        data = _load_json(CONTRACT_DIR / name)
+        assert data["kind"] == expectation["kind"]
+        for key in expectation["required_keys"]:
+            assert key in data, f"{name} missing {key}"
+
+    checkpoint = _load_json(CONTRACT_DIR / "knowledge_checkpoint.ragflow.qq.json")
+    assert checkpoint["cursor"]["last_message_id"] in checkpoint["source_message_ids"]
+
+    replay = _load_json(CONTRACT_DIR / "inbox_replay.observe_only.qq.json")
+    assert replay["replay"]["observe_only"] is True
+    assert replay["replay"]["expected_outbound"] == "none"
+
+    outbox = _load_json(CONTRACT_DIR / "outbox_delivery.qq.private.text.json")
+    assert outbox["delivery"]["status"] == "succeeded"
+    assert outbox["delivery"]["echo_loop_guard"]["ttl_seconds"] > 0
+
+    media_content = _load_json(CONTRACT_DIR / "media_asset_content.qq.image.json")
+    assert media_content["content_access"]["access_path"].startswith(
+        "/api/runtime/media/assets/"
+    )
+    assert media_content["content_access"]["preview_ready"] is True
+
+    event_stream = _load_json(CONTRACT_DIR / "agent_job_event_stream.rag_ingest.json")
+    assert [event["sequence"] for event in event_stream["events"]] == [1, 2, 3]
+    assert event_stream["events"][-1]["status"] == "succeeded"
 
 
 def test_group_replay_fixture_manifest_is_complete() -> None:

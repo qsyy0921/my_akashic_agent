@@ -1,0 +1,39 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "OutboxDelivery",
+  "event_id": "outbox-delivery:qq:1049511700:private:2365524513:reply-001",
+  "platform": "qq",
+  "account_id": "1049511700",
+  "conversation_id": "2365524513",
+  "conversation_type": "private",
+  "agent_id": "qq-private-agent",
+  "channel": {
+    "kind": "qq",
+    "account_id": "1049511700",
+    "conversation_id": "2365524513",
+    "conversation_type": "private"
+  },
+  "content": "收到，图片生成任务已进入队列。",
+  "delivery": {
+    "outbox_id": "outbox:qq:1049511700:private:2365524513:reply-001",
+    "adapter": "onebot-websocket",
+    "status": "succeeded",
+    "attempt": 1,
+    "sent_message_id": "onebot:1049511700:private:2365524513:sent-001",
+    "idempotency_key": "recent-send:1049511700:2365524513:reply-001",
+    "echo_loop_guard": {
+      "content_hash": "sha256:0f52d8d55df0b9af5f27f1c2bc9fef4bb2a5d882a9d8a79fe90b4fdbb5f00001",
+      "ttl_seconds": 120
+    }
+  },
+  "timestamp": "2026-05-30T01:04:12+08:00",
+  "source_message_ids": [
+    "qq:1049511700:private:2365524513:msg-9001"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "owner": "agent-runtime",
+    "delivery_route": "qq_1049511700",
+    "requires_human_confirmation": false
+  }
+}

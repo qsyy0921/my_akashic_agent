@@ -1,0 +1,45 @@
+{
+  "schema_version": "2026-05-30.v1",
+  "kind": "AgentJobEventStream",
+  "job_id": "rag_ingest:thread:hardware-001",
+  "job_type": "rag_ingest",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "events": [
+    {
+      "event_type": "created",
+      "sequence": 1,
+      "status": "pending",
+      "timestamp": "2026-05-30T01:02:00+08:00"
+    },
+    {
+      "event_type": "leased",
+      "sequence": 2,
+      "status": "running",
+      "lease_owner": "python-knowledge-worker",
+      "timestamp": "2026-05-30T01:02:05+08:00"
+    },
+    {
+      "event_type": "checkpoint_committed",
+      "sequence": 3,
+      "status": "succeeded",
+      "checkpoint_id": "checkpoint:ragflow:qq:2365524513:group:27234224:thread-summary",
+      "timestamp": "2026-05-30T01:03:00+08:00"
+    }
+  ],
+  "timestamp": "2026-05-30T01:03:01+08:00",
+  "source_message_ids": [
+    "qq:2365524513:group:27234224:msg-100",
+    "qq:2365524513:group:27234224:msg-101",
+    "qq:2365524513:group:27234224:msg-102"
+  ],
+  "source_asset_ids": [],
+  "metadata": {
+    "owner": "agent-runtime",
+    "stream_store": "jsonl",
+    "consumer": "dashboard"
+  }
+}
