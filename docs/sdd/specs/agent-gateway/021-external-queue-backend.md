@@ -125,6 +125,9 @@ message or is disabled, Go can still discover leaseable work from state.
    - Retryable dispatch failures move through Go failure/retry state and then
      delayed NATS `nack`; succeeded or terminal failed deliveries NATS `ack`;
      malformed or unsupported work is NATS `term`.
+   - `/v1/queue-backend` reports `execution_scope=outbox_delivery_only` when
+     the gate is ready. It also reports `agent_job` as a blocked work kind
+     because Python worker completion must control queue acknowledgement.
    - Do not add a new service solely for this phase; reuse `agent-runtime`
      application services until deployment or ownership boundaries justify a
      split.
@@ -219,6 +222,8 @@ When `mode=external_lease`, the response also contains `external_lease`:
 
 - whether explicit cutover was requested;
 - whether execution is allowed;
+- the execution scope, currently `outbox_delivery_only` after all gates pass;
+- allowed work kinds and blocked work kinds;
 - required checks and blockers;
 - ack, nack, retry, dead-letter, and rollback policies.
 
@@ -236,6 +241,24 @@ The executor implemented in this slice is intentionally scoped to outbox
 delivery. It reuses `OutboxService`, `DeliveryDispatchService`, and configured
 DeliveryAdapters. It does not introduce a new service process and it does not
 execute generic `agent_job` work.
+
+`agent_job` remains intentionally blocked from external lease execution. Unlike
+outbox delivery, the side effect is long-running Python work: image generation,
+media vision/OCR, group memory extraction, RAG ingest, and RAG eval. A NATS
+consumer cannot safely `ack` those messages when Go merely leases the job; it
+must wait until the Python worker has completed or failed the job. Moving
+`agent_job` to external lease therefore requires a separate result-ack protocol:
+
+- exact `job_id` lease by queue work id, not only `lease-next` by job type;
+- lease token or fencing value so stale Python workers cannot complete a newer
+  lease;
+- worker heartbeat or renewable lease for long model/RAG runs;
+- idempotent `complete` / `fail` writeback keyed by job id and lease token;
+- queue `ack` only after Go records terminal or retryable job state;
+- queue `nack` / delay / `term` mapping aligned with Go domain retry and
+  dead-letter policy;
+- contract smoke that proves duplicate queue deliveries do not duplicate Python
+  side effects.
 
 ## Concurrent Consumption
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 )
 
 func TestDefaultMediaAssetRootsDiscoverRepoFromRepoRoot(t *testing.T) {
@@ -218,6 +220,10 @@ func TestQueueBackendViewFromEnvReportsExternalLeaseGate(t *testing.T) {
 	if view.ExternalLease.AckPolicy != "ack_after_go_state_terminal" {
 		t.Fatalf("unexpected ack policy: %#v", view.ExternalLease)
 	}
+	if view.ExternalLease.ExecutionScope != "none" {
+		t.Fatalf("blocked gate should have no execution scope: %#v", view.ExternalLease)
+	}
+	assertBlockedWorkKind(t, view.ExternalLease.BlockedWorkKinds, "agent_job")
 }
 
 func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing.T) {
@@ -238,6 +244,14 @@ func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing
 	}
 	if !view.ExternalLease.AllowExecution || view.ExternalLease.GateState != "ready" {
 		t.Fatalf("external lease should be ready after explicit gates: %#v", view.ExternalLease)
+	}
+	if view.ExternalLease.ExecutionScope != "outbox_delivery_only" {
+		t.Fatalf("external lease must stay scoped to outbox delivery: %#v", view.ExternalLease)
+	}
+	assertContainsString(t, view.ExternalLease.AllowedWorkKinds, "outbox_delivery")
+	assertBlockedWorkKind(t, view.ExternalLease.BlockedWorkKinds, "agent_job")
+	if view.AgentJobQueueSource != "agent_job_state_store" {
+		t.Fatalf("agent jobs must remain on state-store lease: %#v", view)
 	}
 	if len(view.ExternalLease.Blockers) != 0 {
 		t.Fatalf("unexpected blockers: %#v", view.ExternalLease.Blockers)
@@ -332,4 +346,17 @@ func assertContainsString(t *testing.T, items []string, want string) {
 		}
 	}
 	t.Fatalf("expected %q in %#v", want, items)
+}
+
+func assertBlockedWorkKind(t *testing.T, items []query.QueueExternalLeaseBlock, want string) {
+	t.Helper()
+	for _, item := range items {
+		if item.WorkKind == want {
+			if item.Reason == "" {
+				t.Fatalf("blocked work kind %q should include a reason: %#v", want, item)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected blocked work kind %q in %#v", want, items)
 }

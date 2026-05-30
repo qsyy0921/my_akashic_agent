@@ -111,11 +111,14 @@ type QueueExternalLeaseGate struct {
 	CutoverRequested bool                      `json:"cutover_requested"`
 	AllowExecution   bool                      `json:"allow_execution"`
 	GateState        string                    `json:"gate_state"`
+	ExecutionScope   string                    `json:"execution_scope"`
 	AckPolicy        string                    `json:"ack_policy"`
 	NackPolicy       string                    `json:"nack_policy"`
 	RetryPolicy      string                    `json:"retry_policy"`
 	DeadLetterPolicy string                    `json:"dead_letter_policy"`
 	RollbackPolicy   string                    `json:"rollback_policy"`
+	AllowedWorkKinds []string                  `json:"allowed_work_kinds,omitempty"`
+	BlockedWorkKinds []QueueExternalLeaseBlock `json:"blocked_work_kinds,omitempty"`
 	RequiredChecks   []QueueExternalLeaseCheck `json:"required_checks"`
 	Blockers         []string                  `json:"blockers,omitempty"`
 	Notes            []string                  `json:"notes,omitempty"`
@@ -125,4 +128,10 @@ type QueueExternalLeaseCheck struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
+}
+
+type QueueExternalLeaseBlock struct {
+	WorkKind       string `json:"work_kind"`
+	Reason         string `json:"reason"`
+	RequiredChange string `json:"required_change,omitempty"`
 }

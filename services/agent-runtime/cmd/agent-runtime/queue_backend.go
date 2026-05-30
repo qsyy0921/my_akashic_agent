@@ -181,6 +181,7 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 		Enabled:          true,
 		CutoverRequested: cutoverRequested,
 		GateState:        "blocked",
+		ExecutionScope:   "none",
 		AckPolicy:        envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_ACK_POLICY", "ack_after_go_state_terminal"),
 		NackPolicy:       envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_NACK_POLICY", "nack_when_go_lease_rejected"),
 		RetryPolicy:      envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_RETRY_POLICY", "go_domain_retry_then_dead_letter"),
@@ -200,7 +201,14 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	if len(gate.Blockers) == 0 {
 		gate.AllowExecution = true
 		gate.GateState = "ready"
+		gate.ExecutionScope = "outbox_delivery_only"
+		gate.AllowedWorkKinds = []string{"outbox_delivery"}
 	}
+	gate.BlockedWorkKinds = append(gate.BlockedWorkKinds, query.QueueExternalLeaseBlock{
+		WorkKind:       "agent_job",
+		Reason:         "agent jobs are executed by Python workers, so NATS ack must be tied to Python result writeback rather than Go dispatch completion",
+		RequiredChange: "add an exact job_id lease token, worker heartbeat, idempotent result writeback, and ack-after-result protocol before moving agent_job to external lease",
+	})
 	return gate
 }
 
