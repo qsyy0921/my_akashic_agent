@@ -11,7 +11,9 @@ state/event-stream reconciliation. The fourth slice adds NATS JetStream
 worker pool and compares candidates against Go authoritative state without
 executing side effects. The fifth slice adds an `external_lease` cutover gate
 that documents and exposes required checks while keeping real external lease
-execution blocked.
+execution blocked. A local NATS JetStream smoke has validated
+`shadow_publish` + `dual_read_compare` with one outbox work notification,
+one matched comparison, and zero mismatches.
 
 ## Context
 
@@ -128,6 +130,18 @@ $env:AKASHIC_QUEUE_SUBJECT_PREFIX = "akashic.work"
 $env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
 $env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
 ```
+
+For local Windows smoke runs, Go dependencies can use a domestic module mirror:
+
+```powershell
+go env -w GOPROXY="https://goproxy.cn,direct"
+go env -w GOSUMDB=off
+```
+
+External image and Git operations should prefer the configured local proxy
+first, for example `HTTP_PROXY=http://127.0.0.1:7897` and
+`HTTPS_PROXY=http://127.0.0.1:7897`. Local runtime calls should keep
+`NO_PROXY=127.0.0.1,localhost`.
 
 `AKASHIC_QUEUE_BACKEND` defaults to `local`. Non-local providers default to
 `shadow_publish` for diagnostics, but the first implementation keeps
@@ -304,6 +318,10 @@ deployment boundary becomes independent.
 - `dual_read_compare` starts a bounded NATS pull consumer when configured.
 - `dual_read_compare` records match/mismatch diagnostics without acquiring
   external leases or executing side effects.
+- Local NATS JetStream smoke can create an outbox work notification and observe
+  `/v1/queue-backend` reporting `shadow_publish.succeeded_total >= 1`,
+  `dual_read_compare.matched_total >= 1`, and
+  `dual_read_compare.mismatched_total = 0`.
 - `external_lease` mode exposes a blocked cutover gate with required checks and
   policies.
 - `external_lease` remains unable to execute until an executor is implemented
