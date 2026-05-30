@@ -23,3 +23,8 @@ type RetryOutboxCommand struct {
 	Timestamp time.Time
 }
 
+type LeaseNextOutboxCommand struct {
+	WorkerID   string
+	TTLSeconds int
+	Timestamp  time.Time
+}

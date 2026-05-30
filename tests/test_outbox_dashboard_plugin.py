@@ -41,6 +41,14 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
             event_id = path.removeprefix("/v1/outbox/")
             item = next((delivery for delivery in deliveries if delivery["event_id"] == event_id), None)
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": item or {}}))
+        if method == "POST" and path == "/v1/outbox/lease-next":
+            raw = request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            body = json.loads(raw)
+            calls.append(("", "lease-next", body))
+            item = _delivery("outbox:2", "dispatching", "2365524513", "1049511700", "")
+            item["lease_owner"] = body.get("worker_id", "")
+            item["lease_expires_at"] = "2026-05-30T10:06:00+08:00"
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": item}))
         if method == "POST" and path.startswith("/v1/outbox/"):
             event_id, action = path.removeprefix("/v1/outbox/").rsplit("/", 1)
             raw = request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
@@ -70,24 +78,33 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(monkeypatch, tmp_path
         assert item["event_id"] == "outbox:1"
         assert item["status"] == "failed"
         assert item["account_id"] == "1049511700"
+        assert item["lease_owner"] == "worker-1"
         assert payload["status"]["runtime_available"] is True
 
         detail_response = client.get("/api/dashboard/outbox/outbox%3A1")
         assert detail_response.status_code == 200
         assert detail_response.json()["error_message"] == "platform timeout"
+        assert detail_response.json()["lease_expires_at"] == "2026-05-30T10:05:00+08:00"
 
         retry_response = client.post("/api/dashboard/outbox/outbox%3A1/retry", json={})
         fail_response = client.post(
             "/api/dashboard/outbox/outbox%3A1/failed",
             json={"error_message": "manual test failure"},
         )
+        lease_response = client.post(
+            "/api/dashboard/outbox/outbox%3A1/lease-next",
+            json={"worker_id": "dashboard-test", "ttl_seconds": 120},
+        )
         assert retry_response.status_code == 200
         assert retry_response.json()["status"] == "queued"
         assert fail_response.status_code == 200
         assert fail_response.json()["status"] == "failed"
+        assert lease_response.status_code == 200
+        assert lease_response.json()["lease_owner"] == "dashboard-test"
 
     assert ("outbox:1", "retry", {}) in calls
     assert ("outbox:1", "failed", {"error_message": "manual test failure"}) in calls
+    assert ("", "lease-next", {"worker_id": "dashboard-test", "ttl_seconds": 120}) in calls
 
 
 def test_outbox_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
@@ -138,6 +155,8 @@ def _delivery(
         "status": status,
         "attempts": 1,
         "max_attempts": 2,
+        "lease_owner": "worker-1" if status == "failed" else "",
+        "lease_expires_at": "2026-05-30T10:05:00+08:00" if status == "failed" else "",
         "error_message": error_message,
         "metadata": {"source": "test"},
         "created_at": "2026-05-30T10:00:00+08:00",

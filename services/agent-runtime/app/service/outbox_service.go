@@ -41,6 +41,30 @@ func (s *OutboxService) Get(ctx context.Context, eventID string) (query.OutboxDe
 	return assembler.ToOutboxDeliveryView(delivery), nil
 }
 
+func (s *OutboxService) LeaseNext(ctx context.Context, cmd command.LeaseNextOutboxCommand) (query.OutboxDeliveryView, error) {
+	if s == nil || s.repository == nil {
+		return query.OutboxDeliveryView{}, errors.New("outbox service requires repository")
+	}
+	if cmd.Timestamp.IsZero() {
+		cmd.Timestamp = time.Now().UTC()
+	}
+	ttl := time.Duration(cmd.TTLSeconds) * time.Second
+	delivery, ok, err := s.repository.FindLeaseableOutboxDelivery(ctx, cmd.Timestamp)
+	if err != nil {
+		return query.OutboxDeliveryView{}, err
+	}
+	if !ok {
+		return query.OutboxDeliveryView{}, errors.New("no leaseable outbox delivery")
+	}
+	if err := delivery.Lease(cmd.WorkerID, ttl, cmd.Timestamp); err != nil {
+		return query.OutboxDeliveryView{}, err
+	}
+	if err := s.repository.SaveOutboxDelivery(ctx, delivery); err != nil {
+		return query.OutboxDeliveryView{}, err
+	}
+	return assembler.ToOutboxDeliveryView(delivery), nil
+}
+
 func (s *OutboxService) MarkDispatching(ctx context.Context, cmd command.MarkOutboxDispatchingCommand) (query.OutboxDeliveryView, error) {
 	return s.update(ctx, cmd.EventID, cmd.Timestamp, func(delivery *model.OutboxDelivery, now time.Time) error {
 		return delivery.MarkDispatching(now)
@@ -120,4 +144,3 @@ func (s *OutboxService) getModel(ctx context.Context, eventID string) (model.Out
 	}
 	return delivery, nil
 }
-

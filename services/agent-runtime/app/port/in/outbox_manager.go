@@ -14,5 +14,5 @@ type OutboxManager interface {
 	MarkSucceeded(ctx context.Context, cmd command.MarkOutboxSucceededCommand) (query.OutboxDeliveryView, error)
 	MarkFailed(ctx context.Context, cmd command.MarkOutboxFailedCommand) (query.OutboxDeliveryView, error)
 	Retry(ctx context.Context, cmd command.RetryOutboxCommand) (query.OutboxDeliveryView, error)
+	LeaseNext(ctx context.Context, cmd command.LeaseNextOutboxCommand) (query.OutboxDeliveryView, error)
 }
-

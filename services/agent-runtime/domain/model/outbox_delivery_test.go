@@ -61,6 +61,44 @@ func TestSucceededDeliveryCannotBeRetried(t *testing.T) {
 	}
 }
 
+func TestOutboxDeliveryLeaseExpiresAndCanBeReLeased(t *testing.T) {
+	now := time.Date(2026, 5, 30, 2, 0, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(sampleOutbound(now), 3, now)
+	if err != nil {
+		t.Fatalf("new delivery: %v", err)
+	}
+	if !delivery.CanLease(now) {
+		t.Fatal("expected queued delivery to be leaseable")
+	}
+	if err := delivery.Lease("worker-a", time.Minute, now.Add(time.Second)); err != nil {
+		t.Fatalf("lease delivery: %v", err)
+	}
+	if delivery.Status != model.DeliveryDispatching {
+		t.Fatalf("expected dispatching, got %s", delivery.Status)
+	}
+	if delivery.Attempts != 1 {
+		t.Fatalf("expected one attempt, got %d", delivery.Attempts)
+	}
+	if delivery.LeaseOwner != "worker-a" {
+		t.Fatalf("expected lease owner, got %s", delivery.LeaseOwner)
+	}
+	if delivery.CanLease(now.Add(30 * time.Second)) {
+		t.Fatal("did not expect delivery to be leaseable before lease expiry")
+	}
+	if !delivery.CanLease(now.Add(2 * time.Minute)) {
+		t.Fatal("expected expired dispatching lease to be leaseable")
+	}
+	if err := delivery.Lease("worker-b", time.Minute, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("re-lease delivery: %v", err)
+	}
+	if delivery.LeaseOwner != "worker-b" {
+		t.Fatalf("expected new lease owner, got %s", delivery.LeaseOwner)
+	}
+	if delivery.Attempts != 2 {
+		t.Fatalf("expected second attempt after re-lease, got %d", delivery.Attempts)
+	}
+}
+
 func sampleOutbound(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "out-1",
@@ -74,4 +112,3 @@ func sampleOutbound(timestamp time.Time) model.OutboundMessage {
 		Timestamp: timestamp,
 	}
 }
-

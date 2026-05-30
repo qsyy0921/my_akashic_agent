@@ -18,3 +18,8 @@ type OutboxStateRequest struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 }
 
+type OutboxLeaseRequest struct {
+	WorkerID   string `json:"worker_id,omitempty"`
+	TTLSeconds int    `json:"ttl_seconds,omitempty"`
+	Timestamp  string `json:"timestamp,omitempty"`
+}

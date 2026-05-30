@@ -38,6 +38,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/image-jobs", ImageJobsHandler(imageJobs))
 	mux.Handle("/v1/image-jobs/", ImageJobStateHandler(imageJobs))
 	mux.Handle("/v1/outbox", OutboxListHandler(outbox))
+	mux.Handle("/v1/outbox/lease-next", OutboxLeaseNextHandler(outbox))
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
@@ -270,6 +271,35 @@ func OutboxListHandler(outbox inport.OutboxManager) http.Handler {
 			Code: types.ErrorCodeOK,
 			Data: items,
 		})
+	})
+}
+
+func OutboxLeaseNextHandler(outbox inport.OutboxManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.OutboxLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := outbox.LeaseNext(r.Context(), command.LeaseNextOutboxCommand{
+			WorkerID:   request.WorkerID,
+			TTLSeconds: request.TTLSeconds,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

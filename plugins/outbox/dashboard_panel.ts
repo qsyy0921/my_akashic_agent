@@ -19,6 +19,8 @@ interface OutboxDelivery {
   status: string;
   attempts: number;
   max_attempts: number;
+  lease_owner: string;
+  lease_expires_at: string;
   error_message: string;
   created_at: string;
   updated_at: string;
@@ -138,6 +140,7 @@ window.AkashicDashboard.registerPlugin({
     { key: "route", label: "Route", flex: true, renderCell: (_value, row) => escapeHtml(_route(row as unknown as OutboxDelivery)) },
     { key: "content", label: "Content", width: 180, renderCell: (value) => escapeHtml(_short(value, 64)), cellClass: "content-preview" },
     { key: "attempts", label: "Attempts", width: 92, fmt: "outbox-attempts", cellClass: "mono cell-metric", align: "right", sortable: true },
+    { key: "lease_owner", label: "Lease", width: 120, renderCell: (value) => escapeHtml(_short(value || "-", 32)), cellClass: "mono cell-id" },
     { key: "error_message", label: "Error", width: 170, renderCell: (value) => escapeHtml(_short(value, 64)), cellClass: "content-preview" },
     { key: "updated_at", label: "Updated", width: 150, fmt: "mono-time", cellClass: "mono cell-time", sortable: true },
   ],
@@ -205,6 +208,7 @@ window.AkashicDashboard.registerPlugin({
           </div>
           <div class="outbox-detail-actions">
             <button class="ghost" type="button" data-outbox-action="dispatching">Dispatching</button>
+            <button class="ghost" type="button" data-outbox-action="lease-next">Lease Next</button>
             <button class="primary" type="button" data-outbox-action="retry">Retry</button>
             <button class="ghost" type="button" data-outbox-action="succeeded">Succeeded</button>
           </div>
@@ -219,6 +223,14 @@ window.AkashicDashboard.registerPlugin({
             <div>
               <div class="outbox-label">Attempts</div>
               <div class="outbox-value">${escapeHtml(String(delivery.attempts || 0))}/${escapeHtml(String(delivery.max_attempts || 0))}</div>
+            </div>
+            <div>
+              <div class="outbox-label">Lease Owner</div>
+              <div class="outbox-value mono">${escapeHtml(delivery.lease_owner || "-")}</div>
+            </div>
+            <div>
+              <div class="outbox-label">Lease Expires</div>
+              <div class="outbox-value mono">${escapeHtml(delivery.lease_expires_at || "-")}</div>
             </div>
             <div>
               <div class="outbox-label">Route</div>

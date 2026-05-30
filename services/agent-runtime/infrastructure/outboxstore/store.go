@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
@@ -91,6 +92,23 @@ func (s *Store) ListOutboxDeliveries(_ context.Context, limit int) ([]model.Outb
 		}
 	}
 	return items, nil
+}
+
+func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, now time.Time) (model.OutboxDelivery, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, eventID := range s.queue {
+		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) {
+			return delivery, true, nil
+		}
+	}
+	for _, eventID := range s.order {
+		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) {
+			return delivery, true, nil
+		}
+	}
+	return model.OutboxDelivery{}, false, nil
 }
 
 func (s *Store) EnqueueOutboxDelivery(_ context.Context, delivery model.OutboxDelivery) error {

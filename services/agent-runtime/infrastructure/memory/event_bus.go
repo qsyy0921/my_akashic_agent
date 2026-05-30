@@ -179,6 +179,23 @@ func (s *Store) ListOutboxDeliveries(_ context.Context, limit int) ([]model.Outb
 	return items, nil
 }
 
+func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, now time.Time) (model.OutboxDelivery, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, eventID := range s.outboxQueue {
+		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) {
+			return delivery, true, nil
+		}
+	}
+	for _, eventID := range s.outboxOrder {
+		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) {
+			return delivery, true, nil
+		}
+	}
+	return model.OutboxDelivery{}, false, nil
+}
+
 func (s *Store) EnqueueOutboxDelivery(_ context.Context, delivery model.OutboxDelivery) error {
 	if err := delivery.Validate(); err != nil {
 		return err

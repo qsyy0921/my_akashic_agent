@@ -28,15 +28,17 @@ func ToOutboxDeliveryView(delivery model.OutboxDelivery) query.OutboxDeliveryVie
 			ConversationID:   delivery.Message.Channel.ConversationID,
 			ConversationType: string(delivery.Message.Channel.ConversationType),
 		},
-		Content:      delivery.Message.Content,
-		Attachments:  attachments,
-		Status:       string(delivery.Status),
-		Attempts:     delivery.Attempts,
-		MaxAttempts:  delivery.MaxAttempts,
-		ErrorMessage: delivery.ErrorMessage,
-		CreatedAt:    formatTime(delivery.CreatedAt),
-		UpdatedAt:    formatTime(delivery.UpdatedAt),
-		Metadata:     delivery.Message.Metadata,
+		Content:        delivery.Message.Content,
+		Attachments:    attachments,
+		Status:         string(delivery.Status),
+		Attempts:       delivery.Attempts,
+		MaxAttempts:    delivery.MaxAttempts,
+		LeaseOwner:     delivery.LeaseOwner,
+		LeaseExpiresAt: formatTime(delivery.LeaseExpiresAt),
+		ErrorMessage:   delivery.ErrorMessage,
+		CreatedAt:      formatTime(delivery.CreatedAt),
+		UpdatedAt:      formatTime(delivery.UpdatedAt),
+		Metadata:       delivery.Message.Metadata,
 	}
 }
 
@@ -54,4 +56,3 @@ func formatTime(value time.Time) string {
 	}
 	return value.Format(time.RFC3339Nano)
 }
-

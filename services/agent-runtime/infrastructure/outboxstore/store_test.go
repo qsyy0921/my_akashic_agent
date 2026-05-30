@@ -119,6 +119,65 @@ func TestOutboxStorePersistsUpdatedDeliveryState(t *testing.T) {
 	}
 }
 
+func TestOutboxStoreFindLeaseableAndPersistsLease(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "outbox-lease.json")
+	repo, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	now := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
+	delivery := newDelivery(t, "outbox:lease", "2365524513", now)
+	if err := repo.EnqueueOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("enqueue delivery: %v", err)
+	}
+	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("find leaseable: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected leaseable delivery")
+	}
+	if leaseable.Message.EventID != "outbox:lease" {
+		t.Fatalf("unexpected leaseable delivery: %s", leaseable.Message.EventID)
+	}
+	if err := leaseable.Lease("qq-dispatcher", time.Minute, now.Add(2*time.Second)); err != nil {
+		t.Fatalf("lease delivery: %v", err)
+	}
+	if err := repo.SaveOutboxDelivery(ctx, leaseable); err != nil {
+		t.Fatalf("save leased delivery: %v", err)
+	}
+
+	reloaded, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("reload store: %v", err)
+	}
+	stored, ok, err := reloaded.FindOutboxDelivery(ctx, "outbox:lease")
+	if err != nil {
+		t.Fatalf("find stored delivery: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected leased delivery to persist")
+	}
+	if stored.LeaseOwner != "qq-dispatcher" {
+		t.Fatalf("expected lease owner to persist, got %q", stored.LeaseOwner)
+	}
+	if stored.LeaseExpiresAt.IsZero() {
+		t.Fatalf("expected lease expiry to persist")
+	}
+	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, now.Add(30*time.Second)); err != nil {
+		t.Fatalf("find active lease: %v", err)
+	} else if ok {
+		t.Fatalf("active lease should not be leaseable")
+	}
+	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("find expired lease: %v", err)
+	} else if !ok {
+		t.Fatalf("expired lease should be leaseable")
+	}
+}
+
 func newDelivery(t *testing.T, eventID string, conversationID string, now time.Time) model.OutboxDelivery {
 	t.Helper()
 	delivery, err := model.NewOutboxDelivery(model.OutboundMessage{

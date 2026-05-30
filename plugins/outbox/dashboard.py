@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Query
 _DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:8780"
 _DEFAULT_LIST_LIMIT = 200
 _MAX_PAGE_SIZE = 100
-_ACTIONS = {"dispatching", "succeeded", "failed", "retry"}
+_ACTIONS = {"dispatching", "succeeded", "failed", "retry", "lease-next"}
 
 
 class OutboxDashboardReader:
@@ -111,6 +111,8 @@ class OutboxDashboardReader:
         action: str,
         *,
         error_message: str = "",
+        worker_id: str = "dashboard",
+        ttl_seconds: int = 300,
     ) -> dict[str, Any]:
         if action not in _ACTIONS:
             raise HTTPException(status_code=404, detail="unknown outbox action")
@@ -119,7 +121,12 @@ class OutboxDashboardReader:
         body: dict[str, Any] = {}
         if action == "failed":
             body["error_message"] = error_message or "manual failure from dashboard"
-        url = f"{self.runtime_base_url}/v1/outbox/{urllib.parse.quote(event_id, safe='')}/{action}"
+        if action == "lease-next":
+            body["worker_id"] = worker_id or "dashboard"
+            body["ttl_seconds"] = ttl_seconds if ttl_seconds > 0 else 300
+            url = f"{self.runtime_base_url}/v1/outbox/lease-next"
+        else:
+            url = f"{self.runtime_base_url}/v1/outbox/{urllib.parse.quote(event_id, safe='')}/{action}"
         data, error = self._request_json(url, method="POST", body=body)
         if error:
             raise HTTPException(status_code=502, detail=error)
@@ -217,6 +224,8 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
             event_id,
             action,
             error_message=_text(body.get("error_message")),
+            worker_id=_text(body.get("worker_id")) or "dashboard",
+            ttl_seconds=_int_value(body.get("ttl_seconds"), fallback=300),
         )
 
 
@@ -237,6 +246,8 @@ def _normalize_delivery(item: Mapping[str, Any]) -> dict[str, Any]:
         "status": _text(item.get("status") or "unknown"),
         "attempts": _int_value(item.get("attempts"), fallback=0),
         "max_attempts": _int_value(item.get("max_attempts"), fallback=0),
+        "lease_owner": _text(item.get("lease_owner")),
+        "lease_expires_at": _text(item.get("lease_expires_at")),
         "error_message": _text(item.get("error_message")),
         "created_at": _text(item.get("created_at")),
         "updated_at": _text(item.get("updated_at")),

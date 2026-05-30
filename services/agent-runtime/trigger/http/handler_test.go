@@ -235,6 +235,62 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	}
 }
 
+func TestOutboxLeaseNextEndpointLeasesQueuedDelivery(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+
+	body := map[string]any{
+		"event_id": "outbox-http-lease-1",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "2365524513",
+			"conversation_type": "private",
+		},
+		"content":   "generated image is ready",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/lease-next", bytes.NewReader([]byte(`{"worker_id":"qq-dispatcher","ttl_seconds":60}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease-next 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_id":"outbox-http-lease-1"`)) {
+		t.Fatalf("lease response missing event id: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"dispatching"`)) {
+		t.Fatalf("lease response missing dispatching status: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"lease_owner":"qq-dispatcher"`)) {
+		t.Fatalf("lease response missing owner: %s", response.Body.String())
+	}
+}
+
 func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	assetRoot := t.TempDir()
 	assetPath := filepath.Join(assetRoot, "qq-image.txt")

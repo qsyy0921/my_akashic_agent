@@ -62,6 +62,53 @@ func TestOutboxServiceTransitionsAndRetry(t *testing.T) {
 	}
 }
 
+func TestOutboxServiceLeaseNextMarksDeliveryDispatching(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 30, 5, 0, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(sampleOutboxMessage(now), 2, now)
+	if err != nil {
+		t.Fatalf("new delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("save delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("enqueue delivery: %v", err)
+	}
+
+	service := appservice.NewOutboxService(store, store)
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:   "qq-dispatcher",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.Status != string(model.DeliveryDispatching) {
+		t.Fatalf("expected dispatching, got %s", leased.Status)
+	}
+	if leased.Attempts != 1 {
+		t.Fatalf("expected attempts to increment, got %d", leased.Attempts)
+	}
+	if leased.LeaseOwner != "qq-dispatcher" {
+		t.Fatalf("expected lease owner, got %q", leased.LeaseOwner)
+	}
+	if leased.LeaseExpiresAt == "" {
+		t.Fatalf("expected lease expiry")
+	}
+
+	_, err = service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:   "qq-dispatcher-2",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(2 * time.Second),
+	})
+	if err == nil {
+		t.Fatalf("expected no leaseable delivery while lease is active")
+	}
+}
+
 func sampleOutboxMessage(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "outbox-1",
@@ -75,4 +122,3 @@ func sampleOutboxMessage(timestamp time.Time) model.OutboundMessage {
 		Timestamp: timestamp,
 	}
 }
-

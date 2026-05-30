@@ -17,16 +17,17 @@ type OutboxChannelView struct {
 }
 
 type OutboxDeliveryView struct {
-	EventID      string                 `json:"event_id"`
-	Channel      OutboxChannelView      `json:"channel"`
-	Content      string                 `json:"content"`
-	Attachments  []OutboxAttachmentView `json:"attachments,omitempty"`
-	Status       string                 `json:"status"`
-	Attempts     int                    `json:"attempts"`
-	MaxAttempts  int                    `json:"max_attempts"`
-	ErrorMessage string                 `json:"error_message,omitempty"`
-	CreatedAt    string                 `json:"created_at"`
-	UpdatedAt    string                 `json:"updated_at"`
-	Metadata     map[string]string      `json:"metadata,omitempty"`
+	EventID        string                 `json:"event_id"`
+	Channel        OutboxChannelView      `json:"channel"`
+	Content        string                 `json:"content"`
+	Attachments    []OutboxAttachmentView `json:"attachments,omitempty"`
+	Status         string                 `json:"status"`
+	Attempts       int                    `json:"attempts"`
+	MaxAttempts    int                    `json:"max_attempts"`
+	LeaseOwner     string                 `json:"lease_owner,omitempty"`
+	LeaseExpiresAt string                 `json:"lease_expires_at,omitempty"`
+	ErrorMessage   string                 `json:"error_message,omitempty"`
+	CreatedAt      string                 `json:"created_at"`
+	UpdatedAt      string                 `json:"updated_at"`
+	Metadata       map[string]string      `json:"metadata,omitempty"`
 }
-

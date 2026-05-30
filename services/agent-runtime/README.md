@@ -118,6 +118,7 @@ Query and update outbound delivery state:
 ```text
 GET  /v1/outbox?limit=50
 GET  /v1/outbox/{event_id}
+POST /v1/outbox/lease-next
 POST /v1/outbox/{event_id}/dispatching
 POST /v1/outbox/{event_id}/succeeded
 POST /v1/outbox/{event_id}/failed
@@ -125,9 +126,21 @@ POST /v1/outbox/{event_id}/retry
 ```
 
 The current outbox implementation is a control-plane migration slice. It owns
-delivery status, attempts, retry, and dead-letter transitions in Go, while the
-actual QQ/Telegram SDK send path remains on the Python compatibility layer until
-the platform adapter cutover is reviewed.
+delivery status, attempts, retry, worker lease, and dead-letter transitions in
+Go, while the actual QQ/Telegram SDK send path remains on the Python
+compatibility layer until the platform adapter cutover is reviewed.
+
+`POST /v1/outbox/lease-next` accepts:
+
+```json
+{
+  "worker_id": "qq-dispatcher",
+  "ttl_seconds": 300
+}
+```
+
+It returns the next queued delivery, or an expired `dispatching` delivery, as
+`dispatching` with `lease_owner` and `lease_expires_at` set.
 
 Register and query media/file metadata:
 
