@@ -253,6 +253,7 @@ POST /v1/jobs
 GET  /v1/jobs?limit=50&type=rag_ingest&status=pending
 GET  /v1/jobs/{job_id}
 POST /v1/jobs/lease-next
+POST /v1/jobs/lease-work
 POST /v1/jobs/{job_id}/lease
 POST /v1/jobs/{job_id}/renew
 POST /v1/jobs/{job_id}/running
@@ -281,6 +282,10 @@ $env:AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN = "true"
 In strict mode, `running`, `succeeded`, and `failed` transitions reject empty
 `lease_token` values. This is required before generic `agent_job` work can move
 from state-store leasing to an external queue acknowledgement protocol.
+
+`POST /v1/jobs/lease-work` is the queue-notification lease entrypoint for future
+external consumers. It leases the exact `work_id` from an `agent_job` work
+notification and rejects non-`agent_job` work kinds or mismatched aggregate ids.
 
 Persist generic job lifecycle events as a JSONL stream:
 

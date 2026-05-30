@@ -21,6 +21,17 @@ type AgentJobLeaseRequest struct {
 	Timestamp  string `json:"timestamp,omitempty"`
 }
 
+type AgentJobLeaseWorkRequest struct {
+	WorkKind    string `json:"work_kind"`
+	WorkID      string `json:"work_id"`
+	AggregateID string `json:"aggregate_id,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	WorkerID    string `json:"worker_id"`
+	LeaseToken  string `json:"lease_token,omitempty"`
+	TTLSeconds  int    `json:"ttl_seconds,omitempty"`
+	Timestamp   string `json:"timestamp,omitempty"`
+}
+
 type AgentJobStateRequest struct {
 	Timestamp    string            `json:"timestamp,omitempty"`
 	LeaseToken   string            `json:"lease_token,omitempty"`

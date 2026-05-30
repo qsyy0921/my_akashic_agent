@@ -932,6 +932,68 @@ func TestAgentJobEventsEndpointListsLifecycleStream(t *testing.T) {
 	}
 }
 
+func TestAgentJobLeaseWorkEndpointLeasesExactQueueWorkID(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+
+	body := []byte(`{
+		"job_id":"job-lease-work-http-1",
+		"job_type":"rag_ingest",
+		"agent_id":"main",
+		"route":{
+			"platform":"qq",
+			"account_id":"1049511700",
+			"conversation_id":"27234224",
+			"conversation_type":"group"
+		},
+		"payload":{"source":"group"},
+		"max_attempts":2
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	leaseBody := []byte(`{
+		"work_kind":"agent_job",
+		"work_id":"job-lease-work-http-1",
+		"aggregate_id":"job-lease-work-http-1",
+		"subject":"akashic.work.agent_job.rag_ingest",
+		"worker_id":"queue-worker",
+		"ttl_seconds":60
+	}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/lease-work", bytes.NewReader(leaseBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease-work 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"leased"`)) {
+		t.Fatalf("lease-work response missing leased status: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"lease_owner":"queue-worker"`)) {
+		t.Fatalf("lease-work response missing queue worker owner: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"lease_token"`)) {
+		t.Fatalf("lease-work response missing lease token: %s", response.Body.String())
+	}
+}
+
 func TestOutboxEventsEndpointListsLifecycleStream(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

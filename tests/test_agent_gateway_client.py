@@ -106,6 +106,39 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_leases_exact_queue_work_id():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        assert request.method == "POST"
+        assert request.url.path == "/v1/jobs/lease-work"
+        assert body == {
+            "work_kind": "agent_job",
+            "work_id": "job-queue-1",
+            "aggregate_id": "job-queue-1",
+            "subject": "akashic.work.agent_job.rag_ingest",
+            "worker_id": "worker-a",
+            "ttl_seconds": 120,
+        }
+        return _ok(
+            {
+                "job_id": "job-queue-1",
+                "status": "leased",
+                "lease_token": "tok-work-1",
+            }
+        )
+
+    leased = await _client(handler).lease_work(
+        work_kind="agent_job",
+        work_id="job-queue-1",
+        aggregate_id="job-queue-1",
+        subject="akashic.work.agent_job.rag_ingest",
+    )
+
+    assert leased["status"] == "leased"
+    assert leased["lease_token"] == "tok-work-1"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_lists_jobs_with_filters():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

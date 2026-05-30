@@ -202,6 +202,29 @@ class AgentGatewayClient:
             no_job_on_404=True,
         )
 
+    async def lease_work(
+        self,
+        *,
+        work_kind: str,
+        work_id: str,
+        aggregate_id: str = "",
+        subject: str = "",
+        worker_id: str | None = None,
+        lease_token: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        body = {
+            "work_kind": str(work_kind or ""),
+            "work_id": str(work_id or ""),
+            "aggregate_id": str(aggregate_id or ""),
+            "subject": str(subject or ""),
+            "worker_id": worker_id or self._config.worker_id,
+            "ttl_seconds": int(ttl_seconds or self._config.lease_ttl_seconds),
+        }
+        if lease_token:
+            body["lease_token"] = str(lease_token)
+        return await self._request("POST", "/v1/jobs/lease-work", json_body=body)
+
     async def lease_job(
         self,
         job_id: str,

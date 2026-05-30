@@ -13,6 +13,7 @@ type AgentJobManager interface {
 	Get(ctx context.Context, jobID string) (query.AgentJobView, error)
 	Lease(ctx context.Context, cmd command.AgentJobLeaseCommand) (query.AgentJobView, error)
 	LeaseNext(ctx context.Context, cmd command.AgentJobLeaseNextCommand) (query.AgentJobView, error)
+	LeaseWork(ctx context.Context, cmd command.AgentJobLeaseWorkCommand) (query.AgentJobView, error)
 	RenewLease(ctx context.Context, cmd command.RenewAgentJobLeaseCommand) (query.AgentJobView, error)
 	MarkRunning(ctx context.Context, cmd command.MarkAgentJobRunningCommand) (query.AgentJobView, error)
 	Complete(ctx context.Context, cmd command.CompleteAgentJobCommand) (query.AgentJobView, error)

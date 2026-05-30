@@ -299,6 +299,19 @@ Strict token mode is an explicit runtime cutover gate:
 - Agent-job external queue execution must not be enabled until strict token mode
   is deployed with updated Python workers.
 
+Queue work-id exact leasing is now available for agent jobs:
+
+- `POST /v1/jobs/lease-work` accepts `work_kind`, `work_id`, `aggregate_id`,
+  `subject`, `worker_id`, optional `lease_token`, and `ttl_seconds`.
+- The handler accepts only `work_kind=agent_job`.
+- `work_id` must identify the exact `AgentJob.JobID`; if `aggregate_id` is
+  present it must match `work_id`.
+- The service delegates to the same domain lease path as
+  `POST /v1/jobs/{job_id}/lease`, so attempts, token creation, and lifecycle
+  events remain consistent.
+- This endpoint is a queue-notification contract boundary; it does not by
+  itself run Python work or acknowledge NATS deliveries.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

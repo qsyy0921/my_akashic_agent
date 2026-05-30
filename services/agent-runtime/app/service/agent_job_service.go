@@ -156,6 +156,27 @@ func (s *AgentJobService) LeaseNext(ctx context.Context, cmd command.AgentJobLea
 	return assembler.ToAgentJobView(job), nil
 }
 
+func (s *AgentJobService) LeaseWork(ctx context.Context, cmd command.AgentJobLeaseWorkCommand) (query.AgentJobView, error) {
+	workKind := normalizeWorkKind(cmd.WorkKind)
+	if workKind != "agent_job" {
+		return query.AgentJobView{}, errors.New("agent job lease work requires agent_job work kind")
+	}
+	workID := firstNonBlank(cmd.WorkID, cmd.AggregateID)
+	if workID == "" {
+		return query.AgentJobView{}, errors.New("agent job lease work requires work id")
+	}
+	if aggregateID := strings.TrimSpace(cmd.AggregateID); aggregateID != "" && aggregateID != workID {
+		return query.AgentJobView{}, errors.New("agent job lease work aggregate id mismatch")
+	}
+	return s.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      workID,
+		WorkerID:   cmd.WorkerID,
+		LeaseToken: cmd.LeaseToken,
+		TTLSeconds: cmd.TTLSeconds,
+		Timestamp:  cmd.Timestamp,
+	})
+}
+
 func (s *AgentJobService) RenewLease(ctx context.Context, cmd command.RenewAgentJobLeaseCommand) (query.AgentJobView, error) {
 	return s.update(ctx, cmd.JobID, model.AgentJobEventRenewed, cmd.Timestamp, func(job *model.AgentJob, now time.Time) error {
 		return job.RenewLease(cmd.LeaseToken, time.Duration(cmd.TTLSeconds)*time.Second, now)

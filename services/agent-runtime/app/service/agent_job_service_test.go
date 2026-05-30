@@ -177,6 +177,62 @@ func TestAgentJobServiceStrictLeaseTokenRejectsEmptyResultWriteback(t *testing.T
 	}
 }
 
+func TestAgentJobServiceLeaseWorkUsesExactQueueWorkID(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobService(store)
+	now := time.Date(2026, 5, 30, 6, 48, 0, 0, time.UTC)
+
+	if _, err := service.Create(ctx, sampleCreateAgentJobCommand(now)); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	leased, err := service.LeaseWork(ctx, command.AgentJobLeaseWorkCommand{
+		WorkKind:    "agent_job",
+		WorkID:      "job-svc-1",
+		AggregateID: "job-svc-1",
+		Subject:     "akashic.work.agent_job.rag_ingest",
+		WorkerID:    "queue-worker",
+		TTLSeconds:  60,
+		Timestamp:   now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease work: %v", err)
+	}
+	if leased.JobID != "job-svc-1" || leased.Status != string(model.AgentJobLeased) {
+		t.Fatalf("unexpected lease work result: %+v", leased)
+	}
+	if leased.LeaseOwner != "queue-worker" || leased.LeaseToken == "" {
+		t.Fatalf("expected queue worker lease token: %+v", leased)
+	}
+}
+
+func TestAgentJobServiceLeaseWorkRejectsWrongWorkKindAndAggregateMismatch(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobService(store)
+	now := time.Date(2026, 5, 30, 6, 49, 0, 0, time.UTC)
+
+	if _, err := service.LeaseWork(ctx, command.AgentJobLeaseWorkCommand{
+		WorkKind:   "outbox_delivery",
+		WorkID:     "job-svc-1",
+		WorkerID:   "queue-worker",
+		TTLSeconds: 60,
+		Timestamp:  now,
+	}); err == nil {
+		t.Fatal("expected wrong work kind to be rejected")
+	}
+	if _, err := service.LeaseWork(ctx, command.AgentJobLeaseWorkCommand{
+		WorkKind:    "agent_job",
+		WorkID:      "job-svc-1",
+		AggregateID: "different-job",
+		WorkerID:    "queue-worker",
+		TTLSeconds:  60,
+		Timestamp:   now,
+	}); err == nil {
+		t.Fatal("expected aggregate mismatch to be rejected")
+	}
+}
+
 func TestAgentJobServiceRenewsRunningLeaseWithToken(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()
