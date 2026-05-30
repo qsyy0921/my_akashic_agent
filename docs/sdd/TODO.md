@@ -74,10 +74,11 @@
 - [x] 增加 Go-owned runtime worker diagnostics endpoint `GET /v1/runtime-workers`：Go 汇总 agent job recovery、local outbox worker、NATS shadow/dual-read/external-lease worker 的 enabled/running/config 状态，并接入 runtime overview dashboard。
 - [x] 增加 Go-owned delivery adapter live health endpoint `GET /v1/delivery-adapters/health`：Go 只读调用 OneBot `get_login_info` 与 Telegram `getMe`，返回 channel alias 是否 reachable/authenticated/account_id，side_effect 固定为 none，便于 QQ/NapCat live send 前验证连接。
 - [x] 将 delivery adapter live health 接入 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-adapter-health` 代理和 `Delivery Adapters` 详情页 Probe Health 按钮；不会在概览加载时自动 ping QQ/Telegram。
+- [x] 增加 Go-owned runtime config 只读诊断 `GET /v1/runtime-config`：脱敏展示当前进程地址、bot ids、OneBot/Telegram env、预期 QQ channel alias、缺失项、worker/cutover 开关，并接入 `GET /v1/runtime-overview` 的 Runtime Config 卡片。
 
 ## 下一步
 
-- [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后通过日志、`GET /v1/delivery-adapters`、`GET /v1/delivery-adapters/health`、`GET /v1/runtime-workers` 和 runtime overview dashboard 确认 adapter/worker enabled。
+- [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后通过日志、`GET /v1/runtime-config`、`GET /v1/delivery-adapters`、`GET /v1/delivery-adapters/health`、`GET /v1/runtime-workers` 和 runtime overview dashboard 确认 adapter/worker enabled。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 

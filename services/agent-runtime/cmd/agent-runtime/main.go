@@ -220,6 +220,7 @@ func main() {
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
 	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
 	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
+	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -230,6 +231,7 @@ func main() {
 	})
 	runtimeOverview := appservice.NewRuntimeOverviewService(appservice.RuntimeOverviewDeps{
 		QueueBackend:         queueBackend,
+		RuntimeConfig:        runtimeConfig,
 		DeliveryAdapters:     deliveryAdapterDiagnostics,
 		SendLedger:           sendLedger,
 		InboxMetrics:         inboxMetrics,
@@ -253,6 +255,7 @@ func main() {
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
 	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, deliveryAdapterHealth)
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
+	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 

@@ -144,6 +144,13 @@ func RegisterRuntimeOverviewRoutes(
 	mux.Handle("/v1/runtime-overview", RuntimeOverviewHandler(viewer))
 }
 
+func RegisterRuntimeConfigRoutes(
+	mux *http.ServeMux,
+	viewer inport.RuntimeConfigViewer,
+) {
+	mux.Handle("/v1/runtime-config", RuntimeConfigHandler(viewer))
+}
+
 func RegisterRuntimeWorkerDiagnosticsRoutes(
 	mux *http.ServeMux,
 	viewer inport.RuntimeWorkerDiagnosticsViewer,
@@ -452,6 +459,25 @@ func DeliveryAdapterHealthHandler(viewer inport.DeliveryAdapterHealthViewer) htt
 		item, err := viewer.CheckDeliveryAdapters(r.Context(), query.DeliveryAdapterHealthFilter{
 			TimeoutSeconds: parsePositiveInt(r.URL.Query().Get("timeout_seconds"), 3, 30),
 		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func RuntimeConfigHandler(viewer inport.RuntimeConfigViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "runtime config diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := viewer.GetRuntimeConfig(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

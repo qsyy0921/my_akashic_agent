@@ -121,3 +121,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-72-runtime-worker-diagnostics.md`
 - `2026-05-31-phase8-73-delivery-adapter-health.md`
 - `2026-05-31-phase8-74-runtime-overview-adapter-health.md`
+- `2026-05-31-phase8-75-runtime-config-diagnostics.md`

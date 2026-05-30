@@ -117,6 +117,58 @@ func TestRuntimeWorkerDiagnosticsEndpointReturnsReadOnlyWorkers(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigEndpointReturnsSanitizedReadOnlyConfig(t *testing.T) {
+	viewer := appservice.NewRuntimeConfigService(query.RuntimeConfigView{
+		Runtime: query.RuntimeProcessConfigView{
+			Address:       ":8780",
+			AddressSource: "AKASHIC_RUNTIME_ADDR",
+			BotIDs:        []string{"1049511700", "2365524513"},
+		},
+		Delivery: query.RuntimeDeliveryConfigView{
+			OneBotExpectedChannels: []string{"qq", "qq_2365524513"},
+			OneBotEndpoints: []query.RuntimeOneBotEndpointConfigView{{
+				Channel:               "qq_2365524513",
+				Transport:             "websocket",
+				WebSocketConfigured:   true,
+				AccessTokenConfigured: true,
+				Endpoint:              "ws://127.0.0.1:3002",
+			}},
+			OneBotReadyForHealthProbe: true,
+		},
+		Environment: []query.RuntimeEnvVarView{{
+			Key:           "AKASHIC_ONEBOT_ACCESS_TOKENS",
+			Present:       true,
+			Secret:        true,
+			ValueRedacted: "qq_2365524513=redacted",
+		}},
+		Readiness:  query.RuntimeConfigReadinessView{DeliveryAdaptersConfigured: true, OneBotConfigured: true},
+		SideEffect: "none",
+	})
+	mux := http.NewServeMux()
+	httptrigger.RegisterRuntimeConfigRoutes(mux, viewer)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/runtime-config", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`"address":":8780"`,
+		`"side_effect":"none"`,
+		`"key":"AKASHIC_ONEBOT_ACCESS_TOKENS"`,
+		`"value_redacted":"qq_2365524513=redacted"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("runtime config response missing %s: %s", expected, body)
+		}
+	}
+	if strings.Contains(body, "NcatBot") {
+		t.Fatalf("runtime config leaked token: %s", body)
+	}
+}
+
 func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
 		{

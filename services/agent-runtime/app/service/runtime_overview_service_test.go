@@ -17,6 +17,18 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			MaxInFlight:             64,
 			ExternalLease:           &query.QueueExternalLeaseGate{AllowExecution: false},
 		}},
+		RuntimeConfig: staticRuntimeConfig{view: query.RuntimeConfigView{
+			Runtime: query.RuntimeProcessConfigView{
+				Address:       ":8780",
+				AddressSource: "AKASHIC_RUNTIME_ADDR",
+				BotIDs:        []string{"1049511700", "2365524513"},
+			},
+			Delivery: query.RuntimeDeliveryConfigView{
+				OneBotMissingChannels: []string{"qq_2365524513"},
+			},
+			Readiness:  query.RuntimeConfigReadinessView{Blockers: []string{"onebot_expected_channels_missing"}},
+			SideEffect: "none",
+		}},
 		DeliveryAdapters: staticRuntimeDeliveryAdapters{items: []query.DeliveryAdapterDiagnosticsView{
 			{Provider: "onebot", Channel: "qq_2365524513", Enabled: true},
 			{Provider: "onebot", Channel: "qq_1049511700", Enabled: false},
@@ -97,8 +109,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["runtime_workers_running"] != 1 {
 		t.Fatalf("unexpected runtime worker summary: %#v", view.Summary)
 	}
+	if view.Summary["runtime_config_blockers"] != 1 || view.Summary["runtime_config_onebot_missing"] != 1 {
+		t.Fatalf("unexpected runtime config summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
@@ -123,6 +139,14 @@ type staticRuntimeQueueBackend struct {
 }
 
 func (s staticRuntimeQueueBackend) Get(context.Context) (query.QueueBackendView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeConfig struct {
+	view query.RuntimeConfigView
+}
+
+func (s staticRuntimeConfig) GetRuntimeConfig(context.Context) (query.RuntimeConfigView, error) {
 	return s.view, nil
 }
 

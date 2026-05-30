@@ -17,6 +17,7 @@ const (
 
 type RuntimeOverviewDeps struct {
 	QueueBackend         runtimeQueueBackendGetter
+	RuntimeConfig        runtimeConfigGetter
 	DeliveryAdapters     runtimeDeliveryAdapterLister
 	SendLedger           runtimeSendLedgerMetricsGetter
 	InboxMetrics         runtimeInboxMetricsGetter
@@ -28,6 +29,10 @@ type RuntimeOverviewDeps struct {
 
 type runtimeQueueBackendGetter interface {
 	Get(ctx context.Context) (query.QueueBackendView, error)
+}
+
+type runtimeConfigGetter interface {
+	GetRuntimeConfig(ctx context.Context) (query.RuntimeConfigView, error)
 }
 
 type runtimeDeliveryAdapterLister interface {
@@ -84,6 +89,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		errors           []query.RuntimeOverviewErrorView
 		deliveryAdapters []query.DeliveryAdapterDiagnosticsView
 		queueBackend     query.QueueBackendView
+		runtimeConfig    query.RuntimeConfigView
 		sendLedger       query.SendLedgerMetricsView
 		inboxMetrics     query.InboxMetricsView
 		agentJobMetrics  query.AgentJobMetricsView
@@ -102,6 +108,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			errors = append(errors, runtimeOverviewError("queue-backend", err))
 		} else {
 			queueBackend = item
+		}
+
+		if deps.RuntimeConfig != nil {
+			if item, err := deps.RuntimeConfig.GetRuntimeConfig(ctx); err != nil {
+				errors = append(errors, runtimeOverviewError("runtime-config", err))
+			} else {
+				runtimeConfig = item
+			}
 		}
 
 		if deps.DeliveryAdapters == nil {
@@ -167,6 +181,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	summary := runtimeOverviewSummary(
 		deliveryAdapters,
 		queueBackend,
+		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
 		agentJobMetrics,
@@ -178,6 +193,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		summary,
 		deliveryAdapters,
 		queueBackend,
+		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
 		agentJobMetrics,
@@ -192,6 +208,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		Cards:             cards,
 		DeliveryAdapters:  deliveryAdapters,
 		QueueBackend:      queueBackend,
+		RuntimeConfig:     runtimeConfig,
 		RuntimeWorkers:    runtimeWorkers,
 		SendLedgerMetrics: sendLedger,
 		InboxMetrics:      inboxMetrics,
@@ -210,6 +227,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 func runtimeOverviewSummary(
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
 	queueBackend query.QueueBackendView,
+	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
 	agentJobMetrics query.AgentJobMetricsView,
@@ -252,6 +270,8 @@ func runtimeOverviewSummary(
 		"queue_consumer_concurrency":    queueBackend.ConsumerConcurrency,
 		"queue_max_in_flight":           queueBackend.MaxInFlight,
 		"queue_external_lease_ready":    externalLeaseReady,
+		"runtime_config_blockers":       len(runtimeConfig.Readiness.Blockers),
+		"runtime_config_onebot_missing": len(runtimeConfig.Delivery.OneBotMissingChannels),
 		"runtime_workers":               intFromMap(runtimeWorkers.Totals, "workers"),
 		"runtime_workers_enabled":       intFromMap(runtimeWorkers.Totals, "enabled"),
 		"runtime_workers_running":       intFromMap(runtimeWorkers.Totals, "running"),
@@ -271,6 +291,7 @@ func runtimeOverviewCards(
 	summary map[string]any,
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
 	queueBackend query.QueueBackendView,
+	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
 	agentJobMetrics query.AgentJobMetricsView,
@@ -280,7 +301,7 @@ func runtimeOverviewCards(
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
 	queueValue := fmt.Sprintf("%s/%s", emptyAsUnknown(queueBackend.Provider), emptyAsUnknown(queueBackend.Mode))
-	return []query.RuntimeOverviewCardView{
+	cards := []query.RuntimeOverviewCardView{
 		runtimeOverviewCard("runtime_health", "Runtime Health", "ok", runtimeHealthStatus(errors), map[string]any{"errors": errors}),
 		runtimeOverviewCard("worker_leases", "Worker Leases", intSummary(summary, "worker_leases"), statusIfPositive(intSummary(summary, "stale_jobs"), "warn", "ok"), map[string]any{"diagnostics": diagnostics}),
 		runtimeOverviewCard("stale_jobs", "Stale Jobs", intSummary(summary, "stale_jobs"), statusIfPositive(intSummary(summary, "stale_jobs"), "danger", "ok"), map[string]any{"diagnostics": diagnostics}),
@@ -297,6 +318,10 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
 	}
+	if runtimeConfig.SideEffect != "" {
+		cards = append(cards, runtimeOverviewCard("runtime_config", "Runtime Config", runtimeConfigCardValue(runtimeConfig), runtimeConfigStatus(runtimeConfig), map[string]any{"runtime_config": runtimeConfig}))
+	}
+	return cards
 }
 
 func runtimeOverviewCard(id string, label string, value any, status string, detail map[string]any) query.RuntimeOverviewCardView {
@@ -396,6 +421,26 @@ func runtimeWorkerStatus(view query.RuntimeWorkerDiagnosticsView) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+func runtimeConfigStatus(view query.RuntimeConfigView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if len(view.Readiness.Blockers) > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func runtimeConfigCardValue(view query.RuntimeConfigView) string {
+	if view.Runtime.Address == "" {
+		return "unknown"
+	}
+	if len(view.Readiness.Blockers) == 0 {
+		return view.Runtime.Address
+	}
+	return fmt.Sprintf("%s (%d blockers)", view.Runtime.Address, len(view.Readiness.Blockers))
 }
 
 func emptyAsUnknown(value string) string {

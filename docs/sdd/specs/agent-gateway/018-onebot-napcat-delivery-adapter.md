@@ -89,6 +89,19 @@ The response includes provider, channel alias, transport, endpoint presence,
 redacted endpoint, and whether an access token is configured. It deliberately
 does not expose token values and does not perform a live send.
 
+Read sanitized runtime configuration before restarting or sending:
+
+```http
+GET /v1/runtime-config
+```
+
+The response includes process address/source, bot ids, OneBot expected channel
+aliases, configured endpoint aliases, missing aliases, token presence, worker
+flags, and `side_effect=none`. For the current two-account deployment the
+default expectation is `qq` for the primary local account plus `qq_<bot id>` for
+additional bot ids. Operators can override this with
+`AKASHIC_ONEBOT_EXPECTED_CHANNELS`.
+
 Read live adapter health without sending messages:
 
 ```http
@@ -175,6 +188,8 @@ For two-bot interaction, this slice relies on existing controls:
   single-endpoint env parsing.
 - Delivery adapter diagnostics cover OneBot WebSocket aliases and Telegram
   channel aliases without leaking token values.
+- Runtime config diagnostics cover OneBot expected aliases, missing alias
+  blockers, worker flags, and secret redaction without platform side effects.
 - Delivery adapter health covers OneBot `get_login_info` and Telegram `getMe`
   without calling message send APIs.
 - Runtime overview dashboard exposes a manual health probe action without

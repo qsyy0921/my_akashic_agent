@@ -3,10 +3,10 @@
 ## Status
 
 Implemented read-only dashboard plugin with a Go-owned runtime overview
-aggregate, delivery adapter, queue backend, Go-owned send ledger metrics
-diagnostics, Go-owned inbox metrics diagnostics, Go-owned agent job metrics
-diagnostics, Go-owned outbox metrics diagnostics, and Go-owned runtime worker
-diagnostics.
+aggregate, runtime config diagnostics, delivery adapter, queue backend,
+Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
+Go-owned agent job metrics diagnostics, Go-owned outbox metrics diagnostics,
+and Go-owned runtime worker diagnostics.
 
 ## Context
 
@@ -36,6 +36,17 @@ The plugin first reads the Go-owned aggregate:
 ```text
 GET /v1/runtime-overview
 ```
+
+The Go aggregate includes a sanitized runtime config card backed by:
+
+```text
+GET /v1/runtime-config
+```
+
+This endpoint reports the current process address, address source, bot ids,
+selected OneBot/Telegram environment variables, expected OneBot channel aliases,
+missing aliases, worker/cutover flags, and `side_effect=none`. Secret values are
+never returned; only presence and redacted values are exposed.
 
 When this endpoint is unavailable or returns an invalid shape, the dashboard
 falls back to the older multi-endpoint read path:
@@ -89,6 +100,8 @@ It summarizes:
 - Go-owned runtime worker enabled/running/config state for agent job recovery,
   local outbox dispatch, NATS shadow publish, NATS dual-read compare, and NATS
   external lease cutover.
+- Go-owned sanitized runtime config state for OneBot aliases, token presence,
+  worker flags, and pre-smoke blockers.
 - Manual delivery adapter live health results, including reachable,
   authenticated, account id/name, latency, and `side_effect=none`.
 - Go-owned aggregate cards and summary fields for runtime overview. Python
@@ -107,6 +120,8 @@ Go owns:
 - outbox metrics semantics and bounded operational samples.
 - runtime worker diagnostics semantics, including enabled/running counters and
   queue worker configuration.
+- runtime config diagnostics semantics, including secret redaction, expected
+  OneBot alias readiness, and side-effect-free preflight blockers.
 
 Python dashboard owns:
 
@@ -123,6 +138,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
 - `/api/dashboard/runtime-overview/delivery-adapter-health` returns normalized
   adapter health only when called explicitly.
 - `GET /v1/runtime-overview` returns the Go-owned aggregate summary and cards.
+- `GET /v1/runtime-config` returns sanitized runtime configuration with
+  `side_effect=none`, no secret leakage, and OneBot alias readiness blockers.
 - The panel is discoverable via `/api/dashboard/plugins`.
 - Endpoint failures are returned in `status.errors` without breaking the whole
   overview when other endpoints still respond.
@@ -135,3 +152,5 @@ remain in the specific job/outbox plugins where mutation is explicit.
   aggregate is unavailable.
 - Tests cover the manual adapter health proxy and confirm normal overview
   loading does not call the health endpoint.
+- Tests cover runtime config endpoint output, secret redaction, missing OneBot
+  alias blockers, and runtime overview Runtime Config card status.

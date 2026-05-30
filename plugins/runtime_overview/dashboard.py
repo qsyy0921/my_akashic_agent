@@ -834,6 +834,7 @@ def _normalize_go_runtime_overview(
     runtime_workers = _normalize_runtime_workers(
         _mapping_or_empty(item.get("runtime_workers"))
     )
+    runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
     errors_raw = status.get("errors")
@@ -875,6 +876,7 @@ def _normalize_go_runtime_overview(
         "diagnostics": diagnostics,
         "delivery_adapters": delivery_adapters,
         "queue_backend": queue_backend,
+        "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
@@ -913,6 +915,8 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "queue_consumer_concurrency": 0,
         "queue_max_in_flight": 0,
         "queue_external_lease_ready": False,
+        "runtime_config_blockers": 0,
+        "runtime_config_onebot_missing": 0,
         "runtime_workers": 0,
         "runtime_workers_enabled": 0,
         "runtime_workers_running": 0,

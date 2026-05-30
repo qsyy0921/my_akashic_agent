@@ -151,6 +151,51 @@ func TestDeliveryAdapterDiagnosticsFromEnvReportsConfiguredAliases(t *testing.T)
 	}
 }
 
+func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq=NcatBot,qq_2365524513=NcatBot")
+	t.Setenv("AKASHIC_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
+
+	view := runtimeConfigFromEnv(":8780", "AKASHIC_RUNTIME_ADDR", []string{"1049511700", "2365524513"})
+
+	if view.SideEffect != "none" {
+		t.Fatalf("runtime config must be read-only: %#v", view)
+	}
+	if view.Runtime.Address != ":8780" || view.Runtime.AddressSource != "AKASHIC_RUNTIME_ADDR" {
+		t.Fatalf("unexpected runtime address: %#v", view.Runtime)
+	}
+	if !view.Delivery.OneBotReadyForHealthProbe || !view.Delivery.OneBotReadyForDualAccountSmoke {
+		t.Fatalf("expected onebot readiness: %#v", view.Delivery)
+	}
+	if len(view.Delivery.OneBotMissingChannels) != 0 || len(view.Readiness.Blockers) != 0 {
+		t.Fatalf("unexpected blockers: %#v %#v", view.Delivery.OneBotMissingChannels, view.Readiness.Blockers)
+	}
+	if !view.Workers.OutboxDeliveryWorkerEnabled || !view.Workers.AgentJobStrictLeaseToken {
+		t.Fatalf("unexpected worker config flags: %#v", view.Workers)
+	}
+	tokenEnv := findRuntimeEnvVar(t, view.Environment, "AKASHIC_ONEBOT_ACCESS_TOKENS")
+	if !tokenEnv.Present || !tokenEnv.Secret {
+		t.Fatalf("token env should expose presence only: %#v", tokenEnv)
+	}
+	if tokenEnv.ValueRedacted == "qq=NcatBot,qq_2365524513=NcatBot" {
+		t.Fatalf("token value was not redacted: %#v", tokenEnv)
+	}
+}
+
+func TestRuntimeConfigFromEnvReportsMissingExpectedOneBotAliases(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq=ws://127.0.0.1:3001")
+
+	view := runtimeConfigFromEnv(":8780", "default", []string{"1049511700", "2365524513"})
+
+	if view.Delivery.OneBotReadyForDualAccountSmoke {
+		t.Fatalf("dual account smoke must not be ready with missing alias: %#v", view.Delivery)
+	}
+	assertContainsString(t, view.Delivery.OneBotMissingChannels, "qq_2365524513")
+	assertContainsString(t, view.Readiness.Blockers, "onebot_expected_channels_missing")
+}
+
 func TestDeliveryAdapterHealthProbesSelectProbeCapableAdapters(t *testing.T) {
 	probes := deliveryAdapterHealthProbes([]outport.DeliveryAdapter{
 		fakeDeliveryAdapter{},
@@ -587,6 +632,17 @@ func findRuntimeWorker(t *testing.T, items []query.RuntimeWorkerView, name strin
 	}
 	t.Fatalf("missing runtime worker %q in %#v", name, items)
 	return query.RuntimeWorkerView{}
+}
+
+func findRuntimeEnvVar(t *testing.T, items []query.RuntimeEnvVarView, key string) query.RuntimeEnvVarView {
+	t.Helper()
+	for _, item := range items {
+		if item.Key == key {
+			return item
+		}
+	}
+	t.Fatalf("missing env var %q in %#v", key, items)
+	return query.RuntimeEnvVarView{}
 }
 
 type fakeDeliveryAdapter struct{}

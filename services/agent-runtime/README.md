@@ -246,6 +246,19 @@ GET /v1/delivery-adapters
 The response shows provider, channel alias, transport, endpoint presence,
 redacted endpoint, and access-token presence. It does not expose token values.
 
+Inspect the current sanitized runtime configuration:
+
+```text
+GET /v1/runtime-config
+```
+
+The response shows the process address/source, bot ids, selected
+OneBot/Telegram env presence, expected OneBot aliases, missing aliases,
+worker/cutover flags, and `side_effect=none`. Tokens, DSNs, and URLs are
+redacted. For the local two-account setup, the default expected OneBot aliases
+are `qq` for the primary account plus `qq_<bot id>` for additional bot ids; set
+`AKASHIC_ONEBOT_EXPECTED_CHANNELS` to override that readiness check.
+
 Probe configured delivery adapter health without sending any platform message:
 
 ```text
@@ -597,12 +610,12 @@ GET /v1/runtime-overview?limit=200&event_limit=50&stale_after_seconds=900
 ```
 
 This read-only endpoint combines delivery adapter diagnostics, queue backend
-state, runtime worker diagnostics, send ledger metrics, inbox metrics, agent
-job metrics, outbox metrics, and knowledge worker diagnostics into the same
-summary/card shape consumed by the Python dashboard. It does not send platform
-messages, lease work, recover jobs, or mutate runtime state. The Python
-dashboard prefers this endpoint and falls back to the older multi-endpoint read
-path when it is unavailable.
+state, runtime config diagnostics, runtime worker diagnostics, send ledger
+metrics, inbox metrics, agent job metrics, outbox metrics, and knowledge worker
+diagnostics into the same summary/card shape consumed by the Python dashboard.
+It does not send platform messages, lease work, recover jobs, or mutate runtime
+state. The Python dashboard prefers this endpoint and falls back to the older
+multi-endpoint read path when it is unavailable.
 
 Record and query recent bot sends:
 
