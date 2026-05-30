@@ -217,6 +217,48 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "blockers": ["explicit_cutover", "state_lease_workers_disabled"],
         },
     }
+    send_ledger_metrics = {
+        "sampled_records": 4,
+        "unique_bots": 2,
+        "unique_conversations": 2,
+        "unique_content_hashes": 3,
+        "repeated_content_hashes": 1,
+        "records_by_bot": {
+            "1049511700": {
+                "total": 3,
+                "unique_conversations": 1,
+                "unique_content_hashes": 2,
+                "latest_timestamp": "2026-05-30T08:49:00Z",
+            }
+        },
+        "records_by_conversation": {
+            "1049511700/2365524513": {
+                "from_bot_id": "1049511700",
+                "conversation_id": "2365524513",
+                "total": 3,
+                "unique_content_hashes": 2,
+                "repeated_hashes": 1,
+                "latest_timestamp": "2026-05-30T08:49:00Z",
+            }
+        },
+        "repeated_hashes": [
+            {
+                "from_bot_id": "1049511700",
+                "conversation_id": "2365524513",
+                "content_hash": "hash-image",
+                "count": 2,
+                "latest_timestamp": "2026-05-30T08:49:00Z",
+            }
+        ],
+        "recent": [
+            {
+                "from_bot_id": "1049511700",
+                "conversation_id": "2365524513",
+                "content_hash": "hash-image",
+                "timestamp": "2026-05-30T08:49:00Z",
+            }
+        ],
+    }
     inbox_metrics = {
         "sampled_events": 9,
         "observe_only_total": 7,
@@ -376,6 +418,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": delivery_adapters}))
         if parsed.path == "/v1/queue-backend":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": queue_backend}))
+        if parsed.path == "/v1/send-ledger/metrics":
+            assert query["limit"] == ["50"]
+            return _fake_urlopen_response(
+                json.dumps({"code": "OK", "data": send_ledger_metrics})
+            )
         if parsed.path == "/v1/inbox-metrics":
             assert query["limit"] == ["50"]
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": inbox_metrics}))
@@ -421,6 +468,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_consumer_concurrency"] == 8
     assert payload["summary"]["queue_max_in_flight"] == 64
     assert payload["summary"]["queue_external_lease_ready"] is False
+    assert payload["summary"]["send_ledger_records"] == 4
+    assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
     assert payload["summary"]["inbox_metric_observe_only"] == 7
     assert payload["summary"]["inbox_metric_with_attachments"] == 3
@@ -437,6 +486,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    send_ledger_card = next(
+        item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
+    )
+    assert send_ledger_card["status"] == "warn"
+    assert payload["send_ledger_metrics"]["repeated_hashes"][0]["content_hash"] == (
+        "hash-image"
+    )
     inbox_metrics_card = next(item for item in payload["cards"] if item["id"] == "inbox_metrics")
     assert inbox_metrics_card["status"] == "ok"
     assert payload["inbox_metrics"]["events_by_conversation"][
@@ -464,6 +520,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/outbox-events",
         "/v1/delivery-adapters",
         "/v1/queue-backend",
+        "/v1/send-ledger/metrics",
         "/v1/inbox-metrics",
         "/v1/job-metrics",
         "/v1/outbox-metrics",
@@ -484,6 +541,7 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
                 in {
                     "/v1/knowledge-worker-diagnostics",
                     "/v1/queue-backend",
+                    "/v1/send-ledger/metrics",
                     "/v1/inbox-metrics",
                     "/v1/job-metrics",
                     "/v1/outbox-metrics",

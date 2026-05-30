@@ -550,6 +550,7 @@ POST /v1/send-ledger/records
 GET  /v1/send-ledger/records?from_bot_id=1049511700&conversation_id=2365524513&limit=50
 GET  /v1/send-ledger/recent?from_bot_id=1049511700&conversation_id=2365524513&content=hello&window_seconds=60
 GET  /v1/send-ledger/private-echo?from_user_id=1049511700&to_bot_id=2365524513&has_image=true&window_seconds=180
+GET  /v1/send-ledger/metrics?from_bot_id=1049511700&conversation_id=2365524513&limit=200
 ```
 
 `POST /v1/send-ledger/records` accepts either `content` or `content_hash`. When
@@ -561,6 +562,9 @@ compatibility channels record successful sends here on a best-effort basis.
 `/v1/send-ledger/private-echo` is read-only and centralizes private echo
 classification for compatibility channels. Empty-text image/file/forward echoes
 are checked with the shared markers `[图片]`, `[文件]`, and `[转发消息]`.
+`/v1/send-ledger/metrics` is read-only and summarizes bounded send ledger
+coverage by bot, conversation, content hash, and repeated hash risk for loop
+guard audits.
 
 Persist outbound delivery state across runtime restarts:
 

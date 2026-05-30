@@ -3,8 +3,8 @@
 ## Status
 
 Implemented read-only dashboard plugin with delivery adapter, queue backend,
-Go-owned inbox metrics diagnostics, Go-owned agent job metrics diagnostics, and
-Go-owned outbox metrics diagnostics.
+Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
+Go-owned agent job metrics diagnostics, and Go-owned outbox metrics diagnostics.
 
 ## Context
 
@@ -39,6 +39,7 @@ GET /v1/job-events
 GET /v1/outbox-events
 GET /v1/delivery-adapters
 GET /v1/queue-backend
+GET /v1/send-ledger/metrics
 GET /v1/inbox-metrics
 GET /v1/job-metrics
 GET /v1/outbox-metrics
@@ -57,6 +58,8 @@ It summarizes:
 - configured delivery adapter count, enabled count, and disabled count.
 - current MQ provider/mode, consumer concurrency, max-in-flight, and external
   lease gate readiness.
+- Go-owned send ledger bot/conversation coverage and repeated content hash
+  risk for loop guard audits.
 - Go-owned inbox observe-only, attachment capture, conversation, sender, and
   sequence cursor metrics.
 - Go-owned `agent_job` lifecycle throughput and dead-letter trend samples.
@@ -69,6 +72,7 @@ Go owns:
 - authoritative runtime state and lifecycle endpoints;
 - job/outbox/checkpoint/event persistence;
 - stale lease and dead-letter state.
+- send ledger metrics semantics and bounded operational samples.
 - inbox metrics semantics and bounded operational samples.
 - `agent_job` metrics semantics and bounded operational samples.
 - outbox metrics semantics and bounded operational samples.
@@ -90,5 +94,6 @@ remain in the specific job/outbox plugins where mutation is explicit.
   overview when other endpoints still respond.
 - Tests cover summary fields for leases, stale jobs, dead letters, checkpoint
   lag, job events, outbox events, `rag_eval` failures, delivery adapter
-  visibility, queue backend visibility, Go-owned inbox metrics, Go-owned
-  `agent_job` metrics, and Go-owned outbox metrics.
+  visibility, queue backend visibility, Go-owned send ledger metrics,
+  Go-owned inbox metrics, Go-owned `agent_job` metrics, and Go-owned outbox
+  metrics.

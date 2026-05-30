@@ -137,6 +137,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        send_ledger_metrics_raw, error = self._read_mapping(
+            "/v1/send-ledger/metrics",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "send-ledger-metrics", "error": error})
+            send_ledger_metrics_raw = {}
+        else:
+            successful_reads += 1
+
         inbox_metrics_raw, error = self._read_mapping(
             "/v1/inbox-metrics",
             {"limit": safe_limit},
@@ -190,6 +200,7 @@ class RuntimeOverviewDashboardReader:
             if isinstance(item, Mapping)
         ]
         queue_backend = _normalize_queue_backend(queue_backend_raw)
+        send_ledger_metrics = _normalize_send_ledger_metrics(send_ledger_metrics_raw)
         inbox_metrics = _normalize_inbox_metrics(inbox_metrics_raw)
         agent_job_metrics = _normalize_agent_job_metrics(agent_job_metrics_raw)
         outbox_metrics = _normalize_outbox_metrics(outbox_metrics_raw)
@@ -242,6 +253,8 @@ class RuntimeOverviewDashboardReader:
             "queue_consumer_concurrency": queue_backend["consumer_concurrency"],
             "queue_max_in_flight": queue_backend["max_in_flight"],
             "queue_external_lease_ready": queue_backend["external_lease_ready"],
+            "send_ledger_records": send_ledger_metrics["sampled_records"],
+            "send_ledger_repeated_hashes": send_ledger_metrics["repeated_content_hashes"],
             "inbox_metric_events": inbox_metrics["sampled_events"],
             "inbox_metric_observe_only": inbox_metrics["observe_only_total"],
             "inbox_metric_with_attachments": inbox_metrics["with_attachments"],
@@ -268,6 +281,7 @@ class RuntimeOverviewDashboardReader:
             delivery_adapters=delivery_adapters,
             disabled_adapters=disabled_adapters,
             queue_backend=queue_backend,
+            send_ledger_metrics=send_ledger_metrics,
             inbox_metrics=inbox_metrics,
             agent_job_metrics=agent_job_metrics,
             outbox_metrics=outbox_metrics,
@@ -294,6 +308,7 @@ class RuntimeOverviewDashboardReader:
             "diagnostics": diagnostics,
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
+            "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
             "outbox_metrics": outbox_metrics,
@@ -545,6 +560,31 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_send_ledger_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
+    repeated = item.get("repeated_hashes")
+    if not isinstance(repeated, list):
+        repeated = []
+    recent = item.get("recent")
+    if not isinstance(recent, list):
+        recent = []
+    return {
+        "sampled_records": _int_value(item.get("sampled_records"), fallback=0),
+        "unique_bots": _int_value(item.get("unique_bots"), fallback=0),
+        "unique_conversations": _int_value(item.get("unique_conversations"), fallback=0),
+        "unique_content_hashes": _int_value(item.get("unique_content_hashes"), fallback=0),
+        "repeated_content_hashes": _int_value(
+            item.get("repeated_content_hashes"),
+            fallback=0,
+        ),
+        "records_by_bot": _mapping_or_empty(item.get("records_by_bot")),
+        "records_by_conversation": _mapping_or_empty(item.get("records_by_conversation")),
+        "repeated_hashes": [
+            dict(value) for value in repeated if isinstance(value, Mapping)
+        ],
+        "recent": [dict(value) for value in recent if isinstance(value, Mapping)],
+    }
+
+
 def _normalize_inbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     recent = item.get("recent")
     if not isinstance(recent, list):
@@ -654,6 +694,7 @@ def _overview_cards(
     delivery_adapters: list[dict[str, Any]],
     disabled_adapters: list[dict[str, Any]],
     queue_backend: dict[str, Any],
+    send_ledger_metrics: dict[str, Any],
     inbox_metrics: dict[str, Any],
     agent_job_metrics: dict[str, Any],
     outbox_metrics: dict[str, Any],
@@ -750,6 +791,15 @@ def _overview_cards(
             f"{queue_provider}/{queue_mode}",
             queue_status,
             {"queue_backend": queue_backend},
+        ),
+        _card(
+            "send_ledger_metrics",
+            "Send Ledger Metrics",
+            summary.get("send_ledger_records", 0),
+            "warn" if summary.get("send_ledger_repeated_hashes") else (
+                "ok" if summary.get("send_ledger_records") else "muted"
+            ),
+            {"send_ledger_metrics": send_ledger_metrics},
         ),
         _card(
             "inbox_metrics",

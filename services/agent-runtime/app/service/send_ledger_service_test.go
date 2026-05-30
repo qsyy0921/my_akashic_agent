@@ -130,3 +130,76 @@ func TestSendLedgerServicePrivateEchoReturnsEmptyContentWithoutLookup(t *testing
 		t.Fatalf("expected empty content to be non-echo, got %+v", echo)
 	}
 }
+
+func TestSendLedgerMetricsSummarizesLoopGuardRecords(t *testing.T) {
+	store := memory.NewStore()
+	ledger := appservice.NewSendLedgerService(store)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 13, 0, 0, 0, time.UTC)
+	imageHash := service.ContentHash(service.OutboundImageMarker)
+
+	records := []command.RecordSendCommand{
+		{
+			FromBotID:      "1049511700",
+			ConversationID: "2365524513",
+			Content:        service.OutboundImageMarker,
+			Timestamp:      now,
+		},
+		{
+			FromBotID:      "1049511700",
+			ConversationID: "2365524513",
+			ContentHash:    imageHash,
+			Timestamp:      now.Add(time.Second),
+		},
+		{
+			FromBotID:      "2365524513",
+			ConversationID: "1049511700",
+			Content:        "hello back",
+			Timestamp:      now.Add(2 * time.Second),
+		},
+	}
+	for _, record := range records {
+		if _, err := ledger.Record(ctx, record); err != nil {
+			t.Fatalf("record send: %v", err)
+		}
+	}
+
+	view, err := ledger.Metrics(ctx, query.SendLedgerMetricsFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("metrics: %v", err)
+	}
+	if view.SampledRecords != 3 || view.UniqueBots != 2 || view.UniqueConversations != 2 {
+		t.Fatalf("unexpected top-level metrics: %+v", view)
+	}
+	if view.UniqueContentHashes != 2 || view.RepeatedContentHashes != 1 {
+		t.Fatalf("unexpected hash metrics: %+v", view)
+	}
+	if view.RecordsByBot["1049511700"].Total != 2 ||
+		view.RecordsByBot["1049511700"].UniqueConversations != 1 {
+		t.Fatalf("unexpected bot metrics: %+v", view.RecordsByBot)
+	}
+	conversation := view.RecordsByConversation["1049511700/2365524513"]
+	if conversation.Total != 2 || conversation.UniqueContentHashes != 1 || conversation.RepeatedHashes != 1 {
+		t.Fatalf("unexpected conversation metrics: %+v", conversation)
+	}
+	if len(view.RepeatedHashes) != 1 ||
+		view.RepeatedHashes[0].ContentHash != imageHash ||
+		view.RepeatedHashes[0].Count != 2 {
+		t.Fatalf("unexpected repeated hashes: %+v", view.RepeatedHashes)
+	}
+	if len(view.Recent) != 3 || view.Recent[0].FromBotID != "2365524513" {
+		t.Fatalf("expected newest-first recent records, got %+v", view.Recent)
+	}
+
+	filtered, err := ledger.Metrics(ctx, query.SendLedgerMetricsFilter{
+		Limit:          10,
+		FromBotID:      "1049511700",
+		ConversationID: "2365524513",
+	})
+	if err != nil {
+		t.Fatalf("filtered metrics: %v", err)
+	}
+	if filtered.SampledRecords != 2 || filtered.RepeatedContentHashes != 1 {
+		t.Fatalf("unexpected filtered metrics: %+v", filtered)
+	}
+}

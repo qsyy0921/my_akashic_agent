@@ -1738,6 +1738,23 @@ func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"conversation_id":"2365524513"`)) {
 		t.Fatalf("list response missing conversation id: %s", response.Body.String())
 	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/send-ledger/metrics?from_bot_id=1049511700&conversation_id=2365524513&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected metrics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"sampled_records":1`,
+		`"unique_bots":1`,
+		`"unique_conversations":1`,
+		`"records_by_bot"`,
+		`"1049511700/2365524513"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("metrics response missing %s: %s", expected, response.Body.String())
+		}
+	}
 }
 
 func TestSendLedgerPrivateEchoEndpointUsesImageMarker(t *testing.T) {

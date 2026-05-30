@@ -115,3 +115,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-66-agent-job-metrics.md`
 - `2026-05-31-phase8-67-outbox-metrics.md`
 - `2026-05-31-phase8-68-inbox-metrics.md`
+- `2026-05-31-phase8-69-send-ledger-metrics.md`

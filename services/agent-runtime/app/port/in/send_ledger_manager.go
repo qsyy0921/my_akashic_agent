@@ -12,4 +12,5 @@ type SendLedgerManager interface {
 	RecentlySent(ctx context.Context, cmd command.CheckRecentSendCommand) (query.RecentSendView, error)
 	CheckPrivateEcho(ctx context.Context, cmd command.CheckPrivateEchoCommand) (query.PrivateEchoView, error)
 	List(ctx context.Context, filter query.SendRecordFilter) ([]query.SendRecordView, error)
+	Metrics(ctx context.Context, filter query.SendLedgerMetricsFilter) (query.SendLedgerMetricsView, error)
 }

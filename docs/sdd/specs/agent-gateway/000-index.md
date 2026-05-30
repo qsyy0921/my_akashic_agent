@@ -57,4 +57,6 @@ execution.
   migration phases from local state-store leasing to NATS JetStream first,
   with bounded concurrent consumers and Redis/RabbitMQ kept behind
   provider-neutral ports.
+- `022-send-ledger-metrics.md`: Go-owned recent-send ledger metrics for
+  bot-to-bot loop guard observability.
 - Agent architecture boundary specs live under `../agent-architecture/`.

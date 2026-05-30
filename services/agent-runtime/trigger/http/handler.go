@@ -52,6 +52,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/send-ledger/records", SendLedgerRecordsHandler(sendLedger))
 	mux.Handle("/v1/send-ledger/recent", SendLedgerRecentHandler(sendLedger))
 	mux.Handle("/v1/send-ledger/private-echo", SendLedgerPrivateEchoHandler(sendLedger))
+	mux.Handle("/v1/send-ledger/metrics", SendLedgerMetricsHandler(sendLedger))
 	mux.Handle("/v1/inbox", InboxEventsHandler(inboxEvents))
 	mux.Handle("/v1/inbox/", InboxEventStateHandler(inboxEvents))
 }
@@ -546,6 +547,29 @@ func SendLedgerPrivateEchoHandler(sendLedger inport.SendLedgerManager) http.Hand
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: echo})
+	})
+}
+
+func SendLedgerMetricsHandler(sendLedger inport.SendLedgerManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sendLedger == nil {
+			http.Error(w, "send ledger disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := sendLedger.Metrics(r.Context(), query.SendLedgerMetricsFilter{
+			Limit:          parsePositiveInt(r.URL.Query().Get("limit"), 200, 200),
+			FromBotID:      r.URL.Query().Get("from_bot_id"),
+			ConversationID: r.URL.Query().Get("conversation_id"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 
