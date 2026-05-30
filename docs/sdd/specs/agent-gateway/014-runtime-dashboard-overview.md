@@ -27,6 +27,8 @@ runtime availability before cutting more responsibilities over to Go.
   jobs.
 - Provide an explicit manual adapter health probe for operators, without
   calling live platform APIs during normal overview loading.
+- Provide an explicit manual delivery smoke readiness probe backed by Go's
+  side-effect-free smoke endpoint.
 - Degrade gracefully when one runtime endpoint is unavailable.
 
 ## Runtime Reads
@@ -81,6 +83,16 @@ This proxy calls Go `GET /v1/delivery-adapters/health` only when the user clicks
 the `Delivery Adapters` detail action. It is intentionally not part of the
 automatic overview read path because it can touch live OneBot/Telegram APIs.
 
+The dashboard also exposes a manual delivery smoke proxy:
+
+```text
+GET /api/dashboard/runtime-overview/delivery-smoke-readiness?group_ids=27234224&include_synthetic_media=true
+```
+
+This proxy posts to Go `POST /v1/delivery-smoke/readiness` only when the user
+clicks the `Delivery Adapters` detail action. It remains side-effect-free:
+no outbox row is created and no platform message is sent.
+
 It summarizes:
 
 - runtime health and endpoint errors;
@@ -107,6 +119,9 @@ It summarizes:
   worker flags, and pre-smoke blockers.
 - Manual delivery adapter live health results, including reachable,
   authenticated, account id/name, latency, and `side_effect=none`.
+- Manual delivery smoke readiness results, including per-case readiness,
+  dispatch plan, missing channel aliases, blockers, totals, and
+  `side_effect=none`.
 - Go-owned aggregate cards and summary fields for runtime overview. Python
   keeps only display normalization and fallback compatibility.
 
@@ -140,6 +155,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
 - `/api/dashboard/runtime-overview` returns an aggregate summary and cards.
 - `/api/dashboard/runtime-overview/delivery-adapter-health` returns normalized
   adapter health only when called explicitly.
+- `/api/dashboard/runtime-overview/delivery-smoke-readiness` returns normalized
+  delivery smoke readiness only when called explicitly.
 - `GET /v1/runtime-overview` returns the Go-owned aggregate summary and cards.
 - `GET /v1/runtime-config` returns sanitized runtime configuration with
   `side_effect=none`, no secret leakage, and OneBot alias readiness blockers.
@@ -155,5 +172,7 @@ remain in the specific job/outbox plugins where mutation is explicit.
   aggregate is unavailable.
 - Tests cover the manual adapter health proxy and confirm normal overview
   loading does not call the health endpoint.
+- Tests cover the manual delivery smoke proxy and confirm the frontend exposes
+  the manual action.
 - Tests cover runtime config endpoint output, secret redaction, missing OneBot
   alias blockers, and runtime overview Runtime Config card status.

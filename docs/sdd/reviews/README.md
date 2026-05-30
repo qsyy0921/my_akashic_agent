@@ -124,3 +124,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-75-runtime-config-diagnostics.md`
 - `2026-05-31-phase8-76-runtime-config-live-preflight.md`
 - `2026-05-31-phase8-77-delivery-smoke-readiness.md`
+- `2026-05-31-phase8-78-runtime-overview-delivery-smoke.md`

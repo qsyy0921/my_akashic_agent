@@ -692,6 +692,80 @@ def test_runtime_overview_dashboard_exposes_manual_adapter_health_probe(
     assert seen_paths == ["/v1/delivery-adapters/health"]
 
 
+def test_runtime_overview_dashboard_exposes_manual_delivery_smoke_readiness(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
+        target = request.full_url if hasattr(request, "full_url") else str(request)
+        parsed = urlparse(target)
+        seen["path"] = parsed.path
+        seen["method"] = request.get_method()
+        seen["timeout"] = timeout
+        seen["body"] = json.loads(request.data.decode("utf-8"))
+        if parsed.path == "/v1/delivery-smoke/readiness":
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "ready": True,
+                            "reason": "delivery_smoke_ready",
+                            "cases": [
+                                {
+                                    "name": "qq_group_text_2365524513_to_27234224",
+                                    "ready": True,
+                                    "reason": "delivery_adapter_ready",
+                                    "plan": {
+                                        "event_id": "smoke-qq-group",
+                                        "channel": "qq_2365524513",
+                                        "chat_id": "27234224",
+                                        "step_count": 1,
+                                        "steps": [
+                                            {
+                                                "step_index": 1,
+                                                "kind": "text",
+                                                "channel": "qq_2365524513",
+                                                "chat_id": "27234224",
+                                                "conversation_type": "group",
+                                            }
+                                        ],
+                                    },
+                                    "attributes": {"side_effect": "none"},
+                                }
+                            ],
+                            "totals": {"cases": 1, "ready": 1, "not_ready": 0},
+                            "side_effect": "none",
+                        },
+                    }
+                )
+            )
+        raise AssertionError(f"unhandled runtime call: {parsed.path}")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path, memory_admin=_MemoryAdmin())) as client:
+        response = client.get(
+            "/api/dashboard/runtime-overview/delivery-smoke-readiness",
+            params={"group_ids": "27234224,3219982", "include_synthetic_media": "true"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is True
+    assert payload["status"]["available"] is True
+    assert payload["status"]["side_effect"] == "none"
+    assert payload["totals"]["ready"] == 1
+    assert payload["cases"][0]["plan"]["channel"] == "qq_2365524513"
+    assert seen["path"] == "/v1/delivery-smoke/readiness"
+    assert seen["method"] == "POST"
+    assert seen["body"]["group_ids"] == ["27234224", "3219982"]
+    assert seen["body"]["include_synthetic_media"] is True
+    assert seen["timeout"] >= 5
+
+
 def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> None:
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
         target = request.full_url if hasattr(request, "full_url") else str(request)
@@ -733,7 +807,9 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert js_response.status_code == 200
     assert css_response.status_code == 200
     assert "/api/dashboard/runtime-overview/delivery-adapter-health" in js_response.text
+    assert "/api/dashboard/runtime-overview/delivery-smoke-readiness" in js_response.text
     assert "Probe Health" in js_response.text
+    assert "Smoke Readiness" in js_response.text
 
 
 def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(

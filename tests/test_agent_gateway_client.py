@@ -416,6 +416,45 @@ async def test_agent_gateway_client_checks_delivery_adapter_health():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_checks_delivery_smoke_readiness():
+    seen: dict[str, Any] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content.decode("utf-8"))
+        assert request.method == "POST"
+        assert request.url.path == "/v1/delivery-smoke/readiness"
+        return _ok(
+            {
+                "ready": True,
+                "reason": "delivery_smoke_ready",
+                "cases": [
+                    {
+                        "name": "qq_private_text_1049511700_to_2365524513",
+                        "ready": True,
+                        "reason": "delivery_adapter_ready",
+                        "plan": {"steps": []},
+                    }
+                ],
+                "totals": {"cases": 1, "ready": 1, "not_ready": 0},
+                "side_effect": "none",
+            }
+        )
+
+    smoke = await _client(handler).check_delivery_smoke_readiness(
+        group_ids=["27234224"],
+        include_synthetic_media=True,
+    )
+
+    assert smoke["ready"] is True
+    assert smoke["side_effect"] == "none"
+    assert smoke["cases"][0]["name"] == "qq_private_text_1049511700_to_2365524513"
+    assert seen["body"]["group_ids"] == ["27234224"]
+    assert seen["body"]["include_synthetic_media"] is True
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

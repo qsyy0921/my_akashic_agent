@@ -454,6 +454,35 @@ class AgentGatewayClient:
             )
         return data
 
+    async def check_delivery_smoke_readiness(
+        self,
+        *,
+        cases: list[dict[str, Any]] | None = None,
+        group_ids: list[str] | None = None,
+        channel_by_account: dict[str, str] | None = None,
+        include_synthetic_media: bool = True,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/delivery-smoke/readiness",
+            json_body={
+                "cases": cases or [],
+                "group_ids": group_ids or [],
+                "channel_by_account": channel_by_account or {},
+                "include_synthetic_media": bool(include_synthetic_media),
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime delivery smoke readiness response is not an object"
+            )
+        smoke_cases = data.get("cases")
+        if not isinstance(smoke_cases, list):
+            raise AgentGatewayError(
+                "agent runtime delivery smoke readiness response has no cases"
+            )
+        return data
+
     async def get_queue_backend(self) -> dict[str, Any]:
         data = await self._request("GET", "/v1/queue-backend")
         if not isinstance(data, dict):

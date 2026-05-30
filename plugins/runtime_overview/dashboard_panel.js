@@ -69,6 +69,18 @@
           </div>
           <pre class="runtime-overview-json" data-runtime-adapter-health-output>${escapeHtml("Not checked")}</pre>
         </div>
+        <div class="runtime-overview-section">
+          <div class="runtime-overview-section-header">
+            <div class="detail-label">Delivery Smoke</div>
+            <div class="runtime-overview-actions">
+              <input class="runtime-overview-input" type="text" data-runtime-delivery-smoke-groups placeholder="Group IDs" />
+              <button class="runtime-overview-action" type="button" data-runtime-delivery-smoke>
+                Smoke Readiness
+              </button>
+            </div>
+          </div>
+          <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
+        </div>
       ` : "";
       container.innerHTML = `
       <div class="runtime-overview-detail">
@@ -103,6 +115,29 @@
             });
           } finally {
             button.disabled = false;
+          }
+        });
+      }
+      const smokeButton = container.querySelector("[data-runtime-delivery-smoke]");
+      const smokeOutput = container.querySelector("[data-runtime-delivery-smoke-output]");
+      const smokeGroups = container.querySelector("[data-runtime-delivery-smoke-groups]");
+      if (smokeButton && smokeOutput) {
+        smokeButton.addEventListener("click", async () => {
+          smokeButton.disabled = true;
+          smokeOutput.textContent = "Checking...";
+          try {
+            const groups = encodeURIComponent(smokeGroups?.value || "");
+            const payload = await api(
+              `/api/dashboard/runtime-overview/delivery-smoke-readiness?include_synthetic_media=true&group_ids=${groups}`
+            );
+            smokeOutput.textContent = _formatJson(payload);
+          } catch (error) {
+            smokeOutput.textContent = _formatJson({
+              error: error instanceof Error ? error.message : String(error),
+              side_effect: "none"
+            });
+          } finally {
+            smokeButton.disabled = false;
           }
         });
       }

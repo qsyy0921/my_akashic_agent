@@ -25,6 +25,15 @@ interface DeliveryAdapterHealthResponse {
   status: Record<string, unknown>;
 }
 
+interface DeliverySmokeReadinessResponse {
+  ready: boolean;
+  reason: string;
+  cases: Record<string, unknown>[];
+  totals: Record<string, number>;
+  status: Record<string, unknown>;
+  side_effect: string;
+}
+
 function _runtimeStatusTag(status: string): string {
   const cls = `runtime-overview-status runtime-overview-${status || "muted"}`;
   return `<span class="${cls}">${escapeHtml(status || "muted")}</span>`;
@@ -104,6 +113,18 @@ window.AkashicDashboard.registerPlugin({
           </div>
           <pre class="runtime-overview-json" data-runtime-adapter-health-output>${escapeHtml("Not checked")}</pre>
         </div>
+        <div class="runtime-overview-section">
+          <div class="runtime-overview-section-header">
+            <div class="detail-label">Delivery Smoke</div>
+            <div class="runtime-overview-actions">
+              <input class="runtime-overview-input" type="text" data-runtime-delivery-smoke-groups placeholder="Group IDs" />
+              <button class="runtime-overview-action" type="button" data-runtime-delivery-smoke>
+                Smoke Readiness
+              </button>
+            </div>
+          </div>
+          <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
+        </div>
       `
       : "";
     container.innerHTML = `
@@ -139,6 +160,29 @@ window.AkashicDashboard.registerPlugin({
           });
         } finally {
           button.disabled = false;
+        }
+      });
+    }
+    const smokeButton = container.querySelector<HTMLButtonElement>("[data-runtime-delivery-smoke]");
+    const smokeOutput = container.querySelector<HTMLElement>("[data-runtime-delivery-smoke-output]");
+    const smokeGroups = container.querySelector<HTMLInputElement>("[data-runtime-delivery-smoke-groups]");
+    if (smokeButton && smokeOutput) {
+      smokeButton.addEventListener("click", async () => {
+        smokeButton.disabled = true;
+        smokeOutput.textContent = "Checking...";
+        try {
+          const groups = encodeURIComponent(smokeGroups?.value || "");
+          const payload = await api<DeliverySmokeReadinessResponse>(
+            `/api/dashboard/runtime-overview/delivery-smoke-readiness?include_synthetic_media=true&group_ids=${groups}`,
+          );
+          smokeOutput.textContent = _formatJson(payload);
+        } catch (error) {
+          smokeOutput.textContent = _formatJson({
+            error: error instanceof Error ? error.message : String(error),
+            side_effect: "none",
+          });
+        } finally {
+          smokeButton.disabled = false;
         }
       });
     }

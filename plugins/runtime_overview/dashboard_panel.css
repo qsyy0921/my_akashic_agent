@@ -45,6 +45,24 @@
   cursor: wait;
 }
 
+.runtime-overview-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.runtime-overview-input {
+  width: 140px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 4px 8px;
+  font: inherit;
+}
+
 .runtime-overview-json {
   margin: 0;
   max-height: 320px;

@@ -148,6 +148,15 @@ channels, aggregate totals, blockers, and `side_effect=none`. It only checks
 planner output and `DeliveryAdapter.SupportsDeliveryChannel`; live media upload
 behavior is still covered by the later explicit send smoke.
 
+The runtime overview dashboard exposes this through a manual proxy:
+
+```http
+GET /api/dashboard/runtime-overview/delivery-smoke-readiness?group_ids=27234224&include_synthetic_media=true
+```
+
+The normal overview load path does not call the smoke endpoint. The operator
+must open the `Delivery Adapters` detail and click the smoke readiness action.
+
 ## Routing Rules
 
 The dispatch planner maps an outbox delivery to platform steps:
@@ -218,6 +227,8 @@ For two-bot interaction, this slice relies on existing controls:
   without calling message send APIs.
 - Runtime overview dashboard exposes a manual health probe action without
   automatically calling live adapter health during panel refresh.
+- Runtime overview dashboard exposes a manual smoke readiness action without
+  automatically calling delivery smoke during panel refresh.
 - Delivery smoke readiness covers dual-account private, optional group,
   synthetic image, and synthetic file case planning without sending platform
   messages.

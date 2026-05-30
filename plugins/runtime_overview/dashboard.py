@@ -368,6 +368,42 @@ class RuntimeOverviewDashboardReader:
             runtime_base_url=self.runtime_base_url,
         )
 
+    def get_delivery_smoke_readiness(
+        self,
+        *,
+        group_ids: list[str] | None = None,
+        include_synthetic_media: bool = True,
+    ) -> dict[str, Any]:
+        body = {
+            "group_ids": group_ids or [],
+            "include_synthetic_media": bool(include_synthetic_media),
+        }
+        smoke, error = self._post_mapping(
+            "/v1/delivery-smoke/readiness",
+            body,
+            timeout_seconds=max(self.request_timeout_seconds, 5.0),
+        )
+        if error:
+            return {
+                "ready": False,
+                "reason": "runtime_unavailable",
+                "cases": [],
+                "totals": {"cases": 0, "ready": 0, "not_ready": 0},
+                "blockers": ["runtime_unavailable"],
+                "notes": [],
+                "status": {
+                    "runtime_url": self.runtime_base_url,
+                    "available": False,
+                    "error": error,
+                    "side_effect": "none",
+                },
+                "side_effect": "none",
+            }
+        return _normalize_delivery_smoke_readiness(
+            smoke,
+            runtime_base_url=self.runtime_base_url,
+        )
+
     def _read_list(
         self,
         path: str,
@@ -396,11 +432,32 @@ class RuntimeOverviewDashboardReader:
             return {}, f"runtime {path} response is not an object"
         return dict(data), None
 
+    def _post_mapping(
+        self,
+        path: str,
+        json_body: Mapping[str, object] | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        data, error = self._request_json(
+            path,
+            method="POST",
+            json_body=json_body or {},
+            timeout_seconds=timeout_seconds,
+        )
+        if error:
+            return {}, error
+        if not isinstance(data, Mapping):
+            return {}, f"runtime {path} response is not an object"
+        return dict(data), None
+
     def _request_json(
         self,
         path: str,
         params: Mapping[str, object] | None = None,
         *,
+        method: str = "GET",
+        json_body: Mapping[str, object] | None = None,
         timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
         if not self.runtime_base_url:
@@ -411,7 +468,17 @@ class RuntimeOverviewDashboardReader:
         url = f"{self.runtime_base_url}{path}"
         if query:
             url = f"{url}?{query}"
-        request = urllib.request.Request(url, method="GET")
+        data: bytes | None = None
+        headers: dict[str, str] = {}
+        if json_body is not None:
+            data = json.dumps(dict(json_body)).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers=headers,
+            method=method.upper(),
+        )
         try:
             with urllib.request.urlopen(
                 request,
@@ -460,6 +527,16 @@ def register(app: FastAPI, plugin_dir: Path, workspace: Path) -> None:
         timeout_seconds: int = Query(3, ge=1, le=30),
     ) -> dict[str, Any]:
         return reader.get_delivery_adapter_health(timeout_seconds=timeout_seconds)
+
+    @app.get("/api/dashboard/runtime-overview/delivery-smoke-readiness")
+    def get_delivery_smoke_readiness(
+        group_ids: str = Query("", max_length=200),
+        include_synthetic_media: bool = Query(True),
+    ) -> dict[str, Any]:
+        return reader.get_delivery_smoke_readiness(
+            group_ids=_csv_values(group_ids),
+            include_synthetic_media=include_synthetic_media,
+        )
 
 
 def _normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -648,6 +725,65 @@ def _normalize_delivery_adapter_health_item(item: Mapping[str, Any]) -> dict[str
         "attributes": attributes,
         "access_token_present": bool(item.get("access_token_present")),
         "notes": [str(value) for value in notes_raw],
+    }
+
+
+def _normalize_delivery_smoke_readiness(
+    item: Mapping[str, Any],
+    *,
+    runtime_base_url: str,
+) -> dict[str, Any]:
+    cases_raw = item.get("cases")
+    if not isinstance(cases_raw, list):
+        cases_raw = []
+    cases = [
+        _normalize_delivery_smoke_case(value)
+        for value in cases_raw
+        if isinstance(value, Mapping)
+    ]
+    totals_raw = _mapping_or_empty(item.get("totals"))
+    blockers_raw = item.get("blockers")
+    if not isinstance(blockers_raw, list):
+        blockers_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    ready_count = sum(1 for value in cases if value["ready"])
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason")),
+        "cases": cases,
+        "totals": {
+            "cases": _int_value(totals_raw.get("cases"), fallback=len(cases)),
+            "ready": _int_value(totals_raw.get("ready"), fallback=ready_count),
+            "not_ready": _int_value(
+                totals_raw.get("not_ready"),
+                fallback=max(0, len(cases) - ready_count),
+            ),
+        },
+        "blockers": [str(value) for value in blockers_raw],
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": [str(value) for value in notes_raw],
+        "status": {
+            "runtime_url": runtime_base_url,
+            "available": True,
+            "side_effect": "none",
+        },
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_delivery_smoke_case(item: Mapping[str, Any]) -> dict[str, Any]:
+    missing_channels = item.get("missing_channels")
+    if not isinstance(missing_channels, list):
+        missing_channels = []
+    return {
+        "name": _text(item.get("name")),
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason")),
+        "missing_channels": [str(value) for value in missing_channels],
+        "plan": _mapping_or_empty(item.get("plan")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
     }
 
 
@@ -1232,6 +1368,14 @@ def _bounded_int(value: object, *, default: int, maximum: int) -> int:
 
 def _text(value: object) -> str:
     return str(value or "")
+
+
+def _csv_values(value: str) -> list[str]:
+    return [
+        item.strip()
+        for item in str(value or "").split(",")
+        if item.strip()
+    ]
 
 
 def _clean_base_url(value: str) -> str:
