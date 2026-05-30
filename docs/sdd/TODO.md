@@ -41,16 +41,18 @@
 - [x] 实现 NATS JetStream `shadow_publish` 适配器：创建 outbox/generic job 时先写 Go state store，再发布 work notification；当前不执行外部租约。
 - [x] 增加 NATS JetStream `shadow_publish` 诊断对账：记录发布成功/失败、按 subject 的通知数，并在 `/v1/queue-backend` 中对比 Go state store 与 event stream 的样本差异。
 - [x] 实现 NATS JetStream `dual_read_compare`：Go 以多 goroutine 消费 MQ work notification，并只读校验 queue candidate 与 Go outbox/job 权威状态，不执行发送或 Python worker 副作用。
+- [x] 增加 NATS JetStream `external_lease` 切换门诊断：明确 ack/nack、retry、dead-letter、rollback 策略和必过条件；当前保持阻断，不新增服务、不执行真实外部租约。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 做本地 NATS JetStream live smoke：启动本地 NATS 后验证 `shadow_publish` 与 `dual_read_compare` 在 `/v1/queue-backend` 的发布/比较计数变化。
-- [ ] 设计 `external_lease` 切换门：明确 ack/nack、lease acquisition、失败重试、dead-letter 和回滚策略，再开始把实际 work discovery 从 state-store lease 迁移到 MQ consumer。
+- [ ] 设计最小化的 `external_lease` 执行器：复用现有 outbox/job 应用服务和 NATS consumer，不新增独立服务；先只支持 outbox delivery，验证 ack/nack 与 Go lifecycle 一致后再考虑 agent job。
 
 ## 边界约束
 
 - Go 负责确定性基础设施：路由状态、幂等、持久化存储、生命周期、重试、租约、checkpoint、资产和审计。
 - Python 负责 AI 行为：模型调用、prompt、RAGFlow 上传、OCR/VLM、抽取启发式、排序、生成和快速实验。
+- 不为架构形式过度拆分服务；优先在 `services/agent-runtime` 内复用现有 DDD/六边形分层，只有当职责和部署边界真正独立时才新增服务。
 - 每完成一个迁移切片，都必须更新本中文 TODO，以及对应 SDD spec/review 文档。

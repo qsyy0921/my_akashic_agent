@@ -47,6 +47,7 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 	if subjectPrefix == "" {
 		subjectPrefix = "akashic.work"
 	}
+	externalLease := queueExternalLeaseGate(provider, mode, dsnConfigured)
 
 	return query.QueueBackendView{
 		Provider:                provider,
@@ -68,6 +69,7 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		RecommendedFirstBackend: "nats_jetstream",
 		SupportedProviders:      []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
 		Notes:                   notes,
+		ExternalLease:           externalLease,
 	}, nil
 }
 
@@ -139,7 +141,7 @@ func queueMigrationPhase(provider string, mode string) string {
 	case "dual_read_compare":
 		return "dual_read_compare"
 	case "external_lease":
-		return "external_lease_design"
+		return "external_lease_gate"
 	default:
 		return "local_only"
 	}
@@ -162,9 +164,73 @@ func queueBackendNotes(provider string, mode string, dsnConfigured bool) []strin
 		notes = append(notes, "NATS JetStream is the recommended first external backend for event-subject routing and Go-native runtime infrastructure")
 	}
 	if mode == "external_lease" {
-		notes = append(notes, "external lease ownership requires a future adapter before it can become active")
+		notes = append(notes, "external lease ownership is guarded by explicit cutover checks and remains blocked until every gate passes")
 	}
 	return notes
+}
+
+func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *query.QueueExternalLeaseGate {
+	if mode != "external_lease" {
+		return nil
+	}
+	cutoverRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER")
+	dualReadSmokePassed := boolEnv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED")
+	executorImplemented := false
+	gate := &query.QueueExternalLeaseGate{
+		Enabled:          true,
+		CutoverRequested: cutoverRequested,
+		GateState:        "blocked",
+		AckPolicy:        envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_ACK_POLICY", "ack_after_go_state_terminal"),
+		NackPolicy:       envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_NACK_POLICY", "nack_when_go_lease_rejected"),
+		RetryPolicy:      envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_RETRY_POLICY", "go_domain_retry_then_dead_letter"),
+		DeadLetterPolicy: envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_DEAD_LETTER_POLICY", "go_domain_dead_letter_is_final"),
+		RollbackPolicy:   envOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_ROLLBACK_POLICY", "state_store_recovery_and_queue_replay"),
+		Notes: []string{
+			"external lease is a guarded cutover state, not enabled by AKASHIC_QUEUE_MODE alone",
+			"state store remains authoritative until external lease executor is implemented and all gates pass",
+		},
+	}
+	addExternalLeaseCheck(gate, "provider_supported", provider == "nats_jetstream", "first external lease target is NATS JetStream")
+	addExternalLeaseCheck(gate, "dsn_configured", dsnConfigured, "AKASHIC_QUEUE_DSN must point at the external queue")
+	addExternalLeaseCheck(gate, "explicit_cutover", cutoverRequested, "set AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER=true after smoke tests")
+	addExternalLeaseCheck(gate, "dual_read_smoke_passed", dualReadSmokePassed, "set AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED=true after local NATS smoke")
+	addExternalLeaseCheck(gate, "executor_implemented", executorImplemented, "external lease executor is intentionally not implemented in this slice")
+	if len(gate.Blockers) == 0 {
+		gate.AllowExecution = true
+		gate.GateState = "ready"
+	}
+	return gate
+}
+
+func addExternalLeaseCheck(gate *query.QueueExternalLeaseGate, name string, passed bool, detail string) {
+	status := "passed"
+	if !passed {
+		status = "blocked"
+		gate.Blockers = append(gate.Blockers, name)
+	}
+	gate.RequiredChecks = append(gate.RequiredChecks, query.QueueExternalLeaseCheck{
+		Name:   name,
+		Status: status,
+		Detail: detail,
+	})
+}
+
+func boolEnv(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "y", "on", "enabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func envOrDefault(key string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func redactQueueDSN(raw string) string {

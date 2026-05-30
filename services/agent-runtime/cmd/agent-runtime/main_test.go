@@ -193,6 +193,56 @@ func TestQueueBackendViewFromEnvSupportsDualReadCompareMode(t *testing.T) {
 	}
 }
 
+func TestQueueBackendViewFromEnvReportsExternalLeaseGate(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.Mode != "external_lease" || view.MigrationPhase != "external_lease_gate" {
+		t.Fatalf("unexpected external lease mode: %#v", view)
+	}
+	if view.ExternalLease == nil || !view.ExternalLease.Enabled {
+		t.Fatalf("expected external lease gate: %#v", view.ExternalLease)
+	}
+	if view.ExternalLease.AllowExecution || view.ExternalLease.GateState != "blocked" {
+		t.Fatalf("external lease must be blocked by default: %#v", view.ExternalLease)
+	}
+	assertContainsString(t, view.ExternalLease.Blockers, "explicit_cutover")
+	assertContainsString(t, view.ExternalLease.Blockers, "dual_read_smoke_passed")
+	assertContainsString(t, view.ExternalLease.Blockers, "executor_implemented")
+	if view.ExternalLease.AckPolicy != "ack_after_go_state_terminal" {
+		t.Fatalf("unexpected ack policy: %#v", view.ExternalLease)
+	}
+}
+
+func TestQueueBackendViewFromEnvKeepsExternalLeaseBlockedAfterCutoverUntilExecutorExists(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
+	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.ExternalLease == nil || !view.ExternalLease.CutoverRequested {
+		t.Fatalf("expected cutover requested gate: %#v", view.ExternalLease)
+	}
+	if view.ExternalLease.AllowExecution {
+		t.Fatalf("external lease must remain blocked until executor exists: %#v", view.ExternalLease)
+	}
+	if len(view.ExternalLease.Blockers) != 1 || view.ExternalLease.Blockers[0] != "executor_implemented" {
+		t.Fatalf("unexpected blockers: %#v", view.ExternalLease.Blockers)
+	}
+}
+
 func TestQueueBackendViewFromEnvRejectsUnknownProvider(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "kafka")
 
@@ -271,4 +321,14 @@ func countPath(paths []string, want string) int {
 		}
 	}
 	return count
+}
+
+func assertContainsString(t *testing.T, items []string, want string) {
+	t.Helper()
+	for _, item := range items {
+		if item == want {
+			return
+		}
+	}
+	t.Fatalf("expected %q in %#v", want, items)
 }

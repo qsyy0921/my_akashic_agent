@@ -89,3 +89,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-40-nats-shadow-publish.md`
 - `2026-05-30-phase8-41-queue-shadow-diagnostics.md`
 - `2026-05-30-phase8-42-nats-dual-read-compare.md`
+- `2026-05-30-phase8-43-external-lease-gate.md`

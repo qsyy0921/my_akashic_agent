@@ -9,7 +9,9 @@ authoritative. The third slice adds shadow publish diagnostics and
 state/event-stream reconciliation. The fourth slice adds NATS JetStream
 `dual_read_compare`, which consumes queue notifications with a bounded Go
 worker pool and compares candidates against Go authoritative state without
-executing side effects.
+executing side effects. The fifth slice adds an `external_lease` cutover gate
+that documents and exposes required checks while keeping real external lease
+execution blocked.
 
 ## Context
 
@@ -106,9 +108,14 @@ message or is disabled, Go can still discover leaseable work from state.
      this mode cannot repeatedly execute or re-drive side effects.
 
 5. `external_lease`
-   - Queue consumer groups become the work discovery mechanism.
+   - Queue consumer groups can become the work discovery mechanism only after
+     all cutover gates pass.
    - State store still validates idempotency and owns final aggregate state.
    - Failed/expired queue deliveries are reconciled against Go state.
+   - Current implementation exposes the gate and policies but blocks execution.
+   - Do not add a new service solely for this phase; reuse `agent-runtime`
+     application services until deployment or ownership boundaries justify a
+     split.
 
 ## Runtime Configuration
 
@@ -159,6 +166,22 @@ When `mode=dual_read_compare`, the response also contains
 - mismatch reasons such as `missing_state`, `not_leaseable`, or
   `unsupported_work_kind`;
 - recent candidate comparison samples.
+
+When `mode=external_lease`, the response also contains `external_lease`:
+
+- whether explicit cutover was requested;
+- whether execution is allowed;
+- required checks and blockers;
+- ack, nack, retry, dead-letter, and rollback policies.
+
+`AKASHIC_QUEUE_MODE=external_lease` alone never enables execution. Current
+required checks include:
+
+- NATS JetStream provider selected;
+- queue DSN configured;
+- `AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER=true`;
+- `AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED=true`;
+- external lease executor implemented.
 
 ## Concurrent Consumption
 
@@ -243,6 +266,10 @@ type WorkQueueConsumer interface {
 }
 ```
 
+The first executor should be minimal and should reuse existing outbox/job app
+services. It should not introduce a new service or package tree unless the
+deployment boundary becomes independent.
+
 ## Invariants
 
 - Creating work must commit Go aggregate state before publishing any queue
@@ -256,6 +283,9 @@ type WorkQueueConsumer interface {
 - Duplicate queue messages are harmless because aggregate ids are idempotent.
 - `dual_read_compare` must not call platform adapters, Python workers, or
   delivery dispatch.
+- `external_lease` must remain blocked unless its gate reports
+  `allow_execution=true`.
+- `external_lease` ack/nack policy must be visible before execution is enabled.
 - Switching provider must not change HTTP contracts for `/v1/outbox`,
   `/v1/jobs`, `/v1/job-events`, or `/v1/outbox-events`.
 
@@ -274,6 +304,8 @@ type WorkQueueConsumer interface {
 - `dual_read_compare` starts a bounded NATS pull consumer when configured.
 - `dual_read_compare` records match/mismatch diagnostics without acquiring
   external leases or executing side effects.
+- `external_lease` mode exposes a blocked cutover gate with required checks and
+  policies.
+- `external_lease` remains unable to execute until an executor is implemented
+  and explicit cutover flags pass.
 - Existing outbox/job tests continue to pass.
-- TODO and review records document that `external_lease` remains a separate
-  migration slice.

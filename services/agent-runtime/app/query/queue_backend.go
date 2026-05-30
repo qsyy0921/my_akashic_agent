@@ -22,6 +22,7 @@ type QueueBackendView struct {
 	Notes                   []string                       `json:"notes,omitempty"`
 	ShadowPublish           *QueueShadowPublishDiagnostics `json:"shadow_publish,omitempty"`
 	DualReadCompare         *QueueDualReadDiagnostics      `json:"dual_read_compare,omitempty"`
+	ExternalLease           *QueueExternalLeaseGate        `json:"external_lease,omitempty"`
 }
 
 type QueueShadowPublishDiagnostics struct {
@@ -103,4 +104,25 @@ type QueueCandidateComparisonView struct {
 	StateStatus string `json:"state_status,omitempty"`
 	ObservedAt  string `json:"observed_at"`
 	ComparedAt  string `json:"compared_at"`
+}
+
+type QueueExternalLeaseGate struct {
+	Enabled          bool                      `json:"enabled"`
+	CutoverRequested bool                      `json:"cutover_requested"`
+	AllowExecution   bool                      `json:"allow_execution"`
+	GateState        string                    `json:"gate_state"`
+	AckPolicy        string                    `json:"ack_policy"`
+	NackPolicy       string                    `json:"nack_policy"`
+	RetryPolicy      string                    `json:"retry_policy"`
+	DeadLetterPolicy string                    `json:"dead_letter_policy"`
+	RollbackPolicy   string                    `json:"rollback_policy"`
+	RequiredChecks   []QueueExternalLeaseCheck `json:"required_checks"`
+	Blockers         []string                  `json:"blockers,omitempty"`
+	Notes            []string                  `json:"notes,omitempty"`
+}
+
+type QueueExternalLeaseCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
 }
