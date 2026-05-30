@@ -45,7 +45,7 @@
 - [x] 完成本地 NATS JetStream live smoke：在 `dual_read_compare` 模式下验证 `shadow_publish` 成功 1 次、compare 匹配 1 次、mismatch 为 0，并确认 `AKASHIC_QUEUE_CONSUMER_CONCURRENCY=2` 生效。
 - [x] 实现最小化 NATS JetStream `external_lease` outbox 执行器：Go 按 queue work id 租约 outbox、调用 Go DeliveryAdapter dispatch、按 Go 生命周期结果执行 ack/nack/term；默认仍需显式 cutover 与 smoke flag，不新增独立服务。
 - [x] 完成 `external_lease` 本地 smoke：使用 NATS + fake adapter 验证 outbox 成功 ack、可重试失败延迟 nack、终态失败 ack、unsupported work term；不触发真实 QQ/Telegram 发送。
-- [x] 配置并验证本机开发镜像源：Go 使用 `GOPROXY=https://goproxy.cn,direct`，Docker Desktop 用户级配置加入 `docker.m.daocloud.io` / `docker.1ms.run` registry mirror，并通过镜像域名直拉 `nats:2-alpine` 验证可用。
+- [x] 配置并验证本机开发镜像源：Go 使用 `GOPROXY=https://goproxy.cn,direct` 和 `GOSUMDB=sum.golang.google.cn`，Docker Desktop 用户级配置加入 `docker.m.daocloud.io` / `docker.1ms.run` registry mirror，并通过镜像域名直拉 `nats:2-alpine` 验证可用。
 - [x] 完成 `agent_job` 外部租约评估并固化 Go 诊断门禁：`external_lease` 目前只允许 `outbox_delivery`，`agent_job` 继续走 Go state-store lease，直到补齐精确 job_id lease token、Python worker 心跳、幂等结果回写和 ack-after-result 协议。
 - [x] 实现 `agent_job` result-ack 第一阶段：Go 生成并持久化 `lease_token`，HTTP 返回给 Python worker；running/succeeded/failed 支持 token fencing，Python image/knowledge/rag_eval worker 自动回传 token，旧 worker 不带 token 仍保持兼容。
 - [x] 实现 `agent_job` heartbeat / lease renew：Go 增加 `/v1/jobs/{job_id}/renew` 和 `renewed` 生命周期事件，Python image/knowledge/rag_eval worker 在长任务执行期间后台续租，续租必须携带当前 `lease_token`。
@@ -81,10 +81,12 @@
 - [x] 将 delivery smoke readiness 接入 Python `AgentGatewayClient` 和 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-smoke-readiness` 代理与 `Delivery Adapters` 详情页 Smoke Readiness 操作，可输入群号并触发 Go 只读预检，仍不执行平台发送。
 - [x] 增加 Go-owned observe target diagnostics：Python 启动时将 `config.toml` 中 observe-only QQ 群同步到 Go `/v1/observe-targets/sync`，Go 负责 source-bound 保存、校验、`GET /v1/observe-targets` 查询和 runtime overview `Observe Targets` 卡片；不改变当前 QQ 收消息和回复逻辑。
 - [x] 重建并重启当前本地 Go `agent-runtime` 与 dashboard，确认 runtime overview 显示 6 个 observe-only QQ 群：`164369633`、`187890369`、`27234224`、`284331268`、`3219982`、`956393163`，`side_effect=none`。
+- [x] 恢复当前本地 QQ 观察链路：Docker API 已恢复，两个 NapCat 容器在线；重启 Python 主服务后 `1049511700 -> ws://localhost:3001`、`2365524513 -> ws://localhost:3002` 均成功启动，Go delivery adapter health 显示 OneBot/Telegram 4 个 adapter 全部 authenticated，runtime overview 已记录 `3219982` 的 observe-only 群消息。
 
 ## 下一步
 
-- [ ] 恢复 NapCat/Docker Desktop 运行态后再验证 QQ 群实时收集：当前 Docker API 返回 500，`ws://localhost:3001/3002` opening handshake 超时，Python QQ channel 已降级跳过，所以 dashboard 虽然可用但新的 QQ 群消息暂时不会进入 inbox。
+- [ ] 继续验证 QQ 群实时采集质量：让观察群产生一条文本、一张图片、一个文件，确认 Python QQ channel、Go inbox metrics、media asset content、dashboard 附件预览链路都能完整记录，且 observe-only 不回复。
+- [ ] 排查 Telegram `getUpdates` conflict：当前 Go health `getMe` 正常，但 Python polling 会因同一 bot token 已有其他轮询实例而暂停；需要定位并停止重复 polling 进程或改成 webhook/单实例锁。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
