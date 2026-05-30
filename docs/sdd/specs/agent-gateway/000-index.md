@@ -49,4 +49,6 @@ execution.
 - `018-onebot-napcat-delivery-adapter.md`: Go-owned OneBot/NapCat HTTP or
   WebSocket sender for env-gated QQ private/group text, image, and file
   dispatch.
+- `019-rag-eval-dashboard.md`: read-only dashboard panel for Go-owned
+  `rag_eval` quality gates, metrics, trend points, and per-question results.
 - Agent architecture boundary specs live under `../agent-architecture/`.

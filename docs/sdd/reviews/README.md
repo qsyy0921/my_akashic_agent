@@ -83,3 +83,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-34-dashboard-worker-contract-smoke.md`
 - `2026-05-30-phase8-35-rag-eval-agent-job-worker.md`
 - `2026-05-30-phase8-36-runtime-dashboard-overview.md`
+- `2026-05-30-phase8-37-rag-eval-dashboard.md`

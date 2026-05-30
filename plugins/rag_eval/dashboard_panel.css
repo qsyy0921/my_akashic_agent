@@ -1,0 +1,94 @@
+.rag-eval-filter-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.rag-eval-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.rag-eval-filter span {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.rag-eval-filter input {
+  width: 100%;
+}
+
+.rag-eval-empty,
+.rag-eval-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.rag-eval-empty .detail-subtext,
+.rag-eval-label {
+  color: var(--muted-text);
+}
+
+.rag-eval-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.rag-eval-section {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.rag-eval-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rag-eval-label {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.rag-eval-value {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.rag-eval-json {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.rag-eval-error,
+.rag-eval-failed_quality,
+.rag-eval-infra_failed,
+.rag-eval-failed,
+.rag-eval-dead_lettered,
+.rag-eval-cancelled {
+  color: var(--danger);
+}
+
+.rag-eval-passed {
+  color: #16a34a;
+}
+
+.rag-eval-pending,
+.rag-eval-leased,
+.rag-eval-running,
+.rag-eval-unknown {
+  color: #d97706;
+}
+
+.rag-eval-status {
+  font-weight: 600;
+}
