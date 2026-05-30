@@ -182,6 +182,7 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	stateLeaseWorkersDisabled := boolEnv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED")
 	agentJobRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED")
 	agentJobDuplicateSmokePassed := boolEnv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED")
+	agentJobFlowSmokePassed := boolEnv("AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED")
 	strictAgentJobLeaseToken := boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")
 	executorImplemented := true
 	gate := &query.QueueExternalLeaseGate{
@@ -211,12 +212,12 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 		gate.ExecutionScope = "outbox_delivery_only"
 		gate.AllowedWorkKinds = []string{"outbox_delivery"}
 	}
-	if gate.AllowExecution && agentJobRequested && agentJobDuplicateSmokePassed && strictAgentJobLeaseToken {
+	if gate.AllowExecution && agentJobRequested && agentJobDuplicateSmokePassed && agentJobFlowSmokePassed && strictAgentJobLeaseToken {
 		gate.ExecutionScope = "outbox_delivery_and_agent_job_result_ack"
 		gate.AllowedWorkKinds = append(gate.AllowedWorkKinds, "agent_job")
 		gate.Notes = append(gate.Notes, "agent_job NATS subjects are enabled only for result acknowledgement; Python still executes model/RAG/memory work")
 	} else {
-		required := "set AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true, AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true, and AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true before moving agent_job subjects to external lease"
+		required := "set AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true, AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true, AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true, and AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true before moving agent_job subjects to external lease"
 		if !gate.AllowExecution {
 			required = "pass the base external-lease gates before enabling agent_job subjects"
 		}

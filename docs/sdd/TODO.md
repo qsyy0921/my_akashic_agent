@@ -53,15 +53,15 @@
 - [x] 增加 `agent_job` queue work id 精确租约入口：`POST /v1/jobs/lease-work` 按 `work_id`/`aggregate_id` 精确租约指定 job，不再依赖 `lease-next` 按类型抢任务，为 NATS work notification 驱动作准备。
 - [x] 增加 `agent_job` 过期租约恢复入口：`POST /v1/jobs/recover-expired` 扫描 leased/running 且 lease 已过期的 job，未耗尽尝试次数则回到 pending，耗尽则 dead-letter，并写入 `lease_expired` 生命周期事件。
 - [x] 增加 `agent_job` external lease result-ack 映射：Go 不抢占执行 Python 任务，只按 AgentJob 权威状态对队列通知做 ack/nack/term；pending/running 延迟 nack，terminal ack，missing term，failed 自动 retry 后 nack，expired lease 先恢复再决定 nack/ack，并覆盖重复终态投递单元 smoke。
-- [x] 增加 `agent_job` NATS subject 显式扩容门禁：默认 external lease consumer 仍只订阅 outbox；只有 `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true`、`AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true`、`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` 和基础 cutover 门禁全部满足时，才扩展为 `outbox_delivery_and_agent_job_result_ack`。
+- [x] 增加 `agent_job` NATS subject 显式扩容门禁：默认 external lease consumer 仍只订阅 outbox；只有 `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true`、`AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true`、`AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true`、`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` 和基础 cutover 门禁全部满足时，才扩展为 `outbox_delivery_and_agent_job_result_ack`。
 - [x] 完成 `agent_job` NATS 级 duplicate terminal delivery smoke：临时启动本地 NATS JetStream 容器，发布同一 terminal AgentJob 的两条不同 queue notification，验证两条都 ack 且不会触发 Python/平台副作用。
 - [x] 增加可选 Go runtime `agent_job` 过期租约后台恢复 runner：默认关闭；开启 `AKASHIC_AGENT_JOB_RECOVERY_ENABLED=true` 后定时触发同一 `RecoverExpiredLeases` 用例，支持 interval、limit、run-on-start 配置，并保持领域规则只在 domain/app 层。
+- [x] 完成 `agent_job` NATS result-ack 状态流 dry-run：临时本地 NATS JetStream 中验证同一 job 的 pending 通知 delayed nack、running 通知 delayed nack、Python-style succeeded 写回后 terminal ack；并新增 `AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true` 作为 live subject 扩容门禁。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 在真实运行态启用 `agent_job` NATS result-ack 前，做一次端到端 dry-run：先不开真实平台发送，只打开 NATS `agent_job` scope，验证 pending/running/final 状态流与 Python worker 兼容。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

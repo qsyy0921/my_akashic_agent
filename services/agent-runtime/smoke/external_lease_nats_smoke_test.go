@@ -243,6 +243,149 @@ func TestExternalLeaseNATSSmokeAgentJobDuplicateTerminalAck(t *testing.T) {
 	}
 }
 
+func TestExternalLeaseNATSSmokeAgentJobPendingRunningSucceededFlow(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("AKASHIC_NATS_SMOKE_DSN"))
+	if dsn == "" {
+		t.Skip("set AKASHIC_NATS_SMOKE_DSN to run the external lease NATS smoke")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	stream := "AKASHIC_SMOKE_AGENT_JOB_FLOW_" + suffix
+	subjectPrefix := "akashic.smoke.agent_job_flow." + suffix
+	durable := "AKASHIC_SMOKE_AGENT_JOB_FLOW_" + suffix
+
+	publisher, err := natsqueue.NewPublisher(natsqueue.Config{
+		URL:           dsn,
+		Stream:        stream,
+		SubjectPrefix: subjectPrefix,
+		Timeout:       3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new publisher: %v", err)
+	}
+	defer publisher.Close()
+	defer deleteSmokeStream(t, dsn, stream)
+
+	store := memory.NewStore()
+	jobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 2, 30, 0, 0, time.UTC)
+	jobID := "smoke:agent_job:flow:" + suffix
+	created, err := jobs.Create(ctx, command.CreateAgentJobCommand{
+		JobID:   jobID,
+		JobType: string(model.AgentJobRagIngest),
+		AgentID: "smoke-python-worker",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatalf("create agent job: %v", err)
+	}
+
+	executor := &recordingLeaseExecutor{
+		inner: appservice.NewWorkQueueExternalLeaseService(
+			nil,
+			nil,
+			appservice.WithExternalLeaseAgentJobs(jobs),
+			appservice.WithExternalLeaseWorker("smoke-worker", 60),
+		),
+		results: make(chan query.QueueExternalLeaseExecutionView, 8),
+	}
+	consumer, err := natsqueue.NewExternalLeaseConsumer(natsqueue.ExternalLeaseConsumerConfig{
+		URL:                 dsn,
+		Stream:              stream,
+		SubjectPrefix:       subjectPrefix,
+		Durable:             durable,
+		WorkerID:            "smoke-worker",
+		LeaseTTLSeconds:     60,
+		NackDelay:           30 * time.Second,
+		Timeout:             3 * time.Second,
+		ConsumerConcurrency: 1,
+		MaxInFlight:         4,
+		IncludeAgentJobs:    true,
+	})
+	if err != nil {
+		t.Fatalf("new external lease consumer: %v", err)
+	}
+	defer consumer.Close()
+
+	runCtx, stopConsumer := context.WithCancel(ctx)
+	defer stopConsumer()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- consumer.Run(runCtx, executor)
+	}()
+
+	if err := publishAgentJobWorkWithStatus(dsn, stream, subjectPrefix, created.JobID, "pending", "pending"); err != nil {
+		t.Fatalf("publish pending job notification: %v", err)
+	}
+	pending := collectLeaseResults(t, ctx, executor.results, 1)[0]
+	if pending.Disposition != appservice.QueueLeaseDispositionNack ||
+		pending.Reason != "agent_job_pending_for_python_worker" ||
+		pending.StateStatus != string(model.AgentJobPending) ||
+		pending.Attempts != 0 {
+		t.Fatalf("expected pending notification to nack for Python worker, got %+v", pending)
+	}
+
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      created.JobID,
+		WorkerID:   "smoke-python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease agent job: %v", err)
+	}
+	if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      created.JobID,
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark agent job running: %v", err)
+	}
+	if err := publishAgentJobWorkWithStatus(dsn, stream, subjectPrefix, created.JobID, "running", "running"); err != nil {
+		t.Fatalf("publish running job notification: %v", err)
+	}
+	running := collectLeaseResults(t, ctx, executor.results, 1)[0]
+	if running.Disposition != appservice.QueueLeaseDispositionNack ||
+		running.Reason != "agent_job_waiting_for_result" ||
+		running.StateStatus != string(model.AgentJobRunning) ||
+		running.Attempts != 1 {
+		t.Fatalf("expected running notification to nack while waiting for result, got %+v", running)
+	}
+
+	if _, err := jobs.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      created.JobID,
+		LeaseToken: leased.LeaseToken,
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete agent job: %v", err)
+	}
+	if err := publishAgentJobWorkWithStatus(dsn, stream, subjectPrefix, created.JobID, "succeeded", "succeeded"); err != nil {
+		t.Fatalf("publish succeeded job notification: %v", err)
+	}
+	succeeded := collectLeaseResults(t, ctx, executor.results, 1)[0]
+	if succeeded.Disposition != appservice.QueueLeaseDispositionAck ||
+		succeeded.Reason != "agent_job_terminal" ||
+		succeeded.StateStatus != string(model.AgentJobSucceeded) ||
+		succeeded.Attempts != 1 {
+		t.Fatalf("expected succeeded notification to ack terminal result, got %+v", succeeded)
+	}
+
+	stopConsumer()
+	if err := <-errs; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("consumer stopped unexpectedly: %v", err)
+	}
+}
+
 type recordingLeaseExecutor struct {
 	inner   inport.WorkQueueLeaseExecutor
 	results chan query.QueueExternalLeaseExecutionView
@@ -374,6 +517,10 @@ func publishUnsupportedOutboxWork(dsn string, stream string, subjectPrefix strin
 }
 
 func publishAgentJobWork(dsn string, stream string, subjectPrefix string, jobID string, suffix string) error {
+	return publishAgentJobWorkWithStatus(dsn, stream, subjectPrefix, jobID, "succeeded", suffix)
+}
+
+func publishAgentJobWorkWithStatus(dsn string, stream string, subjectPrefix string, jobID string, status string, suffix string) error {
 	conn, err := nats.Connect(dsn, nats.Timeout(3*time.Second))
 	if err != nil {
 		return err
@@ -389,7 +536,7 @@ func publishAgentJobWork(dsn string, stream string, subjectPrefix string, jobID 
 		WorkKind:           "agent_job",
 		WorkID:             jobID,
 		AggregateID:        jobID,
-		Status:             "succeeded",
+		Status:             status,
 		Subject:            subject,
 		NotificationTime:   time.Now().UTC().Format(time.RFC3339Nano),
 		ConsumerModel:      "goroutine_worker_pool",

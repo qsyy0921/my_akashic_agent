@@ -21,7 +21,9 @@ failure delayed nack, terminal failure ack, and unsupported work term without
 using real QQ or Telegram adapters. The eighth slice adds an explicit
 `agent_job` result-ack scope gate and a NATS-level duplicate terminal delivery
 smoke for generic jobs, while still keeping Python responsible for actual model
-execution.
+execution. The ninth slice adds a NATS-level pending/running/succeeded flow
+smoke for `agent_job` result-ack and makes that smoke an explicit gate before
+expanding live subject consumption.
 
 ## Context
 
@@ -367,8 +369,8 @@ Agent-job result acknowledgement now has a safe Go mapping:
   missing aggregate.
 - Runtime execution scope still remains `outbox_delivery_only`. Moving
   `agent_job` subjects into the live NATS external lease consumer requires a
-  separate NATS-level duplicate-delivery smoke and explicit execution-scope
-  expansion.
+  NATS-level duplicate-delivery smoke, a NATS-level pending/running/succeeded
+  flow smoke, and explicit execution-scope expansion.
 
 Agent-job subject consumption is explicitly gated:
 
@@ -382,6 +384,7 @@ Agent-job subject consumption is explicitly gated:
   all of these flags are set:
   `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true`,
   `AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true`, and
+  `AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true`, and
   `AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true`.
 - The expanded scope is reported as
   `outbox_delivery_and_agent_job_result_ack`; this means queue result
@@ -550,5 +553,9 @@ boundary becomes independent.
   `nack`, and expired leases recover before disposition.
 - Local NATS JetStream smoke verifies duplicate terminal `agent_job`
   notifications both `ack` without invoking Python or platform adapters.
+- Local NATS JetStream smoke verifies a single `agent_job` state flow:
+  `pending` notification delayed `nack`s for Python, `running` notification
+  delayed `nack`s while waiting for the result, and `succeeded` notification
+  `ack`s after Python-style result writeback.
 - `external_lease` does not execute generic `agent_job` work in this slice.
 - Existing outbox/job tests continue to pass.

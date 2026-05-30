@@ -268,6 +268,7 @@ func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *tes
 	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
 	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED", "true")
 	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
 
 	view, err := queueBackendViewFromEnv()
@@ -288,6 +289,34 @@ func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *tes
 	}
 	if view.AgentJobQueueSource != "agent_job_state_store_with_nats_result_ack" {
 		t.Fatalf("unexpected agent job queue source: %#v", view)
+	}
+}
+
+func TestQueueBackendViewFromEnvKeepsAgentJobBlockedWithoutFlowSmoke(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
+	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.ExternalLease == nil || !view.ExternalLease.AllowExecution {
+		t.Fatalf("base external lease gate should still be ready: %#v", view.ExternalLease)
+	}
+	if view.ExternalLease.ExecutionScope != "outbox_delivery_only" {
+		t.Fatalf("agent job result-ack must stay blocked without flow smoke: %#v", view.ExternalLease)
+	}
+	assertBlockedWorkKind(t, view.ExternalLease.BlockedWorkKinds, "agent_job")
+	if view.AgentJobQueueSource != "agent_job_state_store" {
+		t.Fatalf("agent jobs must remain on state-store lease without flow smoke: %#v", view)
 	}
 }
 

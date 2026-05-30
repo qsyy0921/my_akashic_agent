@@ -383,15 +383,16 @@ delayed-`nack` without being executed by Go, terminal jobs `ack`, missing state
 `term`, failed jobs go through Go retry then delayed-`nack`, and expired active
 leases are recovered before disposition. The live external lease consumer still
 keeps `execution_scope=outbox_delivery_only`; `agent_job` remains blocked until a
-NATS-level duplicate-delivery smoke and explicit execution-scope expansion are
-done.
+NATS-level duplicate-delivery smoke, a pending/running/succeeded flow smoke, and
+explicit execution-scope expansion are done.
 
 The optional `agent_job` result-ack scope is deliberately separate from the
-outbox cutover. Enable it only after the agent-job duplicate smoke has passed:
+outbox cutover. Enable it only after both agent-job NATS smokes have passed:
 
 ```powershell
 $env:AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN = "true"
 $env:AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED = "true"
+$env:AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED = "true"
 $env:AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED = "true"
 ```
 
@@ -440,7 +441,7 @@ Run the local external-lease smoke against a temporary NATS instance:
 
 ```powershell
 $env:AKASHIC_NATS_SMOKE_DSN = "nats://127.0.0.1:4222"
-go test ./smoke -run "TestExternalLeaseNATSSmoke(OutboxDispositions|AgentJobDuplicateTerminalAck)" -count=1 -v
+go test ./smoke -run "TestExternalLeaseNATSSmoke(OutboxDispositions|AgentJobDuplicateTerminalAck|AgentJobPendingRunningSucceededFlow)" -count=1 -v
 ```
 
 The smoke uses a fake DeliveryAdapter and fake job state; it does not send QQ or
