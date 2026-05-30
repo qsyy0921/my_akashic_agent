@@ -82,6 +82,13 @@ func RegisterOutboxEventRoutes(
 	mux.Handle("/v1/outbox-events", OutboxDeliveryEventsHandler(outboxEvents))
 }
 
+func RegisterQueueBackendRoutes(
+	mux *http.ServeMux,
+	queueBackend inport.QueueBackendViewer,
+) {
+	mux.Handle("/v1/queue-backend", QueueBackendHandler(queueBackend))
+}
+
 func RegisterDeliveryDispatchRoutes(
 	mux *http.ServeMux,
 	planner inport.DeliveryDispatchPlanner,
@@ -954,6 +961,21 @@ func OutboxDeliveryEventsHandler(outboxEvents inport.OutboxDeliveryEventViewer) 
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func QueueBackendHandler(queueBackend inport.QueueBackendViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := queueBackend.Get(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

@@ -117,6 +117,79 @@ func TestOneBotEndpointsFromEnvCombinesHTTPAndWebSocketEndpointConfig(t *testing
 	}
 }
 
+func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.Provider != "local" || view.Mode != "local_state_store" || view.MigrationPhase != "local_only" {
+		t.Fatalf("unexpected default queue backend: %#v", view)
+	}
+	if view.ExternalQueueActive {
+		t.Fatalf("external queue must not be active by default")
+	}
+	if !view.StateStoreAuthoritative {
+		t.Fatalf("state store must remain authoritative")
+	}
+}
+
+func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://token@127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_CONSUMER_CONCURRENCY", "16")
+	t.Setenv("AKASHIC_QUEUE_MAX_IN_FLIGHT", "128")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.Provider != "nats_jetstream" || view.Mode != "shadow_publish" || view.MigrationPhase != "shadow_ready" {
+		t.Fatalf("unexpected nats queue backend: %#v", view)
+	}
+	if !view.ExternalQueueConfigured || !view.DSNConfigured {
+		t.Fatalf("expected configured external queue diagnostics: %#v", view)
+	}
+	if view.ConsumerModel != "goroutine_worker_pool" || view.ConsumerConcurrency != 16 || view.MaxInFlight != 128 {
+		t.Fatalf("unexpected consumer concurrency diagnostics: %#v", view)
+	}
+	if view.RecommendedFirstBackend != "nats_jetstream" {
+		t.Fatalf("unexpected recommended backend: %q", view.RecommendedFirstBackend)
+	}
+	if view.ExternalQueueActive {
+		t.Fatalf("external queue adapter should not be active yet: %#v", view)
+	}
+	if view.DSNRedacted == "" || view.DSNRedacted == "nats://token@127.0.0.1:4222" {
+		t.Fatalf("expected redacted dsn, got %q", view.DSNRedacted)
+	}
+}
+
+func TestQueueBackendViewFromEnvRejectsUnknownProvider(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "kafka")
+
+	if _, err := queueBackendViewFromEnv(); err == nil {
+		t.Fatalf("expected unsupported provider error")
+	}
+}
+
+func TestQueueBackendViewFromEnvRejectsInvalidConcurrency(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_CONSUMER_CONCURRENCY", "0")
+
+	if _, err := queueBackendViewFromEnv(); err == nil {
+		t.Fatalf("expected invalid concurrency error")
+	}
+}
+
+func TestQueueBackendViewFromEnvRejectsMaxInFlightBelowConcurrency(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_CONSUMER_CONCURRENCY", "8")
+	t.Setenv("AKASHIC_QUEUE_MAX_IN_FLIGHT", "4")
+
+	if _, err := queueBackendViewFromEnv(); err == nil {
+		t.Fatalf("expected max in-flight validation error")
+	}
+}
+
 func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {
 	got := parseKeyValueCSV("a=1, malformed, b = 2, =missing, c= ")
 

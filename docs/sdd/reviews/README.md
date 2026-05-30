@@ -85,3 +85,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-36-runtime-dashboard-overview.md`
 - `2026-05-30-phase8-37-rag-eval-dashboard.md`
 - `2026-05-30-phase8-38-outbox-event-stream.md`
+- `2026-05-30-phase8-39-external-queue-backend-design.md`

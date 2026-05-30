@@ -119,6 +119,11 @@ func main() {
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
+	queueBackendView, err := queueBackendViewFromEnv()
+	if err != nil {
+		log.Fatalf("init queue backend config: %v", err)
+	}
+	queueBackend := appservice.NewQueueBackendService(queueBackendView)
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
@@ -126,9 +131,17 @@ func main() {
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
+	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 
+	log.Printf(
+		"queue backend provider=%s mode=%s phase=%s external_active=%t",
+		queueBackendView.Provider,
+		queueBackendView.Mode,
+		queueBackendView.MigrationPhase,
+		queueBackendView.ExternalQueueActive,
+	)
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)

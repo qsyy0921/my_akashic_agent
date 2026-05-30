@@ -53,4 +53,8 @@ execution.
   `rag_eval` quality gates, metrics, trend points, and per-question results.
 - `020-outbox-event-stream.md`: Go-owned durable lifecycle event stream for
   outbox delivery state transitions.
+- `021-external-queue-backend.md`: external queue backend selection and
+  migration phases from local state-store leasing to NATS JetStream first,
+  with bounded concurrent consumers and Redis/RabbitMQ kept behind
+  provider-neutral ports.
 - Agent architecture boundary specs live under `../agent-architecture/`.

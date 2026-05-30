@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
@@ -27,6 +28,25 @@ func TestJSONHandlersDeclareUTF8(t *testing.T) {
 
 	if got := response.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
 		t.Fatalf("expected utf-8 json content type, got %q", got)
+	}
+}
+
+func TestQueueBackendEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
+	viewer := appservice.NewQueueBackendService(queryQueueBackendViewForTest())
+	mux := http.NewServeMux()
+	httptrigger.RegisterQueueBackendRoutes(mux, viewer)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/queue-backend", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"provider":"nats_jetstream"`)) {
+		t.Fatalf("response missing provider: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"external_queue_active":false`)) {
+		t.Fatalf("response must show adapter inactive: %s", response.Body.String())
 	}
 }
 
@@ -1206,5 +1226,27 @@ func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"key":"drift_last_at"`)) {
 		t.Fatalf("drift response missing marker key: %s", response.Body.String())
+	}
+}
+
+func queryQueueBackendViewForTest() query.QueueBackendView {
+	return query.QueueBackendView{
+		Provider:                "nats_jetstream",
+		Mode:                    "shadow_publish",
+		MigrationPhase:          "shadow_ready",
+		ExternalQueueConfigured: true,
+		ExternalQueueActive:     false,
+		StateStoreAuthoritative: true,
+		LeaseOwner:              "go_state_store",
+		ConsumerModel:           "goroutine_worker_pool",
+		ConsumerConcurrency:     8,
+		MaxInFlight:             64,
+		OutboxQueueSource:       "outbox_state_store",
+		AgentJobQueueSource:     "agent_job_state_store",
+		DSNConfigured:           true,
+		DSNRedacted:             "nats://redacted@127.0.0.1:4222",
+		RecommendedFirstBackend: "nats_jetstream",
+		SupportedProviders:      []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
+		Notes:                   []string{"diagnostic only"},
 	}
 }

@@ -2,7 +2,10 @@
 
 ## Status
 
-Draft
+Superseded for implementation sequencing by
+`021-external-queue-backend.md`. The subject model remains the preferred NATS
+JetStream direction, while implementation now starts with read-only
+configuration diagnostics before enabling real external consumers.
 
 ## Context
 
@@ -11,7 +14,10 @@ writing should be decoupled. A queue also provides retry and replay behavior.
 
 ## Decision
 
-Use NATS JetStream for the first gateway implementation.
+The original draft selected NATS JetStream. That remains the preferred MQ
+because Akashic needs an event backbone, subject routing by platform/account/job
+type, and bounded concurrent consumers. See
+`021-external-queue-backend.md` for the migration sequence.
 
 ## Subjects
 
@@ -33,6 +39,10 @@ akashic.deadletter
 - `group-memory-worker`: consumes group ingest tasks.
 - `audit-writer`: consumes audit events.
 
+Each consumer group should use bounded Go goroutine worker pools. Concurrency is
+configured with `AKASHIC_QUEUE_CONSUMER_CONCURRENCY`, while
+`AKASHIC_QUEUE_MAX_IN_FLIGHT` prevents a single runtime from over-fetching work.
+
 ## Invariants
 
 - All queue messages include `event_id`.
@@ -46,4 +56,3 @@ akashic.deadletter
 - Duplicate event ID is ignored by an idempotent consumer.
 - Failed media task retries and then dead-letters.
 - Outbound `qq_1049511700` is not sent by `qq_2365524513`.
-

@@ -297,6 +297,28 @@ GET /v1/outbox-events?status=dead_lettered
 GET /v1/outbox-events?event=failed
 ```
 
+Inspect external queue backend migration settings:
+
+```powershell
+$env:AKASHIC_QUEUE_BACKEND = "nats_jetstream"
+$env:AKASHIC_QUEUE_MODE = "shadow_publish"
+$env:AKASHIC_QUEUE_DSN = "nats://127.0.0.1:4222"
+$env:AKASHIC_QUEUE_CONSUMER_CONCURRENCY = "8"
+$env:AKASHIC_QUEUE_MAX_IN_FLIGHT = "64"
+```
+
+```text
+GET /v1/queue-backend
+```
+
+The current implementation is diagnostic-only: outbox and generic job work
+discovery still uses Go state stores, and `external_queue_active=false`. NATS
+JetStream is the preferred first MQ because its subject routing fits
+platform/account/job boundaries and its pull consumers can be consumed by a
+bounded Go goroutine worker pool. Redis Streams remains a local/simple
+deployment alternative; RabbitMQ remains a later option for heavier broker
+routing.
+
 Persist proactive scheduling state across runtime restarts:
 
 ```powershell
