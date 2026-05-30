@@ -221,7 +221,7 @@ func (d *OutboxDelivery) MarkFailedWithKind(kind DeliveryErrorKind, message stri
 	d.ErrorKind = NormalizeDeliveryErrorKind(string(kind))
 	d.ErrorMessage = message
 	d.UpdatedAt = now
-	if d.Attempts >= d.MaxAttempts {
+	if !d.ErrorKind.Retryable() || d.Attempts >= d.MaxAttempts {
 		d.Status = DeliveryDeadLettered
 		return d.Validate()
 	}
@@ -266,5 +266,14 @@ func NormalizeDeliveryErrorKind(value string) DeliveryErrorKind {
 		return DeliveryErrorUnknown
 	default:
 		return DeliveryErrorUnknown
+	}
+}
+
+func (kind DeliveryErrorKind) Retryable() bool {
+	switch NormalizeDeliveryErrorKind(string(kind)) {
+	case DeliveryErrorRoute, DeliveryErrorUnsupportedMedia, DeliveryErrorValidation:
+		return false
+	default:
+		return true
 	}
 }

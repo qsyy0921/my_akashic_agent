@@ -157,6 +157,11 @@ Known `error_kind` values are `unknown`, `platform_error`,
 normalized to `unknown` by the domain layer. `retry`, `dispatching`, and
 `succeeded` clear previous failure details.
 
+Retryability is also owned by the domain layer. `route_error`,
+`unsupported_media`, and `validation_error` are deterministic failures and move
+directly to `dead_lettered`; `unknown`, `platform_error`, `platform_timeout`,
+and `sender_unavailable` remain retryable until max attempts are exhausted.
+
 Register and query media/file metadata:
 
 ```text

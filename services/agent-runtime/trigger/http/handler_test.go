@@ -238,6 +238,72 @@ func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	}
 }
 
+func TestOutboxEndpointDeadLettersNonRetryableFailureKind(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobService(store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store))
+
+	body := map[string]any{
+		"event_id": "outbox-http-nonretryable",
+		"channel": map[string]any{
+			"platform":          "qq",
+			"account_id":        "1049511700",
+			"conversation_id":   "2365524513",
+			"conversation_type": "private",
+		},
+		"content":   "bad route",
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"metadata":  map[string]string{"max_attempts": "3"},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected outbound accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-http-nonretryable/dispatching", bytes.NewReader([]byte(`{}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected dispatching 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-http-nonretryable/failed", bytes.NewReader([]byte(`{"error_kind":"validation_error","error_message":"invalid recipient"}`))))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected failed 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"dead_lettered"`)) {
+		t.Fatalf("failed response missing dead-letter status: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"error_kind":"validation_error"`)) {
+		t.Fatalf("failed response missing validation kind: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbox/outbox-http-nonretryable/retry", bytes.NewReader([]byte(`{}`))))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected retry 400, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestOutboxLeaseNextEndpointLeasesQueuedDelivery(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

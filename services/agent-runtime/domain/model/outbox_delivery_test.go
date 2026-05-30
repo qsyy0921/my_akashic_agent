@@ -131,6 +131,56 @@ func TestOutboxDeliveryNormalizesUnknownFailureKind(t *testing.T) {
 	}
 }
 
+func TestOutboxDeliveryDeadLettersNonRetryableFailureKinds(t *testing.T) {
+	now := time.Date(2026, 5, 30, 3, 30, 0, 0, time.UTC)
+	for _, kind := range []model.DeliveryErrorKind{
+		model.DeliveryErrorRoute,
+		model.DeliveryErrorUnsupportedMedia,
+		model.DeliveryErrorValidation,
+	} {
+		delivery, err := model.NewOutboxDelivery(sampleOutbound(now), 3, now)
+		if err != nil {
+			t.Fatalf("new delivery for %s: %v", kind, err)
+		}
+		if err := delivery.MarkDispatching(now.Add(time.Second)); err != nil {
+			t.Fatalf("dispatch %s: %v", kind, err)
+		}
+		if err := delivery.MarkFailedWithKind(kind, "deterministic failure", now.Add(2*time.Second)); err != nil {
+			t.Fatalf("mark failed %s: %v", kind, err)
+		}
+		if delivery.Status != model.DeliveryDeadLettered {
+			t.Fatalf("expected %s to dead-letter, got %s", kind, delivery.Status)
+		}
+		if err := delivery.Retry(now.Add(3 * time.Second)); err == nil {
+			t.Fatalf("expected retry to fail for non-retryable kind %s", kind)
+		}
+	}
+}
+
+func TestOutboxDeliveryKeepsRetryableFailureKindsFailed(t *testing.T) {
+	now := time.Date(2026, 5, 30, 3, 45, 0, 0, time.UTC)
+	for _, kind := range []model.DeliveryErrorKind{
+		model.DeliveryErrorUnknown,
+		model.DeliveryErrorPlatform,
+		model.DeliveryErrorPlatformTimeout,
+		model.DeliveryErrorSenderUnavailable,
+	} {
+		delivery, err := model.NewOutboxDelivery(sampleOutbound(now), 3, now)
+		if err != nil {
+			t.Fatalf("new delivery for %s: %v", kind, err)
+		}
+		if err := delivery.MarkDispatching(now.Add(time.Second)); err != nil {
+			t.Fatalf("dispatch %s: %v", kind, err)
+		}
+		if err := delivery.MarkFailedWithKind(kind, "retryable failure", now.Add(2*time.Second)); err != nil {
+			t.Fatalf("mark failed %s: %v", kind, err)
+		}
+		if delivery.Status != model.DeliveryFailed {
+			t.Fatalf("expected %s to remain failed for retry, got %s", kind, delivery.Status)
+		}
+	}
+}
+
 func sampleOutbound(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "out-1",

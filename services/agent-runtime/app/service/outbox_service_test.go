@@ -116,6 +116,48 @@ func TestOutboxServiceLeaseNextMarksDeliveryDispatching(t *testing.T) {
 	}
 }
 
+func TestOutboxServiceDeadLettersNonRetryableFailureKind(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 30, 5, 30, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(sampleOutboxMessage(now), 3, now)
+	if err != nil {
+		t.Fatalf("new delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatalf("save delivery: %v", err)
+	}
+
+	service := appservice.NewOutboxService(store, store)
+	if _, err := service.MarkDispatching(ctx, command.MarkOutboxDispatchingCommand{
+		EventID:   "outbox-1",
+		Timestamp: now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("mark dispatching: %v", err)
+	}
+	dead, err := service.MarkFailed(ctx, command.MarkOutboxFailedCommand{
+		EventID:      "outbox-1",
+		ErrorKind:    string(model.DeliveryErrorRoute),
+		ErrorMessage: "route missing",
+		Timestamp:    now.Add(2 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	if dead.Status != string(model.DeliveryDeadLettered) {
+		t.Fatalf("expected dead-lettered, got %s", dead.Status)
+	}
+	if dead.ErrorKind != string(model.DeliveryErrorRoute) {
+		t.Fatalf("expected route error kind, got %s", dead.ErrorKind)
+	}
+	if _, err := service.Retry(ctx, command.RetryOutboxCommand{
+		EventID:   "outbox-1",
+		Timestamp: now.Add(3 * time.Second),
+	}); err == nil {
+		t.Fatalf("expected retry to fail for dead-lettered delivery")
+	}
+}
+
 func sampleOutboxMessage(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "outbox-1",

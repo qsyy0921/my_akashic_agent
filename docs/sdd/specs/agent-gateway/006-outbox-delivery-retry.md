@@ -95,13 +95,17 @@ Failure requests include:
 
 - Outbound routing must include platform account id.
 - A delivery cannot dispatch after `succeeded` or `dead_lettered`.
-- `failed` deliveries can retry until attempts reach max attempts.
+- retryable `failed` deliveries can retry until attempts reach max attempts.
+- non-retryable failure kinds become `dead_lettered` immediately.
 - `queued` deliveries are leaseable.
 - `dispatching` deliveries are leaseable only after `lease_expires_at`.
 - A lease increments attempts and records the worker id.
 - `succeeded`, `failed`, and `retry` clear lease fields.
 - `failed` records both `error_kind` and `error_message`; unknown or omitted
   kinds are normalized to `unknown`.
+- `route_error`, `unsupported_media`, and `validation_error` are non-retryable.
+- `unknown`, `platform_error`, `platform_timeout`, and `sender_unavailable`
+  remain retryable.
 - `dispatching`, `succeeded`, and `retry` clear prior failure details.
 - Exhausted attempts become `dead_lettered`.
 - The endpoint is not a production platform sender yet.
@@ -121,6 +125,8 @@ Failure requests include:
   and expiry fields.
 - HTTP and app-service tests prove structured failure kind survives state
   updates and is cleared by retry.
+- Domain, app-service, and HTTP tests prove non-retryable failures dead-letter
+  immediately and cannot be retried.
 - Infrastructure test proves file-backed outbox delivery state and queued retry
   ids survive runtime restarts.
 - Infrastructure test proves leased state persists and expired leases become
