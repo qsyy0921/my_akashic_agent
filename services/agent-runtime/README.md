@@ -331,6 +331,17 @@ GET /v1/job-events?job_id=rag_ingest:qq:3219982:ds1:1
 GET /v1/job-events?type=rag_ingest&event=failed
 ```
 
+Inspect Go-owned generic job metrics:
+
+```text
+GET /v1/job-metrics?job_limit=200&event_limit=200
+```
+
+The metrics response summarizes the bounded job sample by status and type,
+recent lifecycle throughput by event type, current dead-letter totals, and
+recent dead-letter samples. It is read-only and does not lease jobs, execute
+Python workers, or acknowledge external queue messages.
+
 Persist outbox delivery lifecycle events as a JSONL stream:
 
 ```powershell

@@ -527,6 +527,110 @@ func TestKnowledgeWorkerDiagnosticsServiceSummarizesMemoryAndRAGJobs(t *testing.
 	}
 }
 
+func TestAgentJobMetricsServiceSummarizesThroughputAndDeadLetters(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	metrics := appservice.NewAgentJobMetricsService(store, store)
+	now := time.Date(2026, 5, 30, 9, 30, 0, 0, time.UTC)
+
+	succeeded, err := jobs.Create(ctx, sampleCreateAgentJobCommand(now))
+	if err != nil {
+		t.Fatalf("create succeeded job: %v", err)
+	}
+	if _, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      succeeded.JobID,
+		WorkerID:   "worker-metrics",
+		LeaseToken: "lease-succeeded",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease succeeded job: %v", err)
+	}
+	if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      succeeded.JobID,
+		LeaseToken: "lease-succeeded",
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("run succeeded job: %v", err)
+	}
+	if _, err := jobs.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      succeeded.JobID,
+		LeaseToken: "lease-succeeded",
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete succeeded job: %v", err)
+	}
+
+	deadCmd := sampleCreateAgentJobCommand(now.Add(4 * time.Second))
+	deadCmd.JobID = "job-metrics-dead"
+	deadCmd.JobType = string(model.AgentJobGroupMemoryExtract)
+	deadCmd.MaxAttempts = 1
+	dead, err := jobs.Create(ctx, deadCmd)
+	if err != nil {
+		t.Fatalf("create dead-letter job: %v", err)
+	}
+	if _, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      dead.JobID,
+		WorkerID:   "worker-metrics",
+		LeaseToken: "lease-dead",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dead-letter job: %v", err)
+	}
+	if _, err := jobs.Fail(ctx, command.FailAgentJobCommand{
+		JobID:        dead.JobID,
+		LeaseToken:   "lease-dead",
+		ErrorMessage: "fixture failure",
+		Timestamp:    now.Add(6 * time.Second),
+	}); err != nil {
+		t.Fatalf("fail dead-letter job: %v", err)
+	}
+
+	cancelCmd := sampleCreateAgentJobCommand(now.Add(7 * time.Second))
+	cancelCmd.JobID = "job-metrics-cancelled"
+	cancelled, err := jobs.Create(ctx, cancelCmd)
+	if err != nil {
+		t.Fatalf("create cancelled job: %v", err)
+	}
+	if _, err := jobs.Cancel(ctx, command.CancelAgentJobCommand{
+		JobID:     cancelled.JobID,
+		Timestamp: now.Add(8 * time.Second),
+	}); err != nil {
+		t.Fatalf("cancel job: %v", err)
+	}
+
+	view, err := metrics.Get(ctx, query.AgentJobMetricsFilter{
+		JobLimit:   10,
+		EventLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("get metrics: %v", err)
+	}
+	if view.SampledJobs != 3 || view.SampledEvents != 9 {
+		t.Fatalf("unexpected sample counts: %+v", view)
+	}
+	if view.JobsByStatus[string(model.AgentJobSucceeded)] != 1 ||
+		view.JobsByStatus[string(model.AgentJobDeadLettered)] != 1 ||
+		view.JobsByStatus[string(model.AgentJobCancelled)] != 1 {
+		t.Fatalf("unexpected jobs by status: %+v", view.JobsByStatus)
+	}
+	if view.JobsByType[string(model.AgentJobGroupMemoryExtract)].ByStatus[string(model.AgentJobDeadLettered)] != 1 {
+		t.Fatalf("unexpected jobs by type: %+v", view.JobsByType)
+	}
+	if view.Throughput.Succeeded != 1 || view.Throughput.Failed != 1 || view.Throughput.Cancelled != 1 || view.Throughput.TerminalEvents != 3 {
+		t.Fatalf("unexpected throughput metrics: %+v", view.Throughput)
+	}
+	if view.DeadLetters.CurrentTotal != 1 || view.DeadLetters.ByType[string(model.AgentJobGroupMemoryExtract)] != 1 {
+		t.Fatalf("unexpected dead-letter metrics: %+v", view.DeadLetters)
+	}
+	if len(view.DeadLetters.Recent) != 1 || view.DeadLetters.Recent[0].JobID != dead.JobID || view.DeadLetters.Recent[0].EventType != string(model.AgentJobEventFailed) {
+		t.Fatalf("unexpected recent dead letters: %+v", view.DeadLetters.Recent)
+	}
+}
+
 func sampleCreateAgentJobCommand(timestamp time.Time) command.CreateAgentJobCommand {
 	return command.CreateAgentJobCommand{
 		JobID:   "job-svc-1",

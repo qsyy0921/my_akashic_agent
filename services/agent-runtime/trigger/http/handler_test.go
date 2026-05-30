@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
@@ -1084,6 +1085,100 @@ func TestAgentJobEventsEndpointListsLifecycleStream(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"event_type":"created"`)) {
 		t.Fatalf("events response missing created event: %s", response.Body.String())
+	}
+}
+
+func TestAgentJobMetricsEndpointReturnsLifecycleSummary(t *testing.T) {
+	store := memory.NewStore()
+	agentJobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	metrics := appservice.NewAgentJobMetricsService(store, store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobMetricsRoutes(mux, metrics)
+
+	now := time.Date(2026, 5, 30, 11, 30, 0, 0, time.UTC)
+	ctx := context.Background()
+	if _, err := agentJobs.Create(ctx, command.CreateAgentJobCommand{
+		JobID:   "job-metrics-http-succeeded",
+		JobType: "rag_ingest",
+		AgentID: "main",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+		Timestamp:   now,
+	}); err != nil {
+		t.Fatalf("create succeeded job: %v", err)
+	}
+	if _, err := agentJobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job-metrics-http-succeeded",
+		WorkerID:   "worker-http",
+		LeaseToken: "lease-http-succeeded",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease succeeded job: %v", err)
+	}
+	if _, err := agentJobs.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      "job-metrics-http-succeeded",
+		LeaseToken: "lease-http-succeeded",
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete succeeded job: %v", err)
+	}
+	if _, err := agentJobs.Create(ctx, command.CreateAgentJobCommand{
+		JobID:   "job-metrics-http-dead",
+		JobType: "group_memory_extract",
+		AgentID: "main",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "3219982",
+			ConversationType: "group",
+		},
+		MaxAttempts: 1,
+		Timestamp:   now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("create dead-letter job: %v", err)
+	}
+	if _, err := agentJobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job-metrics-http-dead",
+		WorkerID:   "worker-http",
+		LeaseToken: "lease-http-dead",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(4 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dead-letter job: %v", err)
+	}
+	if _, err := agentJobs.Fail(ctx, command.FailAgentJobCommand{
+		JobID:        "job-metrics-http-dead",
+		LeaseToken:   "lease-http-dead",
+		ErrorMessage: "fixture failure",
+		Timestamp:    now.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatalf("fail dead-letter job: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/job-metrics?job_limit=10&event_limit=20", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected metrics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`"sampled_jobs":2`,
+		`"sampled_events":6`,
+		`"succeeded":1`,
+		`"failed":1`,
+		`"current_total":1`,
+		`"job_id":"job-metrics-http-dead"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("metrics response missing %s: %s", expected, body)
+		}
 	}
 }
 

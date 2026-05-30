@@ -204,6 +204,7 @@ func main() {
 	deliveryAdapterDiagnostics := appservice.NewDeliveryAdapterDiagnosticsService(deliveryAdapterDiagnosticsFromEnv())
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
+	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -218,6 +219,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
+	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)

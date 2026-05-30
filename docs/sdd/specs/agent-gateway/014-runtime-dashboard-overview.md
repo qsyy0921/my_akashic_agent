@@ -2,8 +2,8 @@
 
 ## Status
 
-Implemented read-only dashboard plugin with delivery adapter and queue backend
-diagnostics.
+Implemented read-only dashboard plugin with delivery adapter, queue backend,
+and Go-owned agent job metrics diagnostics.
 
 ## Context
 
@@ -18,8 +18,8 @@ runtime availability before cutting more responsibilities over to Go.
 
 - Add a dashboard panel that aggregates Go runtime health and operational
   state.
-- Reuse existing runtime endpoints instead of adding a new Go API in this
-  slice.
+- Prefer Go-owned aggregate endpoints when the runtime owns the metric
+  semantics; Python only normalizes for display.
 - Keep the panel read-only; it must not send QQ/Telegram messages or mutate
   jobs.
 - Degrade gracefully when one runtime endpoint is unavailable.
@@ -38,6 +38,7 @@ GET /v1/job-events
 GET /v1/outbox-events
 GET /v1/delivery-adapters
 GET /v1/queue-backend
+GET /v1/job-metrics
 ```
 
 It summarizes:
@@ -53,6 +54,7 @@ It summarizes:
 - configured delivery adapter count, enabled count, and disabled count.
 - current MQ provider/mode, consumer concurrency, max-in-flight, and external
   lease gate readiness.
+- Go-owned `agent_job` lifecycle throughput and dead-letter trend samples.
 
 ## Boundaries
 
@@ -61,10 +63,11 @@ Go owns:
 - authoritative runtime state and lifecycle endpoints;
 - job/outbox/checkpoint/event persistence;
 - stale lease and dead-letter state.
+- `agent_job` metrics semantics and bounded operational samples.
 
 Python dashboard owns:
 
-- read-only aggregation for operator visibility;
+- read-only aggregation and normalization for operator visibility;
 - UI rendering;
 - endpoint-level fallback/error reporting.
 
@@ -79,4 +82,4 @@ remain in the specific job/outbox plugins where mutation is explicit.
   overview when other endpoints still respond.
 - Tests cover summary fields for leases, stale jobs, dead letters, checkpoint
   lag, job events, outbox events, `rag_eval` failures, delivery adapter
-  visibility, and queue backend visibility.
+  visibility, queue backend visibility, and Go-owned `agent_job` metrics.

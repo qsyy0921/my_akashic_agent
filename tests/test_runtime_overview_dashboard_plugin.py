@@ -217,6 +217,42 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "blockers": ["explicit_cutover", "state_lease_workers_disabled"],
         },
     }
+    agent_job_metrics = {
+        "sampled_jobs": 3,
+        "sampled_events": 12,
+        "jobs_by_status": {"running": 1, "succeeded": 1, "dead_lettered": 1},
+        "jobs_by_type": {
+            "rag_ingest": {"total": 1, "by_status": {"dead_lettered": 1}},
+        },
+        "throughput": {
+            "events_by_type": {"created": 3, "succeeded": 1, "failed": 1},
+            "created": 3,
+            "leased": 2,
+            "renewed": 0,
+            "running": 1,
+            "succeeded": 1,
+            "failed": 1,
+            "retry": 0,
+            "lease_expired": 0,
+            "cancelled": 0,
+            "terminal_events": 2,
+        },
+        "dead_letters": {
+            "current_total": 1,
+            "by_type": {"rag_ingest": 1},
+            "recent": [
+                {
+                    "job_id": "rag_ingest:qq:3219982:dead",
+                    "job_type": "rag_ingest",
+                    "event_type": "failed",
+                    "status": "dead_lettered",
+                    "attempt": 3,
+                    "max_attempts": 3,
+                    "occurred_at": "2026-05-30T08:22:00Z",
+                }
+            ],
+        },
+    }
     seen_paths: list[str] = []
 
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
@@ -246,6 +282,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": delivery_adapters}))
         if parsed.path == "/v1/queue-backend":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": queue_backend}))
+        if parsed.path == "/v1/job-metrics":
+            assert query["job_limit"] == ["50"]
+            assert query["event_limit"] == ["10"]
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": agent_job_metrics}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -280,6 +320,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_consumer_concurrency"] == 8
     assert payload["summary"]["queue_max_in_flight"] == 64
     assert payload["summary"]["queue_external_lease_ready"] is False
+    assert payload["summary"]["agent_job_metric_events"] == 12
+    assert payload["summary"]["agent_job_metric_dead_letters"] == 1
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
@@ -289,6 +331,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    metrics_card = next(item for item in payload["cards"] if item["id"] == "agent_job_metrics")
+    assert metrics_card["status"] == "danger"
+    assert payload["agent_job_metrics"]["throughput"]["succeeded"] == 1
+    assert payload["agent_job_metrics"]["dead_letters"]["recent"][0]["job_id"] == (
+        "rag_ingest:qq:3219982:dead"
+    )
     assert payload["queue_backend"]["external_lease_blockers"] == [
         "explicit_cutover",
         "state_lease_workers_disabled",
@@ -301,6 +349,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/outbox-events",
         "/v1/delivery-adapters",
         "/v1/queue-backend",
+        "/v1/job-metrics",
     }.issubset(set(seen_paths))
 
 
@@ -312,7 +361,11 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
         if parsed.path.startswith("/v1/"):
             payload: dict[str, Any] | list[Any]
-            payload = {} if parsed.path in {"/v1/knowledge-worker-diagnostics", "/v1/queue-backend"} else []
+            payload = (
+                {}
+                if parsed.path in {"/v1/knowledge-worker-diagnostics", "/v1/queue-backend", "/v1/job-metrics"}
+                else []
+            )
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": payload}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 

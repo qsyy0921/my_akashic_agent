@@ -78,6 +78,13 @@ func RegisterAgentJobEventRoutes(
 	mux.Handle("/v1/job-events", AgentJobEventsHandler(jobEvents))
 }
 
+func RegisterAgentJobMetricsRoutes(
+	mux *http.ServeMux,
+	metrics inport.AgentJobMetricsViewer,
+) {
+	mux.Handle("/v1/job-metrics", AgentJobMetricsHandler(metrics))
+}
+
 func RegisterOutboxEventRoutes(
 	mux *http.ServeMux,
 	outboxEvents inport.OutboxDeliveryEventViewer,
@@ -1107,6 +1114,24 @@ func AgentJobEventsHandler(jobEvents inport.AgentJobEventViewer) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func AgentJobMetricsHandler(metrics inport.AgentJobMetricsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := metrics.Get(r.Context(), query.AgentJobMetricsFilter{
+			JobLimit:   parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
+			EventLimit: parsePositiveInt(r.URL.Query().Get("event_limit"), 200, 200),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

@@ -65,6 +65,7 @@
 - [x] 将 Python outbox worker 的 Go dispatch 决策接入 Go readiness：配置为 Go dispatch 候选的 channel 会先由 Go 判断 adapter 是否 ready；若缺失 adapter，则直接执行 Go readiness 返回的 plan，不再先尝试必然失败的 runtime dispatch。
 - [x] 将 outbox dashboard 详情接入 Go dispatch readiness：详情页只读展示 adapter ready/missing channel、side_effect=none 和 dispatch plan，便于 QQ/NapCat adapter cutover 前诊断缺失 channel，不触发真实发送。
 - [x] 将 `agent_job` 过期租约恢复接入 Agent Jobs dashboard：前端可触发 Go `/v1/jobs/recover-expired`，展示扫描/恢复/死信结果，并只暴露 `lease_token_present` 避免泄漏 token 值。
+- [x] 增加 Go-owned `agent_job` metrics endpoint `GET /v1/job-metrics`：Go 聚合 job 状态、类型分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
 
 ## 下一步
 

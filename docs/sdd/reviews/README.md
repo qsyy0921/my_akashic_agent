@@ -112,3 +112,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-63-outbox-worker-readiness-gate.md`
 - `2026-05-31-phase8-64-outbox-dashboard-readiness.md`
 - `2026-05-31-phase8-65-agent-job-dashboard-recovery.md`
+- `2026-05-31-phase8-66-agent-job-metrics.md`

@@ -26,10 +26,13 @@ Implemented:
   list/detail/retry/cancel views under `/api/dashboard/agent-jobs`, exposes
   `dashboard_panel.*` assets, and can trigger Go-owned expired lease recovery
   without exposing raw lease token values.
+- Go `GET /v1/job-metrics` provides a single runtime-owned metrics view for job
+  status/type distribution, lifecycle throughput, and dead-letter trends.
 
 Pending:
 
-- Add metrics for job throughput and dead-letter trending.
+- Add longer-window persisted metrics when the event stream grows beyond the
+  current bounded operational sample.
 
 ## Context
 
@@ -124,6 +127,7 @@ POST /v1/jobs/{job_id}/failed
 POST /v1/jobs/{job_id}/retry
 POST /v1/jobs/{job_id}/cancel
 POST /v1/jobs/recover-expired
+GET  /v1/job-metrics?job_limit=200&event_limit=200
 ```
 
 ## Worker Boundary
@@ -151,7 +155,9 @@ Go owns:
 - source event/asset linkage;
 - dashboard job queries;
 - expired lease recovery results and token-presence diagnostics surfaced through
-  the Agent Jobs dashboard.
+  the Agent Jobs dashboard;
+- job throughput and dead-letter metrics derived from Go job state and lifecycle
+  events.
 
 ## Safety Rules
 
@@ -173,6 +179,9 @@ Go owns:
 - Group-memory and RAG job fixtures include source citations.
 - Dashboard recover-expired action delegates to Go `/v1/jobs/recover-expired`
   and never reveals raw `lease_token` values.
+- `GET /v1/job-metrics` returns status/type counts, recent lifecycle throughput,
+  current dead-letter totals, and recent dead-letter samples without reading
+  Python dashboard state.
 
 ## Migration Plan
 
