@@ -521,6 +521,60 @@ class AgentGatewayClient:
             )
         return data
 
+    async def report_receiver_status(
+        self,
+        *,
+        kind: str,
+        channel_name: str,
+        status: str,
+        receiver_id: str = "",
+        account_id: str = "",
+        endpoint: str = "",
+        reason: str = "",
+        last_error: str = "",
+        source: str = "python_channel",
+        metadata: dict[str, str] | None = None,
+        timestamp: str = "",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "receiver_id": str(receiver_id or ""),
+            "kind": str(kind or ""),
+            "channel_name": str(channel_name or ""),
+            "account_id": str(account_id or ""),
+            "endpoint": str(endpoint or ""),
+            "status": str(status or ""),
+            "reason": str(reason or ""),
+            "last_error": str(last_error or ""),
+            "source": str(source or "python_channel"),
+            "metadata": metadata or {},
+        }
+        if timestamp:
+            body["timestamp"] = str(timestamp)
+        data = await self._request("POST", "/v1/receiver-statuses/report", json_body=body)
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver status response is not an object"
+            )
+        receivers = data.get("receivers")
+        if not isinstance(receivers, list):
+            raise AgentGatewayError(
+                "agent runtime receiver status response has no receivers"
+            )
+        return data
+
+    async def list_receiver_statuses(self) -> dict[str, Any]:
+        data = await self._request("GET", "/v1/receiver-statuses")
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver statuses response is not an object"
+            )
+        receivers = data.get("receivers")
+        if not isinstance(receivers, list):
+            raise AgentGatewayError(
+                "agent runtime receiver statuses response has no receivers"
+            )
+        return data
+
     async def get_queue_backend(self) -> dict[str, Any]:
         data = await self._request("GET", "/v1/queue-backend")
         if not isinstance(data, dict):

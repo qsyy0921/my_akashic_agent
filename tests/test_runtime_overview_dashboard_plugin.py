@@ -450,6 +450,41 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "side_effect": "none",
     }
+    receiver_statuses = {
+        "receivers": [
+            {
+                "receiver_id": "qq:1049511700:qq",
+                "kind": "qq",
+                "channel_name": "qq",
+                "account_id": "1049511700",
+                "endpoint": "ws://127.0.0.1:3001",
+                "status": "connected",
+                "reason": "ncatbot_started",
+                "source": "python_channel",
+            },
+            {
+                "receiver_id": "telegram:7689386159:telegram",
+                "kind": "telegram",
+                "channel_name": "telegram",
+                "account_id": "7689386159",
+                "status": "suspended",
+                "reason": "getupdates_conflict",
+                "source": "python_channel",
+                "metadata": {"polling": "stopped"},
+            },
+        ],
+        "totals": {
+            "receivers": 2,
+            "starting": 0,
+            "connected": 1,
+            "suspended": 1,
+            "failed": 0,
+            "stopped": 0,
+            "qq": 1,
+            "telegram": 1,
+        },
+        "side_effect": "none",
+    }
     go_overview = {
         "summary": {
             "jobs_total": 3,
@@ -480,6 +515,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "observe_targets_observe_only": 1,
             "observe_targets_reply_allowed": 0,
             "observe_target_groups": 1,
+            "receiver_statuses": 2,
+            "receiver_status_connected": 1,
+            "receiver_status_suspended": 1,
+            "receiver_status_failed": 0,
+            "receiver_status_qq": 1,
+            "receiver_status_telegram": 1,
             "send_ledger_records": 4,
             "send_ledger_repeated_hashes": 1,
             "inbox_metric_events": 9,
@@ -500,6 +541,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             },
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
+            {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
@@ -509,6 +551,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "queue_backend": queue_backend,
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
+        "receiver_statuses": receiver_statuses,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -611,6 +654,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["observe_targets"] == 1
     assert payload["summary"]["observe_targets_observe_only"] == 1
     assert payload["summary"]["observe_target_groups"] == 1
+    assert payload["summary"]["receiver_statuses"] == 2
+    assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["send_ledger_records"] == 4
     assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
@@ -639,6 +684,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert observe_card["status"] == "ok"
     assert payload["observe_targets"]["targets"][0]["channel"]["conversation_id"] == "27234224"
     assert payload["observe_targets"]["side_effect"] == "none"
+    receiver_card = next(item for item in payload["cards"] if item["id"] == "receiver_statuses")
+    assert receiver_card["status"] == "warn"
+    assert payload["receiver_statuses"]["receivers"][1]["reason"] == "getupdates_conflict"
+    assert payload["receiver_statuses"]["totals"]["telegram"] == 1
     send_ledger_card = next(
         item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
     )

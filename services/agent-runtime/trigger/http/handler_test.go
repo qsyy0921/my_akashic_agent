@@ -248,6 +248,47 @@ func TestObserveTargetsEndpointSyncsAndListsConfiguredTargets(t *testing.T) {
 	}
 }
 
+func TestReceiverStatusEndpointReportsAndListsReceivers(t *testing.T) {
+	manager := appservice.NewReceiverStatusService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterReceiverStatusRoutes(mux, manager)
+
+	body := []byte(`{
+		"kind": "telegram",
+		"channel_name": "telegram",
+		"account_id": "7689386159",
+		"status": "suspended",
+		"reason": "getupdates_conflict",
+		"source": "python_channel",
+		"metadata": {"polling": "stopped"}
+	}`)
+	reportResponse := httptest.NewRecorder()
+	mux.ServeHTTP(reportResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-statuses/report", bytes.NewReader(body)))
+	if reportResponse.Code != http.StatusOK {
+		t.Fatalf("expected report 200, got %d: %s", reportResponse.Code, reportResponse.Body.String())
+	}
+	if !bytes.Contains(reportResponse.Body.Bytes(), []byte(`"receiver_id":"telegram:7689386159:telegram"`)) ||
+		!bytes.Contains(reportResponse.Body.Bytes(), []byte(`"suspended":1`)) {
+		t.Fatalf("report response missing receiver status: %s", reportResponse.Body.String())
+	}
+
+	listResponse := httptest.NewRecorder()
+	mux.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/v1/receiver-statuses", nil))
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", listResponse.Code, listResponse.Body.String())
+	}
+	for _, expected := range []string{
+		`"side_effect":"none"`,
+		`"telegram":1`,
+		`"reason":"getupdates_conflict"`,
+		`"polling":"stopped"`,
+	} {
+		if !bytes.Contains(listResponse.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("list response missing %s: %s", expected, listResponse.Body.String())
+		}
+	}
+}
+
 func TestDeliveryAdapterHealthEndpointReturnsReadOnlyProbeResults(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterHealthService(staticHTTPDeliveryHealthProbe{
 		items: []query.DeliveryAdapterHealthView{{

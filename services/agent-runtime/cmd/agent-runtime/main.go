@@ -227,6 +227,7 @@ func main() {
 	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
 	observeTargets := appservice.NewObserveTargetService()
+	receiverStatuses := appservice.NewReceiverStatusService()
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -246,6 +247,7 @@ func main() {
 		KnowledgeDiagnostics: knowledgeDiagnostics,
 		RuntimeWorkers:       runtimeWorkers,
 		ObserveTargets:       observeTargets,
+		ReceiverStatuses:     receiverStatuses,
 	})
 
 	mux := http.NewServeMux()
@@ -265,6 +267,7 @@ func main() {
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
 	httptrigger.RegisterObserveTargetRoutes(mux, observeTargets)
+	httptrigger.RegisterReceiverStatusRoutes(mux, receiverStatuses)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 

@@ -82,11 +82,12 @@
 - [x] 增加 Go-owned observe target diagnostics：Python 启动时将 `config.toml` 中 observe-only QQ 群同步到 Go `/v1/observe-targets/sync`，Go 负责 source-bound 保存、校验、`GET /v1/observe-targets` 查询和 runtime overview `Observe Targets` 卡片；不改变当前 QQ 收消息和回复逻辑。
 - [x] 重建并重启当前本地 Go `agent-runtime` 与 dashboard，确认 runtime overview 显示 6 个 observe-only QQ 群：`164369633`、`187890369`、`27234224`、`284331268`、`3219982`、`956393163`，`side_effect=none`。
 - [x] 恢复当前本地 QQ 观察链路：Docker API 已恢复，两个 NapCat 容器在线；重启 Python 主服务后 `1049511700 -> ws://localhost:3001`、`2365524513 -> ws://localhost:3002` 均成功启动，Go delivery adapter health 显示 OneBot/Telegram 4 个 adapter 全部 authenticated，runtime overview 已记录 `3219982` 的 observe-only 群消息。
+- [x] 增加 Go-owned receiver status diagnostics：Python QQ/Telegram 接收端启动、失败和 Telegram polling conflict 会上报到 Go `/v1/receiver-statuses/report`；Go 负责校验、聚合、`GET /v1/receiver-statuses` 和 runtime overview `Receiver Statuses` 卡片。当前 live smoke 显示 3 个 connected receiver：`qq:1049511700:qq`、`qq:2365524513:qq_2365524513`、`telegram:7689386159:telegram`。
 
 ## 下一步
 
 - [ ] 继续验证 QQ 群实时采集质量：让观察群产生一条文本、一张图片、一个文件，确认 Python QQ channel、Go inbox metrics、media asset content、dashboard 附件预览链路都能完整记录，且 observe-only 不回复。
-- [ ] 排查 Telegram `getUpdates` conflict：当前 Go health `getMe` 正常，但 Python polling 会因同一 bot token 已有其他轮询实例而暂停；需要定位并停止重复 polling 进程或改成 webhook/单实例锁。
+- [ ] 若 Telegram `getUpdates` conflict 再次出现，先看 Go `/v1/receiver-statuses` 是否显示 `status=suspended`、`reason=getupdates_conflict`，再定位并停止重复 polling 进程或改成 webhook/单实例锁。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 

@@ -6,7 +6,8 @@ Implemented read-only dashboard plugin with a Go-owned runtime overview
 aggregate, runtime config diagnostics, delivery adapter, queue backend,
 Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
 Go-owned agent job metrics diagnostics, Go-owned outbox metrics diagnostics,
-Go-owned runtime worker diagnostics, and Go-owned observe target diagnostics.
+Go-owned runtime worker diagnostics, Go-owned observe target diagnostics, and
+Go-owned receiver status diagnostics.
 
 ## Context
 
@@ -72,6 +73,7 @@ GET /v1/job-metrics
 GET /v1/outbox-metrics
 GET /v1/runtime-workers
 GET /v1/observe-targets
+GET /v1/receiver-statuses
 ```
 
 The dashboard also exposes a manual, operator-triggered health proxy:
@@ -118,6 +120,8 @@ It summarizes:
   external lease cutover.
 - Go-owned observe target totals and target metadata for configured
   observe-only QQ groups synced from Python config.
+- Go-owned receiver lifecycle totals for Python platform receivers, including
+  connected QQ channels and suspended Telegram polling.
 - Go-owned sanitized runtime config state for OneBot aliases, token presence,
   worker flags, and pre-smoke blockers.
 - Manual delivery adapter live health results, including reachable,
@@ -143,6 +147,8 @@ Go owns:
   queue worker configuration.
 - observe target diagnostics semantics, including source-bound sync, target
   validation, reply-disabled observe-only rules, and `side_effect=none`.
+- receiver status diagnostics semantics, including latest status by receiver,
+  connected/suspended/failed counters, and `side_effect=none`.
 - runtime config diagnostics semantics, including secret redaction, expected
   OneBot alias readiness, and side-effect-free preflight blockers.
 
@@ -172,7 +178,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
   lag, job events, outbox events, `rag_eval` failures, delivery adapter
   visibility, queue backend visibility, Go-owned send ledger metrics,
   Go-owned inbox metrics, Go-owned `agent_job` metrics, and Go-owned outbox
-  metrics, and Go-owned runtime worker diagnostics.
+  metrics, Go-owned runtime worker diagnostics, Go-owned observe target
+  diagnostics, and Go-owned receiver status diagnostics.
 - Tests cover Python fallback to the old multi-endpoint path when the Go
   aggregate is unavailable.
 - Tests cover the manual adapter health proxy and confirm normal overview

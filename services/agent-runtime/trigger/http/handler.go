@@ -152,6 +152,14 @@ func RegisterObserveTargetRoutes(
 	mux.Handle("/v1/observe-targets", ObserveTargetsHandler(manager))
 }
 
+func RegisterReceiverStatusRoutes(
+	mux *http.ServeMux,
+	manager inport.ReceiverStatusManager,
+) {
+	mux.Handle("/v1/receiver-statuses/report", ReceiverStatusReportHandler(manager))
+	mux.Handle("/v1/receiver-statuses", ReceiverStatusesHandler(manager))
+}
+
 func RegisterRuntimeOverviewRoutes(
 	mux *http.ServeMux,
 	viewer inport.RuntimeOverviewViewer,
@@ -953,6 +961,69 @@ func ObserveTargetsSyncHandler(manager inport.ObserveTargetManager) http.Handler
 		view, err := manager.SyncObserveTargets(r.Context(), command.SyncObserveTargetsCommand{
 			Source:  request.Source,
 			Targets: observeTargetCommands(request.Targets),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverStatusesHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver status manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := manager.ListReceiverStatuses(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverStatusReportHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver status manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.ReceiverStatusRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.ReportReceiverStatus(r.Context(), command.ReportReceiverStatusCommand{
+			ReceiverID:  request.ReceiverID,
+			Kind:        request.Kind,
+			ChannelName: request.ChannelName,
+			AccountID:   request.AccountID,
+			Endpoint:    request.Endpoint,
+			Status:      request.Status,
+			Reason:      request.Reason,
+			LastError:   request.LastError,
+			Source:      request.Source,
+			Metadata:    request.Metadata,
+			Timestamp:   timestamp,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, types.Result{

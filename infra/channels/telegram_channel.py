@@ -85,6 +85,7 @@ class TelegramChannel:
         interrupt_controller: InterruptController | None = None,
         channel_name: str = _CHANNEL,
         send_ledger_client: Any | None = None,
+        receiver_status_client: Any | None = None,
     ) -> None:
         self._token = token
         self._bus = bus
@@ -92,6 +93,7 @@ class TelegramChannel:
         self._interrupt_controller = interrupt_controller
         self._channel = channel_name
         self._send_ledger_client = send_ledger_client
+        self._receiver_status_client = receiver_status_client
         self._allow_from: set[str] = set(allow_from) if allow_from else set()
         self._message_deduper = MessageDeduper(_SEEN_MSG_MAXSIZE)
         ws = getattr(session_manager, "workspace", None)
@@ -202,6 +204,11 @@ class TelegramChannel:
         await updater.start_polling(
             allowed_updates=Update.ALL_TYPES,
             error_callback=self._on_polling_error,
+        )
+        await self._report_receiver_status(
+            "connected",
+            reason="polling_started",
+            metadata={"polling": "running"},
         )
         logger.info(f"TelegramChannel 已启动  已知用户: {len(self.user_map)}")
 
@@ -925,11 +932,41 @@ class TelegramChannel:
             return
         try:
             await updater.stop()
+            await self._report_receiver_status(
+                "suspended",
+                reason="getupdates_conflict",
+                metadata={"polling": "stopped"},
+            )
             logger.warning(
                 "[telegram] polling 已停止；当前进程不再接收 Telegram 消息。"
             )
         except Exception as e:
             logger.warning("[telegram] 停止 polling 失败: %s", e)
+
+    async def _report_receiver_status(
+        self,
+        status: str,
+        *,
+        reason: str = "",
+        last_error: str = "",
+        metadata: dict[str, str] | None = None,
+    ) -> None:
+        client = self._receiver_status_client
+        if client is None:
+            return
+        try:
+            await client.report_receiver_status(
+                kind="telegram",
+                channel_name=self._channel,
+                account_id=self._runtime_bot_id(),
+                status=status,
+                reason=reason,
+                last_error=last_error,
+                source="python_channel",
+                metadata=metadata or {},
+            )
+        except Exception as exc:
+            logger.debug("[telegram] receiver status 上报失败: %s", exc)
 
 
 def _format_turn_live(

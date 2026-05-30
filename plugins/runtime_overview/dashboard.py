@@ -323,6 +323,7 @@ class RuntimeOverviewDashboardReader:
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
             "observe_targets": _normalize_observe_targets({}),
+            "receiver_statuses": _normalize_receiver_statuses({}),
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -974,6 +975,9 @@ def _normalize_go_runtime_overview(
     observe_targets = _normalize_observe_targets(
         _mapping_or_empty(item.get("observe_targets"))
     )
+    receiver_statuses = _normalize_receiver_statuses(
+        _mapping_or_empty(item.get("receiver_statuses"))
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1019,6 +1023,7 @@ def _normalize_go_runtime_overview(
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
+        "receiver_statuses": receiver_statuses,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -1066,6 +1071,12 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "observe_targets_observe_only": 0,
         "observe_targets_reply_allowed": 0,
         "observe_target_groups": 0,
+        "receiver_statuses": 0,
+        "receiver_status_connected": 0,
+        "receiver_status_suspended": 0,
+        "receiver_status_failed": 0,
+        "receiver_status_qq": 0,
+        "receiver_status_telegram": 0,
         "send_ledger_records": 0,
         "send_ledger_repeated_hashes": 0,
         "inbox_metric_events": 0,
@@ -1167,6 +1178,69 @@ def _normalize_observe_target(item: Mapping[str, Any]) -> dict[str, Any]:
         "enabled": bool(item.get("enabled")),
         "source": _text(item.get("source")),
         "metadata": _mapping_or_empty(item.get("metadata")),
+        "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_receiver_statuses(item: Mapping[str, Any]) -> dict[str, Any]:
+    receivers_raw = item.get("receivers")
+    if not isinstance(receivers_raw, list):
+        receivers_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    receivers = [
+        _normalize_receiver_status(value)
+        for value in receivers_raw
+        if isinstance(value, Mapping)
+    ]
+    return {
+        "receivers": receivers,
+        "totals": {
+            "receivers": _int_value(
+                totals.get("receivers"), fallback=len(receivers)
+            ),
+            "starting": _int_value(totals.get("starting"), fallback=0),
+            "connected": _int_value(
+                totals.get("connected"),
+                fallback=sum(1 for value in receivers if value["status"] == "connected"),
+            ),
+            "suspended": _int_value(
+                totals.get("suspended"),
+                fallback=sum(1 for value in receivers if value["status"] == "suspended"),
+            ),
+            "failed": _int_value(
+                totals.get("failed"),
+                fallback=sum(1 for value in receivers if value["status"] == "failed"),
+            ),
+            "stopped": _int_value(totals.get("stopped"), fallback=0),
+            "qq": _int_value(
+                totals.get("qq"),
+                fallback=sum(1 for value in receivers if value["kind"] == "qq"),
+            ),
+            "telegram": _int_value(
+                totals.get("telegram"),
+                fallback=sum(1 for value in receivers if value["kind"] == "telegram"),
+            ),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_receiver_status(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "receiver_id": _text(item.get("receiver_id")),
+        "kind": _text(item.get("kind")),
+        "channel_name": _text(item.get("channel_name")),
+        "account_id": _text(item.get("account_id")),
+        "endpoint": _text(item.get("endpoint")),
+        "status": _text(item.get("status")),
+        "reason": _text(item.get("reason")),
+        "last_error": _text(item.get("last_error")),
+        "source": _text(item.get("source")),
+        "metadata": dict(_mapping_or_empty(item.get("metadata"))),
         "updated_at": _text(item.get("updated_at")),
     }
 

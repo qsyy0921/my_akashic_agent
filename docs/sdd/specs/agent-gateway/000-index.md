@@ -61,4 +61,7 @@ execution.
   bot-to-bot loop guard observability.
 - `023-observe-target-diagnostics.md`: Go-owned runtime diagnostics for
   configured observe-only QQ group targets synced from Python config.
+- `024-receiver-status-diagnostics.md`: Go-owned runtime diagnostics for
+  Python platform receiver lifecycle states, including QQ connected status and
+  Telegram polling conflict suspension.
 - Agent architecture boundary specs live under `../agent-architecture/`.

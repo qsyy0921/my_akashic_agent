@@ -97,6 +97,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"targets": 1, "enabled": 1, "observe_only": 1, "reply_allowed": 0, "groups": 1},
 			SideEffect: "none",
 		}},
+		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
+			Receivers: []query.ReceiverStatusView{
+				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
+				{ReceiverID: "telegram:7689386159:telegram", Kind: "telegram", ChannelName: "telegram", AccountID: "7689386159", Status: "suspended"},
+			},
+			Totals:     map[string]int{"receivers": 2, "connected": 1, "suspended": 1, "failed": 0, "qq": 1, "telegram": 1},
+			SideEffect: "none",
+		}},
 	})
 
 	view, err := service.Get(context.Background(), query.RuntimeOverviewFilter{
@@ -131,11 +139,15 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["observe_targets"] != 1 || view.Summary["observe_target_groups"] != 1 {
 		t.Fatalf("unexpected observe target summary: %#v", view.Summary)
 	}
+	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
+		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
@@ -231,5 +243,13 @@ type staticObserveTargets struct {
 }
 
 func (s staticObserveTargets) ListObserveTargets(context.Context) (query.ObserveTargetsView, error) {
+	return s.view, nil
+}
+
+type staticReceiverStatuses struct {
+	view query.ReceiverStatusesView
+}
+
+func (s staticReceiverStatuses) ListReceiverStatuses(context.Context) (query.ReceiverStatusesView, error) {
 	return s.view, nil
 }

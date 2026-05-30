@@ -514,6 +514,66 @@ async def test_agent_gateway_client_syncs_and_lists_observe_targets():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_reports_and_lists_receiver_statuses():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        if request.url.path == "/v1/receiver-statuses/report":
+            assert request.method == "POST"
+            assert body["kind"] == "telegram"
+            assert body["channel_name"] == "telegram"
+            assert body["status"] == "suspended"
+            assert body["reason"] == "getupdates_conflict"
+            return _ok(
+                {
+                    "receivers": [
+                        {
+                            "receiver_id": "telegram:7689386159:telegram",
+                            "status": "suspended",
+                        }
+                    ],
+                    "totals": {"receivers": 1, "suspended": 1},
+                    "side_effect": "none",
+                }
+            )
+        if request.url.path == "/v1/receiver-statuses":
+            assert request.method == "GET"
+            return _ok(
+                {
+                    "receivers": [
+                        {
+                            "receiver_id": "telegram:7689386159:telegram",
+                            "status": "suspended",
+                        }
+                    ],
+                    "totals": {"receivers": 1, "suspended": 1},
+                    "side_effect": "none",
+                }
+            )
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+    reported = await client.report_receiver_status(
+        kind="telegram",
+        channel_name="telegram",
+        account_id="7689386159",
+        status="suspended",
+        reason="getupdates_conflict",
+        metadata={"polling": "stopped"},
+    )
+    listed = await client.list_receiver_statuses()
+
+    assert reported["side_effect"] == "none"
+    assert listed["receivers"][0]["receiver_id"] == "telegram:7689386159:telegram"
+    assert [call[1] for call in calls] == [
+        "/v1/receiver-statuses/report",
+        "/v1/receiver-statuses",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

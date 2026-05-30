@@ -69,12 +69,21 @@ async def start_channels(
             interrupt_controller=interrupt_controller,
             channel_name=tg.channel_name,
             send_ledger_client=send_ledger_client,
+            receiver_status_client=send_ledger_client,
         )
         try:
             await candidate.start()
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Telegram channel start failed; continuing without Telegram"
+            )
+            await _report_receiver_status(
+                send_ledger_client,
+                kind="telegram",
+                channel_name=tg.channel_name,
+                status="failed",
+                reason="start_failed",
+                last_error=str(exc),
             )
         else:
             tg_channel = candidate
@@ -165,12 +174,33 @@ async def start_channels(
             )
             try:
                 await candidate.start()
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "QQ channel start failed; continuing without QQ account %s",
                     qq.bot_uin,
                 )
+                await _report_receiver_status(
+                    send_ledger_client,
+                    kind="qq",
+                    channel_name=qq.channel_name,
+                    account_id=str(qq.bot_uin),
+                    endpoint=str(qq.websocket_uri or ""),
+                    status="failed",
+                    reason="start_failed",
+                    last_error=str(exc),
+                    metadata={"websocket_uri": str(qq.websocket_uri or "")},
+                )
             else:
+                await _report_receiver_status(
+                    send_ledger_client,
+                    kind="qq",
+                    channel_name=qq.channel_name,
+                    account_id=str(qq.bot_uin),
+                    endpoint=str(qq.websocket_uri or ""),
+                    status="connected",
+                    reason="ncatbot_started",
+                    metadata={"websocket_uri": str(qq.websocket_uri or "")},
+                )
                 started_qq_channels.append(candidate)
                 push_tool.register_channel(
                     qq.channel_name,
@@ -213,3 +243,38 @@ async def start_channels(
             print(f"官方 QQBot 已启动  |  AppID: {qqbot.app_id}")
 
     return ipc, tg_channel, qq_channel, qqbot_channel
+
+
+async def _report_receiver_status(
+    client: Any | None,
+    *,
+    kind: str,
+    channel_name: str,
+    status: str,
+    account_id: str = "",
+    endpoint: str = "",
+    reason: str = "",
+    last_error: str = "",
+    metadata: dict[str, str] | None = None,
+) -> None:
+    if client is None:
+        return
+    try:
+        await client.report_receiver_status(
+            kind=kind,
+            channel_name=channel_name,
+            account_id=account_id,
+            endpoint=endpoint,
+            status=status,
+            reason=reason,
+            last_error=last_error,
+            source="python_channel",
+            metadata=metadata or {},
+        )
+    except Exception as exc:
+        logger.debug(
+            "agent_runtime receiver status report failed channel=%s status=%s: %s",
+            channel_name,
+            status,
+            exc,
+        )
