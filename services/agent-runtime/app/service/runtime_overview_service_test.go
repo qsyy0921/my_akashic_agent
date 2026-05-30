@@ -61,6 +61,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				}},
 			}},
 		}},
+		RuntimeWorkers: staticRuntimeWorkerDiagnostics{view: query.RuntimeWorkerDiagnosticsView{
+			Totals: map[string]int{"workers": 3, "enabled": 2, "running": 1},
+			Workers: []query.RuntimeWorkerView{
+				{Name: "agent_job_recovery", Enabled: false, Running: false},
+				{Name: "outbox_delivery_worker", Enabled: true, Running: true},
+				{Name: "nats_dual_read_compare", Enabled: true, Running: false},
+			},
+		}},
 	})
 
 	view, err := service.Get(context.Background(), query.RuntimeOverviewFilter{
@@ -86,8 +94,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["queue_backend_provider"] != "nats_jetstream" {
 		t.Fatalf("unexpected queue backend: %#v", view.Summary)
 	}
+	if view.Summary["runtime_workers_running"] != 1 {
+		t.Fatalf("unexpected runtime worker summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
@@ -159,5 +171,13 @@ type staticRuntimeKnowledgeDiagnostics struct {
 }
 
 func (s staticRuntimeKnowledgeDiagnostics) Get(context.Context, query.KnowledgeWorkerDiagnosticsFilter) (query.KnowledgeWorkerDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeWorkerDiagnostics struct {
+	view query.RuntimeWorkerDiagnosticsView
+}
+
+func (s staticRuntimeWorkerDiagnostics) GetRuntimeWorkers(context.Context) (query.RuntimeWorkerDiagnosticsView, error) {
 	return s.view, nil
 }

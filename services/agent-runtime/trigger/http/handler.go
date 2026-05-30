@@ -137,6 +137,13 @@ func RegisterRuntimeOverviewRoutes(
 	mux.Handle("/v1/runtime-overview", RuntimeOverviewHandler(viewer))
 }
 
+func RegisterRuntimeWorkerDiagnosticsRoutes(
+	mux *http.ServeMux,
+	viewer inport.RuntimeWorkerDiagnosticsViewer,
+) {
+	mux.Handle("/v1/runtime-workers", RuntimeWorkerDiagnosticsHandler(viewer))
+}
+
 func RegisterProactiveStateRoutes(
 	mux *http.ServeMux,
 	proactiveState inport.ProactiveStateManager,
@@ -1275,6 +1282,25 @@ func RuntimeOverviewHandler(viewer inport.RuntimeOverviewViewer) http.Handler {
 			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
 			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 86400),
 		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func RuntimeWorkerDiagnosticsHandler(viewer inport.RuntimeWorkerDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "runtime worker diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := viewer.GetRuntimeWorkers(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

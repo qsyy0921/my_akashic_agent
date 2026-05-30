@@ -5,7 +5,8 @@
 Implemented read-only dashboard plugin with a Go-owned runtime overview
 aggregate, delivery adapter, queue backend, Go-owned send ledger metrics
 diagnostics, Go-owned inbox metrics diagnostics, Go-owned agent job metrics
-diagnostics, and Go-owned outbox metrics diagnostics.
+diagnostics, Go-owned outbox metrics diagnostics, and Go-owned runtime worker
+diagnostics.
 
 ## Context
 
@@ -51,6 +52,7 @@ GET /v1/send-ledger/metrics
 GET /v1/inbox-metrics
 GET /v1/job-metrics
 GET /v1/outbox-metrics
+GET /v1/runtime-workers
 ```
 
 It summarizes:
@@ -72,6 +74,9 @@ It summarizes:
   sequence cursor metrics.
 - Go-owned `agent_job` lifecycle throughput and dead-letter trend samples.
 - Go-owned outbox delivery lifecycle throughput and dead-letter trend samples.
+- Go-owned runtime worker enabled/running/config state for agent job recovery,
+  local outbox dispatch, NATS shadow publish, NATS dual-read compare, and NATS
+  external lease cutover.
 - Go-owned aggregate cards and summary fields for runtime overview. Python
   keeps only display normalization and fallback compatibility.
 
@@ -86,6 +91,8 @@ Go owns:
 - inbox metrics semantics and bounded operational samples.
 - `agent_job` metrics semantics and bounded operational samples.
 - outbox metrics semantics and bounded operational samples.
+- runtime worker diagnostics semantics, including enabled/running counters and
+  queue worker configuration.
 
 Python dashboard owns:
 
@@ -107,6 +114,6 @@ remain in the specific job/outbox plugins where mutation is explicit.
   lag, job events, outbox events, `rag_eval` failures, delivery adapter
   visibility, queue backend visibility, Go-owned send ledger metrics,
   Go-owned inbox metrics, Go-owned `agent_job` metrics, and Go-owned outbox
-  metrics.
+  metrics, and Go-owned runtime worker diagnostics.
 - Tests cover Python fallback to the old multi-endpoint path when the Go
   aggregate is unavailable.

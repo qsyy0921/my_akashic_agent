@@ -400,6 +400,19 @@ dispatch, and writes succeeded/failed state back through the outbox application
 service. Do not enable it together with a live NATS `external_lease` outbox
 consumer, because both are side-effecting delivery executors.
 
+Inspect Go-owned runtime worker diagnostics:
+
+```text
+GET /v1/runtime-workers
+```
+
+This read-only endpoint reports whether `agent_job_recovery`,
+`outbox_delivery_worker`, `nats_shadow_publisher`, `nats_dual_read_compare`,
+and `nats_external_lease` are enabled and running, plus their worker id,
+interval, lease TTL, batch size, queue concurrency, max-in-flight, execution
+scope, and channel/account attributes. It is intended for dashboard/live-smoke
+readiness checks and does not start workers or send platform messages.
+
 Inspect external queue backend migration settings:
 
 ```powershell
@@ -568,11 +581,12 @@ GET /v1/runtime-overview?limit=200&event_limit=50&stale_after_seconds=900
 ```
 
 This read-only endpoint combines delivery adapter diagnostics, queue backend
-state, send ledger metrics, inbox metrics, agent job metrics, outbox metrics,
-and knowledge worker diagnostics into the same summary/card shape consumed by
-the Python dashboard. It does not send platform messages, lease work, recover
-jobs, or mutate runtime state. The Python dashboard prefers this endpoint and
-falls back to the older multi-endpoint read path when it is unavailable.
+state, runtime worker diagnostics, send ledger metrics, inbox metrics, agent
+job metrics, outbox metrics, and knowledge worker diagnostics into the same
+summary/card shape consumed by the Python dashboard. It does not send platform
+messages, lease work, recover jobs, or mutate runtime state. The Python
+dashboard prefers this endpoint and falls back to the older multi-endpoint read
+path when it is unavailable.
 
 Record and query recent bot sends:
 

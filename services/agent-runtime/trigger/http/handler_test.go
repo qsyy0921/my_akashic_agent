@@ -86,6 +86,37 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	}
 }
 
+func TestRuntimeWorkerDiagnosticsEndpointReturnsReadOnlyWorkers(t *testing.T) {
+	viewer := appservice.NewRuntimeWorkerDiagnosticsService(query.RuntimeWorkerDiagnosticsView{
+		Workers: []query.RuntimeWorkerView{{
+			Name:            "outbox_delivery_worker",
+			Kind:            "outbox_delivery",
+			Enabled:         true,
+			Running:         true,
+			WorkerID:        "agent-runtime-outbox-worker",
+			IntervalSeconds: 2,
+		}},
+	})
+	mux := http.NewServeMux()
+	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, viewer)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/runtime-workers", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"name":"outbox_delivery_worker"`,
+		`"worker_id":"agent-runtime-outbox-worker"`,
+		`"running":1`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
 		{

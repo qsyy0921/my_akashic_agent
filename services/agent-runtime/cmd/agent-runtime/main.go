@@ -198,6 +198,10 @@ func main() {
 	if stopOutboxDeliveryWorker != nil {
 		defer stopOutboxDeliveryWorker()
 	}
+	runtimeWorkersView, err := runtimeWorkerDiagnosticsFromEnv(queueBackendView)
+	if err != nil {
+		log.Fatalf("init runtime worker diagnostics: %v", err)
+	}
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
@@ -214,6 +218,7 @@ func main() {
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
 	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
+	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -230,6 +235,7 @@ func main() {
 		AgentJobMetrics:      agentJobMetrics,
 		OutboxMetrics:        outboxMetrics,
 		KnowledgeDiagnostics: knowledgeDiagnostics,
+		RuntimeWorkers:       runtimeWorkers,
 	})
 
 	mux := http.NewServeMux()
@@ -244,6 +250,7 @@ func main() {
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
+	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 

@@ -440,6 +440,54 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) {
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED", "true")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS", "120")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_LIMIT", "25")
+	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_RUN_ON_START", "false")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_INTERVAL_SECONDS", "7")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE", "3")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "runtime-outbox-a")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS", "120")
+	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700")
+
+	view, err := runtimeWorkerDiagnosticsFromEnv(query.QueueBackendView{
+		Provider:                "nats_jetstream",
+		Mode:                    "dual_read_compare",
+		MigrationPhase:          "dual_read_compare",
+		Stream:                  "AKASHIC_WORK",
+		SubjectPrefix:           "akashic.work",
+		ExternalQueueConfigured: true,
+		ExternalQueueActive:     true,
+		ConsumerConcurrency:     4,
+		MaxInFlight:             16,
+	})
+	if err != nil {
+		t.Fatalf("runtime worker diagnostics: %v", err)
+	}
+
+	recovery := findRuntimeWorker(t, view.Workers, "agent_job_recovery")
+	if !recovery.Enabled || !recovery.Running || recovery.IntervalSeconds != 120 || recovery.BatchSize != 25 || recovery.RunOnStart {
+		t.Fatalf("unexpected recovery worker: %#v", recovery)
+	}
+	outbox := findRuntimeWorker(t, view.Workers, "outbox_delivery_worker")
+	if !outbox.Enabled || !outbox.Running || outbox.WorkerID != "runtime-outbox-a" || outbox.LeaseTTLSeconds != 120 {
+		t.Fatalf("unexpected outbox worker: %#v", outbox)
+	}
+	if outbox.Attributes["1049511700"] != "qq_1049511700" {
+		t.Fatalf("unexpected outbox channel attributes: %#v", outbox.Attributes)
+	}
+	compare := findRuntimeWorker(t, view.Workers, "nats_dual_read_compare")
+	if !compare.Enabled || !compare.Running || compare.ConsumerConcurrency != 4 || compare.MaxInFlight != 16 {
+		t.Fatalf("unexpected dual-read worker: %#v", compare)
+	}
+	externalLease := findRuntimeWorker(t, view.Workers, "nats_external_lease")
+	if externalLease.Enabled || externalLease.Running {
+		t.Fatalf("external lease should remain disabled without cutover gate: %#v", externalLease)
+	}
+}
+
 func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {
 	got := parseKeyValueCSV("a=1, malformed, b = 2, =missing, c= ")
 
@@ -514,6 +562,17 @@ func findDeliveryAdapterDiagnostic(t *testing.T, items []query.DeliveryAdapterDi
 	}
 	t.Fatalf("missing delivery adapter diagnostic provider=%s channel=%s in %#v", provider, channel, items)
 	return query.DeliveryAdapterDiagnosticsView{}
+}
+
+func findRuntimeWorker(t *testing.T, items []query.RuntimeWorkerView, name string) query.RuntimeWorkerView {
+	t.Helper()
+	for _, item := range items {
+		if item.Name == name {
+			return item
+		}
+	}
+	t.Fatalf("missing runtime worker %q in %#v", name, items)
+	return query.RuntimeWorkerView{}
 }
 
 func assertBlockedWorkKind(t *testing.T, items []query.QueueExternalLeaseBlock, want string) {

@@ -395,6 +395,33 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             ],
         },
     }
+    runtime_workers = {
+        "workers": [
+            {
+                "name": "agent_job_recovery",
+                "kind": "agent_job_recovery",
+                "enabled": False,
+                "running": False,
+            },
+            {
+                "name": "outbox_delivery_worker",
+                "kind": "outbox_delivery",
+                "enabled": True,
+                "running": True,
+                "worker_id": "runtime-outbox-a",
+            },
+            {
+                "name": "nats_dual_read_compare",
+                "kind": "work_queue_compare",
+                "enabled": True,
+                "running": False,
+                "consumer_concurrency": 8,
+                "max_in_flight": 64,
+            },
+        ],
+        "totals": {"workers": 3, "enabled": 2, "running": 1, "disabled": 1},
+        "notes": ["read-only runtime diagnostics"],
+    }
     go_overview = {
         "summary": {
             "jobs_total": 3,
@@ -417,6 +444,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "queue_consumer_concurrency": 8,
             "queue_max_in_flight": 64,
             "queue_external_lease_ready": False,
+            "runtime_workers": 3,
+            "runtime_workers_enabled": 2,
+            "runtime_workers_running": 1,
             "send_ledger_records": 4,
             "send_ledger_repeated_hashes": 1,
             "inbox_metric_events": 9,
@@ -435,6 +465,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "value": "nats_jetstream/external_lease",
                 "status": "warn",
             },
+            {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
@@ -442,6 +473,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         ],
         "delivery_adapters": delivery_adapters,
         "queue_backend": queue_backend,
+        "runtime_workers": runtime_workers,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -538,6 +570,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_consumer_concurrency"] == 8
     assert payload["summary"]["queue_max_in_flight"] == 64
     assert payload["summary"]["queue_external_lease_ready"] is False
+    assert payload["summary"]["runtime_workers"] == 3
+    assert payload["summary"]["runtime_workers_enabled"] == 2
+    assert payload["summary"]["runtime_workers_running"] == 1
     assert payload["summary"]["send_ledger_records"] == 4
     assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
@@ -556,6 +591,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    runtime_worker_card = next(
+        item for item in payload["cards"] if item["id"] == "runtime_workers"
+    )
+    assert runtime_worker_card["status"] == "warn"
+    assert payload["runtime_workers"]["totals"]["running"] == 1
+    assert payload["runtime_workers"]["workers"][1]["worker_id"] == "runtime-outbox-a"
     send_ledger_card = next(
         item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
     )

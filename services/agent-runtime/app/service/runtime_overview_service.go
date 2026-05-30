@@ -23,6 +23,7 @@ type RuntimeOverviewDeps struct {
 	AgentJobMetrics      runtimeAgentJobMetricsGetter
 	OutboxMetrics        runtimeOutboxMetricsGetter
 	KnowledgeDiagnostics runtimeKnowledgeDiagnosticsGetter
+	RuntimeWorkers       runtimeWorkerDiagnosticsGetter
 }
 
 type runtimeQueueBackendGetter interface {
@@ -51,6 +52,10 @@ type runtimeOutboxMetricsGetter interface {
 
 type runtimeKnowledgeDiagnosticsGetter interface {
 	Get(ctx context.Context, filter query.KnowledgeWorkerDiagnosticsFilter) (query.KnowledgeWorkerDiagnosticsView, error)
+}
+
+type runtimeWorkerDiagnosticsGetter interface {
+	GetRuntimeWorkers(ctx context.Context) (query.RuntimeWorkerDiagnosticsView, error)
 }
 
 type RuntimeOverviewService struct {
@@ -84,6 +89,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobMetrics  query.AgentJobMetricsView
 		outboxMetrics    query.OutboxMetricsView
 		diagnostics      query.KnowledgeWorkerDiagnosticsView
+		runtimeWorkers   query.RuntimeWorkerDiagnosticsView
 	)
 
 	if s == nil {
@@ -148,6 +154,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		} else {
 			diagnostics = item
 		}
+
+		if deps.RuntimeWorkers == nil {
+			errors = append(errors, runtimeOverviewError("runtime-workers", fmt.Errorf("runtime worker diagnostics disabled")))
+		} else if item, err := deps.RuntimeWorkers.GetRuntimeWorkers(ctx); err != nil {
+			errors = append(errors, runtimeOverviewError("runtime-workers", err))
+		} else {
+			runtimeWorkers = item
+		}
 	}
 
 	summary := runtimeOverviewSummary(
@@ -158,6 +172,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobMetrics,
 		outboxMetrics,
 		diagnostics,
+		runtimeWorkers,
 	)
 	cards := runtimeOverviewCards(
 		summary,
@@ -168,6 +183,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobMetrics,
 		outboxMetrics,
 		diagnostics,
+		runtimeWorkers,
 		errors,
 	)
 
@@ -176,6 +192,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		Cards:             cards,
 		DeliveryAdapters:  deliveryAdapters,
 		QueueBackend:      queueBackend,
+		RuntimeWorkers:    runtimeWorkers,
 		SendLedgerMetrics: sendLedger,
 		InboxMetrics:      inboxMetrics,
 		AgentJobMetrics:   agentJobMetrics,
@@ -198,6 +215,7 @@ func runtimeOverviewSummary(
 	agentJobMetrics query.AgentJobMetricsView,
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
+	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 ) map[string]any {
 	enabledAdapters := 0
 	for _, item := range deliveryAdapters {
@@ -234,6 +252,9 @@ func runtimeOverviewSummary(
 		"queue_consumer_concurrency":    queueBackend.ConsumerConcurrency,
 		"queue_max_in_flight":           queueBackend.MaxInFlight,
 		"queue_external_lease_ready":    externalLeaseReady,
+		"runtime_workers":               intFromMap(runtimeWorkers.Totals, "workers"),
+		"runtime_workers_enabled":       intFromMap(runtimeWorkers.Totals, "enabled"),
+		"runtime_workers_running":       intFromMap(runtimeWorkers.Totals, "running"),
 		"send_ledger_records":           sendLedger.SampledRecords,
 		"send_ledger_repeated_hashes":   sendLedger.RepeatedContentHashes,
 		"inbox_metric_events":           inboxMetrics.SampledEvents,
@@ -255,6 +276,7 @@ func runtimeOverviewCards(
 	agentJobMetrics query.AgentJobMetricsView,
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
+	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
 	queueValue := fmt.Sprintf("%s/%s", emptyAsUnknown(queueBackend.Provider), emptyAsUnknown(queueBackend.Mode))
@@ -271,6 +293,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("rag_eval_failures", "RAG Eval Failures", intSummary(summary, "rag_eval_failures"), statusIfPositive(intSummary(summary, "rag_eval_failures"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
+		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
 	}
@@ -361,6 +384,18 @@ func queueBackendStatus(view query.QueueBackendView) string {
 		return "ok"
 	}
 	return "warn"
+}
+
+func runtimeWorkerStatus(view query.RuntimeWorkerDiagnosticsView) string {
+	enabled := intFromMap(view.Totals, "enabled")
+	running := intFromMap(view.Totals, "running")
+	if enabled == 0 {
+		return "muted"
+	}
+	if running < enabled {
+		return "warn"
+	}
+	return "ok"
 }
 
 func emptyAsUnknown(value string) string {

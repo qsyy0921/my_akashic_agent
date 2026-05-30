@@ -717,6 +717,9 @@ def _normalize_go_runtime_overview(
         _mapping_or_empty(item.get("agent_job_metrics"))
     )
     outbox_metrics = _normalize_outbox_metrics(_mapping_or_empty(item.get("outbox_metrics")))
+    runtime_workers = _normalize_runtime_workers(
+        _mapping_or_empty(item.get("runtime_workers"))
+    )
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
     errors_raw = status.get("errors")
@@ -758,6 +761,7 @@ def _normalize_go_runtime_overview(
         "diagnostics": diagnostics,
         "delivery_adapters": delivery_adapters,
         "queue_backend": queue_backend,
+        "runtime_workers": runtime_workers,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -795,6 +799,9 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "queue_consumer_concurrency": 0,
         "queue_max_in_flight": 0,
         "queue_external_lease_ready": False,
+        "runtime_workers": 0,
+        "runtime_workers_enabled": 0,
+        "runtime_workers_running": 0,
         "send_ledger_records": 0,
         "send_ledger_repeated_hashes": 0,
         "inbox_metric_events": 0,
@@ -808,6 +815,29 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
     for key, value in defaults.items():
         summary.setdefault(key, value)
     return summary
+
+
+def _normalize_runtime_workers(item: Mapping[str, Any]) -> dict[str, Any]:
+    workers_raw = item.get("workers")
+    if not isinstance(workers_raw, list):
+        workers_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    return {
+        "workers": [
+            dict(value)
+            for value in workers_raw
+            if isinstance(value, Mapping)
+        ],
+        "totals": {
+            "workers": _int_value(_mapping_or_empty(item.get("totals")).get("workers"), fallback=0),
+            "enabled": _int_value(_mapping_or_empty(item.get("totals")).get("enabled"), fallback=0),
+            "running": _int_value(_mapping_or_empty(item.get("totals")).get("running"), fallback=0),
+            "disabled": _int_value(_mapping_or_empty(item.get("totals")).get("disabled"), fallback=0),
+        },
+        "notes": [str(value) for value in notes_raw],
+    }
 
 
 def _normalize_go_runtime_card(item: Mapping[str, Any]) -> dict[str, Any]:

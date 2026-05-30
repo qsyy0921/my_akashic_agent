@@ -31,6 +31,7 @@ type RuntimeOverviewView struct {
 	Cards             []RuntimeOverviewCardView        `json:"cards"`
 	DeliveryAdapters  []DeliveryAdapterDiagnosticsView `json:"delivery_adapters,omitempty"`
 	QueueBackend      QueueBackendView                 `json:"queue_backend"`
+	RuntimeWorkers    RuntimeWorkerDiagnosticsView     `json:"runtime_workers"`
 	SendLedgerMetrics SendLedgerMetricsView            `json:"send_ledger_metrics"`
 	InboxMetrics      InboxMetricsView                 `json:"inbox_metrics"`
 	AgentJobMetrics   AgentJobMetricsView              `json:"agent_job_metrics"`
