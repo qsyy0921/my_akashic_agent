@@ -60,6 +60,7 @@
 - [x] 增加 Go-owned delivery adapter 只读诊断接口 `GET /v1/delivery-adapters`：可查看 Telegram/OneBot channel alias、transport、endpoint 是否配置、token 是否配置和脱敏 endpoint，用于替代只看日志确认 adapter enabled，且不会触发真实平台发送。
 - [x] 增加 Go-owned 私聊 echo 只读判断接口 `GET /v1/send-ledger/private-echo`：Go 统一处理文本回流以及空文本图片/文件/转发 marker 回流判断，Python QQ channel 优先调用该接口并保留旧 `recently_sent` fallback。
 - [x] 将 Go-owned delivery adapter 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可直接看到 Telegram/OneBot adapter enabled/disabled 状态，不需要依赖日志确认。
+- [x] 将 Go-owned queue backend 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可查看 NATS/本地队列 provider、mode、多 goroutine consumer concurrency、max-in-flight 与 external lease gate 阻断原因。
 
 ## 下一步
 

@@ -192,6 +192,31 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "access_token_configured": False,
         },
     ]
+    queue_backend = {
+        "provider": "nats_jetstream",
+        "mode": "external_lease",
+        "migration_phase": "external_lease_gate",
+        "stream": "AKASHIC_WORK",
+        "subject_prefix": "akashic.work",
+        "external_queue_configured": True,
+        "external_queue_active": False,
+        "state_store_authoritative": True,
+        "lease_owner": "go_state_store",
+        "consumer_model": "goroutine_worker_pool",
+        "consumer_concurrency": 8,
+        "max_in_flight": 64,
+        "outbox_queue_source": "outbox_state_store",
+        "agent_job_queue_source": "agent_job_state_store",
+        "dsn_configured": True,
+        "recommended_first_backend": "nats_jetstream",
+        "external_lease": {
+            "enabled": True,
+            "allow_execution": False,
+            "gate_state": "blocked",
+            "execution_scope": "none",
+            "blockers": ["explicit_cutover", "state_lease_workers_disabled"],
+        },
+    }
     seen_paths: list[str] = []
 
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
@@ -219,6 +244,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": outbox_events}))
         if parsed.path == "/v1/delivery-adapters":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": delivery_adapters}))
+        if parsed.path == "/v1/queue-backend":
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": queue_backend}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -248,12 +275,24 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["delivery_adapters"] == 2
     assert payload["summary"]["delivery_adapters_enabled"] == 1
     assert payload["summary"]["delivery_adapters_disabled"] == 1
+    assert payload["summary"]["queue_backend_provider"] == "nats_jetstream"
+    assert payload["summary"]["queue_backend_mode"] == "external_lease"
+    assert payload["summary"]["queue_consumer_concurrency"] == 8
+    assert payload["summary"]["queue_max_in_flight"] == 64
+    assert payload["summary"]["queue_external_lease_ready"] is False
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
     assert payload["delivery_adapters"][0]["channel"] == "qq_2365524513"
     adapter_card = next(item for item in payload["cards"] if item["id"] == "delivery_adapters")
     assert adapter_card["status"] == "warn"
+    queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
+    assert queue_card["value"] == "nats_jetstream/external_lease"
+    assert queue_card["status"] == "warn"
+    assert payload["queue_backend"]["external_lease_blockers"] == [
+        "explicit_cutover",
+        "state_lease_workers_disabled",
+    ]
     assert {
         "/healthz",
         "/v1/jobs",
@@ -261,6 +300,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/job-events",
         "/v1/outbox-events",
         "/v1/delivery-adapters",
+        "/v1/queue-backend",
     }.issubset(set(seen_paths))
 
 
@@ -272,7 +312,7 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
         if parsed.path.startswith("/v1/"):
             payload: dict[str, Any] | list[Any]
-            payload = {} if parsed.path == "/v1/knowledge-worker-diagnostics" else []
+            payload = {} if parsed.path in {"/v1/knowledge-worker-diagnostics", "/v1/queue-backend"} else []
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": payload}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 

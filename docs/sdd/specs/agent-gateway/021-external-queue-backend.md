@@ -206,6 +206,11 @@ The endpoint returns:
 - source of outbox and generic job work discovery;
 - redacted DSN and operational notes.
 
+The Python runtime overview dashboard consumes this endpoint as read-only
+operator telemetry. It surfaces provider/mode, consumer concurrency,
+max-in-flight, queue source, and external lease gate readiness without starting
+MQ consumers or changing queue ownership.
+
 When `mode=shadow_publish`, the response also contains `shadow_publish`:
 
 - publish attempts, successes, and failures;

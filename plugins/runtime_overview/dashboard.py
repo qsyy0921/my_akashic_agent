@@ -130,6 +130,13 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        queue_backend_raw, error = self._read_mapping("/v1/queue-backend")
+        if error:
+            errors.append({"endpoint": "queue-backend", "error": error})
+            queue_backend_raw = {}
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -152,6 +159,7 @@ class RuntimeOverviewDashboardReader:
             for item in delivery_adapters_raw
             if isinstance(item, Mapping)
         ]
+        queue_backend = _normalize_queue_backend(queue_backend_raw)
 
         job_leases = [item for item in jobs if _has_active_lease(item)]
         outbox_leases = [item for item in outbox if _has_active_lease(item)]
@@ -196,6 +204,11 @@ class RuntimeOverviewDashboardReader:
             "delivery_adapters": len(delivery_adapters),
             "delivery_adapters_enabled": len(enabled_adapters),
             "delivery_adapters_disabled": len(disabled_adapters),
+            "queue_backend_provider": queue_backend["provider"],
+            "queue_backend_mode": queue_backend["mode"],
+            "queue_consumer_concurrency": queue_backend["consumer_concurrency"],
+            "queue_max_in_flight": queue_backend["max_in_flight"],
+            "queue_external_lease_ready": queue_backend["external_lease_ready"],
         }
 
         cards = _overview_cards(
@@ -214,6 +227,7 @@ class RuntimeOverviewDashboardReader:
             rag_eval_failures=rag_eval_failures,
             delivery_adapters=delivery_adapters,
             disabled_adapters=disabled_adapters,
+            queue_backend=queue_backend,
         )
 
         return {
@@ -236,6 +250,7 @@ class RuntimeOverviewDashboardReader:
             "recent_outbox_events": outbox_events,
             "diagnostics": diagnostics,
             "delivery_adapters": delivery_adapters,
+            "queue_backend": queue_backend,
             "status": {
                 "runtime_url": self.runtime_base_url,
                 "runtime_available": successful_reads > 0,
@@ -447,6 +462,43 @@ def _normalize_delivery_adapter(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
+    external_lease = _mapping_or_empty(item.get("external_lease"))
+    blockers = item.get("blockers")
+    if not isinstance(blockers, list):
+        blockers = external_lease.get("blockers")
+    if not isinstance(blockers, list):
+        blockers = []
+    return {
+        "provider": _text(item.get("provider") or "unknown"),
+        "mode": _text(item.get("mode") or "unknown"),
+        "migration_phase": _text(item.get("migration_phase")),
+        "stream": _text(item.get("stream")),
+        "subject_prefix": _text(item.get("subject_prefix")),
+        "external_queue_configured": bool(item.get("external_queue_configured")),
+        "external_queue_active": bool(item.get("external_queue_active")),
+        "state_store_authoritative": bool(item.get("state_store_authoritative")),
+        "lease_owner": _text(item.get("lease_owner")),
+        "consumer_model": _text(item.get("consumer_model")),
+        "consumer_concurrency": _int_value(item.get("consumer_concurrency"), fallback=0),
+        "max_in_flight": _int_value(item.get("max_in_flight"), fallback=0),
+        "outbox_queue_source": _text(item.get("outbox_queue_source")),
+        "agent_job_queue_source": _text(item.get("agent_job_queue_source")),
+        "dsn_configured": bool(item.get("dsn_configured")),
+        "recommended_first_backend": _text(item.get("recommended_first_backend")),
+        "external_lease_ready": bool(external_lease.get("allow_execution")),
+        "external_lease_gate_state": _text(external_lease.get("gate_state")),
+        "external_lease_execution_scope": _text(external_lease.get("execution_scope")),
+        "external_lease_blockers": [str(value) for value in blockers],
+        "shadow_publish": _mapping_or_empty(item.get("shadow_publish")),
+        "dual_read_compare": _mapping_or_empty(item.get("dual_read_compare")),
+        "external_lease": external_lease,
+        "notes": [str(value) for value in item.get("notes", [])]
+        if isinstance(item.get("notes"), list)
+        else [],
+    }
+
+
 def _overview_cards(
     *,
     health: Mapping[str, Any],
@@ -464,8 +516,12 @@ def _overview_cards(
     rag_eval_failures: list[dict[str, Any]],
     delivery_adapters: list[dict[str, Any]],
     disabled_adapters: list[dict[str, Any]],
+    queue_backend: dict[str, Any],
 ) -> list[dict[str, Any]]:
     health_status = _text(health.get("status")) or ("degraded" if errors else "unknown")
+    queue_mode = _text(queue_backend.get("mode"))
+    queue_provider = _text(queue_backend.get("provider"))
+    queue_status = _queue_backend_status(queue_backend)
     return [
         _card(
             "runtime_health",
@@ -534,6 +590,13 @@ def _overview_cards(
                 "items": delivery_adapters,
             },
         ),
+        _card(
+            "queue_backend",
+            "Queue Backend",
+            f"{queue_provider}/{queue_mode}",
+            queue_status,
+            {"queue_backend": queue_backend},
+        ),
     ]
 
 
@@ -551,6 +614,22 @@ def _card(
         "status": status,
         "detail": dict(detail),
     }
+
+
+def _queue_backend_status(queue_backend: Mapping[str, Any]) -> str:
+    provider = _text(queue_backend.get("provider"))
+    mode = _text(queue_backend.get("mode"))
+    if not provider or provider == "unknown":
+        return "muted"
+    if provider == "local" or mode == "local_state_store":
+        return "ok"
+    if bool(queue_backend.get("external_queue_active")):
+        return "ok"
+    if mode == "external_lease" and not bool(queue_backend.get("external_lease_ready")):
+        return "warn"
+    if bool(queue_backend.get("external_queue_configured")):
+        return "ok"
+    return "warn"
 
 
 def _has_active_lease(item: Mapping[str, Any]) -> bool:

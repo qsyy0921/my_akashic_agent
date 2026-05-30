@@ -387,6 +387,26 @@ async def test_agent_gateway_client_lists_delivery_adapters():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_gets_queue_backend():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/queue-backend"
+        return _ok(
+            {
+                "provider": "nats_jetstream",
+                "mode": "dual_read_compare",
+                "consumer_concurrency": 8,
+                "max_in_flight": 64,
+            }
+        )
+
+    backend = await _client(handler).get_queue_backend()
+
+    assert backend["provider"] == "nats_jetstream"
+    assert backend["consumer_concurrency"] == 8
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_sends_outbound_to_runtime():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

@@ -433,6 +433,14 @@ class AgentGatewayClient:
             )
         return data
 
+    async def get_queue_backend(self) -> dict[str, Any]:
+        data = await self._request("GET", "/v1/queue-backend")
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime queue backend response is not an object"
+            )
+        return data
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 
