@@ -32,6 +32,11 @@ type AgentJobLeaseWorkRequest struct {
 	Timestamp   string `json:"timestamp,omitempty"`
 }
 
+type RecoverExpiredAgentJobLeasesRequest struct {
+	Limit     int    `json:"limit,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
 type AgentJobStateRequest struct {
 	Timestamp    string            `json:"timestamp,omitempty"`
 	LeaseToken   string            `json:"lease_token,omitempty"`

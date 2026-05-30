@@ -13,6 +13,7 @@ type AgentJobRepository interface {
 	FindAgentJob(ctx context.Context, jobID string) (model.AgentJob, bool, error)
 	ListAgentJobs(ctx context.Context, filter query.AgentJobFilter) ([]model.AgentJob, error)
 	FindLeaseableAgentJob(ctx context.Context, jobType string, now time.Time) (model.AgentJob, bool, error)
+	ListExpiredAgentJobLeases(ctx context.Context, now time.Time, limit int) ([]model.AgentJob, error)
 }
 
 type AgentJobEventSink interface {

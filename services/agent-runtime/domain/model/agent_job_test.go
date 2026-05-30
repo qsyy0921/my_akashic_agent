@@ -102,6 +102,41 @@ func TestAgentJobRenewExpiredLeaseFails(t *testing.T) {
 	}
 }
 
+func TestAgentJobRecoverExpiredLeaseReturnsPendingOrDeadLetter(t *testing.T) {
+	now := time.Date(2026, 5, 30, 6, 25, 0, 0, time.UTC)
+	job, err := model.NewAgentJob(sampleAgentJobSpec(2), now)
+	if err != nil {
+		t.Fatalf("new job: %v", err)
+	}
+	if err := job.Lease("worker-1", time.Minute, "lease-1", now); err != nil {
+		t.Fatalf("lease: %v", err)
+	}
+	action, err := job.RecoverExpiredLease(now.Add(2 * time.Minute))
+	if err != nil {
+		t.Fatalf("recover expired lease: %v", err)
+	}
+	if action != model.AgentJobLeaseRecovered || job.Status != model.AgentJobPending {
+		t.Fatalf("expected recovered pending job, action=%s job=%+v", action, job)
+	}
+	if job.LeaseOwner != "" || job.LeaseToken != "" || !job.LeaseExpiresAt.IsZero() {
+		t.Fatalf("expected recovery to clear active lease: %+v", job)
+	}
+
+	if err := job.Lease("worker-2", time.Minute, "lease-2", now.Add(3*time.Minute)); err != nil {
+		t.Fatalf("second lease: %v", err)
+	}
+	action, err = job.RecoverExpiredLease(now.Add(5 * time.Minute))
+	if err != nil {
+		t.Fatalf("recover exhausted lease: %v", err)
+	}
+	if action != model.AgentJobLeaseDeadLettered || job.Status != model.AgentJobDeadLettered {
+		t.Fatalf("expected exhausted job to dead-letter, action=%s job=%+v", action, job)
+	}
+	if job.ErrorMessage == "" {
+		t.Fatalf("expected dead-letter reason: %+v", job)
+	}
+}
+
 func TestCancelledAgentJobCannotBeLeased(t *testing.T) {
 	now := time.Date(2026, 5, 30, 6, 0, 0, 0, time.UTC)
 	job, err := model.NewAgentJob(sampleAgentJobSpec(3), now)

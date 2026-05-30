@@ -47,6 +47,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-work", AgentJobLeaseWorkHandler(agentJobs))
+	mux.Handle("/v1/jobs/recover-expired", AgentJobRecoverExpiredHandler(agentJobs))
 	mux.Handle("/v1/jobs/", AgentJobStateHandler(agentJobs))
 	mux.Handle("/v1/send-ledger/records", SendLedgerRecordsHandler(sendLedger))
 	mux.Handle("/v1/send-ledger/recent", SendLedgerRecentHandler(sendLedger))
@@ -939,6 +940,34 @@ func AgentJobLeaseWorkHandler(agentJobs inport.AgentJobManager) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: job})
+	})
+}
+
+func AgentJobRecoverExpiredHandler(agentJobs inport.AgentJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecoverExpiredAgentJobLeasesRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := agentJobs.RecoverExpiredLeases(r.Context(), command.RecoverExpiredAgentJobLeasesCommand{
+			Limit:     request.Limit,
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
 	})
 }
 

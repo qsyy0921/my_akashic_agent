@@ -283,6 +283,79 @@ func TestAgentJobServiceRenewsRunningLeaseWithToken(t *testing.T) {
 	}
 }
 
+func TestAgentJobServiceRecoversExpiredLeases(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobServiceWithEvents(store, store)
+	events := appservice.NewAgentJobEventService(store)
+	now := time.Date(2026, 5, 30, 6, 55, 0, 0, time.UTC)
+
+	if _, err := service.Create(ctx, sampleCreateAgentJobCommand(now)); err != nil {
+		t.Fatalf("create retryable job: %v", err)
+	}
+	retryable, err := service.LeaseNext(ctx, command.AgentJobLeaseNextCommand{
+		WorkerID:   "worker-recover",
+		JobType:    "rag_ingest",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease retryable job: %v", err)
+	}
+
+	exhaustedCmd := sampleCreateAgentJobCommand(now.Add(2 * time.Second))
+	exhaustedCmd.JobID = "job-svc-exhausted"
+	exhaustedCmd.MaxAttempts = 1
+	if _, err := service.Create(ctx, exhaustedCmd); err != nil {
+		t.Fatalf("create exhausted job: %v", err)
+	}
+	exhausted, err := service.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      "job-svc-exhausted",
+		WorkerID:   "worker-recover",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(3 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease exhausted job: %v", err)
+	}
+
+	recovery, err := service.RecoverExpiredLeases(ctx, command.RecoverExpiredAgentJobLeasesCommand{
+		Limit:     10,
+		Timestamp: now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("recover expired leases: %v", err)
+	}
+	if recovery.Scanned != 2 || recovery.Recovered != 1 || recovery.DeadLettered != 1 {
+		t.Fatalf("unexpected recovery summary: %+v", recovery)
+	}
+	recovered, err := service.Get(ctx, retryable.JobID)
+	if err != nil {
+		t.Fatalf("get recovered job: %v", err)
+	}
+	if recovered.Status != string(model.AgentJobPending) || recovered.LeaseToken != "" {
+		t.Fatalf("expected retryable job pending with cleared token: %+v", recovered)
+	}
+	dead, err := service.Get(ctx, exhausted.JobID)
+	if err != nil {
+		t.Fatalf("get dead-letter job: %v", err)
+	}
+	if dead.Status != string(model.AgentJobDeadLettered) || dead.ErrorMessage == "" {
+		t.Fatalf("expected exhausted job to dead-letter: %+v", dead)
+	}
+
+	items, err := events.List(ctx, query.AgentJobEventFilter{
+		JobID: retryable.JobID,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("list job events: %v", err)
+	}
+	if items[0].EventType != "lease_expired" || items[0].Status != string(model.AgentJobPending) {
+		t.Fatalf("expected lease_expired event for recovered job: %+v", items)
+	}
+}
+
 func TestAgentJobServiceDuplicateCreateIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

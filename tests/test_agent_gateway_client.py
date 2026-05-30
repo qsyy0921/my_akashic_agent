@@ -139,6 +139,33 @@ async def test_agent_gateway_client_leases_exact_queue_work_id():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_recovers_expired_jobs():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        assert request.method == "POST"
+        assert request.url.path == "/v1/jobs/recover-expired"
+        assert body == {"limit": 7}
+        return _ok(
+            {
+                "scanned": 1,
+                "recovered": 1,
+                "dead_lettered": 0,
+                "items": [
+                    {
+                        "action": "recovered",
+                        "job": {"job_id": "job-expired-1", "status": "pending"},
+                    }
+                ],
+            }
+        )
+
+    result = await _client(handler).recover_expired_jobs(limit=7)
+
+    assert result["recovered"] == 1
+    assert result["items"][0]["action"] == "recovered"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_lists_jobs_with_filters():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

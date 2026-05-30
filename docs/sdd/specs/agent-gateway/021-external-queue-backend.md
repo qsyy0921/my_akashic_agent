@@ -312,6 +312,20 @@ Queue work-id exact leasing is now available for agent jobs:
 - This endpoint is a queue-notification contract boundary; it does not by
   itself run Python work or acknowledge NATS deliveries.
 
+Expired lease recovery is now an explicit Go-owned operation:
+
+- `POST /v1/jobs/recover-expired` scans `leased` and `running` jobs whose
+  `lease_expires_at` is older than the supplied timestamp.
+- Jobs with remaining attempts are moved back to `pending`, and their lease
+  owner, lease token, and expiry are cleared.
+- Jobs whose attempt count already reached `max_attempts` are moved to
+  `dead_lettered` with an explicit timeout reason.
+- Each recovered or dead-lettered job emits a `lease_expired` lifecycle event.
+- This operation is intentionally separate from NATS acknowledgement for now.
+  Future external consumers should run recovery before duplicate-delivery
+  handling, then decide `ack`, delayed `nack`, or `term` from the authoritative
+  Go job state.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:

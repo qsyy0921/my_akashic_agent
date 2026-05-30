@@ -254,6 +254,16 @@ class AgentGatewayClient:
         }
         return await self._request("POST", f"/v1/jobs/{job_id}/renew", json_body=body)
 
+    async def recover_expired_jobs(self, *, limit: int = 50) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/jobs/recover-expired",
+            json_body={"limit": max(1, min(int(limit), 200))},
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime recover-expired response is not an object")
+        return data
+
     async def mark_running(
         self,
         job_id: str,

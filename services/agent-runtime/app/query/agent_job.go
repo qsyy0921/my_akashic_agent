@@ -33,3 +33,16 @@ type AgentJobView struct {
 	UpdatedAt      string            `json:"updated_at"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 }
+
+type AgentJobLeaseRecoveryItemView struct {
+	Job    AgentJobView `json:"job"`
+	Action string       `json:"action"`
+}
+
+type AgentJobLeaseRecoveryView struct {
+	Timestamp    string                          `json:"timestamp"`
+	Scanned      int                             `json:"scanned"`
+	Recovered    int                             `json:"recovered"`
+	DeadLettered int                             `json:"dead_lettered"`
+	Items        []AgentJobLeaseRecoveryItemView `json:"items"`
+}

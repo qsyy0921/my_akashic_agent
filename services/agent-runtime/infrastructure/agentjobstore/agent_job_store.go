@@ -1,4 +1,4 @@
-﻿package agentjobstore
+package agentjobstore
 
 import (
 	"context"
@@ -125,6 +125,32 @@ func (s *Store) FindLeaseableAgentJob(_ context.Context, jobType string, now tim
 	return model.AgentJob{}, false, nil
 }
 
+func (s *Store) ListExpiredAgentJobLeases(_ context.Context, now time.Time, limit int) ([]model.AgentJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.AgentJob, 0, limit)
+	for _, jobID := range s.order {
+		if len(items) >= limit {
+			break
+		}
+		job, ok := s.jobs[jobID]
+		if !ok {
+			continue
+		}
+		if job.LeaseExpired(now) {
+			items = append(items, job)
+		}
+	}
+	return items, nil
+}
+
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -181,4 +207,3 @@ func (s *Store) flush() error {
 	}
 	return os.Rename(tmpPath, s.path)
 }
-

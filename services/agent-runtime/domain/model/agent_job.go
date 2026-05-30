@@ -29,6 +29,13 @@ const (
 	AgentJobCancelled    AgentJobStatus = "cancelled"
 )
 
+type AgentJobLeaseRecoveryAction string
+
+const (
+	AgentJobLeaseRecovered    AgentJobLeaseRecoveryAction = "recovered"
+	AgentJobLeaseDeadLettered AgentJobLeaseRecoveryAction = "dead_lettered"
+)
+
 type AgentJob struct {
 	JobID          string
 	JobType        AgentJobType
@@ -152,6 +159,16 @@ func (j AgentJob) CanLease(now time.Time) bool {
 	return false
 }
 
+func (j AgentJob) LeaseExpired(now time.Time) bool {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if j.Status != AgentJobLeased && j.Status != AgentJobRunning {
+		return false
+	}
+	return !j.LeaseExpiresAt.IsZero() && now.After(j.LeaseExpiresAt)
+}
+
 func (j *AgentJob) Lease(owner string, ttl time.Duration, leaseToken string, now time.Time) error {
 	if j == nil {
 		return errors.New("agent job is nil")
@@ -183,6 +200,31 @@ func (j *AgentJob) Lease(owner string, ttl time.Duration, leaseToken string, now
 	j.ErrorMessage = ""
 	j.UpdatedAt = now
 	return j.Validate()
+}
+
+func (j *AgentJob) RecoverExpiredLease(now time.Time) (AgentJobLeaseRecoveryAction, error) {
+	if j == nil {
+		return "", errors.New("agent job is nil")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if !j.LeaseExpired(now) {
+		return "", errors.New("agent job lease has not expired")
+	}
+	j.LeaseOwner = ""
+	j.LeaseToken = ""
+	j.LeaseExpiresAt = time.Time{}
+	j.Result = nil
+	j.UpdatedAt = now
+	if j.Attempts >= j.MaxAttempts {
+		j.Status = AgentJobDeadLettered
+		j.ErrorMessage = "lease expired after max attempts"
+		return AgentJobLeaseDeadLettered, j.Validate()
+	}
+	j.Status = AgentJobPending
+	j.ErrorMessage = ""
+	return AgentJobLeaseRecovered, j.Validate()
 }
 
 func (j AgentJob) ValidateLeaseToken(leaseToken string) error {

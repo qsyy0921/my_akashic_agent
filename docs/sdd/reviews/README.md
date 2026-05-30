@@ -99,3 +99,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-50-agent-job-lease-renew.md`
 - `2026-05-31-phase8-51-agent-job-strict-token-mode.md`
 - `2026-05-31-phase8-52-agent-job-lease-work.md`
+- `2026-05-31-phase8-53-agent-job-timeout-recovery.md`

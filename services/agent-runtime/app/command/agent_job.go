@@ -49,6 +49,11 @@ type RenewAgentJobLeaseCommand struct {
 	Timestamp  time.Time
 }
 
+type RecoverExpiredAgentJobLeasesCommand struct {
+	Limit     int
+	Timestamp time.Time
+}
+
 type MarkAgentJobRunningCommand struct {
 	JobID      string
 	LeaseToken string

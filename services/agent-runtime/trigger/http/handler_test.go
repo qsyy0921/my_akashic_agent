@@ -994,6 +994,70 @@ func TestAgentJobLeaseWorkEndpointLeasesExactQueueWorkID(t *testing.T) {
 	}
 }
 
+func TestAgentJobRecoverExpiredEndpointReturnsExpiredLeaseToPending(t *testing.T) {
+	store := memory.NewStore()
+	ingestor := appservice.NewMessageIngestService(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+		domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+	)
+	sender := appservice.NewMessageSendService(store, store, store, store)
+	imageJobs := appservice.NewImageJobService(store, store)
+	outbox := appservice.NewOutboxService(store, store)
+	mediaAssets := appservice.NewMediaAssetService(store)
+	agentJobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	shadowQueries := appservice.NewShadowQueryService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
+
+	now := time.Date(2026, 5, 30, 9, 10, 0, 0, time.UTC)
+	body := []byte(`{
+		"job_id":"job-recover-http-1",
+		"job_type":"rag_ingest",
+		"agent_id":"main",
+		"route":{
+			"platform":"qq",
+			"account_id":"1049511700",
+			"conversation_id":"27234224",
+			"conversation_type":"group"
+		},
+		"payload":{"source":"group"},
+		"max_attempts":2,
+		"timestamp":"` + now.Format(time.RFC3339Nano) + `"
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	leaseBody := []byte(`{"worker_id":"worker-recover","job_type":"rag_ingest","ttl_seconds":60,"timestamp":"` + now.Add(time.Second).Format(time.RFC3339Nano) + `"}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/lease-next", bytes.NewReader(leaseBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected lease-next 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	recoverBody := []byte(`{"limit":10,"timestamp":"` + now.Add(2*time.Minute).Format(time.RFC3339Nano) + `"}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs/recover-expired", bytes.NewReader(recoverBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected recover-expired 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"recovered":1`)) {
+		t.Fatalf("recover response missing recovered count: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"pending"`)) {
+		t.Fatalf("recover response missing pending job: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"action":"recovered"`)) {
+		t.Fatalf("recover response missing action: %s", response.Body.String())
+	}
+}
+
 func TestOutboxEventsEndpointListsLifecycleStream(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

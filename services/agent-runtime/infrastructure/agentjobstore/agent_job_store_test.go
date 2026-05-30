@@ -160,3 +160,65 @@ func TestAgentJobStoreListAndPersistUpdatedState(t *testing.T) {
 		t.Fatalf("did not expect running job to be leaseable before expiry, got %s", pending.JobID)
 	}
 }
+
+func TestAgentJobStoreListsExpiredLeasesOldestFirst(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "agent_jobs_expired.json")
+	repo, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	now := time.Date(2026, 5, 30, 7, 20, 0, 0, time.UTC)
+	expired, err := model.NewAgentJob(model.AgentJobSpec{
+		JobID:   "job-expired",
+		JobType: model.AgentJobRagIngest,
+		AgentID: "worker-rag",
+		Route: model.ChannelRef{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+	}, now)
+	if err != nil {
+		t.Fatalf("new expired job: %v", err)
+	}
+	if err := expired.Lease("worker", time.Minute, "lease-expired", now); err != nil {
+		t.Fatalf("lease expired job: %v", err)
+	}
+	if err := repo.SaveAgentJob(ctx, expired); err != nil {
+		t.Fatalf("save expired job: %v", err)
+	}
+
+	active, err := model.NewAgentJob(model.AgentJobSpec{
+		JobID:   "job-active",
+		JobType: model.AgentJobRagIngest,
+		AgentID: "worker-rag",
+		Route: model.ChannelRef{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+	}, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("new active job: %v", err)
+	}
+	if err := active.Lease("worker", 5*time.Minute, "lease-active", now.Add(2*time.Second)); err != nil {
+		t.Fatalf("lease active job: %v", err)
+	}
+	if err := repo.SaveAgentJob(ctx, active); err != nil {
+		t.Fatalf("save active job: %v", err)
+	}
+
+	items, err := repo.ListExpiredAgentJobLeases(ctx, now.Add(2*time.Minute), 10)
+	if err != nil {
+		t.Fatalf("list expired leases: %v", err)
+	}
+	if len(items) != 1 || items[0].JobID != "job-expired" {
+		t.Fatalf("unexpected expired leases: %+v", items)
+	}
+}
