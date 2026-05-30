@@ -63,6 +63,7 @@ def _normalize_cli_socket_endpoint(value: str | None) -> str:
     port_seed = zlib.crc32(text.encode("utf-8")) % 20000
     return f"127.0.0.1:{20000 + port_seed}"
 
+
 def _validated_timezone(tz_name: str, *, enabled: bool) -> str:
     """仅当 anyaction_enabled=True 时校验时区合法性，无效则启动时 fail-fast。"""
     if not enabled:
@@ -116,7 +117,12 @@ def load_config(path: str | Path = "config.toml") -> Config:
         memory_window=int(
             agent_context.get("memory_window", data.get("memory_window", 40))
         ),
-        base_url=str(llm_main.get("base_url") or data.get("base_url") or _PRESETS.get(provider) or ""),
+        base_url=str(
+            llm_main.get("base_url")
+            or data.get("base_url")
+            or _PRESETS.get(provider)
+            or ""
+        ),
         extra_body=_load_extra_body(data),
         channels=channels,
         proactive=proactive,
@@ -136,16 +142,12 @@ def load_config(path: str | Path = "config.toml") -> Config:
         light_api_key=_resolve(
             str(llm_fast.get("api_key") or data.get("light_api_key", ""))
         ),
-        light_base_url=str(
-            llm_fast.get("base_url") or data.get("light_base_url", "")
-        ),
+        light_base_url=str(llm_fast.get("base_url") or data.get("light_base_url", "")),
         agent_model=str(llm_agent.get("model") or data.get("agent_model", "")),
         agent_api_key=_resolve(
             str(llm_agent.get("api_key") or data.get("agent_api_key", ""))
         ),
-        agent_base_url=str(
-            llm_agent.get("base_url") or data.get("agent_base_url", "")
-        ),
+        agent_base_url=str(llm_agent.get("base_url") or data.get("agent_base_url", "")),
         memory=memory,
         fitbit=fitbit,
         chatgpt_proxy=chatgpt_proxy,
@@ -225,7 +227,9 @@ def _load_channels_config(data: dict) -> ChannelsConfig:
     if qq_data := channels_data.get("qq"):
         if bool(qq_data.get("enabled", True)):
             qq = _load_qq_channel_config(qq_data, default_channel_name="qq")
-            for index, account_data in enumerate(qq_data.get("accounts", []) or [], start=2):
+            for index, account_data in enumerate(
+                qq_data.get("accounts", []) or [], start=2
+            ):
                 account = _load_qq_channel_config(
                     _as_dict(account_data),
                     default_channel_name=f"qq_{index}",
@@ -301,9 +305,7 @@ def _load_qq_groups(groups_data: list[dict]) -> list[QQGroupConfig]:
                     g.get("allow_from", g.get("allowFrom", []))
                 ),
                 require_at=g.get("require_at", g.get("requireAt", True)),
-                observe_only=bool(
-                    g.get("observe_only", g.get("observeOnly", False))
-                ),
+                observe_only=bool(g.get("observe_only", g.get("observeOnly", False))),
             )
         )
     return groups
@@ -314,7 +316,9 @@ def _load_qq_channel_config(
     *,
     default_channel_name: str,
 ) -> QQChannelConfig | None:
-    bot_uin = _resolve_optional_string(qq_data.get("bot_uin", qq_data.get("botUin", "")))
+    bot_uin = _resolve_optional_string(
+        qq_data.get("bot_uin", qq_data.get("botUin", ""))
+    )
     if not bot_uin:
         return None
     return QQChannelConfig(
@@ -409,7 +413,9 @@ def _load_chatgpt_proxy_config(data: dict) -> ChatGPTProxyIntegrationConfig:
             proxy.get("image_path", "/images/generations") or "/images/generations"
         ),
         response_format=str(proxy.get("response_format", "b64_json") or ""),
-        output_dir=str(proxy.get("output_dir", "generated_images") or "generated_images"),
+        output_dir=str(
+            proxy.get("output_dir", "generated_images") or "generated_images"
+        ),
     )
 
 
@@ -473,20 +479,18 @@ def _load_agent_gateway_config(data: dict) -> AgentGatewayIntegrationConfig:
     )
     return AgentGatewayIntegrationConfig(
         enabled=bool(raw.get("enabled", False)),
-        base_url=_resolve_optional_string(
-            raw.get("base_url", "http://127.0.0.1:8780")
-        )
+        base_url=_resolve_optional_string(raw.get("base_url", "http://127.0.0.1:8780"))
         or "http://127.0.0.1:8780",
         request_timeout_seconds=float(raw.get("request_timeout_seconds", 5.0)),
         worker_id=str(
-            raw.get("worker_id", "akashic-python-worker")
-            or "akashic-python-worker"
+            raw.get("worker_id", "akashic-python-worker") or "akashic-python-worker"
         ),
         lease_ttl_seconds=int(raw.get("lease_ttl_seconds", 300)),
         poll_interval_seconds=float(raw.get("poll_interval_seconds", 2.0)),
         knowledge_job_interval_seconds=float(
             raw.get("knowledge_job_interval_seconds", 60.0)
         ),
+        outbox_worker_enabled=bool(raw.get("outbox_worker_enabled", False)),
     )
 
 

@@ -100,8 +100,10 @@ Failure requests include:
 - `succeeded`, `failed`, and `retry` clear lease fields.
 - Exhausted attempts become `dead_lettered`.
 - The endpoint is not a production platform sender yet.
-- Python compatibility senders may still deliver messages until Phase 4 cutover
+- Python compatibility senders may still deliver messages until adapter cutover
   is explicitly reviewed.
+- The opt-in Python compatibility worker may consume `/v1/outbox/lease-next`
+  while Go remains the owner of delivery state and retry lifecycle.
 
 ## Acceptance Tests
 
@@ -120,6 +122,8 @@ Failure requests include:
 
 ## Next Steps
 
+- Audit direct Python send callers, then enable `outbox_worker_enabled` for
+  controlled outbox dispatch smoke tests.
 - Add platform delivery adapters behind an outbound port that consumes
   `/v1/outbox/lease-next`.
 - Add dashboard outbox/error panel.

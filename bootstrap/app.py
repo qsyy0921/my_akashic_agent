@@ -78,6 +78,7 @@ class AppRuntime:
         self.group_memory_loop = None
         self.agent_runtime_image_worker = None
         self.agent_runtime_knowledge_worker = None
+        self.agent_runtime_outbox_worker = None
         self.peer_process_manager = None
         self.peer_poller = None
         self.dashboard_server = None
@@ -115,21 +116,21 @@ class AppRuntime:
             await self.core.start()
 
             plugin_manager = getattr(self.core, "plugin_manager", None)
-            self.ipc, self.tg_channel, self.qq_channel, self.qqbot_channel = await start_channels(
-                self.config,
-                bus=self.bus,
-                session_manager=self.session_manager,
-                push_tool=self.push_tool,
-                http_resources=self.http_resources,
-                event_bus=event_bus,
-                vl_provider=getattr(self.core, "vl_provider", None),
-                vl_model=getattr(self.config, "vl_model", ""),
-                bot_commands=(
-                    plugin_manager.telegram_bot_commands
-                    if plugin_manager
-                    else None
-                ),
-                interrupt_controller=self.agent_loop,
+            self.ipc, self.tg_channel, self.qq_channel, self.qqbot_channel = (
+                await start_channels(
+                    self.config,
+                    bus=self.bus,
+                    session_manager=self.session_manager,
+                    push_tool=self.push_tool,
+                    http_resources=self.http_resources,
+                    event_bus=event_bus,
+                    vl_provider=getattr(self.core, "vl_provider", None),
+                    vl_model=getattr(self.config, "vl_model", ""),
+                    bot_commands=(
+                        plugin_manager.telegram_bot_commands if plugin_manager else None
+                    ),
+                    interrupt_controller=self.agent_loop,
+                )
             )
 
             self.tasks = [
@@ -191,6 +192,13 @@ class AppRuntime:
                 )
             )
             self.tasks.extend(image_worker_tasks)
+            outbox_worker_tasks, self.agent_runtime_outbox_worker = (
+                _build_agent_runtime_outbox_worker_tasks(
+                    self.config,
+                    self.push_tool,
+                )
+            )
+            self.tasks.extend(outbox_worker_tasks)
 
             self._started = True
         except Exception:
@@ -244,6 +252,10 @@ class AppRuntime:
                     "agent_runtime_knowledge_worker.stop",
                     _loop_stop(self.agent_runtime_knowledge_worker),
                 ),
+                (
+                    "agent_runtime_outbox_worker.stop",
+                    _loop_stop(self.agent_runtime_outbox_worker),
+                ),
                 ("http_resources.aclose", self.http_resources.aclose),
             )
         finally:
@@ -289,10 +301,13 @@ def _build_agent_runtime_image_worker_tasks(
         logger.warning("agent_runtime 已启用但 chatgpt_proxy 未启用，跳过 image worker")
         return [], None
     if not getattr(chatgpt_proxy, "base_url", ""):
-        logger.warning("agent_runtime 已启用但 chatgpt_proxy.base_url 为空，跳过 image worker")
+        logger.warning(
+            "agent_runtime 已启用但 chatgpt_proxy.base_url 为空，跳过 image worker"
+        )
         return [], None
 
     from agent.tools.chatgpt_proxy import ChatGPTImageGenerateTool
+
     # 优先使用新命名别名；没有改造时回退旧名。
     from integrations.agent_runtime import AgentRuntimeClient
     from integrations.agent_runtime_image_worker import AgentRuntimeImageWorker
@@ -332,6 +347,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
 
     from agent.tools.ragflow import RAGFlowIndexQQGroupTool
     from group_memory import GroupMemoryService
+
     # 优先使用新命名别名；没有改造时回退旧名。
     from integrations.agent_runtime import AgentRuntimeClient
     from integrations.agent_runtime_knowledge_worker import AgentRuntimeKnowledgeWorker
@@ -378,6 +394,38 @@ def _build_agent_runtime_knowledge_worker_tasks(
     return [worker.run()], worker
 
 
+def _build_agent_runtime_outbox_worker_tasks(
+    config: Config,
+    push_tool,
+) -> tuple[list[Awaitable[None]], object | None]:
+    agent_runtime = _get_agent_runtime_config(config)
+    if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
+        return [], None
+    if not bool(getattr(agent_runtime, "outbox_worker_enabled", False)):
+        return [], None
+    if not str(getattr(agent_runtime, "base_url", "")).strip():
+        logger.warning("agent_runtime 已启用但 base_url 为空，跳过 outbox worker")
+        return [], None
+    if push_tool is None:
+        logger.warning("agent_runtime outbox worker 需要 message_push tool，已跳过")
+        return [], None
+
+    from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_outbox_worker import AgentRuntimeOutboxWorker
+
+    worker = AgentRuntimeOutboxWorker(
+        client=AgentRuntimeClient(agent_runtime),
+        push_tool=push_tool,
+        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        channel_by_account=_outbox_channel_names_by_account(config),
+        lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
+        poll_interval_seconds=float(
+            getattr(agent_runtime, "poll_interval_seconds", 2.0)
+        ),
+    )
+    return [worker.run()], worker
+
+
 def _build_agent_gateway_image_worker_tasks(
     config: Config,
     workspace: Path,
@@ -394,6 +442,14 @@ def _build_agent_gateway_knowledge_worker_tasks(
 ) -> tuple[list[Awaitable[None]], object | None]:
     # 兼容层：保留历史入口名，内部统一走 agent_runtime 命名路径。
     return _build_agent_runtime_knowledge_worker_tasks(config, workspace, session_store)
+
+
+def _build_agent_gateway_outbox_worker_tasks(
+    config: Config,
+    push_tool,
+) -> tuple[list[Awaitable[None]], object | None]:
+    # 兼容层：保留历史入口名，内部统一走 agent_runtime 命名路径。
+    return _build_agent_runtime_outbox_worker_tasks(config, push_tool)
 
 
 def _get_agent_runtime_config(config: Config):
@@ -429,6 +485,25 @@ def _observe_only_qq_group_accounts(config: Config) -> dict[str, str]:
             group_id = str(getattr(group, "group_id", "")).strip()
             if group_id and group_id not in result:
                 result[group_id] = account_id
+    return result
+
+
+def _outbox_channel_names_by_account(config: Config) -> dict[str, str]:
+    channels = getattr(config, "channels", None)
+    if channels is None:
+        return {}
+    accounts = []
+    qq = getattr(channels, "qq", None)
+    if qq is not None:
+        accounts.append(qq)
+    accounts.extend(getattr(channels, "qq_accounts", []) or [])
+
+    result: dict[str, str] = {}
+    for account in accounts:
+        account_id = str(getattr(account, "bot_uin", "")).strip()
+        channel_name = str(getattr(account, "channel_name", "")).strip()
+        if account_id and channel_name:
+            result[account_id] = channel_name
     return result
 
 

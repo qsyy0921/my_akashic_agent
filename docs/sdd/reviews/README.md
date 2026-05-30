@@ -58,3 +58,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-9-go-outbox-persistence.md`
 - `2026-05-30-phase8-10-outbox-dashboard-diagnostics.md`
 - `2026-05-30-phase8-11-outbox-lease-control-plane.md`
+- `2026-05-30-phase8-12-outbox-dispatch-worker.md`

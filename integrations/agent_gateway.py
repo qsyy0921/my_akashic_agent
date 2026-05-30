@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -156,7 +157,9 @@ class AgentGatewayClient:
             json_body={"results": results, "metadata": metadata or {}},
         )
 
-    async def fail_image_job(self, job_id: str, *, error_message: str) -> dict[str, Any]:
+    async def fail_image_job(
+        self, job_id: str, *, error_message: str
+    ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"/v1/image-jobs/{job_id}/failed",
@@ -209,7 +212,9 @@ class AgentGatewayClient:
             params=params,
         )
         if not isinstance(data, dict):
-            raise AgentGatewayError("agent runtime recent-send response is not an object")
+            raise AgentGatewayError(
+                "agent runtime recent-send response is not an object"
+            )
         return bool(data.get("recent"))
 
     async def retry_job(self, job_id: str) -> dict[str, Any]:
@@ -217,6 +222,44 @@ class AgentGatewayClient:
 
     async def cancel_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/cancel", json_body={})
+
+    async def lease_next_outbox(
+        self,
+        *,
+        worker_id: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        body = {
+            "worker_id": worker_id or self._config.worker_id,
+            "ttl_seconds": int(ttl_seconds or self._config.lease_ttl_seconds),
+        }
+        return await self._request(
+            "POST",
+            "/v1/outbox/lease-next",
+            json_body=body,
+            no_job_on_404=True,
+        )
+
+    async def mark_outbox_succeeded(self, event_id: str) -> dict[str, Any]:
+        encoded_id = quote(str(event_id), safe="")
+        return await self._request(
+            "POST",
+            f"/v1/outbox/{encoded_id}/succeeded",
+            json_body={},
+        )
+
+    async def mark_outbox_failed(
+        self,
+        event_id: str,
+        *,
+        error_message: str,
+    ) -> dict[str, Any]:
+        encoded_id = quote(str(event_id), safe="")
+        return await self._request(
+            "POST",
+            f"/v1/outbox/{encoded_id}/failed",
+            json_body={"error_message": error_message},
+        )
 
     async def _request(
         self,

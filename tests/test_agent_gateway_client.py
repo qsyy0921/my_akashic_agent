@@ -41,7 +41,10 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
             assert body["job_type"] == "image_generation"
             return httpx.Response(
                 202,
-                json={"code": "OK", "data": {"job_id": body["job_id"], "status": "pending"}},
+                json={
+                    "code": "OK",
+                    "data": {"job_id": body["job_id"], "status": "pending"},
+                },
             )
         if request.url.path == "/v1/jobs/lease-next":
             assert body == {
@@ -198,6 +201,43 @@ async def test_agent_gateway_client_records_and_checks_send_ledger():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_leases_and_updates_outbox_delivery():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        if request.url.path == "/v1/outbox/lease-next":
+            assert body == {"worker_id": "worker-a", "ttl_seconds": 120}
+            return _ok({"event_id": "qq:private:1", "status": "dispatching"})
+        if request.url.path == "/v1/outbox/qq:private:1/succeeded":
+            assert body == {}
+            return _ok({"event_id": "qq:private:1", "status": "succeeded"})
+        if request.url.path == "/v1/outbox/qq:private:2/failed":
+            assert body == {"error_message": "platform timeout"}
+            return _ok({"event_id": "qq:private:2", "status": "failed"})
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+
+    leased = await client.lease_next_outbox()
+    succeeded = await client.mark_outbox_succeeded("qq:private:1")
+    failed = await client.mark_outbox_failed(
+        "qq:private:2",
+        error_message="platform timeout",
+    )
+
+    assert leased["status"] == "dispatching"
+    assert succeeded["status"] == "succeeded"
+    assert failed["status"] == "failed"
+    assert [path for _, path, _ in calls] == [
+        "/v1/outbox/lease-next",
+        "/v1/outbox/qq:private:1/succeeded",
+        "/v1/outbox/qq:private:2/failed",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_maps_empty_lease_to_no_job():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/jobs/lease-next"
@@ -208,9 +248,21 @@ async def test_agent_gateway_client_maps_empty_lease_to_no_job():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_maps_empty_outbox_lease_to_no_job():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/outbox/lease-next"
+        return httpx.Response(404, text="no leaseable outbox delivery found")
+
+    with pytest.raises(AgentGatewayNoJob):
+        await _client(handler).lease_next_outbox()
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_requires_enabled_config():
     client = AgentGatewayClient(
-        AgentGatewayIntegrationConfig(enabled=False, base_url="http://agent-gateway.local")
+        AgentGatewayIntegrationConfig(
+            enabled=False, base_url="http://agent-gateway.local"
+        )
     )
 
     with pytest.raises(AgentGatewayError, match="未启用"):

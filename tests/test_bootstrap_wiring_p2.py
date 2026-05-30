@@ -43,7 +43,11 @@ def _dump_toml(data: dict, prefix: tuple[str, ...] = ()) -> list[str]:
     for key, value in data.items():
         if isinstance(value, dict):
             continue
-        if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+        if (
+            isinstance(value, list)
+            and value
+            and all(isinstance(item, dict) for item in value)
+        ):
             continue
         scalar_lines.append(f"{key} = {_toml_value(value)}")
 
@@ -56,7 +60,11 @@ def _dump_toml(data: dict, prefix: tuple[str, ...] = ()) -> list[str]:
     for key, value in data.items():
         if isinstance(value, dict):
             lines.extend(_dump_toml(value, prefix + (key,)))
-        elif isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+        elif (
+            isinstance(value, list)
+            and value
+            and all(isinstance(item, dict) for item in value)
+        ):
             for item in value:
                 lines.append(f"[[{'.'.join(prefix + (key,))}]]")
                 for item_key, item_value in item.items():
@@ -182,7 +190,9 @@ def test_config_load_ignores_legacy_memory_v2_enabled(tmp_path: Path):
     assert cfg.memory.engine == ""
 
 
-def test_config_load_reads_embedding_and_ignores_private_memory_sections(tmp_path: Path):
+def test_config_load_reads_embedding_and_ignores_private_memory_sections(
+    tmp_path: Path,
+):
     cfg_path = tmp_path / "config.toml"
     _write_toml(
         cfg_path,
@@ -296,7 +306,9 @@ def test_config_load_accepts_dev_model_alias(tmp_path: Path):
     assert cfg.dev_mode is True
 
 
-def test_config_load_skips_unfilled_channels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_config_load_skips_unfilled_channels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     cfg_path = tmp_path / "config.toml"
     _write_toml(
@@ -544,6 +556,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
                     "lease_ttl_seconds": 180,
                     "poll_interval_seconds": 3,
                     "knowledge_job_interval_seconds": 30,
+                    "outbox_worker_enabled": True,
                 }
             },
         },
@@ -558,9 +571,12 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.lease_ttl_seconds == 180
     assert cfg.agent_gateway.poll_interval_seconds == 3
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
+    assert cfg.agent_gateway.outbox_worker_enabled is True
 
 
-def test_config_load_reads_agent_runtime_integration_block_with_compatibility(tmp_path: Path):
+def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
+    tmp_path: Path,
+):
     cfg_path = tmp_path / "config.toml"
     _write_toml(
         cfg_path,
@@ -584,6 +600,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(tm
                     "lease_ttl_seconds": 99,
                     "poll_interval_seconds": 4,
                     "knowledge_job_interval_seconds": 45,
+                    "outbox_worker_enabled": True,
                 }
             },
         },
@@ -598,6 +615,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(tm
     assert cfg.agent_gateway.lease_ttl_seconds == 99
     assert cfg.agent_gateway.poll_interval_seconds == 4
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 45
+    assert cfg.agent_gateway.outbox_worker_enabled is True
     assert cfg.agent_runtime is cfg.agent_gateway
 
 
@@ -624,8 +642,7 @@ socket = "/tmp/toml-akashic.sock"
 
 [integrations.fitbit]
 enabled = true
-""".strip()
-        + "\n",
+""".strip() + "\n",
         encoding="utf-8",
     )
 
@@ -837,7 +854,9 @@ def test_channel_config_resolves_env_placeholders(
     assert cfg.channels.qqbot.groups[0].allow_from == ["member-openid"]
 
 
-def test_build_registered_tools_respects_toolset_order_and_subset(monkeypatch, tmp_path: Path):
+def test_build_registered_tools_respects_toolset_order_and_subset(
+    monkeypatch, tmp_path: Path
+):
     calls: list[str] = []
 
     class _MemoryProvider:
@@ -938,15 +957,15 @@ def test_build_loop_deps_uses_context_factory(monkeypatch, tmp_path: Path):
         event_bus=EventBus(),
         memory_runtime=cast(
             Any,
-                SimpleNamespace(
-                    engine=object(),
-                    markdown=SimpleNamespace(
-                        store=markdown_store,
-                        maintenance=markdown_maintenance,
-                    ),
+            SimpleNamespace(
+                engine=object(),
+                markdown=SimpleNamespace(
+                    store=markdown_store,
+                    maintenance=markdown_maintenance,
                 ),
             ),
-        )
+        ),
+    )
 
     assert observed["name"] == "default"
     assert observed["workspace"] == tmp_path
@@ -1047,9 +1066,7 @@ async def test_wire_turn_lifecycle_registers_afterstep_progress_handler():
             tools_called=("noop",),
             partial_reply="部分回复",
             tools_used_so_far=("a", "b"),
-            tool_chain_partial=(
-                {"text": "tool", "calls": []},
-            ),
+            tool_chain_partial=({"text": "tool", "calls": []},),
             partial_thinking="思考",
             has_more=True,
         )
@@ -1273,6 +1290,73 @@ def test_bootstrap_runtime_worker_entry_points_are_first_class(
         config,
         tmp_path,
         session_store=SimpleNamespace(),
+    )
+    for task in runtime_tasks:
+        task.close()
+    for task in legacy_tasks:
+        task.close()
+    assert len(runtime_tasks) == 1
+    assert len(legacy_tasks) == 1
+    assert runtime_worker is not None
+    assert legacy_worker is not None
+
+
+def test_bootstrap_runtime_outbox_worker_is_opt_in():
+    from bootstrap.app import (
+        _build_agent_gateway_outbox_worker_tasks,
+        _build_agent_runtime_outbox_worker_tasks,
+    )
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        Config,
+        ChannelsConfig,
+        QQChannelConfig,
+    )
+
+    push_tool = SimpleNamespace()
+    disabled_config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(qq=QQChannelConfig(bot_uin="2365524513")),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            outbox_worker_enabled=False,
+        ),
+    )
+    disabled_tasks, disabled_worker = _build_agent_runtime_outbox_worker_tasks(
+        disabled_config,
+        push_tool,
+    )
+    assert disabled_tasks == []
+    assert disabled_worker is None
+
+    enabled_config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            qq=QQChannelConfig(
+                bot_uin="2365524513",
+                channel_name="qq_2365524513",
+            )
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            outbox_worker_enabled=True,
+        ),
+    )
+    runtime_tasks, runtime_worker = _build_agent_runtime_outbox_worker_tasks(
+        enabled_config,
+        push_tool,
+    )
+    legacy_tasks, legacy_worker = _build_agent_gateway_outbox_worker_tasks(
+        enabled_config,
+        push_tool,
     )
     for task in runtime_tasks:
         task.close()

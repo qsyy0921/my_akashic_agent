@@ -144,6 +144,7 @@ class AgentGatewayIntegrationConfig:
     lease_ttl_seconds: int = 300
     poll_interval_seconds: float = 2.0
     knowledge_job_interval_seconds: float = 60.0
+    outbox_worker_enabled: bool = False
 
 
 # 兼容别名：历史上该配置/集成在代码中叫 AgentGateway，运行时对外文档与目录使用
@@ -155,9 +156,9 @@ AgentRuntimeIntegrationConfig = AgentGatewayIntegrationConfig
 class PeerAgentConfig:
     name: str
     base_url: str
-    launcher: list[str]          # 拉起命令，如 ["uv", "run", "python", "-m", "app.a2a_server"]
-    cwd: str | None = None       # 子进程工作目录，None 表示继承父进程
-    description: str = ""        # 工具描述，用于 LLM 路由；服务器在线时会被 AgentCard 覆盖
+    launcher: list[str]  # 拉起命令，如 ["uv", "run", "python", "-m", "app.a2a_server"]
+    cwd: str | None = None  # 子进程工作目录，None 表示继承父进程
+    description: str = ""  # 工具描述，用于 LLM 路由；服务器在线时会被 AgentCard 覆盖
     health_path: str = "/health"
     startup_timeout_s: int = 30
     shutdown_timeout_s: int = 10
