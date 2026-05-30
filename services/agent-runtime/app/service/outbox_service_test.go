@@ -204,6 +204,97 @@ func TestOutboxServiceRecordsLifecycleEvents(t *testing.T) {
 	}
 }
 
+func TestOutboxMetricsServiceSummarizesThroughputAndDeadLetters(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	outbox := appservice.NewOutboxServiceWithEvents(store, store, store)
+	metrics := appservice.NewOutboxMetricsService(store, store)
+	now := time.Date(2026, 5, 30, 6, 30, 0, 0, time.UTC)
+
+	succeededMessage := sampleOutboxMessage(now)
+	succeededMessage.EventID = "outbox-metrics-succeeded"
+	succeededMessage.Channel.Kind = "telegram"
+	succeeded, err := model.NewOutboxDelivery(succeededMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new succeeded delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, succeeded); err != nil {
+		t.Fatalf("save succeeded delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    "outbox-metrics-succeeded",
+		WorkerID:   "outbox-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease succeeded delivery: %v", err)
+	}
+	if _, err := outbox.MarkSucceeded(ctx, command.MarkOutboxSucceededCommand{
+		EventID:   "outbox-metrics-succeeded",
+		Timestamp: now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark succeeded: %v", err)
+	}
+
+	deadMessage := sampleOutboxMessage(now.Add(3 * time.Second))
+	deadMessage.EventID = "outbox-metrics-dead"
+	deadMessage.Channel.Kind = "qq"
+	dead, err := model.NewOutboxDelivery(deadMessage, 1, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatalf("new dead-letter delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, dead); err != nil {
+		t.Fatalf("save dead-letter delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    "outbox-metrics-dead",
+		WorkerID:   "outbox-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(4 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dead-letter delivery: %v", err)
+	}
+	if _, err := outbox.MarkFailed(ctx, command.MarkOutboxFailedCommand{
+		EventID:      "outbox-metrics-dead",
+		ErrorKind:    string(model.DeliveryErrorRoute),
+		ErrorMessage: "missing adapter",
+		Timestamp:    now.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatalf("fail dead-letter delivery: %v", err)
+	}
+
+	view, err := metrics.Get(ctx, query.OutboxMetricsFilter{
+		DeliveryLimit: 10,
+		EventLimit:    20,
+	})
+	if err != nil {
+		t.Fatalf("get metrics: %v", err)
+	}
+	if view.SampledDeliveries != 2 || view.SampledEvents != 4 {
+		t.Fatalf("unexpected sample counts: %+v", view)
+	}
+	if view.DeliveriesByStatus[string(model.DeliverySucceeded)] != 1 ||
+		view.DeliveriesByStatus[string(model.DeliveryDeadLettered)] != 1 {
+		t.Fatalf("unexpected deliveries by status: %+v", view.DeliveriesByStatus)
+	}
+	if view.DeliveriesByChannelKind["telegram"].ByStatus[string(model.DeliverySucceeded)] != 1 ||
+		view.DeliveriesByChannelKind["qq"].ByStatus[string(model.DeliveryDeadLettered)] != 1 {
+		t.Fatalf("unexpected deliveries by channel kind: %+v", view.DeliveriesByChannelKind)
+	}
+	if view.Throughput.Leased != 2 || view.Throughput.Succeeded != 1 || view.Throughput.Failed != 1 ||
+		view.Throughput.DeadLettered != 1 || view.Throughput.TerminalEvents != 2 {
+		t.Fatalf("unexpected throughput metrics: %+v", view.Throughput)
+	}
+	if view.DeadLetters.CurrentTotal != 1 || view.DeadLetters.ByChannelKind["qq"] != 1 {
+		t.Fatalf("unexpected dead-letter metrics: %+v", view.DeadLetters)
+	}
+	if len(view.DeadLetters.Recent) != 1 ||
+		view.DeadLetters.Recent[0].DeliveryID != "outbox-metrics-dead" ||
+		view.DeadLetters.Recent[0].EventType != string(model.OutboxDeliveryEventFailed) {
+		t.Fatalf("unexpected recent dead letters: %+v", view.DeadLetters.Recent)
+	}
+}
+
 func sampleOutboxMessage(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "outbox-1",

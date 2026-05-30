@@ -1378,6 +1378,104 @@ func TestOutboxEventsEndpointListsLifecycleStream(t *testing.T) {
 	}
 }
 
+func TestOutboxMetricsEndpointReturnsLifecycleSummary(t *testing.T) {
+	store := memory.NewStore()
+	outbox := appservice.NewOutboxServiceWithEvents(store, store, store)
+	metrics := appservice.NewOutboxMetricsService(store, store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterOutboxMetricsRoutes(mux, metrics)
+
+	now := time.Date(2026, 5, 30, 11, 45, 0, 0, time.UTC)
+	ctx := context.Background()
+	succeededMessage := model.OutboundMessage{
+		EventID: "outbox-metrics-http-succeeded",
+		Channel: model.ChannelRef{
+			Kind:             "telegram",
+			AccountID:        "bot",
+			ConversationID:   "123",
+			ConversationType: "private",
+		},
+		Content:   "image ready",
+		Timestamp: now,
+	}
+	succeeded, err := model.NewOutboxDelivery(succeededMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new succeeded delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, succeeded); err != nil {
+		t.Fatalf("save succeeded delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    "outbox-metrics-http-succeeded",
+		WorkerID:   "worker-http",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("lease succeeded delivery: %v", err)
+	}
+	if _, err := outbox.MarkSucceeded(ctx, command.MarkOutboxSucceededCommand{
+		EventID:   "outbox-metrics-http-succeeded",
+		Timestamp: now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("mark succeeded delivery: %v", err)
+	}
+
+	deadMessage := model.OutboundMessage{
+		EventID: "outbox-metrics-http-dead",
+		Channel: model.ChannelRef{
+			Kind:             "qq",
+			AccountID:        "2365524513",
+			ConversationID:   "1049511700",
+			ConversationType: "private",
+		},
+		Content:   "bad route",
+		Timestamp: now.Add(3 * time.Second),
+	}
+	dead, err := model.NewOutboxDelivery(deadMessage, 1, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatalf("new dead-letter delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, dead); err != nil {
+		t.Fatalf("save dead-letter delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    "outbox-metrics-http-dead",
+		WorkerID:   "worker-http",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(4 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dead-letter delivery: %v", err)
+	}
+	if _, err := outbox.MarkFailed(ctx, command.MarkOutboxFailedCommand{
+		EventID:      "outbox-metrics-http-dead",
+		ErrorKind:    string(model.DeliveryErrorRoute),
+		ErrorMessage: "missing adapter",
+		Timestamp:    now.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatalf("fail dead-letter delivery: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/outbox-metrics?delivery_limit=10&event_limit=20", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected metrics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`"sampled_deliveries":2`,
+		`"sampled_events":4`,
+		`"succeeded":1`,
+		`"failed":1`,
+		`"dead_lettered":1`,
+		`"current_total":1`,
+		`"delivery_id":"outbox-metrics-http-dead"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("metrics response missing %s: %s", expected, body)
+		}
+	}
+}
+
 func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	store := memory.NewStore()
 	mux := http.NewServeMux()

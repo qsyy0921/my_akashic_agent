@@ -147,6 +147,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        outbox_metrics_raw, error = self._read_mapping(
+            "/v1/outbox-metrics",
+            {"delivery_limit": safe_limit, "event_limit": safe_event_limit},
+        )
+        if error:
+            errors.append({"endpoint": "outbox-metrics", "error": error})
+            outbox_metrics_raw = {}
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -171,6 +181,7 @@ class RuntimeOverviewDashboardReader:
         ]
         queue_backend = _normalize_queue_backend(queue_backend_raw)
         agent_job_metrics = _normalize_agent_job_metrics(agent_job_metrics_raw)
+        outbox_metrics = _normalize_outbox_metrics(outbox_metrics_raw)
 
         job_leases = [item for item in jobs if _has_active_lease(item)]
         outbox_leases = [item for item in outbox if _has_active_lease(item)]
@@ -222,6 +233,8 @@ class RuntimeOverviewDashboardReader:
             "queue_external_lease_ready": queue_backend["external_lease_ready"],
             "agent_job_metric_events": agent_job_metrics["sampled_events"],
             "agent_job_metric_dead_letters": agent_job_metrics["dead_letters"]["current_total"],
+            "outbox_metric_events": outbox_metrics["sampled_events"],
+            "outbox_metric_dead_letters": outbox_metrics["dead_letters"]["current_total"],
         }
 
         cards = _overview_cards(
@@ -242,6 +255,7 @@ class RuntimeOverviewDashboardReader:
             disabled_adapters=disabled_adapters,
             queue_backend=queue_backend,
             agent_job_metrics=agent_job_metrics,
+            outbox_metrics=outbox_metrics,
         )
 
         return {
@@ -266,6 +280,7 @@ class RuntimeOverviewDashboardReader:
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
             "agent_job_metrics": agent_job_metrics,
+            "outbox_metrics": outbox_metrics,
             "status": {
                 "runtime_url": self.runtime_base_url,
                 "runtime_available": successful_reads > 0,
@@ -549,6 +564,41 @@ def _normalize_agent_job_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_outbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
+    throughput = _mapping_or_empty(item.get("throughput"))
+    dead_letters = _mapping_or_empty(item.get("dead_letters"))
+    recent = dead_letters.get("recent")
+    if not isinstance(recent, list):
+        recent = []
+    return {
+        "sampled_deliveries": _int_value(item.get("sampled_deliveries"), fallback=0),
+        "sampled_events": _int_value(item.get("sampled_events"), fallback=0),
+        "deliveries_by_status": _mapping_or_empty(item.get("deliveries_by_status")),
+        "deliveries_by_channel_kind": _mapping_or_empty(
+            item.get("deliveries_by_channel_kind")
+        ),
+        "throughput": {
+            "events_by_type": _mapping_or_empty(throughput.get("events_by_type")),
+            "queued": _int_value(throughput.get("queued"), fallback=0),
+            "leased": _int_value(throughput.get("leased"), fallback=0),
+            "dispatching": _int_value(throughput.get("dispatching"), fallback=0),
+            "succeeded": _int_value(throughput.get("succeeded"), fallback=0),
+            "failed": _int_value(throughput.get("failed"), fallback=0),
+            "retry": _int_value(throughput.get("retry"), fallback=0),
+            "dead_lettered": _int_value(throughput.get("dead_lettered"), fallback=0),
+            "terminal_events": _int_value(throughput.get("terminal_events"), fallback=0),
+        },
+        "dead_letters": {
+            "current_total": _int_value(dead_letters.get("current_total"), fallback=0),
+            "by_channel_kind": _mapping_or_empty(dead_letters.get("by_channel_kind")),
+            "recent": [dict(item) for item in recent if isinstance(item, Mapping)],
+        },
+        "notes": [str(value) for value in item.get("notes", [])]
+        if isinstance(item.get("notes"), list)
+        else [],
+    }
+
+
 def _overview_cards(
     *,
     health: Mapping[str, Any],
@@ -568,6 +618,7 @@ def _overview_cards(
     disabled_adapters: list[dict[str, Any]],
     queue_backend: dict[str, Any],
     agent_job_metrics: dict[str, Any],
+    outbox_metrics: dict[str, Any],
 ) -> list[dict[str, Any]]:
     health_status = _text(health.get("status")) or ("degraded" if errors else "unknown")
     queue_mode = _text(queue_backend.get("mode"))
@@ -622,6 +673,13 @@ def _overview_cards(
             summary.get("agent_job_metric_events", 0),
             "danger" if summary.get("agent_job_metric_dead_letters") else "ok",
             {"agent_job_metrics": agent_job_metrics},
+        ),
+        _card(
+            "outbox_metrics",
+            "Outbox Metrics",
+            summary.get("outbox_metric_events", 0),
+            "danger" if summary.get("outbox_metric_dead_letters") else "ok",
+            {"outbox_metrics": outbox_metrics},
         ),
         _card(
             "outbox_events",

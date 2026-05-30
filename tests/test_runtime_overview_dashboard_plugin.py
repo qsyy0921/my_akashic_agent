@@ -253,6 +253,43 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             ],
         },
     }
+    outbox_metrics = {
+        "sampled_deliveries": 2,
+        "sampled_events": 7,
+        "deliveries_by_status": {"dispatching": 1, "dead_lettered": 1},
+        "deliveries_by_channel_kind": {
+            "qq": {"total": 1, "by_status": {"dead_lettered": 1}},
+            "telegram": {"total": 1, "by_status": {"dispatching": 1}},
+        },
+        "throughput": {
+            "events_by_type": {"leased": 2, "succeeded": 1, "failed": 1},
+            "queued": 2,
+            "leased": 2,
+            "dispatching": 1,
+            "succeeded": 1,
+            "failed": 1,
+            "retry": 0,
+            "dead_lettered": 1,
+            "terminal_events": 2,
+        },
+        "dead_letters": {
+            "current_total": 1,
+            "by_channel_kind": {"qq": 1},
+            "recent": [
+                {
+                    "delivery_id": "outbox:dead",
+                    "channel_kind": "qq",
+                    "event_type": "failed",
+                    "status": "dead_lettered",
+                    "error_kind": "route_error",
+                    "error_message": "missing adapter",
+                    "attempt": 3,
+                    "max_attempts": 3,
+                    "occurred_at": "2026-05-30T08:41:00Z",
+                }
+            ],
+        },
+    }
     seen_paths: list[str] = []
 
     def _fake_urlopen(request, timeout=None):  # type: ignore[no-untyped-def]
@@ -286,6 +323,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             assert query["job_limit"] == ["50"]
             assert query["event_limit"] == ["10"]
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": agent_job_metrics}))
+        if parsed.path == "/v1/outbox-metrics":
+            assert query["delivery_limit"] == ["50"]
+            assert query["event_limit"] == ["10"]
+            return _fake_urlopen_response(json.dumps({"code": "OK", "data": outbox_metrics}))
         raise AssertionError(f"unhandled runtime call: {parsed.path}")
 
     monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
@@ -322,6 +363,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_external_lease_ready"] is False
     assert payload["summary"]["agent_job_metric_events"] == 12
     assert payload["summary"]["agent_job_metric_dead_letters"] == 1
+    assert payload["summary"]["outbox_metric_events"] == 7
+    assert payload["summary"]["outbox_metric_dead_letters"] == 1
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
@@ -337,6 +380,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["agent_job_metrics"]["dead_letters"]["recent"][0]["job_id"] == (
         "rag_ingest:qq:3219982:dead"
     )
+    outbox_metrics_card = next(item for item in payload["cards"] if item["id"] == "outbox_metrics")
+    assert outbox_metrics_card["status"] == "danger"
+    assert payload["outbox_metrics"]["throughput"]["failed"] == 1
+    assert payload["outbox_metrics"]["dead_letters"]["recent"][0]["delivery_id"] == "outbox:dead"
     assert payload["queue_backend"]["external_lease_blockers"] == [
         "explicit_cutover",
         "state_lease_workers_disabled",
@@ -350,6 +397,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/delivery-adapters",
         "/v1/queue-backend",
         "/v1/job-metrics",
+        "/v1/outbox-metrics",
     }.issubset(set(seen_paths))
 
 
@@ -363,7 +411,13 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
             payload: dict[str, Any] | list[Any]
             payload = (
                 {}
-                if parsed.path in {"/v1/knowledge-worker-diagnostics", "/v1/queue-backend", "/v1/job-metrics"}
+                if parsed.path
+                in {
+                    "/v1/knowledge-worker-diagnostics",
+                    "/v1/queue-backend",
+                    "/v1/job-metrics",
+                    "/v1/outbox-metrics",
+                }
                 else []
             )
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": payload}))

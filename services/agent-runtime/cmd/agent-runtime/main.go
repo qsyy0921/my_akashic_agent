@@ -205,6 +205,7 @@ func main() {
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
+	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -221,6 +222,7 @@ func main() {
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
+	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)

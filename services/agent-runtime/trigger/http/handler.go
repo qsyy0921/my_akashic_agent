@@ -92,6 +92,13 @@ func RegisterOutboxEventRoutes(
 	mux.Handle("/v1/outbox-events", OutboxDeliveryEventsHandler(outboxEvents))
 }
 
+func RegisterOutboxMetricsRoutes(
+	mux *http.ServeMux,
+	metrics inport.OutboxMetricsViewer,
+) {
+	mux.Handle("/v1/outbox-metrics", OutboxMetricsHandler(metrics))
+}
+
 func RegisterQueueBackendRoutes(
 	mux *http.ServeMux,
 	queueBackend inport.QueueBackendViewer,
@@ -1152,6 +1159,24 @@ func OutboxDeliveryEventsHandler(outboxEvents inport.OutboxDeliveryEventViewer) 
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func OutboxMetricsHandler(metrics inport.OutboxMetricsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := metrics.Get(r.Context(), query.OutboxMetricsFilter{
+			DeliveryLimit: parsePositiveInt(r.URL.Query().Get("delivery_limit"), 200, 200),
+			EventLimit:    parsePositiveInt(r.URL.Query().Get("event_limit"), 200, 200),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

@@ -91,6 +91,17 @@ Failure requests include:
 }
 ```
 
+Inspect Go-owned outbox metrics:
+
+```text
+GET /v1/outbox-metrics?delivery_limit=200&event_limit=200
+```
+
+The metrics response summarizes the bounded delivery sample by status and
+channel kind, recent lifecycle throughput by event type, current dead-letter
+totals, and recent dead-letter samples. It is read-only and does not lease
+deliveries, send platform messages, or acknowledge external queue messages.
+
 ## Invariants
 
 - Outbound routing must include platform account id.
@@ -131,6 +142,9 @@ Failure requests include:
   ids survive runtime restarts.
 - Infrastructure test proves leased state persists and expired leases become
   leaseable again.
+- App-service and HTTP tests prove `/v1/outbox-metrics` summarizes delivery
+  distribution, event throughput, and dead-letter samples without mutating
+  delivery state.
 - Go architecture tests continue to enforce DDD dependencies.
 
 ## Next Steps
@@ -139,5 +153,4 @@ Failure requests include:
   controlled outbox dispatch smoke tests.
 - Add platform delivery adapters behind an outbound port that consumes
   `/v1/outbox/lease-next`.
-- Add dashboard outbox/error panel.
 - Cut Python channel direct sends only after adapter shadow delivery is proven.

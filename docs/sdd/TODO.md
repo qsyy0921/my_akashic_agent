@@ -66,6 +66,7 @@
 - [x] 将 outbox dashboard 详情接入 Go dispatch readiness：详情页只读展示 adapter ready/missing channel、side_effect=none 和 dispatch plan，便于 QQ/NapCat adapter cutover 前诊断缺失 channel，不触发真实发送。
 - [x] 将 `agent_job` 过期租约恢复接入 Agent Jobs dashboard：前端可触发 Go `/v1/jobs/recover-expired`，展示扫描/恢复/死信结果，并只暴露 `lease_token_present` 避免泄漏 token 值。
 - [x] 增加 Go-owned `agent_job` metrics endpoint `GET /v1/job-metrics`：Go 聚合 job 状态、类型分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
+- [x] 增加 Go-owned outbox metrics endpoint `GET /v1/outbox-metrics`：Go 聚合投递状态、channel 分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
 
 ## 下一步
 

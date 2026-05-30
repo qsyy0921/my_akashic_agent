@@ -359,6 +359,17 @@ GET /v1/outbox-events?status=dead_lettered
 GET /v1/outbox-events?event=failed
 ```
 
+Inspect Go-owned outbox metrics:
+
+```text
+GET /v1/outbox-metrics?delivery_limit=200&event_limit=200
+```
+
+The metrics response summarizes the bounded delivery sample by status and
+channel kind, recent lifecycle throughput by event type, current dead-letter
+totals, and recent dead-letter samples. It is read-only and does not lease
+deliveries, send platform messages, or acknowledge external queue messages.
+
 Inspect external queue backend migration settings:
 
 ```powershell
