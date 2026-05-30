@@ -191,6 +191,13 @@ func main() {
 			}
 		}()
 	}
+	stopOutboxDeliveryWorker, err := startOutboxDeliveryWorker(outbox, deliveryDispatch, queueBackendView)
+	if err != nil {
+		log.Fatalf("init outbox delivery worker: %v", err)
+	}
+	if stopOutboxDeliveryWorker != nil {
+		defer stopOutboxDeliveryWorker()
+	}
 	mediaContentReader, err := newMediaAssetContentReader()
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)

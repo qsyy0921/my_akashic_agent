@@ -70,11 +70,12 @@
 - [x] 增加 Go-owned inbox metrics endpoint `GET /v1/inbox-metrics`：Go 聚合原始观察消息、observe-only 占比、附件采集、会话 sender 和 seq cursor，用于 runtime overview 观察 QQ 群数据采集质量。
 - [x] 增加 Go-owned send ledger metrics endpoint `GET /v1/send-ledger/metrics`：Go 聚合 recent-send 防循环记录、bot/conversation 分布和重复 content hash，用于 runtime overview 审计双账号互聊回流风险。
 - [x] 增加 Go-owned runtime overview aggregate endpoint `GET /v1/runtime-overview`：Go 聚合 adapter、queue、send ledger、inbox、agent job、outbox 和 knowledge diagnostics，Python dashboard 优先读取该聚合口并保留旧多接口 fallback。
+- [x] 增加可选 Go-owned local outbox delivery worker：默认关闭；开启 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 后由 Go state-store lease outbox、调用 Go DeliveryAdapter dispatch 并回写 succeeded/failed，减少 Python outbox worker 的确定性基础设施职责。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后通过日志、`GET /v1/delivery-adapters` 和 runtime overview dashboard 确认 adapter enabled。
-- [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
+- [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

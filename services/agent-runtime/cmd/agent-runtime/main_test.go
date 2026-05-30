@@ -401,6 +401,45 @@ func TestAgentJobLeaseRecoveryConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestOutboxDeliveryWorkerConfigDisabledByDefault(t *testing.T) {
+	_, enabled, err := outboxDeliveryWorkerConfigFromEnv()
+	if err != nil {
+		t.Fatalf("outbox worker config: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected outbox delivery worker disabled by default")
+	}
+}
+
+func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_INTERVAL_SECONDS", "7")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE", "3")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "runtime-outbox-a")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS", "120")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", "false")
+	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700,2365524513=qq_2365524513")
+
+	config, enabled, err := outboxDeliveryWorkerConfigFromEnv()
+	if err != nil {
+		t.Fatalf("outbox worker config: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected outbox delivery worker enabled")
+	}
+	if config.Interval != 7*time.Second ||
+		config.BatchSize != 3 ||
+		config.WorkerID != "runtime-outbox-a" ||
+		config.LeaseTTLSeconds != 120 ||
+		config.RunOnStart {
+		t.Fatalf("unexpected outbox worker config: %+v", config)
+	}
+	if config.ChannelByAccount["1049511700"] != "qq_1049511700" ||
+		config.ChannelByAccount["2365524513"] != "qq_2365524513" {
+		t.Fatalf("unexpected channel map: %#v", config.ChannelByAccount)
+	}
+}
+
 func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {
 	got := parseKeyValueCSV("a=1, malformed, b = 2, =missing, c= ")
 

@@ -242,6 +242,14 @@ knowledge_job_interval_seconds = 60
 rag_eval_worker_enabled = false
 # 默认关闭，避免与当前 Python 直发通道双发；确认 /v1/outbox 路径稳定后再打开。
 outbox_worker_enabled = false
+# 若要让 Go 自己从 outbox state store lease 并执行 DeliveryAdapter dispatch，
+# 使用 agent-runtime 进程环境变量：
+# $env:AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED = "true"
+# $env:AKASHIC_OUTBOX_DELIVERY_WORKER_INTERVAL_SECONDS = "2"
+# $env:AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE = "1"
+# $env:AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS = "300"
+# 注意不要同时开启 Python outbox_worker_enabled 和 Go local outbox worker，
+# 也不要和 NATS external_lease outbox executor 同时运行。
 # Normal message_push channels that may enqueue through Go /v1/outbound when
 # outbox_worker_enabled=true. QQ aliases can be added after configuring
 # AKASHIC_ONEBOT_WS_URLS or AKASHIC_ONEBOT_HTTP_BASE_URLS plus

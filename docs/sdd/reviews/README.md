@@ -117,3 +117,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-68-inbox-metrics.md`
 - `2026-05-31-phase8-69-send-ledger-metrics.md`
 - `2026-05-31-phase8-70-runtime-overview-aggregate.md`
+- `2026-05-31-phase8-71-go-local-outbox-worker.md`
