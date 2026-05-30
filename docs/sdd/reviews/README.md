@@ -110,3 +110,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-61-runtime-queue-dashboard.md`
 - `2026-05-31-phase8-62-delivery-dispatch-readiness.md`
 - `2026-05-31-phase8-63-outbox-worker-readiness-gate.md`
+- `2026-05-31-phase8-64-outbox-dashboard-readiness.md`

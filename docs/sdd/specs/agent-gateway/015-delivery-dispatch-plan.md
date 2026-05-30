@@ -151,6 +151,9 @@ outbox failure classification:
 - `app/service`: loads the outbox delivery and maps domain plan to query view.
 - `trigger/http`: exposes the plan/readiness endpoints and serializes error
   kind.
+- `plugins/outbox`: the dashboard detail view may call the readiness endpoint
+  with `AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT` to display adapter readiness,
+  missing channel aliases, `side_effect=none`, and the planned dispatch steps.
 - `integrations`: Python compatibility worker asks Go for a plan, then executes
   platform sends through the existing tool.
 - When a channel is configured as a Go dispatch candidate, the Python outbox
@@ -170,3 +173,5 @@ outbox failure classification:
   written back to outbox with the Go-provided kind.
 - Python worker tests prove Go readiness is checked before runtime dispatch and
   missing adapters use the Go readiness plan directly.
+- Dashboard tests prove outbox detail calls readiness as a read-only diagnostic
+  and preserves old list/action behavior.

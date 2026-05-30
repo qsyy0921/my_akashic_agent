@@ -26,6 +26,7 @@ interface OutboxDelivery {
   created_at: string;
   updated_at: string;
   metadata: Record<string, string>;
+  dispatch_readiness?: Record<string, unknown>;
 }
 
 interface OutboxListResponse {
@@ -58,6 +59,49 @@ function _formatJson(value: unknown): string {
 function _statusTag(status: string): string {
   const text = status || "unknown";
   return `<span class="outbox-status-${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+}
+
+function _renderDispatchReadiness(delivery: OutboxDelivery): string {
+  const readiness = delivery.dispatch_readiness || {};
+  if (!Object.keys(readiness).length) return "";
+  const available = readiness.available !== false;
+  const ready = readiness.ready === true;
+  const status = available ? (ready ? "ready" : "missing") : "unavailable";
+  const reason = String(readiness.reason || readiness.error || "-");
+  const channel = String(readiness.channel || "-");
+  const attributes = (readiness.attributes || {}) as Record<string, unknown>;
+  const missingChannels = Array.isArray(readiness.missing_channels)
+    ? readiness.missing_channels.map((item) => String(item || "")).filter(Boolean)
+    : [];
+  const sideEffect = String(attributes.side_effect || readiness.side_effect || "-");
+  return `
+    <div class="outbox-section">
+      <div class="detail-label">Dispatch Readiness</div>
+      <div class="outbox-grid">
+        <div>
+          <div class="outbox-label">Adapter</div>
+          <div class="outbox-value mono">${escapeHtml(status)}</div>
+        </div>
+        <div>
+          <div class="outbox-label">Reason</div>
+          <div class="outbox-value mono">${escapeHtml(reason)}</div>
+        </div>
+        <div>
+          <div class="outbox-label">Channel</div>
+          <div class="outbox-value mono">${escapeHtml(channel)}</div>
+        </div>
+        <div>
+          <div class="outbox-label">Side Effect</div>
+          <div class="outbox-value mono">${escapeHtml(sideEffect)}</div>
+        </div>
+        <div>
+          <div class="outbox-label">Missing Channels</div>
+          <div class="outbox-value mono">${escapeHtml(missingChannels.join(", ") || "-")}</div>
+        </div>
+      </div>
+      <pre class="outbox-json">${escapeHtml(_formatJson(readiness.plan || {}))}</pre>
+    </div>
+  `;
 }
 
 function _renderFilters(container: HTMLElement, dispatch: PluginDispatch): void {
@@ -264,6 +308,8 @@ window.AkashicDashboard.registerPlugin({
           <div class="detail-label">Content</div>
           <div class="outbox-value">${escapeHtml(delivery.content || "-")}</div>
         </div>
+
+        ${_renderDispatchReadiness(delivery)}
 
         <div class="outbox-section outbox-action-form">
           <div class="detail-label">Mark Failed</div>

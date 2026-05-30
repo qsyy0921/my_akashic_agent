@@ -23,6 +23,10 @@ class _MemoryAdmin:
 def test_outbox_dashboard_plugin_reads_filters_and_actions(
     monkeypatch, tmp_path
 ) -> None:
+    monkeypatch.setenv(
+        "AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT",
+        "1049511700=qq_1049511700,2365524513=qq_2365524513",
+    )
     deliveries = [
         _delivery("outbox:1", "failed", "1049511700", "2365524513", "platform timeout"),
         _delivery("outbox:2", "queued", "2365524513", "1049511700", ""),
@@ -53,6 +57,46 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(
             )
             return _fake_urlopen_response(
                 json.dumps({"code": "OK", "data": item or {}})
+            )
+        if method == "POST" and path == "/v1/delivery-dispatch/readiness":
+            raw = (
+                request.data.decode("utf-8") if getattr(request, "data", None) else "{}"
+            )
+            body = json.loads(raw)
+            calls.append((body.get("event_id", ""), "readiness", body))
+            assert body["channel_by_account"] == {
+                "1049511700": "qq_1049511700",
+                "2365524513": "qq_2365524513",
+            }
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "event_id": body["event_id"],
+                            "channel": "qq_1049511700",
+                            "ready": False,
+                            "reason": "delivery_adapter_unavailable",
+                            "missing_channels": ["qq_1049511700"],
+                            "plan": {
+                                "event_id": body["event_id"],
+                                "channel": "qq_1049511700",
+                                "chat_id": "2365524513",
+                                "step_count": 1,
+                                "steps": [
+                                    {
+                                        "step_index": 0,
+                                        "kind": "text",
+                                        "channel": "qq_1049511700",
+                                        "chat_id": "2365524513",
+                                        "message": "generated image is ready",
+                                    }
+                                ],
+                            },
+                            "attributes": {"side_effect": "none"},
+                        },
+                    }
+                )
             )
         if method == "POST" and path == "/v1/outbox/lease-next":
             raw = (
@@ -109,9 +153,15 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(
 
         detail_response = client.get("/api/dashboard/outbox/outbox%3A1")
         assert detail_response.status_code == 200
-        assert detail_response.json()["error_kind"] == "platform_timeout"
-        assert detail_response.json()["error_message"] == "platform timeout"
-        assert detail_response.json()["lease_expires_at"] == "2026-05-30T10:05:00+08:00"
+        detail = detail_response.json()
+        assert detail["error_kind"] == "platform_timeout"
+        assert detail["error_message"] == "platform timeout"
+        assert detail["lease_expires_at"] == "2026-05-30T10:05:00+08:00"
+        assert detail["dispatch_readiness"]["available"] is True
+        assert detail["dispatch_readiness"]["ready"] is False
+        assert detail["dispatch_readiness"]["reason"] == "delivery_adapter_unavailable"
+        assert detail["dispatch_readiness"]["missing_channels"] == ["qq_1049511700"]
+        assert detail["dispatch_readiness"]["attributes"]["side_effect"] == "none"
 
         retry_response = client.post("/api/dashboard/outbox/outbox%3A1/retry", json={})
         fail_response = client.post(
@@ -142,6 +192,17 @@ def test_outbox_dashboard_plugin_reads_filters_and_actions(
         "",
         "lease-next",
         {"worker_id": "dashboard-test", "ttl_seconds": 120},
+    ) in calls
+    assert (
+        "outbox:1",
+        "readiness",
+        {
+            "event_id": "outbox:1",
+            "channel_by_account": {
+                "1049511700": "qq_1049511700",
+                "2365524513": "qq_2365524513",
+            },
+        },
     ) in calls
 
 

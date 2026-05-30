@@ -35,6 +35,9 @@ class OutboxDashboardReader:
             or _DEFAULT_RUNTIME_BASE_URL
         )
         self.request_timeout_seconds = max(0.05, float(request_timeout_seconds))
+        self.channel_by_account = _parse_key_value_csv(
+            os.environ.get("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "")
+        )
 
     def list_deliveries(
         self,
@@ -110,7 +113,9 @@ class OutboxDashboardReader:
             raise HTTPException(status_code=502, detail=error)
         if not isinstance(data, Mapping):
             return None
-        return _normalize_delivery(data)
+        delivery = _normalize_delivery(data)
+        delivery["dispatch_readiness"] = self._read_dispatch_readiness(event_id)
+        return delivery
 
     def run_action(
         self,
@@ -160,6 +165,33 @@ class OutboxDashboardReader:
         return [
             _normalize_delivery(item) for item in data if isinstance(item, Mapping)
         ], None
+
+    def _read_dispatch_readiness(self, event_id: str) -> dict[str, Any]:
+        if not self.runtime_base_url:
+            return {
+                "available": False,
+                "error": "runtime base url is empty",
+            }
+        body: dict[str, Any] = {"event_id": event_id}
+        if self.channel_by_account:
+            body["channel_by_account"] = dict(self.channel_by_account)
+        url = f"{self.runtime_base_url}/v1/delivery-dispatch/readiness"
+        data, error = self._request_json(url, method="POST", body=body)
+        if error:
+            return {
+                "available": False,
+                "error": error,
+                "side_effect": "none",
+            }
+        if not isinstance(data, Mapping):
+            return {
+                "available": False,
+                "error": "runtime readiness response is not an object",
+                "side_effect": "none",
+            }
+        readiness = _normalize_dispatch_readiness(data)
+        readiness["available"] = True
+        return readiness
 
     def _request_json(
         self,
@@ -281,6 +313,34 @@ def _normalize_delivery(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_dispatch_readiness(item: Mapping[str, Any]) -> dict[str, Any]:
+    plan = _mapping_or_empty(item.get("plan"))
+    missing_channels = item.get("missing_channels")
+    if not isinstance(missing_channels, list):
+        missing_channels = []
+    steps = plan.get("steps")
+    if not isinstance(steps, list):
+        steps = []
+    return {
+        "event_id": _text(item.get("event_id")),
+        "channel": _text(item.get("channel")),
+        "ready": _bool_value(item.get("ready")),
+        "reason": _text(item.get("reason")),
+        "missing_channels": [
+            _text(channel) for channel in missing_channels if _text(channel)
+        ],
+        "plan": {
+            "event_id": _text(plan.get("event_id")),
+            "channel": _text(plan.get("channel")),
+            "chat_id": _text(plan.get("chat_id")),
+            "step_count": _int_value(plan.get("step_count"), fallback=0),
+            "steps": [dict(step) for step in steps if isinstance(step, Mapping)],
+            "attributes": _mapping_or_empty(plan.get("attributes")),
+        },
+        "attributes": _mapping_or_empty(item.get("attributes")),
+    }
+
+
 def _matches_delivery_filters(
     item: Mapping[str, Any],
     *,
@@ -357,9 +417,30 @@ def _int_value(value: object, *, fallback: int) -> int:
     return fallback
 
 
+def _bool_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 def _text(value: object) -> str:
     return str(value or "")
 
 
 def _clean_base_url(value: str) -> str:
     return value.strip().rstrip("/")
+
+
+def _parse_key_value_csv(value: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for part in value.split(","):
+        if "=" not in part:
+            continue
+        key, raw = part.split("=", 1)
+        key = key.strip()
+        raw = raw.strip()
+        if key and raw:
+            result[key] = raw
+    return result
