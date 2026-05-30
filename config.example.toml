@@ -240,6 +240,9 @@ poll_interval_seconds = 2
 knowledge_job_interval_seconds = 60
 # 默认关闭，避免与当前 Python 直发通道双发；确认 /v1/outbox 路径稳定后再打开。
 outbox_worker_enabled = false
+# Normal message_push channels that may enqueue through Go /v1/outbound when
+# outbox_worker_enabled=true. Keep QQ direct until the Go QQ/NapCat adapter is ready.
+outbound_channels = ["telegram"]
 
 # 历史配置兼容（不再推荐）
 [integrations.agent_gateway]

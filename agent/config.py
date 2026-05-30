@@ -491,6 +491,9 @@ def _load_agent_gateway_config(data: dict) -> AgentGatewayIntegrationConfig:
             raw.get("knowledge_job_interval_seconds", 60.0)
         ),
         outbox_worker_enabled=bool(raw.get("outbox_worker_enabled", False)),
+        outbound_channels=_resolve_string_list(
+            raw.get("outbound_channels", ["telegram"])
+        ),
     )
 
 

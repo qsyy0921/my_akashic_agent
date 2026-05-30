@@ -557,6 +557,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
                     "poll_interval_seconds": 3,
                     "knowledge_job_interval_seconds": 30,
                     "outbox_worker_enabled": True,
+                    "outbound_channels": ["telegram", "qq_future"],
                 }
             },
         },
@@ -572,6 +573,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.poll_interval_seconds == 3
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
     assert cfg.agent_gateway.outbox_worker_enabled is True
+    assert cfg.agent_gateway.outbound_channels == ["telegram", "qq_future"]
 
 
 def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
@@ -601,6 +603,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
                     "poll_interval_seconds": 4,
                     "knowledge_job_interval_seconds": 45,
                     "outbox_worker_enabled": True,
+                    "outbound_channels": ["telegram"],
                 }
             },
         },
@@ -616,6 +619,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
     assert cfg.agent_gateway.poll_interval_seconds == 4
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 45
     assert cfg.agent_gateway.outbox_worker_enabled is True
+    assert cfg.agent_gateway.outbound_channels == ["telegram"]
     assert cfg.agent_runtime is cfg.agent_gateway
 
 
@@ -1374,6 +1378,60 @@ def test_bootstrap_runtime_outbox_worker_is_opt_in():
     assert len(legacy_tasks) == 1
     assert runtime_worker is not None
     assert legacy_worker is not None
+
+
+def test_bootstrap_configures_runtime_backed_message_push_channels():
+    from agent.config_models import (
+        AgentGatewayIntegrationConfig,
+        Config,
+        ChannelsConfig,
+        QQChannelConfig,
+        TelegramChannelConfig,
+    )
+    from agent.tools.message_push import MessagePushTool
+    from bootstrap.tools import (
+        _configure_runtime_backed_message_push,
+        _runtime_outbound_account_ids_by_channel,
+    )
+
+    config = Config(
+        provider="openai",
+        model="m",
+        api_key="k",
+        system_prompt="s",
+        channels=ChannelsConfig(
+            telegram=TelegramChannelConfig(
+                token="token",
+                channel_name="telegram",
+            ),
+            qq=QQChannelConfig(
+                bot_uin="2365524513",
+                channel_name="qq_2365524513",
+            ),
+            qq_accounts=[
+                QQChannelConfig(
+                    bot_uin="1049511700",
+                    channel_name="qq_1049511700",
+                )
+            ],
+        ),
+        agent_gateway=AgentGatewayIntegrationConfig(
+            enabled=True,
+            base_url="http://127.0.0.1:8780",
+            outbox_worker_enabled=True,
+            outbound_channels=["telegram"],
+        ),
+    )
+    push_tool = MessagePushTool()
+
+    _configure_runtime_backed_message_push(config, push_tool)
+
+    assert getattr(push_tool, "_runtime_channels") == {"telegram"}
+    assert _runtime_outbound_account_ids_by_channel(config) == {
+        "telegram": "telegram",
+        "qq_2365524513": "2365524513",
+        "qq_1049511700": "1049511700",
+    }
 
 
 def test_bootstrap_skips_knowledge_worker_when_agent_gateway_base_url_empty(

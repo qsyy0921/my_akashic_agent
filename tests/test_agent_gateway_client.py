@@ -263,6 +263,46 @@ async def test_agent_gateway_client_records_and_checks_send_ledger():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_sends_outbound_to_runtime():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        assert request.method == "POST"
+        assert request.url.path == "/v1/outbound"
+        assert body == {
+            "event_id": "pyout:telegram:100:1",
+            "channel": {
+                "kind": "telegram",
+                "account_id": "telegram",
+                "conversation_id": "100",
+                "conversation_type": "private",
+            },
+            "content": "hello",
+            "attachments": [{"kind": "image", "url": "file:///tmp/a.png"}],
+            "metadata": {"source": "message_push"},
+        }
+        return _ok({"event_id": body["event_id"], "status": "pending"})
+
+    result = await _client(handler).send_outbound(
+        event_id="pyout:telegram:100:1",
+        channel={
+            "kind": "telegram",
+            "account_id": "telegram",
+            "conversation_id": "100",
+            "conversation_type": "private",
+        },
+        content="hello",
+        attachments=[{"kind": "image", "url": "file:///tmp/a.png"}],
+        metadata={"source": "message_push"},
+    )
+
+    assert result == {"event_id": "pyout:telegram:100:1", "status": "pending"}
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_leases_and_updates_outbox_delivery():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

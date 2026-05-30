@@ -27,10 +27,10 @@
 - [x] 强化 dashboard 媒体附件兜底：Go media content 403/404 时，可根据 runtime asset 元数据回退到 workspace uploads 内的同名本地镜像，避免 QQ 图片/文件在前端显示为 broken image。
 - [x] 增加 Go-owned DeliveryAdapter dispatch plan：Go 负责 outbox 路由解析、附件拆分和 file URI 规范化，Python 兼容 worker 只执行平台发送。
 - [x] 增加 Go-owned Telegram DeliveryAdapter：Go 通过 Telegram Bot API 执行 outbox text/photo/document 发送，Python worker 对 Telegram 优先走 Go，adapter 不可用时回退旧发送链路。
+- [x] 将普通 `message_push` / `OutboundPort` 发送路径接入 Go `/v1/outbound` + outbox worker；当前仅 Telegram 进入 Go outbound，QQ/NapCat 继续保留 Python direct fallback，避免未完成适配器导致双发或漏发。
 
 ## 下一步
 
-- [ ] 将普通 `message_push` / `OutboundPort` 发送路径接入 Go `/v1/outbound` + outbox worker，使 Telegram Go `DeliveryAdapter` 真正覆盖常规回复和主动推送路径。
 - [ ] 评估并实现 QQ/NapCat Go `DeliveryAdapter`：先明确 OneBot HTTP/WebSocket 发送边界、双账号路由、二维码登录状态和防循环交互策略。
 - [ ] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream。
 - [ ] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 eval worker。

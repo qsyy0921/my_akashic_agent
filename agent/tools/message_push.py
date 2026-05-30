@@ -50,6 +50,25 @@ class MessagePushTool(Tool):
     def __init__(self) -> None:
         # channel -> {type: sender_fn}
         self._senders: dict[str, dict[str, Callable[..., Awaitable[None]]]] = {}
+        self._runtime_enqueue: Callable[..., Awaitable[str]] | None = None
+        self._runtime_channels: set[str] = set()
+
+    def configure_runtime_outbox(
+        self,
+        enqueue: Callable[..., Awaitable[str]],
+        *,
+        channels: list[str] | tuple[str, ...] | set[str],
+    ) -> None:
+        self._runtime_enqueue = enqueue
+        self._runtime_channels = {
+            str(channel).strip()
+            for channel in channels
+            if str(channel or "").strip()
+        }
+        logger.info(
+            "message_push: runtime outbox enabled for channels=%s",
+            sorted(self._runtime_channels),
+        )
 
     def register_channel(
         self,
@@ -79,6 +98,12 @@ class MessagePushTool(Tool):
         )
 
     async def execute(self, **kwargs: Any) -> str:
+        return await self._execute(kwargs, allow_runtime=True)
+
+    async def execute_direct(self, **kwargs: Any) -> str:
+        return await self._execute(kwargs, allow_runtime=False)
+
+    async def _execute(self, kwargs: dict[str, Any], *, allow_runtime: bool) -> str:
         chat_id: str = str(kwargs["chat_id"])
         channel: str = self._resolve_channel(
             requested=str(kwargs["channel"]),
@@ -92,6 +117,28 @@ class MessagePushTool(Tool):
 
         if not message and not file and not image:
             return "错误：message、file、image 至少提供一个"
+
+        if (
+            allow_runtime
+            and self._runtime_enqueue is not None
+            and channel in self._runtime_channels
+        ):
+            try:
+                return await self._runtime_enqueue(
+                    channel=channel,
+                    chat_id=chat_id,
+                    message=message or "",
+                    file=file,
+                    image=image,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[message_push] runtime outbox enqueue failed; falling back to direct sender channel=%s chat_id=%s err=%s",
+                    channel,
+                    chat_id,
+                    exc,
+                    exc_info=True,
+                )
 
         senders = self._senders.get(channel)
         if senders is None:

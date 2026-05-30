@@ -47,6 +47,16 @@ class _FakePushTool:
         return self.result
 
 
+class _FakePushToolWithDirect(_FakePushTool):
+    def __init__(self, result: str = "文本已发送") -> None:
+        super().__init__(result)
+        self.direct_calls: list[dict[str, Any]] = []
+
+    async def execute_direct(self, **kwargs: Any) -> str:
+        self.direct_calls.append(kwargs)
+        return self.result
+
+
 class _FakePlanClient(_FakeClient):
     def __init__(
         self,
@@ -163,6 +173,26 @@ async def test_outbox_worker_dispatches_text_and_marks_succeeded():
     assert result["processed"] is True
     assert result["event_id"] == "qq:private:1"
     assert push_tool.calls == [
+        {
+            "channel": "qq_2365524513",
+            "chat_id": "1049511700",
+            "message": "hello",
+        }
+    ]
+    assert client.calls[-1] == ("mark_outbox_succeeded", "qq:private:1")
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_uses_direct_push_path_to_avoid_requeue():
+    client = _FakeClient(_delivery())
+    push_tool = _FakePushToolWithDirect()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result["processed"] is True
+    assert push_tool.calls == []
+    assert push_tool.direct_calls == [
         {
             "channel": "qq_2365524513",
             "chat_id": "1049511700",

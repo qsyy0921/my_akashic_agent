@@ -163,6 +163,67 @@ async def test_message_push_tool_covers_success_failure_and_fallbacks():
 
 
 @pytest.mark.asyncio
+async def test_message_push_tool_runtime_outbox_hook_and_direct_bypass():
+    tool = MessagePushTool()
+    sent: list[tuple[str, str]] = []
+    enqueued: list[dict[str, object]] = []
+
+    async def text(chat_id: str, message: str) -> None:
+        sent.append((chat_id, message))
+
+    async def enqueue(**kwargs) -> str:
+        enqueued.append(dict(kwargs))
+        return "文本已发送（Go outbox 已接收）"
+
+    tool.register_channel("telegram", text=text)
+    tool.configure_runtime_outbox(enqueue, channels=["telegram"])
+
+    runtime_result = await tool.execute(
+        channel="telegram",
+        chat_id=123,
+        message="hello",
+    )
+    direct_result = await tool.execute_direct(
+        channel="telegram",
+        chat_id=123,
+        message="direct",
+    )
+
+    assert "Go outbox 已接收" in runtime_result
+    assert enqueued == [
+        {
+            "channel": "telegram",
+            "chat_id": "123",
+            "message": "hello",
+            "file": None,
+            "image": None,
+        }
+    ]
+    assert "文本已发送" in direct_result
+    assert sent == [("123", "direct")]
+
+
+@pytest.mark.asyncio
+async def test_message_push_tool_runtime_outbox_falls_back_to_direct_sender():
+    tool = MessagePushTool()
+    sent: list[tuple[str, str]] = []
+
+    async def text(chat_id: str, message: str) -> None:
+        sent.append((chat_id, message))
+
+    async def enqueue(**kwargs) -> str:
+        raise RuntimeError("runtime down")
+
+    tool.register_channel("telegram", text=text)
+    tool.configure_runtime_outbox(enqueue, channels=["telegram"])
+
+    result = await tool.execute(channel="telegram", chat_id=1, message="fallback")
+
+    assert "文本已发送" in result
+    assert sent == [("1", "fallback")]
+
+
+@pytest.mark.asyncio
 async def test_memorize_tool_cover_branches(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):

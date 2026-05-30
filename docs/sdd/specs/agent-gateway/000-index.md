@@ -37,4 +37,6 @@ execution.
   Python compatibility workers perform platform sends.
 - `016-telegram-delivery-adapter.md`: Go-owned Telegram HTTP Bot API sender
   behind the delivery dispatch boundary.
+- `017-runtime-backed-message-push.md`: Python `message_push` enqueue path into
+  Go `/v1/outbound` and outbox workers for supported channels.
 - Agent architecture boundary specs live under `../agent-architecture/`.

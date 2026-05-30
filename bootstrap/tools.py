@@ -291,6 +291,7 @@ def build_registered_tools(
     )
     store = session_store or SessionStore(workspace / "sessions.db")
     push_tool = MessagePushTool()
+    _configure_runtime_backed_message_push(config, push_tool)
     memory_result = resolve_memory_toolset_provider(wiring.memory).register(
         tools,
         ToolsetDeps(
@@ -360,6 +361,62 @@ def build_registered_tools(
         peer_process_manager,
         peer_poller,
     )
+
+
+def _configure_runtime_backed_message_push(
+    config: Config,
+    push_tool: MessagePushTool,
+) -> None:
+    agent_runtime = getattr(config, "agent_runtime", None) or getattr(
+        config,
+        "agent_gateway",
+        None,
+    )
+    if agent_runtime is None:
+        return
+    if not bool(getattr(agent_runtime, "enabled", False)):
+        return
+    if not bool(getattr(agent_runtime, "outbox_worker_enabled", False)):
+        return
+    if not str(getattr(agent_runtime, "base_url", "")).strip():
+        return
+    channels = [
+        str(channel).strip()
+        for channel in (getattr(agent_runtime, "outbound_channels", None) or [])
+        if str(channel).strip()
+    ]
+    if not channels:
+        return
+    from integrations.agent_runtime import AgentRuntimeClient
+    from integrations.agent_runtime_outbound import AgentRuntimeOutboundEnqueuer
+
+    enqueuer = AgentRuntimeOutboundEnqueuer(
+        AgentRuntimeClient(agent_runtime),
+        account_id_by_channel=_runtime_outbound_account_ids_by_channel(config),
+    )
+    push_tool.configure_runtime_outbox(enqueuer.enqueue, channels=channels)
+
+
+def _runtime_outbound_account_ids_by_channel(config: Config) -> dict[str, str]:
+    channels_config = getattr(config, "channels", None)
+    if channels_config is None:
+        return {}
+    result: dict[str, str] = {}
+    telegram = getattr(channels_config, "telegram", None)
+    if telegram is not None:
+        channel_name = str(getattr(telegram, "channel_name", "")).strip()
+        if channel_name:
+            result[channel_name] = channel_name
+    qq = getattr(channels_config, "qq", None)
+    qq_accounts = list(getattr(channels_config, "qq_accounts", []) or [])
+    if qq is not None:
+        qq_accounts.insert(0, qq)
+    for account in qq_accounts:
+        channel_name = str(getattr(account, "channel_name", "")).strip()
+        account_id = str(getattr(account, "bot_uin", "")).strip()
+        if channel_name and account_id:
+            result[channel_name] = account_id
+    return result
 
 
 def _register_chatgpt_proxy_tools(

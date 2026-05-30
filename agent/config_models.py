@@ -145,6 +145,7 @@ class AgentGatewayIntegrationConfig:
     poll_interval_seconds: float = 2.0
     knowledge_job_interval_seconds: float = 60.0
     outbox_worker_enabled: bool = False
+    outbound_channels: list[str] = field(default_factory=lambda: ["telegram"])
 
 
 # 兼容别名：历史上该配置/集成在代码中叫 AgentGateway，运行时对外文档与目录使用

@@ -252,7 +252,10 @@ class AgentGatewayOutboxWorker:
         return str(route.get("kind") or "").strip()
 
     async def _send(self, **kwargs: Any) -> str:
-        result = await self._push_tool.execute(**kwargs)
+        execute = getattr(self._push_tool, "execute_direct", None)
+        if not callable(execute):
+            execute = self._push_tool.execute
+        result = await execute(**kwargs)
         text = str(result or "")
         if _is_send_failure(text):
             raise DeliveryDispatchError(_failure_kind(text), text)

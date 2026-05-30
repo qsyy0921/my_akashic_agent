@@ -340,6 +340,28 @@ class AgentGatewayClient:
             no_job_on_404=True,
         )
 
+    async def send_outbound(
+        self,
+        *,
+        event_id: str,
+        channel: dict[str, Any],
+        content: str = "",
+        attachments: list[dict[str, Any]] | None = None,
+        metadata: dict[str, str] | None = None,
+        timestamp: str = "",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "event_id": str(event_id),
+            "channel": channel,
+            "content": str(content or ""),
+            "attachments": attachments or [],
+            "metadata": metadata or {},
+        }
+        if timestamp:
+            body["timestamp"] = str(timestamp)
+        data = await self._request("POST", "/v1/outbound", json_body=body)
+        return data if isinstance(data, dict) else {"data": data}
+
     async def plan_outbox_dispatch(
         self,
         event_id: str,
