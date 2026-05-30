@@ -50,6 +50,37 @@ func TestQueueBackendEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
+	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
+		{
+			Provider:              "onebot",
+			Channel:               "qq_2365524513",
+			Transport:             "websocket",
+			Enabled:               true,
+			EndpointConfigured:    true,
+			AccessTokenConfigured: true,
+			Endpoint:              "ws://127.0.0.1:3002",
+		},
+	})
+	mux := http.NewServeMux()
+	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, viewer)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/delivery-adapters", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"provider":"onebot"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"channel":"qq_2365524513"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"transport":"websocket"`)) {
+		t.Fatalf("response missing adapter diagnostics: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"access_token_configured":true`)) {
+		t.Fatalf("response should expose token presence only: %s", response.Body.String())
+	}
+}
+
 func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(

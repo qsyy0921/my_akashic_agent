@@ -99,6 +99,13 @@ func RegisterDeliveryDispatchRoutes(
 	mux.Handle("/v1/delivery-dispatch/send", DeliveryDispatchSendHandler(planner))
 }
 
+func RegisterDeliveryAdapterDiagnosticsRoutes(
+	mux *http.ServeMux,
+	viewer inport.DeliveryAdapterDiagnosticsViewer,
+) {
+	mux.Handle("/v1/delivery-adapters", DeliveryAdaptersHandler(viewer))
+}
+
 func RegisterProactiveStateRoutes(
 	mux *http.ServeMux,
 	proactiveState inport.ProactiveStateManager,
@@ -357,6 +364,25 @@ func parseNonNegativeInt(value string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func DeliveryAdaptersHandler(viewer inport.DeliveryAdapterDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "delivery adapter diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := viewer.ListDeliveryAdapters(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
 }
 
 func SendHandler(sender inport.MessageSender) http.Handler {

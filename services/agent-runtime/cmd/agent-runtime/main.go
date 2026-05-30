@@ -201,6 +201,7 @@ func main() {
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
+	deliveryAdapterDiagnostics := appservice.NewDeliveryAdapterDiagnosticsService(deliveryAdapterDiagnosticsFromEnv())
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
@@ -220,6 +221,7 @@ func main() {
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
+	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 
 	log.Printf(
@@ -257,11 +259,7 @@ func envOrFirstDefaultWithSource(keys []string, fallback string) (string, string
 
 func newDeliveryAdapters() ([]outport.DeliveryAdapter, error) {
 	adapters := make([]outport.DeliveryAdapter, 0, 2)
-	token := strings.TrimSpace(os.Getenv("AKASHIC_TELEGRAM_BOT_TOKEN"))
-	if token == "" {
-		token = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-	}
-	if token != "" {
+	if token := telegramBotTokenFromEnv(); token != "" {
 		channels := csvEnvOrDefault("AKASHIC_TELEGRAM_CHANNELS", []string{"telegram"})
 		adapter, err := telegramdelivery.NewAdapter(telegramdelivery.Config{
 			Token:    token,

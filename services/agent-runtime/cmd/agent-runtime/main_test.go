@@ -120,6 +120,34 @@ func TestOneBotEndpointsFromEnvCombinesHTTPAndWebSocketEndpointConfig(t *testing
 	}
 }
 
+func TestDeliveryAdapterDiagnosticsFromEnvReportsConfiguredAliases(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002")
+	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq=NcatBot,qq_2365524513=NcatBot")
+	t.Setenv("AKASHIC_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("AKASHIC_TELEGRAM_CHANNELS", "telegram,dongri0909bot")
+
+	items := deliveryAdapterDiagnosticsFromEnv()
+
+	if len(items) != 4 {
+		t.Fatalf("expected four adapter diagnostics, got %#v", items)
+	}
+	qq := findDeliveryAdapterDiagnostic(t, items, "onebot", "qq")
+	if qq.Transport != "websocket" || !qq.Enabled || !qq.EndpointConfigured || !qq.AccessTokenConfigured {
+		t.Fatalf("unexpected qq diagnostic: %#v", qq)
+	}
+	if qq.Endpoint != "ws://127.0.0.1:3001" {
+		t.Fatalf("unexpected redacted qq endpoint: %q", qq.Endpoint)
+	}
+	bot := findDeliveryAdapterDiagnostic(t, items, "onebot", "qq_2365524513")
+	if bot.Transport != "websocket" || bot.Endpoint != "ws://127.0.0.1:3002" {
+		t.Fatalf("unexpected bot diagnostic: %#v", bot)
+	}
+	telegram := findDeliveryAdapterDiagnostic(t, items, "telegram", "dongri0909bot")
+	if telegram.Transport != "http" || !telegram.AccessTokenConfigured || telegram.Endpoint == "" {
+		t.Fatalf("unexpected telegram diagnostic: %#v", telegram)
+	}
+}
+
 func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 	view, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -436,6 +464,17 @@ func assertContainsString(t *testing.T, items []string, want string) {
 		}
 	}
 	t.Fatalf("expected %q in %#v", want, items)
+}
+
+func findDeliveryAdapterDiagnostic(t *testing.T, items []query.DeliveryAdapterDiagnosticsView, provider string, channel string) query.DeliveryAdapterDiagnosticsView {
+	t.Helper()
+	for _, item := range items {
+		if item.Provider == provider && item.Channel == channel {
+			return item
+		}
+	}
+	t.Fatalf("missing delivery adapter diagnostic provider=%s channel=%s in %#v", provider, channel, items)
+	return query.DeliveryAdapterDiagnosticsView{}
 }
 
 func assertBlockedWorkKind(t *testing.T, items []query.QueueExternalLeaseBlock, want string) {

@@ -57,10 +57,11 @@
 - [x] 完成 `agent_job` NATS 级 duplicate terminal delivery smoke：临时启动本地 NATS JetStream 容器，发布同一 terminal AgentJob 的两条不同 queue notification，验证两条都 ack 且不会触发 Python/平台副作用。
 - [x] 增加可选 Go runtime `agent_job` 过期租约后台恢复 runner：默认关闭；开启 `AKASHIC_AGENT_JOB_RECOVERY_ENABLED=true` 后定时触发同一 `RecoverExpiredLeases` 用例，支持 interval、limit、run-on-start 配置，并保持领域规则只在 domain/app 层。
 - [x] 完成 `agent_job` NATS result-ack 状态流 dry-run：临时本地 NATS JetStream 中验证同一 job 的 pending 通知 delayed nack、running 通知 delayed nack、Python-style succeeded 写回后 terminal ack；并新增 `AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true` 作为 live subject 扩容门禁。
+- [x] 增加 Go-owned delivery adapter 只读诊断接口 `GET /v1/delivery-adapters`：可查看 Telegram/OneBot channel alias、transport、endpoint 是否配置、token 是否配置和脱敏 endpoint，用于替代只看日志确认 adapter enabled，且不会触发真实平台发送。
 
 ## 下一步
 
-- [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
+- [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后通过日志和 `GET /v1/delivery-adapters` 确认 adapter enabled。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 

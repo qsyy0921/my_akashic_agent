@@ -14,6 +14,10 @@ requests. The current local NapCat containers expose WebSocket servers on
 `3001` and `3002`; normal HTTP requests to those ports return `426 Upgrade
 Required` because the server expects a WebSocket upgrade.
 
+The runtime also exposes read-only delivery adapter diagnostics so operators can
+verify channel aliases, transport type, endpoint presence, and access-token
+presence without sending QQ or Telegram messages.
+
 The adapter is deliberately limited to outbound action calls. QR login, inbound
 WebSocket observation, group observe-only capture, and media download remain in
 the existing Python/NapCat path until those parts receive separate migration
@@ -73,6 +77,16 @@ $env:AKASHIC_ONEBOT_ACCESS_TOKEN = "NcatBot"
 `channel=ws://host:port` shape. WebSocket endpoints are preferred over HTTP when
 both are configured for the same channel, because current NapCat containers are
 already running WebSocket servers.
+
+Read configured delivery adapters without triggering any platform side effect:
+
+```http
+GET /v1/delivery-adapters
+```
+
+The response includes provider, channel alias, transport, endpoint presence,
+redacted endpoint, and whether an access token is configured. It deliberately
+does not expose token values and does not perform a live send.
 
 ## Routing Rules
 
@@ -136,6 +150,8 @@ For two-bot interaction, this slice relies on existing controls:
   and route error mapping.
 - `cmd/agent-runtime` tests cover HTTP, WebSocket, multi-endpoint, and
   single-endpoint env parsing.
+- Delivery adapter diagnostics cover OneBot WebSocket aliases and Telegram
+  channel aliases without leaking token values.
 - `DeliveryDispatchStep` exposes `conversation_type` in the query view.
 - `config.example.toml` keeps QQ out of Go outbound by default and documents the
   env-gated cutover.

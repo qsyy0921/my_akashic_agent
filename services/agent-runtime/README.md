@@ -225,6 +225,15 @@ $env:AKASHIC_ONEBOT_ACCESS_TOKEN = "NcatBot"
 Keep QQ aliases out of `integrations.agent_runtime.outbound_channels` until the
 NapCat OneBot endpoint has passed a live send smoke test.
 
+Inspect configured delivery adapters without sending any platform message:
+
+```text
+GET /v1/delivery-adapters
+```
+
+The response shows provider, channel alias, transport, endpoint presence,
+redacted endpoint, and access-token presence. It does not expose token values.
+
 Register and query media/file metadata:
 
 ```text
