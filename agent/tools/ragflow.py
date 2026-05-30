@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.tools.base import Tool
+from group_memory.sources import GroupMessageSource, SessionGroupMessageSource
 from integrations.ragflow import RAGFlowClient, RAGFlowError
 from session.store import SessionStore
 
@@ -192,9 +193,16 @@ class RAGFlowIndexQQGroupTool(Tool):
         "required": ["dataset_id", "group_id"],
     }
 
-    def __init__(self, client: RAGFlowClient, session_store: SessionStore) -> None:
+    def __init__(
+        self,
+        client: RAGFlowClient,
+        session_store: SessionStore,
+        *,
+        message_source: GroupMessageSource | None = None,
+    ) -> None:
         self._client = client
         self._sessions = session_store
+        self._source = message_source or SessionGroupMessageSource(session_store)
 
     async def execute(
         self,
@@ -207,13 +215,18 @@ class RAGFlowIndexQQGroupTool(Tool):
     ) -> str:
         try:
             session_key = f"qq:gqq:{str(group_id).strip()}"
-            rows = self._sessions.fetch_session_messages(session_key)
+            limit = max(1, min(int(max_messages), 5000))
+            rows = self._source.fetch_new_messages(
+                session_key=session_key,
+                group_id=str(group_id).strip(),
+                after_seq=max(-1, int(since_seq) - 1),
+                limit=limit,
+            )
             selected = [
                 row
                 for row in rows
-                if int(row.get("seq", -1)) >= int(since_seq)
-                and str(row.get("role") or "") == "user"
-            ][-max(1, min(int(max_messages), 5000)) :]
+                if int(row.get("seq", -1)) >= int(since_seq) and str(row.get("role") or "") == "user"
+            ][:limit]
             if not selected:
                 return _json_error(f"没有可索引的群消息: {session_key}")
             lines = [

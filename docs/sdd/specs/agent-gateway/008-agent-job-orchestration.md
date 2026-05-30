@@ -181,5 +181,8 @@ Go owns:
     configured default datasets.
   - [x] Python knowledge worker consumes both job types and writes results back
     to generic jobs without group-visible replies.
+  - [x] `group_memory_extract` and `rag_ingest` read observe-only QQ source
+    messages from Go `/v1/inbox` when `agent_runtime` is enabled, keeping Python
+    session store only as a compatibility fallback.
 - [x] Add persistence.
 - [ ] Add dashboard job panel.

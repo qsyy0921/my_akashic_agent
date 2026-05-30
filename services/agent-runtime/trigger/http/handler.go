@@ -158,7 +158,7 @@ func InboxEventsHandler(inboxEvents inport.InboxEventViewer) http.Handler {
 			channelKind = r.URL.Query().Get("platform")
 		}
 		items, err := inboxEvents.ListInboxEvents(r.Context(), query.InboxEventFilter{
-			Limit:            parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			Limit:            parsePositiveInt(r.URL.Query().Get("limit"), 50, 5000),
 			AfterSeq:         parseNonNegativeInt(r.URL.Query().Get("after_seq"), -1),
 			AfterSeqSet:      strings.TrimSpace(r.URL.Query().Get("after_seq")) != "",
 			Order:            strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order"))),

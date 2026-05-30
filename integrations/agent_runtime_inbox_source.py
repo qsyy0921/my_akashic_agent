@@ -40,7 +40,7 @@ class AgentRuntimeInboxGroupMessageSource:
                 "observe_only": "true",
                 "after_seq": max(-1, int(after_seq)),
                 "order": "asc",
-                "limit": max(1, min(int(limit), 200)),
+                "limit": max(1, min(int(limit), 5000)),
             },
         )
         if not isinstance(data, list):

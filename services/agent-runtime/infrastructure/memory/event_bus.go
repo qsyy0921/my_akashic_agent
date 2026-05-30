@@ -245,7 +245,7 @@ func (s *Store) ListMediaAssets(_ context.Context, filter query.MediaAssetFilter
 	defer s.mu.Unlock()
 
 	limit := filter.Limit
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 5000 {
 		limit = 50
 	}
 	items := make([]model.MediaAsset, 0, limit)

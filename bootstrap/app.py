@@ -357,6 +357,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
     ragflow = getattr(config, "ragflow", None)
     ragflow_indexer = None
     ragflow_dataset_ids: list[str] = []
+    runtime_message_source = AgentRuntimeInboxGroupMessageSource(agent_runtime)
     if (
         ragflow is not None
         and bool(getattr(ragflow, "enabled", False))
@@ -372,6 +373,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
             ragflow_indexer = RAGFlowIndexQQGroupTool(
                 RAGFlowClient(ragflow),
                 session_store,
+                message_source=runtime_message_source,
             )
 
     worker = AgentRuntimeKnowledgeWorker(
@@ -379,7 +381,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
         group_memory=GroupMemoryService.from_workspace(
             workspace,
             session_store=session_store,
-            message_source=AgentRuntimeInboxGroupMessageSource(agent_runtime),
+            message_source=runtime_message_source,
         ),
         worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
         group_accounts=group_accounts,

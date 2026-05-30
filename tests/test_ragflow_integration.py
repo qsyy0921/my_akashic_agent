@@ -146,3 +146,89 @@ async def test_ragflow_index_qq_group_exports_observed_messages(tmp_path):
     assert payload["ok"] is True
     assert payload["message_count"] == 1
     assert payload["data"]["document_ids"] == ["doc1"]
+
+
+@pytest.mark.asyncio
+async def test_ragflow_index_qq_group_can_use_injected_message_source(tmp_path):
+    source = _FakeGroupMessageSource(
+        [
+            {
+                "id": "qq:gqq:284331268:5",
+                "session_key": "qq:gqq:284331268",
+                "seq": 5,
+                "role": "user",
+                "content": "[QQ群 284331268 | user_a] Boss A P2 先清小怪",
+                "timestamp": "2026-01-01T00:00:05+00:00",
+                "sender_id": "user_a",
+            },
+            {
+                "id": "qq:gqq:284331268:6",
+                "session_key": "qq:gqq:284331268",
+                "seq": 6,
+                "role": "user",
+                "content": "[QQ群 284331268 | user_b] Build B 堆暴击更稳",
+                "timestamp": "2026-01-01T00:00:06+00:00",
+                "sender_id": "user_b",
+            },
+        ]
+    )
+    uploaded: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/documents"):
+            uploaded["body"] = request.content.decode("utf-8", errors="ignore")
+            return _json_response([{"id": "doc1"}])
+        if request.url.path.endswith("/chunks"):
+            return _json_response({"started": True})
+        return httpx.Response(404)
+
+    payload = json.loads(
+        await RAGFlowIndexQQGroupTool(
+            _client(handler),
+            SessionStore(tmp_path / "sessions.db"),
+            message_source=source,
+        ).execute(
+            dataset_id="ds1",
+            group_id="284331268",
+            max_messages=2,
+            since_seq=5,
+        )
+    )
+
+    assert payload["ok"] is True
+    assert payload["message_count"] == 2
+    assert payload["display_name"] == "qq_group_284331268_seq5_6.txt"
+    assert source.calls == [
+        {
+            "session_key": "qq:gqq:284331268",
+            "group_id": "284331268",
+            "after_seq": 4,
+            "limit": 2,
+        }
+    ]
+    assert "Boss A P2" in uploaded["body"]
+    assert "Build B" in uploaded["body"]
+
+
+class _FakeGroupMessageSource:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+        self.calls: list[dict[str, Any]] = []
+
+    def fetch_new_messages(
+        self,
+        *,
+        session_key: str,
+        group_id: str,
+        after_seq: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        self.calls.append(
+            {
+                "session_key": session_key,
+                "group_id": group_id,
+                "after_seq": after_seq,
+                "limit": limit,
+            }
+        )
+        return [row for row in self._rows if int(row["seq"]) > after_seq][:limit]

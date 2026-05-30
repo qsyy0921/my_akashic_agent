@@ -82,7 +82,7 @@ func (s *Store) ListInboxEvents(_ context.Context, filter query.InboxEventFilter
 	defer s.mu.Unlock()
 
 	limit := filter.Limit
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 || limit > 5000 {
 		limit = 50
 	}
 	items := make([]model.InboxEvent, 0, limit)

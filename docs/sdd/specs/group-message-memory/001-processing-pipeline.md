@@ -142,6 +142,9 @@ Extraction should be typed, not just free-form summaries:
   observe-only QQ messages from Go `/v1/inbox` with `after_seq` and `order=asc`.
   The compatibility Python session store remains the fallback source when the Go
   runtime is disabled.
+- RAGFlow QQ group ingest uses the same message source port, so Go remains the
+  durable source of observed group messages for both memory extraction and
+  external RAG indexing.
 - Extraction, strategy evolution, and RAG ranking remain in Python because those
   paths are AI-pipeline logic rather than durable infrastructure.
 

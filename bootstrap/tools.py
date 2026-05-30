@@ -457,6 +457,22 @@ def _register_ragflow_tools(
     from integrations.ragflow import RAGFlowClient
 
     client = RAGFlowClient(ragflow)
+    runtime_message_source = None
+    agent_runtime = getattr(config, "agent_runtime", None) or getattr(
+        config,
+        "agent_gateway",
+        None,
+    )
+    if (
+        agent_runtime is not None
+        and bool(getattr(agent_runtime, "enabled", False))
+        and str(getattr(agent_runtime, "base_url", "")).strip()
+    ):
+        from integrations.agent_runtime_inbox_source import (
+            AgentRuntimeInboxGroupMessageSource,
+        )
+
+        runtime_message_source = AgentRuntimeInboxGroupMessageSource(agent_runtime)
     tools.register(
         RAGFlowRetrieveTool(client),
         risk="external-side-effect",
@@ -482,7 +498,11 @@ def _register_ragflow_tools(
         search_hint="ragflow 上传 文件 pdf docx txt excel parse ingest",
     )
     tools.register(
-        RAGFlowIndexQQGroupTool(client, session_store),
+        RAGFlowIndexQQGroupTool(
+            client,
+            session_store,
+            message_source=runtime_message_source,
+        ),
         risk="external-side-effect",
         always_on=False,
         search_hint="ragflow qq 群消息 索引 多来源 数据源 group chat ingest",

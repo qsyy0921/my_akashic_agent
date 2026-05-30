@@ -82,7 +82,7 @@ Filters:
 - `observe_only`
 - `after_seq`
 - `order=asc|desc`
-- `limit`
+- `limit` (up to 5000 for replay/RAG ingest batches)
 
 ## HTTP API
 
