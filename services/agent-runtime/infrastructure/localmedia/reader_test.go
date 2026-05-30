@@ -60,6 +60,48 @@ func TestReaderRejectsFileOutsideAllowedRoot(t *testing.T) {
 	}
 }
 
+func TestReaderCanDiscoverAkashicWorkspaceUploadRoot(t *testing.T) {
+	root := fakeAkashicRepo(t)
+	path := filepath.Join(root, ".akashic-workspace", "uploads", "qq-image.jpg")
+	if err := writeFile(path, "image bytes"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := localmedia.NewReaderWithDiscoveredRoots([]string{t.TempDir()}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := reader.OpenMediaAssetContent(context.Background(), testAsset(path))
+	if err != nil {
+		t.Fatalf("open content: %v", err)
+	}
+	defer content.Body.Close()
+	body, err := io.ReadAll(content.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "image bytes" {
+		t.Fatalf("unexpected body: %s", string(body))
+	}
+}
+
+func TestReaderDoesNotDiscoverAkashicRootsWhenDisabled(t *testing.T) {
+	root := fakeAkashicRepo(t)
+	path := filepath.Join(root, ".akashic-workspace", "uploads", "qq-image.jpg")
+	if err := writeFile(path, "image bytes"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := localmedia.NewReaderWithDiscoveredRoots([]string{t.TempDir()}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = reader.OpenMediaAssetContent(context.Background(), testAsset(path))
+	if !errors.Is(err, outport.ErrMediaAssetContentForbidden) {
+		t.Fatalf("expected forbidden, got %v", err)
+	}
+}
+
 func testAsset(path string) model.MediaAsset {
 	asset, err := model.NewMediaAsset(model.ChannelRef{
 		Kind:             "qq",
@@ -82,4 +124,24 @@ func testAsset(path string) model.MediaAsset {
 
 func writeFile(path string, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+func fakeAkashicRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, dir := range []string{
+		filepath.Join(root, ".akashic-workspace", "uploads"),
+		filepath.Join(root, "services", "agent-runtime"),
+	} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname = \"akashic-test\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "services", "agent-runtime", "go.mod"), []byte("module test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

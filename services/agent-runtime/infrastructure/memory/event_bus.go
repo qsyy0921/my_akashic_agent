@@ -13,27 +13,31 @@ import (
 )
 
 type Store struct {
-	mu            sync.Mutex
-	observed      []ObservedEvent
-	agentInbound  []model.MessageEnvelope
-	outbound      []model.OutboundMessage
-	sendRecords   []model.SendRecord
-	nonces        map[string]time.Time
-	audits        []AuditEvent
-	imageJobs     map[string]model.ImageJob
-	imageQueue    []string
-	outbox        map[string]model.OutboxDelivery
-	outboxOrder   []string
-	outboxQueue   []string
-	mediaAssets   map[string]model.MediaAsset
-	mediaOrder    []string
-	inboxEvents   map[string]model.InboxEvent
-	inboxOrder    []string
-	checkpoints   map[string]model.KnowledgeCheckpoint
-	checkpointIDs []string
-	agentJobs     map[string]model.AgentJob
-	agentJobOrder []string
-	jobEvents     []model.AgentJobEvent
+	mu                     sync.Mutex
+	observed               []ObservedEvent
+	agentInbound           []model.MessageEnvelope
+	outbound               []model.OutboundMessage
+	sendRecords            []model.SendRecord
+	nonces                 map[string]time.Time
+	audits                 []AuditEvent
+	imageJobs              map[string]model.ImageJob
+	imageQueue             []string
+	outbox                 map[string]model.OutboxDelivery
+	outboxOrder            []string
+	outboxQueue            []string
+	mediaAssets            map[string]model.MediaAsset
+	mediaOrder             []string
+	inboxEvents            map[string]model.InboxEvent
+	inboxOrder             []string
+	checkpoints            map[string]model.KnowledgeCheckpoint
+	checkpointIDs          []string
+	agentJobs              map[string]model.AgentJob
+	agentJobOrder          []string
+	jobEvents              []model.AgentJobEvent
+	proactiveDeliveries    map[string]model.ProactiveDeliveryRecord
+	proactiveDeliveryOrder []string
+	proactiveContextOnly   []model.ProactiveContextOnlyRecord
+	proactiveSessionMarks  map[string]model.ProactiveSessionMark
 }
 
 type ObservedEvent struct {
@@ -48,13 +52,15 @@ type AuditEvent struct {
 
 func NewStore() *Store {
 	return &Store{
-		nonces:      make(map[string]time.Time),
-		imageJobs:   make(map[string]model.ImageJob),
-		outbox:      make(map[string]model.OutboxDelivery),
-		mediaAssets: make(map[string]model.MediaAsset),
-		inboxEvents: make(map[string]model.InboxEvent),
-		checkpoints: make(map[string]model.KnowledgeCheckpoint),
-		agentJobs:   make(map[string]model.AgentJob),
+		nonces:                make(map[string]time.Time),
+		imageJobs:             make(map[string]model.ImageJob),
+		outbox:                make(map[string]model.OutboxDelivery),
+		mediaAssets:           make(map[string]model.MediaAsset),
+		inboxEvents:           make(map[string]model.InboxEvent),
+		checkpoints:           make(map[string]model.KnowledgeCheckpoint),
+		agentJobs:             make(map[string]model.AgentJob),
+		proactiveDeliveries:   make(map[string]model.ProactiveDeliveryRecord),
+		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
 	}
 }
 
@@ -745,4 +751,120 @@ func (s *Store) AgentJobs() []model.AgentJob {
 		}
 	}
 	return items
+}
+
+func (s *Store) SaveProactiveDelivery(_ context.Context, record model.ProactiveDeliveryRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := proactiveDeliveryKey(record.SessionKey, record.DeliveryKey)
+	if _, exists := s.proactiveDeliveries[key]; !exists {
+		s.proactiveDeliveryOrder = append(s.proactiveDeliveryOrder, key)
+	}
+	s.proactiveDeliveries[key] = record
+	return nil
+}
+
+func (s *Store) FindProactiveDelivery(_ context.Context, sessionKey string, deliveryKey string) (model.ProactiveDeliveryRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.proactiveDeliveries[proactiveDeliveryKey(sessionKey, deliveryKey)]
+	return record, ok, nil
+}
+
+func (s *Store) CountProactiveDeliveriesSince(_ context.Context, sessionKey string, since time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for _, record := range s.proactiveDeliveries {
+		if record.SessionKey == sessionKey && !record.SentAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *Store) ListProactiveDeliveries(_ context.Context, filter query.ProactiveDeliveryFilter) ([]model.ProactiveDeliveryRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items := make([]model.ProactiveDeliveryRecord, 0, limit)
+	for i := len(s.proactiveDeliveryOrder) - 1; i >= 0 && len(items) < limit; i-- {
+		key := s.proactiveDeliveryOrder[i]
+		record, ok := s.proactiveDeliveries[key]
+		if !ok {
+			continue
+		}
+		if filter.SessionKey != "" && record.SessionKey != filter.SessionKey {
+			continue
+		}
+		if filter.DeliveryKey != "" && record.DeliveryKey != filter.DeliveryKey {
+			continue
+		}
+		items = append(items, record)
+	}
+	return items, nil
+}
+
+func (s *Store) SaveProactiveContextOnly(_ context.Context, record model.ProactiveContextOnlyRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.proactiveContextOnly = append(s.proactiveContextOnly, record)
+	return nil
+}
+
+func (s *Store) CountProactiveContextOnlySince(_ context.Context, sessionKey string, since time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for _, record := range s.proactiveContextOnly {
+		if record.SessionKey == sessionKey && !record.SentAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *Store) SaveProactiveSessionMark(_ context.Context, mark model.ProactiveSessionMark) error {
+	if err := mark.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.proactiveSessionMarks[proactiveSessionMarkKey(mark.SessionKey, mark.Key)] = mark
+	return nil
+}
+
+func (s *Store) FindProactiveSessionMark(_ context.Context, sessionKey string, key string) (model.ProactiveSessionMark, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mark, ok := s.proactiveSessionMarks[proactiveSessionMarkKey(sessionKey, key)]
+	return mark, ok, nil
+}
+
+func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {
+	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(deliveryKey)
+}
+
+func proactiveSessionMarkKey(sessionKey string, key string) string {
+	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(key)
 }

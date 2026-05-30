@@ -70,3 +70,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-21-media-safe-root-discovery.md`
 - `2026-05-30-phase8-22-knowledge-worker-diagnostics.md`
 - `2026-05-30-phase8-23-agent-job-event-stream.md`
+- `2026-05-30-phase8-24-proactive-scheduling-state.md`

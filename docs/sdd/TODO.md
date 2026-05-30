@@ -21,10 +21,11 @@
 - [x] 增加 Go-owned memory/RAG worker 诊断接口，聚合 generic job 与 checkpoint 状态。
 - [x] 在 generic job leasing 后增加 Go-owned durable stream，使用 JSONL 记录 job 生命周期事件。
 - [x] 修复 dashboard 媒体附件缩略图回退逻辑，前端可根据 `asset_id` 直接生成 Go media content 代理链接。
+- [x] 增加 Go-owned proactive scheduling state API 和 JSON 持久化，覆盖 delivery 去重、窗口计数、context-only 节流和 drift 间隔标记。
 
 ## 下一步
 
-- [ ] 将 proactive delivery scheduling state 迁移到 Go，Python 继续负责 prompt 和决策生成。
+- [ ] 将 Python proactive loop 接入 Go proactive scheduling state，保留 SQLite fallback。
 - [ ] 在当前 Python compatibility outbox worker 稳定后，将 Telegram/QQ outbound dispatch 收到 Go `DeliveryAdapter` 后面。
 - [ ] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream。
 - [ ] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 eval worker。

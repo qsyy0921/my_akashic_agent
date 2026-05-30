@@ -75,6 +75,20 @@ func RegisterAgentJobEventRoutes(
 	mux.Handle("/v1/job-events", AgentJobEventsHandler(jobEvents))
 }
 
+func RegisterProactiveStateRoutes(
+	mux *http.ServeMux,
+	proactiveState inport.ProactiveStateManager,
+) {
+	mux.Handle("/v1/proactive/deliveries", ProactiveDeliveriesHandler(proactiveState))
+	mux.Handle("/v1/proactive/deliveries/duplicate", ProactiveDeliveryDuplicateHandler(proactiveState))
+	mux.Handle("/v1/proactive/deliveries/count", ProactiveDeliveryCountHandler(proactiveState))
+	mux.Handle("/v1/proactive/context-only", ProactiveContextOnlyHandler(proactiveState))
+	mux.Handle("/v1/proactive/context-only/last", ProactiveContextOnlyLastHandler(proactiveState))
+	mux.Handle("/v1/proactive/context-only/count", ProactiveContextOnlyCountHandler(proactiveState))
+	mux.Handle("/v1/proactive/drift-runs", ProactiveDriftRunsHandler(proactiveState))
+	mux.Handle("/v1/proactive/drift-runs/last", ProactiveDriftRunLastHandler(proactiveState))
+}
+
 func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: map[string]string{"status": "ok"}})
@@ -808,6 +822,238 @@ func AgentJobEventsHandler(jobEvents inport.AgentJobEventViewer) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func ProactiveDeliveriesHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			items, err := proactiveState.ListDeliveries(r.Context(), query.ProactiveDeliveryFilter{
+				Limit:       parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+				SessionKey:  r.URL.Query().Get("session_key"),
+				DeliveryKey: r.URL.Query().Get("delivery_key"),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+		case http.MethodPost:
+			var request dto.RecordProactiveDeliveryRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			timestamp, err := parseOptionalTimestamp(request.Timestamp)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			record, err := proactiveState.RecordDelivery(r.Context(), command.RecordProactiveDeliveryCommand{
+				SessionKey:  request.SessionKey,
+				DeliveryKey: request.DeliveryKey,
+				Timestamp:   timestamp,
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func ProactiveDeliveryDuplicateHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		duplicate, err := proactiveState.IsDeliveryDuplicate(r.Context(), command.CheckProactiveDeliveryDuplicateCommand{
+			SessionKey:  r.URL.Query().Get("session_key"),
+			DeliveryKey: r.URL.Query().Get("delivery_key"),
+			WindowHours: parsePositiveInt(r.URL.Query().Get("window_hours"), 24, 8760),
+			Timestamp:   timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: duplicate})
+	})
+}
+
+func ProactiveDeliveryCountHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		count, err := proactiveState.CountDeliveries(r.Context(), command.CountProactiveDeliveriesCommand{
+			SessionKey:  r.URL.Query().Get("session_key"),
+			WindowHours: parsePositiveInt(r.URL.Query().Get("window_hours"), 24, 8760),
+			Timestamp:   timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: count})
+	})
+}
+
+func ProactiveContextOnlyHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveSessionRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mark, err := proactiveState.RecordContextOnly(r.Context(), command.RecordProactiveContextOnlyCommand{
+			SessionKey: request.SessionKey,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveContextOnlyLastHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mark, err := proactiveState.LastContextOnly(r.Context(), r.URL.Query().Get("session_key"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveContextOnlyCountHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		count, err := proactiveState.CountContextOnly(r.Context(), command.CountProactiveContextOnlyCommand{
+			SessionKey:  r.URL.Query().Get("session_key"),
+			WindowHours: parsePositiveInt(r.URL.Query().Get("window_hours"), 24, 8760),
+			Timestamp:   timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: count})
+	})
+}
+
+func ProactiveDriftRunsHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveSessionRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mark, err := proactiveState.RecordDriftRun(r.Context(), command.RecordProactiveDriftRunCommand{
+			SessionKey: request.SessionKey,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveDriftRunLastHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mark, err := proactiveState.LastDriftRun(r.Context(), r.URL.Query().Get("session_key"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: mark})
 	})
 }
 

@@ -207,9 +207,10 @@ GET  /v1/media-assets/{asset_id}/content
 The first media registry slice is metadata-only. The `/content` route returns
 bytes only for registered local files under configured safe roots. Configure
 roots with `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated list. If omitted,
-local runs allow Akashic workspace upload directories under the repository root.
-Remote platform URLs must be mirrored into a safe root before the content route
-will serve them.
+local runs allow Akashic workspace upload directories under the repository root,
+and can recover the same roots from absolute asset paths inside an Akashic
+workspace. Remote platform URLs must be mirrored into a safe root before the
+content route will serve them.
 
 Normalized inbound messages and shadow-observed messages also register their
 attachments into the media registry automatically. Attachment-provided ids are
@@ -247,6 +248,28 @@ Inspect the stream through:
 GET /v1/job-events?limit=50
 GET /v1/job-events?job_id=rag_ingest:qq:3219982:ds1:1
 GET /v1/job-events?type=rag_ingest&event=failed
+```
+
+Persist proactive scheduling state across runtime restarts:
+
+```powershell
+$env:AKASHIC_PROACTIVE_STATE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\proactive-state.json"
+```
+
+This state is deterministic runtime infrastructure: delivery dedupe,
+delivery-window counts, context-only send markers, and drift interval markers.
+Python still owns prompt selection, LLM decisions, and final proactive content.
+
+```text
+POST /v1/proactive/deliveries
+GET  /v1/proactive/deliveries?session_key=telegram:100&limit=50
+GET  /v1/proactive/deliveries/duplicate?session_key=telegram:100&delivery_key=abc&window_hours=24
+GET  /v1/proactive/deliveries/count?session_key=telegram:100&window_hours=24
+POST /v1/proactive/context-only
+GET  /v1/proactive/context-only/last?session_key=telegram:100
+GET  /v1/proactive/context-only/count?session_key=telegram:100&window_hours=24
+POST /v1/proactive/drift-runs
+GET  /v1/proactive/drift-runs/last?session_key=telegram:100
 ```
 
 Read and advance knowledge/RAG checkpoints:

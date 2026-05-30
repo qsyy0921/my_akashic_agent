@@ -16,10 +16,15 @@ import (
 )
 
 type Reader struct {
-	roots []string
+	roots                []string
+	allowDiscoveredRoots bool
 }
 
 func NewReader(roots []string) (*Reader, error) {
+	return NewReaderWithDiscoveredRoots(roots, false)
+}
+
+func NewReaderWithDiscoveredRoots(roots []string, allowDiscoveredRoots bool) (*Reader, error) {
 	cleaned := make([]string, 0, len(roots))
 	for _, root := range roots {
 		root = strings.TrimSpace(root)
@@ -35,7 +40,7 @@ func NewReader(roots []string) (*Reader, error) {
 		}
 		cleaned = append(cleaned, filepath.Clean(abs))
 	}
-	return &Reader{roots: cleaned}, nil
+	return &Reader{roots: cleaned, allowDiscoveredRoots: allowDiscoveredRoots}, nil
 }
 
 func (r *Reader) OpenMediaAssetContent(ctx context.Context, asset model.MediaAsset) (outport.MediaAssetContent, error) {
@@ -94,21 +99,74 @@ func (r *Reader) OpenMediaAssetContent(ctx context.Context, asset model.MediaAss
 
 func (r *Reader) allowed(path string) bool {
 	for _, root := range r.roots {
-		rel, err := filepath.Rel(root, path)
-		if err != nil || rel == "." {
-			if err == nil {
-				return true
-			}
-			continue
-		}
-		if rel == "" || rel == "." {
+		if pathInsideRoot(root, path) {
 			return true
 		}
-		if !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".." && !filepath.IsAbs(rel) {
+	}
+	if !r.allowDiscoveredRoots {
+		return false
+	}
+	for _, root := range discoveredAkashicMediaRoots(path) {
+		if pathInsideRoot(root, path) {
 			return true
 		}
 	}
 	return false
+}
+
+func pathInsideRoot(root string, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	if rel == "" || rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) &&
+		rel != ".." &&
+		!filepath.IsAbs(rel)
+}
+
+func discoveredAkashicMediaRoots(path string) []string {
+	current := filepath.Dir(path)
+	roots := make([]string, 0, 3)
+	seen := make(map[string]struct{})
+	for {
+		if isAkashicRepoRoot(current) {
+			for _, candidate := range []string{
+				filepath.Join(current, ".akashic-workspace", "uploads"),
+				filepath.Join(current, ".akashic-workspace", "generated_images"),
+				filepath.Join(current, "generated_images"),
+			} {
+				cleaned := filepath.Clean(candidate)
+				key := strings.ToLower(cleaned)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				roots = append(roots, cleaned)
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return roots
+}
+
+func isAkashicRepoRoot(path string) bool {
+	if stat, err := os.Stat(filepath.Join(path, ".akashic-workspace")); err == nil && stat.IsDir() {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(path, "pyproject.toml")); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(path, "services", "agent-runtime", "go.mod")); err != nil {
+		return false
+	}
+	return true
 }
 
 func localPath(asset model.MediaAsset) (string, error) {

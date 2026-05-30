@@ -16,9 +16,14 @@ Implementation summary:
   both the current working directory and the executable directory.
 - Default local media roots now remain correct when the runtime starts from the
   repository root, `services/agent-runtime`, or `.tmp/bin`.
+- Added a default-mode fallback that can rediscover the same Akashic media roots
+  from an absolute asset path under `.akashic-workspace/uploads`,
+  `.akashic-workspace/generated_images`, or `generated_images`.
 - Kept `AKASHIC_MEDIA_ASSET_ROOTS` as the explicit production override.
+- If `AKASHIC_MEDIA_ASSET_ROOTS` is explicitly set, the path-based fallback is
+  disabled and only the configured roots are allowed.
 - Added focused Go tests for repository-root and binary/service-directory
-  startup layouts.
+  startup layouts, plus asset-path rediscovery and explicit-root rejection.
 
 Tests run:
 - `go test ./...` under `services/agent-runtime`

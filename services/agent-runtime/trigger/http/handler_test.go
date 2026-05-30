@@ -867,3 +867,66 @@ func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
 		t.Fatalf("list response missing conversation id: %s", response.Body.String())
 	}
 }
+
+func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
+	store := memory.NewStore()
+	proactiveState := appservice.NewProactiveStateService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
+
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	body := []byte(`{"session_key":"telegram:1","delivery_key":"delivery-a","timestamp":"` + now + `"}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/deliveries", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected delivery record 202, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/proactive/deliveries/duplicate?session_key=telegram:1&delivery_key=delivery-a&window_hours=24&timestamp=2026-05-30T11:00:00Z", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected duplicate 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"duplicate":true`)) {
+		t.Fatalf("duplicate response missing true flag: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/v1/proactive/deliveries/count?session_key=telegram:1&window_hours=24&timestamp=2026-05-30T11:00:00Z", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected count 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"count":1`)) {
+		t.Fatalf("count response missing one delivery: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/context-only", bytes.NewReader([]byte(`{"session_key":"telegram:1","timestamp":"2026-05-30T11:30:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected context-only 202, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/proactive/context-only/last?session_key=telegram:1", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected context last 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"found":true`)) {
+		t.Fatalf("context last response missing found flag: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/drift-runs", bytes.NewReader([]byte(`{"session_key":"telegram:1","timestamp":"2026-05-30T12:00:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected drift 202, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/proactive/drift-runs/last?session_key=telegram:1", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected drift last 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"key":"drift_last_at"`)) {
+		t.Fatalf("drift response missing marker key: %s", response.Body.String())
+	}
+}

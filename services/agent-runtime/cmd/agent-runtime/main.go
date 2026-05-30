@@ -20,6 +20,7 @@ import (
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
+	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
@@ -73,6 +74,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init knowledge checkpoint repository: %v", err)
 	}
+	proactiveStateRepository, err := newProactiveStateRepository()
+	if err != nil {
+		log.Fatalf("init proactive state repository: %v", err)
+	}
 
 	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
 		store,
@@ -98,6 +103,7 @@ func main() {
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
+	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 
 	mux := http.NewServeMux()
@@ -105,6 +111,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
+	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 
 	log.Printf("akashic agent runtime listening on %s (configured by %s); bot_ids=%s", addr, addrSource, strings.Join(botIDs, ","))
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -229,12 +236,27 @@ func newKnowledgeCheckpointRepository() (outport.KnowledgeCheckpointRepository, 
 	return memory.NewStore(), nil
 }
 
+func newProactiveStateRepository() (outport.ProactiveStateRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_PROACTIVE_STATE_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return proactivestate.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_PROACTIVE_STATE_PATH")); path != "" {
+		return proactivestate.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
 	roots := csvEnvOrDefault("AKASHIC_MEDIA_ASSET_ROOTS", nil)
+	explicitRoots := len(roots) > 0
 	if len(roots) == 0 {
 		roots = defaultMediaAssetRoots()
 	}
-	return localmedia.NewReader(roots)
+	return localmedia.NewReaderWithDiscoveredRoots(roots, !explicitRoots)
 }
 
 func defaultMediaAssetRoots() []string {
