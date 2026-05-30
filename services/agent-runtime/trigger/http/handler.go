@@ -137,6 +137,13 @@ func RegisterDeliveryAdapterHealthRoutes(
 	mux.Handle("/v1/delivery-adapters/health", DeliveryAdapterHealthHandler(viewer))
 }
 
+func RegisterDeliverySmokeRoutes(
+	mux *http.ServeMux,
+	checker inport.DeliverySmokeReadinessChecker,
+) {
+	mux.Handle("/v1/delivery-smoke/readiness", DeliverySmokeReadinessHandler(checker))
+}
+
 func RegisterRuntimeOverviewRoutes(
 	mux *http.ServeMux,
 	viewer inport.RuntimeOverviewViewer,
@@ -859,6 +866,76 @@ func DeliveryDispatchReadinessHandler(planner inport.DeliveryDispatchPlanner) ht
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
 	})
+}
+
+func DeliverySmokeReadinessHandler(checker inport.DeliverySmokeReadinessChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checker == nil {
+			http.Error(w, "delivery smoke readiness disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.DeliverySmokeReadinessRequest
+		raw, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
+		if err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(string(raw)) != "" {
+			if err := json.Unmarshal(raw, &request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+		}
+		result, err := checker.CheckDeliverySmokeReadiness(r.Context(), command.CheckDeliverySmokeReadinessCommand{
+			Cases:                 deliverySmokeCaseCommands(request.Cases),
+			GroupIDs:              request.GroupIDs,
+			ChannelByAccount:      request.ChannelByAccount,
+			IncludeSyntheticMedia: request.IncludeSyntheticMedia,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
+	})
+}
+
+func deliverySmokeCaseCommands(items []dto.DeliverySmokeCaseRequest) []command.DeliverySmokeCaseCommand {
+	commands := make([]command.DeliverySmokeCaseCommand, 0, len(items))
+	for _, item := range items {
+		commands = append(commands, command.DeliverySmokeCaseCommand{
+			Name:             item.Name,
+			ChannelKind:      item.ChannelKind,
+			AccountID:        item.AccountID,
+			ConversationID:   item.ConversationID,
+			ConversationType: item.ConversationType,
+			Content:          item.Content,
+			Attachments:      deliverySmokeAttachmentCommands(item.Attachments),
+			Metadata:         item.Metadata,
+		})
+	}
+	return commands
+}
+
+func deliverySmokeAttachmentCommands(items []dto.DeliverySmokeAttachmentRequest) []command.DeliverySmokeAttachmentCommand {
+	commands := make([]command.DeliverySmokeAttachmentCommand, 0, len(items))
+	for _, item := range items {
+		commands = append(commands, command.DeliverySmokeAttachmentCommand{
+			Kind:     item.Kind,
+			URL:      item.URL,
+			Name:     item.Name,
+			MimeType: item.MimeType,
+		})
+	}
+	return commands
 }
 
 func deliveryDispatchErrorKind(err error) string {

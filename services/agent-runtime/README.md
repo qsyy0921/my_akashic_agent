@@ -275,6 +275,21 @@ The browser dashboard exposes the same health probe from the `Runtime Overview`
 panel. Open the `Delivery Adapters` detail and use `Probe Health`; normal
 overview refreshes do not call live OneBot/Telegram health checks automatically.
 
+Check a QQ/NapCat delivery smoke matrix without creating outbox records or
+sending platform messages:
+
+```text
+POST /v1/delivery-smoke/readiness
+```
+
+With an empty body, the runtime builds default private two-account cases from
+`AKASHIC_BOT_IDS`, adds text/image/file variants, and maps accounts to
+`qq_<bot id>` aliases when those aliases exist. Configure
+`AKASHIC_DELIVERY_SMOKE_GROUP_IDS` to include group text/image/file cases, or
+send explicit `cases` in the request body. The endpoint only verifies Go
+dispatch planning and `DeliveryAdapter` channel availability; response
+`side_effect` is always `none`.
+
 Register and query media/file metadata:
 
 ```text

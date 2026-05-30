@@ -214,6 +214,11 @@ func main() {
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
 	deliveryAdapterDiagnostics := appservice.NewDeliveryAdapterDiagnosticsService(deliveryAdapterDiagnosticsFromEnv())
 	deliveryAdapterHealth := appservice.NewDeliveryAdapterHealthService(deliveryAdapterHealthProbes(deliveryAdapters)...)
+	deliverySmokeCases, deliverySmokeChannelByAccount := deliverySmokeReadinessConfigFromEnv(botIDs, onebotEndpointsFromEnv())
+	deliverySmokeReadiness := appservice.NewDeliverySmokeReadinessService(deliveryAdapters, appservice.DeliverySmokeReadinessConfig{
+		DefaultCases:     deliverySmokeCases,
+		ChannelByAccount: deliverySmokeChannelByAccount,
+	})
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
@@ -254,6 +259,7 @@ func main() {
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
 	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, deliveryAdapterHealth)
+	httptrigger.RegisterDeliverySmokeRoutes(mux, deliverySmokeReadiness)
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
@@ -921,6 +922,38 @@ func TestDeliveryDispatchReadinessEndpointReportsMissingAdapter(t *testing.T) {
 		if !strings.Contains(bodyText, expected) {
 			t.Fatalf("readiness response missing %s: %s", expected, bodyText)
 		}
+	}
+}
+
+func TestDeliverySmokeReadinessEndpointChecksMatrixWithoutSending(t *testing.T) {
+	adapter := &fakeDeliveryAdapter{channel: "qq_2365524513"}
+	deliverySmoke := appservice.NewDeliverySmokeReadinessService([]outport.DeliveryAdapter{adapter}, appservice.DeliverySmokeReadinessConfig{
+		ChannelByAccount: map[string]string{"2365524513": "qq_2365524513"},
+	})
+	mux := http.NewServeMux()
+	httptrigger.RegisterDeliverySmokeRoutes(mux, deliverySmoke)
+
+	request := []byte(`{"cases":[{"name":"qq_private_file_2365524513_to_1049511700","channel_kind":"qq","account_id":"2365524513","conversation_id":"1049511700","conversation_type":"private","content":"smoke file","attachments":[{"kind":"file","url":"base64://YXNoaWNhYw==","name":"smoke.txt","mime_type":"text/plain"}]}]}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/delivery-smoke/readiness", bytes.NewReader(request)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected smoke readiness 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"delivery_smoke_ready"`,
+		`"name":"qq_private_file_2365524513_to_1049511700"`,
+		`"channel":"qq_2365524513"`,
+		`"kind":"file"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("smoke readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+	if len(adapter.steps) != 0 {
+		t.Fatalf("smoke readiness must not dispatch adapter steps: %+v", adapter.steps)
 	}
 }
 

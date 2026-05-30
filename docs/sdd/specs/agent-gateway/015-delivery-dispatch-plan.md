@@ -26,6 +26,11 @@ runtime has a DeliveryAdapter for the planned channel. This moves route and
 adapter readiness decisions behind the Go runtime without sending a platform
 message.
 
+A second read-only smoke readiness endpoint checks the same planner and adapter
+support against synthetic delivery cases before any outbox record is created.
+This is the pre-live-send gate for dual QQ/NapCat account setup and media
+capability checks.
+
 ## Non-Goals
 
 - Do not replace `message_push` or NcatBot/Telegram SDK sends in this slice.
@@ -60,6 +65,29 @@ Content-Type: application/json
   }
 }
 ```
+
+Smoke readiness check:
+
+```http
+POST /v1/delivery-smoke/readiness
+Content-Type: application/json
+
+{
+  "group_ids": ["27234224"],
+  "include_synthetic_media": true,
+  "channel_by_account": {
+    "1049511700": "qq_1049511700",
+    "2365524513": "qq_2365524513"
+  }
+}
+```
+
+An empty request body uses runtime defaults from `AKASHIC_BOT_IDS`,
+`AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT`, OneBot channel aliases, and optional
+`AKASHIC_DELIVERY_SMOKE_GROUP_IDS`. The response contains per-case
+`ready/reason`, the dispatch plan, missing channels, aggregate totals,
+blockers, and `side_effect=none`. It never calls
+`DispatchDeliveryStep`.
 
 Response:
 
@@ -144,6 +172,9 @@ outbox failure classification:
    delivery records are surfaced as `validation_error`.
 8. Readiness checks must not call `DispatchDeliveryStep`; they inspect the
    planned channels and adapter support only.
+9. Smoke readiness checks must not persist outbox rows and must not call
+   platform send APIs. They build synthetic `OutboxDelivery` values in memory
+   only to reuse domain planning rules.
 
 ## Layering
 
@@ -167,6 +198,8 @@ outbox failure classification:
 - Go HTTP tests cover the dispatch plan endpoint.
 - Go HTTP tests cover readiness with configured and missing adapters, proving
   no adapter send method is called.
+- Go HTTP tests cover smoke readiness with synthetic media, proving no adapter
+  send method is called.
 - Python client tests cover plan request and Go error-kind propagation.
 - Python client tests cover readiness response validation.
 - Python worker tests prove runtime plan execution is preferred and errors are

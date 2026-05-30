@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
@@ -217,6 +218,27 @@ func TestDeliveryAdapterHealthProbesSelectProbeCapableAdapters(t *testing.T) {
 	if len(probes) != 1 {
 		t.Fatalf("expected one health probe, got %#v", probes)
 	}
+}
+
+func TestDeliverySmokeReadinessConfigFromEnvBuildsDualAccountMediaMatrix(t *testing.T) {
+	t.Setenv("AKASHIC_ONEBOT_WS_URLS", "qq=ws://127.0.0.1:3001,qq_1049511700=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002")
+	t.Setenv("AKASHIC_DELIVERY_SMOKE_GROUP_IDS", "27234224")
+
+	endpoints := onebotEndpointsFromEnv()
+	cases, channelByAccount := deliverySmokeReadinessConfigFromEnv([]string{"1049511700", "2365524513"}, endpoints)
+
+	if channelByAccount["1049511700"] != "qq_1049511700" {
+		t.Fatalf("expected exact 104 alias, got %#v", channelByAccount)
+	}
+	if channelByAccount["2365524513"] != "qq_2365524513" {
+		t.Fatalf("expected exact 236 alias, got %#v", channelByAccount)
+	}
+	if len(cases) != 12 {
+		t.Fatalf("expected private and group text/image/file matrix, got %d cases: %#v", len(cases), cases)
+	}
+	assertSmokeCase(t, cases, "qq_private_text_1049511700_to_2365524513")
+	assertSmokeCase(t, cases, "qq_private_image_2365524513_to_1049511700")
+	assertSmokeCase(t, cases, "qq_group_file_1049511700_to_27234224")
 }
 
 func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
@@ -622,6 +644,16 @@ func assertContainsString(t *testing.T, items []string, want string) {
 		}
 	}
 	t.Fatalf("expected %q in %#v", want, items)
+}
+
+func assertSmokeCase(t *testing.T, items []command.DeliverySmokeCaseCommand, want string) {
+	t.Helper()
+	for _, item := range items {
+		if item.Name == want {
+			return
+		}
+	}
+	t.Fatalf("expected smoke case %q in %#v", want, items)
 }
 
 func findDeliveryAdapterDiagnostic(t *testing.T, items []query.DeliveryAdapterDiagnosticsView, provider string, channel string) query.DeliveryAdapterDiagnosticsView {

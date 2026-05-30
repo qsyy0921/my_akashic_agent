@@ -77,6 +77,7 @@
 - [x] 增加 Go-owned runtime config 只读诊断 `GET /v1/runtime-config`：脱敏展示当前进程地址、bot ids、OneBot/Telegram env、预期 QQ channel alias、缺失项、worker/cutover 开关，并接入 `GET /v1/runtime-overview` 的 Runtime Config 卡片。
 - [x] 配置并验证当前运行态 OneBot/Telegram adapter：重建并重启 `agent-runtime`，启用 `qq`、`qq_1049511700`、`qq_2365524513` WebSocket alias，确认 `/v1/runtime-config`、`/v1/delivery-adapters`、`/v1/delivery-adapters/health`、`/v1/runtime-workers`、`/v1/runtime-overview` 和 dashboard runtime overview 均可用；Go outbox delivery worker 仍保持关闭，未执行真实发送。
 - [x] 强化 `GET /v1/runtime-config` 脱敏策略：token/secret 类环境变量只返回 `redacted` 或 `channel=redacted`，不再暴露首尾片段；`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN` 作为布尔配置保留 true/false 可见性。
+- [x] 增加 Go-owned delivery smoke readiness 矩阵 `POST /v1/delivery-smoke/readiness`：在未创建 outbox、未触发 QQ/Telegram 平台发送的情况下，复用 Go dispatch planner 检查双 QQ 私聊、可选群文本、合成图片和文件 case 是否有可用 DeliveryAdapter，并返回 `side_effect=none`、missing channel 与阻断原因。
 
 ## 下一步
 

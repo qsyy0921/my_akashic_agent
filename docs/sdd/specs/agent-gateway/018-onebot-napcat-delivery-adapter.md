@@ -126,6 +126,28 @@ The normal overview load path does not call the live health endpoint. The
 operator must open the `Delivery Adapters` detail and click the health probe
 action.
 
+Read a delivery smoke readiness matrix without creating outbox records or
+sending messages:
+
+```http
+POST /v1/delivery-smoke/readiness
+```
+
+With an empty body, the runtime creates default 104/236-style private
+two-account cases from `AKASHIC_BOT_IDS`, including text, synthetic image, and
+synthetic file variants. `AKASHIC_DELIVERY_SMOKE_PRIVATE_PAIRS` can override
+the private directions using `from>to,from2>to2`.
+`AKASHIC_DELIVERY_SMOKE_GROUP_IDS` adds observe-safe group text/image/file
+readiness cases. `AKASHIC_DELIVERY_SMOKE_INCLUDE_MEDIA=false` limits generated
+defaults to text-only. `AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT` can explicitly map
+bot account ids to channel aliases; otherwise `qq_<bot id>` is preferred when
+configured, then `qq` for the primary account.
+
+The endpoint returns the same dispatch plan shape plus per-case missing
+channels, aggregate totals, blockers, and `side_effect=none`. It only checks
+planner output and `DeliveryAdapter.SupportsDeliveryChannel`; live media upload
+behavior is still covered by the later explicit send smoke.
+
 ## Routing Rules
 
 The dispatch planner maps an outbox delivery to platform steps:
@@ -196,6 +218,9 @@ For two-bot interaction, this slice relies on existing controls:
   without calling message send APIs.
 - Runtime overview dashboard exposes a manual health probe action without
   automatically calling live adapter health during panel refresh.
+- Delivery smoke readiness covers dual-account private, optional group,
+  synthetic image, and synthetic file case planning without sending platform
+  messages.
 - `DeliveryDispatchStep` exposes `conversation_type` in the query view.
 - `config.example.toml` keeps QQ out of Go outbound by default and documents the
   env-gated cutover.
