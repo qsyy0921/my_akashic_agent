@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
 )
@@ -169,6 +170,42 @@ func TestTelegramAdapterSupportsConfiguredChannelAliases(t *testing.T) {
 	}
 	if adapter.SupportsDeliveryChannel("qq") {
 		t.Fatal("did not expect qq to be supported")
+	}
+}
+
+func TestTelegramAdapterHealthUsesGetMeWithoutSendingMessage(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		if requestPath != "/bottoken/getMe" {
+			t.Fatalf("unexpected path: %s", requestPath)
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":7689386159,"is_bot":true,"first_name":"Dongri","username":"dongri0909bot"}}`))
+	}))
+	defer server.Close()
+	adapter, err := telegramdelivery.NewAdapter(telegramdelivery.Config{
+		Token:    "token",
+		BaseURL:  server.URL,
+		Channels: []string{"telegram", "dongri0909bot"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := adapter.CheckDeliveryAdapterHealth(context.Background(), query.DeliveryAdapterHealthFilter{TimeoutSeconds: 1})
+	if err != nil {
+		t.Fatalf("check health: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected two health items, got %#v", items)
+	}
+	for _, item := range items {
+		if !item.Healthy || !item.Authenticated || item.AccountID != "7689386159" || item.AccountName != "dongri0909bot" {
+			t.Fatalf("unexpected health item: %#v", item)
+		}
+		if item.SideEffect != "none" || item.Transport != "http" || !item.AccessTokenPresent {
+			t.Fatalf("unexpected health metadata: %#v", item)
+		}
 	}
 }
 

@@ -286,20 +286,28 @@ func (a *Adapter) call(ctx context.Context, endpoint EndpointConfig, method stri
 }
 
 func (a *Adapter) callHTTP(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (string, error) {
+	payloadResp, err := a.callHTTPResponse(ctx, endpoint, method, payload)
+	if err != nil {
+		return "", err
+	}
+	return payloadResp.Data.MessageIDString(), nil
+}
+
+func (a *Adapter) callHTTPResponse(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (onebotResponse, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/")
 	if baseURL == "" {
-		return "", DeliveryError{
+		return onebotResponse{}, DeliveryError{
 			Kind:    model.DeliveryErrorSenderUnavailable,
 			Message: "onebot http endpoint is empty",
 		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return onebotResponse{}, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/"+method, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return onebotResponse{}, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	if endpoint.AccessToken != "" {
@@ -307,19 +315,19 @@ func (a *Adapter) callHTTP(ctx context.Context, endpoint EndpointConfig, method 
 	}
 	response, err := a.client.Do(request)
 	if err != nil {
-		return "", classifyTransportError(err)
+		return onebotResponse{}, classifyTransportError(err)
 	}
 	defer response.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(response.Body, 64*1024))
 	if readErr != nil {
-		return "", readErr
+		return onebotResponse{}, readErr
 	}
 	var payloadResp onebotResponse
 	if err := json.Unmarshal(raw, &payloadResp); err != nil {
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			return "", DeliveryError{Kind: model.DeliveryErrorPlatform, Message: "onebot response is not valid json"}
+			return onebotResponse{}, DeliveryError{Kind: model.DeliveryErrorPlatform, Message: "onebot response is not valid json"}
 		}
-		return "", DeliveryError{
+		return onebotResponse{}, DeliveryError{
 			Kind:    classifyOneBotFailure(response.StatusCode, string(raw)),
 			Message: strings.TrimSpace(string(raw)),
 		}
@@ -332,12 +340,12 @@ func (a *Adapter) callHTTP(ctx context.Context, endpoint EndpointConfig, method 
 		if message == "" {
 			message = strings.TrimSpace(string(raw))
 		}
-		return "", DeliveryError{
+		return onebotResponse{}, DeliveryError{
 			Kind:    classifyOneBotFailure(response.StatusCode, message),
 			Message: message,
 		}
 	}
-	return payloadResp.Data.MessageIDString(), nil
+	return payloadResp, nil
 }
 
 func isWebSocketURL(value string) bool {
@@ -355,11 +363,26 @@ type onebotResponse struct {
 }
 
 type onebotRespData struct {
-	MessageID any `json:"message_id"`
+	MessageID any    `json:"message_id"`
+	UserID    any    `json:"user_id"`
+	Nickname  string `json:"nickname"`
 }
 
 func (d onebotRespData) MessageIDString() string {
 	switch value := d.MessageID.(type) {
+	case string:
+		return value
+	case float64:
+		return strconv.FormatInt(int64(value), 10)
+	case int:
+		return strconv.Itoa(value)
+	default:
+		return ""
+	}
+}
+
+func (d onebotRespData) UserIDString() string {
+	switch value := d.UserID.(type) {
 	case string:
 		return value
 	case float64:

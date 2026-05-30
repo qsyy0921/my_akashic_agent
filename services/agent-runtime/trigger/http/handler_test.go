@@ -148,6 +148,40 @@ func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDeliveryAdapterHealthEndpointReturnsReadOnlyProbeResults(t *testing.T) {
+	viewer := appservice.NewDeliveryAdapterHealthService(staticHTTPDeliveryHealthProbe{
+		items: []query.DeliveryAdapterHealthView{{
+			Provider:      "onebot",
+			Channel:       "qq_2365524513",
+			Transport:     "websocket",
+			Healthy:       true,
+			Reachable:     true,
+			Authenticated: true,
+			AccountID:     "2365524513",
+			SideEffect:    "none",
+		}},
+	})
+	mux := http.NewServeMux()
+	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, viewer)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/delivery-adapters/health?timeout_seconds=1", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"provider":"onebot"`,
+		`"account_id":"2365524513"`,
+		`"side_effect":"none"`,
+		`"healthy":true`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(
@@ -1966,4 +2000,12 @@ type staticRuntimeOverviewViewer struct {
 
 func (s staticRuntimeOverviewViewer) Get(context.Context, query.RuntimeOverviewFilter) (query.RuntimeOverviewView, error) {
 	return s.view, nil
+}
+
+type staticHTTPDeliveryHealthProbe struct {
+	items []query.DeliveryAdapterHealthView
+}
+
+func (s staticHTTPDeliveryHealthProbe) CheckDeliveryAdapterHealth(context.Context, query.DeliveryAdapterHealthFilter) ([]query.DeliveryAdapterHealthView, error) {
+	return append([]query.DeliveryAdapterHealthView(nil), s.items...), nil
 }

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
 func TestDefaultMediaAssetRootsDiscoverRepoFromRepoRoot(t *testing.T) {
@@ -145,6 +148,17 @@ func TestDeliveryAdapterDiagnosticsFromEnvReportsConfiguredAliases(t *testing.T)
 	telegram := findDeliveryAdapterDiagnostic(t, items, "telegram", "dongri0909bot")
 	if telegram.Transport != "http" || !telegram.AccessTokenConfigured || telegram.Endpoint == "" {
 		t.Fatalf("unexpected telegram diagnostic: %#v", telegram)
+	}
+}
+
+func TestDeliveryAdapterHealthProbesSelectProbeCapableAdapters(t *testing.T) {
+	probes := deliveryAdapterHealthProbes([]outport.DeliveryAdapter{
+		fakeDeliveryAdapter{},
+		fakeDeliveryAdapterHealthProbe{},
+	})
+
+	if len(probes) != 1 {
+		t.Fatalf("expected one health probe, got %#v", probes)
 	}
 }
 
@@ -574,6 +588,28 @@ func findRuntimeWorker(t *testing.T, items []query.RuntimeWorkerView, name strin
 	t.Fatalf("missing runtime worker %q in %#v", name, items)
 	return query.RuntimeWorkerView{}
 }
+
+type fakeDeliveryAdapter struct{}
+
+func (fakeDeliveryAdapter) SupportsDeliveryChannel(string) bool {
+	return false
+}
+
+func (fakeDeliveryAdapter) DispatchDeliveryStep(context.Context, model.DeliveryDispatchStep) (model.DeliveryDispatchResult, error) {
+	return model.DeliveryDispatchResult{}, nil
+}
+
+type fakeDeliveryAdapterHealthProbe struct {
+	fakeDeliveryAdapter
+}
+
+func (fakeDeliveryAdapterHealthProbe) CheckDeliveryAdapterHealth(context.Context, query.DeliveryAdapterHealthFilter) ([]query.DeliveryAdapterHealthView, error) {
+	return nil, nil
+}
+
+var _ outport.DeliveryAdapter = fakeDeliveryAdapter{}
+var _ outport.DeliveryAdapter = fakeDeliveryAdapterHealthProbe{}
+var _ outport.DeliveryAdapterHealthProbe = fakeDeliveryAdapterHealthProbe{}
 
 func assertBlockedWorkKind(t *testing.T, items []query.QueueExternalLeaseBlock, want string) {
 	t.Helper()

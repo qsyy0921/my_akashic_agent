@@ -387,6 +387,35 @@ async def test_agent_gateway_client_lists_delivery_adapters():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_checks_delivery_adapter_health():
+    calls: list[tuple[str, str, dict[str, str]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, dict(request.url.params)))
+        assert request.method == "GET"
+        assert request.url.path == "/v1/delivery-adapters/health"
+        return _ok(
+            {
+                "items": [
+                    {
+                        "provider": "onebot",
+                        "channel": "qq_2365524513",
+                        "healthy": True,
+                        "side_effect": "none",
+                    }
+                ],
+                "totals": {"adapters": 1, "healthy": 1},
+            }
+        )
+
+    health = await _client(handler).check_delivery_adapter_health(timeout_seconds=2)
+
+    assert health["items"][0]["channel"] == "qq_2365524513"
+    assert health["items"][0]["side_effect"] == "none"
+    assert calls[0][2]["timeout_seconds"] == "2"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

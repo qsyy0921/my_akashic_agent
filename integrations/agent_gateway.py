@@ -433,6 +433,27 @@ class AgentGatewayClient:
             )
         return data
 
+    async def check_delivery_adapter_health(
+        self,
+        *,
+        timeout_seconds: int = 3,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "GET",
+            "/v1/delivery-adapters/health",
+            params={"timeout_seconds": max(1, int(timeout_seconds))},
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime delivery adapter health response is not an object"
+            )
+        items = data.get("items")
+        if not isinstance(items, list):
+            raise AgentGatewayError(
+                "agent runtime delivery adapter health response has no items"
+            )
+        return data
+
     async def get_queue_backend(self) -> dict[str, Any]:
         data = await self._request("GET", "/v1/queue-backend")
         if not isinstance(data, dict):

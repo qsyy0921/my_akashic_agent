@@ -17,9 +17,17 @@ import (
 const webSocketResponseReadLimit = 2 << 20
 
 func (a *Adapter) callWebSocket(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (string, error) {
+	response, err := a.callWebSocketResponse(ctx, endpoint, method, payload)
+	if err != nil {
+		return "", err
+	}
+	return response.Data.MessageIDString(), nil
+}
+
+func (a *Adapter) callWebSocketResponse(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (onebotResponse, error) {
 	webSocketURL := strings.TrimSpace(endpoint.WebSocketURL)
 	if webSocketURL == "" {
-		return "", DeliveryError{
+		return onebotResponse{}, DeliveryError{
 			Kind:    model.DeliveryErrorSenderUnavailable,
 			Message: "onebot websocket endpoint is empty",
 		}
@@ -41,20 +49,20 @@ func (a *Adapter) callWebSocket(ctx context.Context, endpoint EndpointConfig, me
 
 	conn, response, err := a.webSocketDialer.DialContext(ctx, webSocketURL, header)
 	if err != nil {
-		return "", classifyWebSocketDialError(err, response)
+		return onebotResponse{}, classifyWebSocketDialError(err, response)
 	}
 	defer conn.Close()
 	conn.SetReadLimit(webSocketResponseReadLimit)
 	applyWebSocketDeadline(ctx, conn)
 
 	if err := conn.WriteJSON(request); err != nil {
-		return "", classifyTransportError(err)
+		return onebotResponse{}, classifyTransportError(err)
 	}
 
 	for {
 		var response onebotResponse
 		if err := conn.ReadJSON(&response); err != nil {
-			return "", classifyTransportError(err)
+			return onebotResponse{}, classifyTransportError(err)
 		}
 		if !echoMatches(response.Echo, echo) {
 			continue
@@ -68,12 +76,12 @@ func (a *Adapter) callWebSocket(ctx context.Context, endpoint EndpointConfig, me
 				raw, _ := json.Marshal(response)
 				message = strings.TrimSpace(string(raw))
 			}
-			return "", DeliveryError{
+			return onebotResponse{}, DeliveryError{
 				Kind:    classifyOneBotFailure(http.StatusOK, message),
 				Message: message,
 			}
 		}
-		return response.Data.MessageIDString(), nil
+		return response, nil
 	}
 }
 

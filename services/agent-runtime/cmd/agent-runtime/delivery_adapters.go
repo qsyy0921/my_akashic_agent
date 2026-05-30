@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
 )
@@ -57,6 +58,17 @@ func deliveryAdapterDiagnosticsFromEnv() []query.DeliveryAdapterDiagnosticsView 
 		})
 	}
 	return items
+}
+
+func deliveryAdapterHealthProbes(adapters []outport.DeliveryAdapter) []outport.DeliveryAdapterHealthProbe {
+	probes := make([]outport.DeliveryAdapterHealthProbe, 0, len(adapters))
+	for _, adapter := range adapters {
+		probe, ok := adapter.(outport.DeliveryAdapterHealthProbe)
+		if ok {
+			probes = append(probes, probe)
+		}
+	}
+	return probes
 }
 
 func onebotTransport(endpoint onebotdelivery.EndpointConfig) string {

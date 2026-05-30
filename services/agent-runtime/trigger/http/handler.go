@@ -130,6 +130,13 @@ func RegisterDeliveryAdapterDiagnosticsRoutes(
 	mux.Handle("/v1/delivery-adapters", DeliveryAdaptersHandler(viewer))
 }
 
+func RegisterDeliveryAdapterHealthRoutes(
+	mux *http.ServeMux,
+	viewer inport.DeliveryAdapterHealthViewer,
+) {
+	mux.Handle("/v1/delivery-adapters/health", DeliveryAdapterHealthHandler(viewer))
+}
+
 func RegisterRuntimeOverviewRoutes(
 	mux *http.ServeMux,
 	viewer inport.RuntimeOverviewViewer,
@@ -429,6 +436,27 @@ func DeliveryAdaptersHandler(viewer inport.DeliveryAdapterDiagnosticsViewer) htt
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func DeliveryAdapterHealthHandler(viewer inport.DeliveryAdapterHealthViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "delivery adapter health disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := viewer.CheckDeliveryAdapters(r.Context(), query.DeliveryAdapterHealthFilter{
+			TimeoutSeconds: parsePositiveInt(r.URL.Query().Get("timeout_seconds"), 3, 30),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

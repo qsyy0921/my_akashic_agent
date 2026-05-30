@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
 )
@@ -305,6 +306,91 @@ func TestOneBotAdapterDispatchesViaWebSocketAction(t *testing.T) {
 	}
 	if result.ProviderMessageID != "42" || result.Provider != "onebot" {
 		t.Fatalf("unexpected dispatch result: %+v", result)
+	}
+}
+
+func TestOneBotAdapterHealthUsesHTTPLoginInfoWithoutSendingMessage(t *testing.T) {
+	var requestPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		if requestPath != "/get_login_info" {
+			t.Fatalf("unexpected path: %s", requestPath)
+		}
+		_, _ = w.Write([]byte(`{"status":"ok","retcode":0,"data":{"user_id":2365524513,"nickname":"bot-236"}}`))
+	}))
+	defer server.Close()
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_2365524513": {
+				BaseURL:     server.URL,
+				AccessToken: "token",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := adapter.CheckDeliveryAdapterHealth(context.Background(), query.DeliveryAdapterHealthFilter{TimeoutSeconds: 1})
+	if err != nil {
+		t.Fatalf("check health: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one health item, got %#v", items)
+	}
+	item := items[0]
+	if !item.Healthy || !item.Authenticated || item.AccountID != "2365524513" || item.AccountName != "bot-236" {
+		t.Fatalf("unexpected health item: %#v", item)
+	}
+	if item.SideEffect != "none" || item.Transport != "http" || !item.AccessTokenPresent {
+		t.Fatalf("unexpected health metadata: %#v", item)
+	}
+}
+
+func TestOneBotAdapterHealthUsesWebSocketLoginInfoWithoutSendingMessage(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	var actionRequest map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		if err := conn.ReadJSON(&actionRequest); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"status":  "ok",
+			"retcode": 0,
+			"echo":    actionRequest["echo"],
+			"data": map[string]any{
+				"user_id":  1049511700,
+				"nickname": "bot-104",
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_1049511700": {WebSocketURL: wsURL},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := adapter.CheckDeliveryAdapterHealth(context.Background(), query.DeliveryAdapterHealthFilter{TimeoutSeconds: 1})
+	if err != nil {
+		t.Fatalf("check websocket health: %v", err)
+	}
+	if actionRequest["action"] != "get_login_info" {
+		t.Fatalf("unexpected websocket action: %#v", actionRequest)
+	}
+	if len(items) != 1 || !items[0].Healthy || items[0].AccountID != "1049511700" || items[0].Transport != "websocket" {
+		t.Fatalf("unexpected health items: %#v", items)
 	}
 }
 

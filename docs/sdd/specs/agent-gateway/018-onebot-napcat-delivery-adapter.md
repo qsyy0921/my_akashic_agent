@@ -14,9 +14,10 @@ requests. The current local NapCat containers expose WebSocket servers on
 `3001` and `3002`; normal HTTP requests to those ports return `426 Upgrade
 Required` because the server expects a WebSocket upgrade.
 
-The runtime also exposes read-only delivery adapter diagnostics so operators can
-verify channel aliases, transport type, endpoint presence, and access-token
-presence without sending QQ or Telegram messages.
+The runtime also exposes read-only delivery adapter diagnostics and live health
+checks so operators can verify channel aliases, transport type, endpoint
+presence, access-token presence, and login/auth status without sending QQ or
+Telegram messages.
 
 The adapter is deliberately limited to outbound action calls. QR login, inbound
 WebSocket observation, group observe-only capture, and media download remain in
@@ -88,6 +89,18 @@ The response includes provider, channel alias, transport, endpoint presence,
 redacted endpoint, and whether an access token is configured. It deliberately
 does not expose token values and does not perform a live send.
 
+Read live adapter health without sending messages:
+
+```http
+GET /v1/delivery-adapters/health?timeout_seconds=3
+```
+
+OneBot/NapCat health uses `get_login_info` over the configured HTTP or
+WebSocket action transport. Telegram health uses `getMe`. The response reports
+`healthy`, `reachable`, `authenticated`, `account_id`, `account_name`,
+`latency_ms`, and `side_effect=none` per channel alias. This is a pre-send
+readiness check, not a substitute for the later live send smoke.
+
 ## Routing Rules
 
 The dispatch planner maps an outbox delivery to platform steps:
@@ -152,6 +165,8 @@ For two-bot interaction, this slice relies on existing controls:
   single-endpoint env parsing.
 - Delivery adapter diagnostics cover OneBot WebSocket aliases and Telegram
   channel aliases without leaking token values.
+- Delivery adapter health covers OneBot `get_login_info` and Telegram `getMe`
+  without calling message send APIs.
 - `DeliveryDispatchStep` exposes `conversation_type` in the query view.
 - `config.example.toml` keeps QQ out of Go outbound by default and documents the
   env-gated cutover.

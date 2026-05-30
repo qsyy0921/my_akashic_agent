@@ -246,6 +246,18 @@ GET /v1/delivery-adapters
 The response shows provider, channel alias, transport, endpoint presence,
 redacted endpoint, and access-token presence. It does not expose token values.
 
+Probe configured delivery adapter health without sending any platform message:
+
+```text
+GET /v1/delivery-adapters/health?timeout_seconds=3
+```
+
+OneBot/NapCat probes call `get_login_info` over the configured HTTP or
+WebSocket action transport. Telegram probes call `getMe`. The response reports
+`healthy`, `reachable`, `authenticated`, account id/name, latency, and
+`side_effect=none` for each channel alias. Use this before live QQ/NapCat send
+smoke to confirm that both account endpoints are reachable and authenticated.
+
 Register and query media/file metadata:
 
 ```text
