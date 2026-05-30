@@ -10,7 +10,9 @@ import (
 
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/natsqueue"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/queuediagnostics"
 )
 
 func queueBackendViewFromEnv() (query.QueueBackendView, error) {
@@ -146,7 +148,7 @@ func queueMigrationPhase(provider string, mode string) string {
 func queueBackendNotes(provider string, mode string, dsnConfigured bool) []string {
 	notes := []string{
 		"outbox and generic agent-job leases still use Go state stores as the source of truth",
-		"external queue adapters are not active in this runtime slice",
+		"external queue adapters activate only when provider, mode, and DSN match a concrete implementation",
 	}
 	if provider == "local" {
 		return append(notes, "local provider keeps all work scheduling on memory or JSON stores")
@@ -208,5 +210,17 @@ func newWorkQueuePublisher(view query.QueueBackendView) (outport.WorkQueuePublis
 	if err != nil {
 		return nil, nil, err
 	}
-	return publisher, publisher.Close, nil
+	recorder, err := queuediagnostics.NewRecorder(publisher, queuediagnostics.SubjectResolver{
+		OutboxDelivery: func(delivery model.OutboxDelivery) string {
+			return natsqueue.OutboxSubject(view.SubjectPrefix, delivery)
+		},
+		AgentJob: func(job model.AgentJob) string {
+			return natsqueue.AgentJobSubject(view.SubjectPrefix, job)
+		},
+	})
+	if err != nil {
+		publisher.Close()
+		return nil, nil, err
+	}
+	return recorder, publisher.Close, nil
 }

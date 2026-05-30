@@ -3,9 +3,10 @@
 ## Status
 
 In progress. The first implementation slice exposed read-only runtime
-diagnostics. The second slice adds NATS JetStream `shadow_publish` for outbox
+diagnostics. The second slice added NATS JetStream `shadow_publish` for outbox
 deliveries and generic agent jobs while keeping local state stores
-authoritative.
+authoritative. The third slice adds shadow publish diagnostics and
+state/event-stream reconciliation.
 
 ## Context
 
@@ -86,6 +87,8 @@ message or is disabled, Go can still discover leaseable work from state.
      queue notification.
    - Workers still lease from state store.
    - Diagnostics compare queue notification counts against state/event counts.
+   - Diagnostics are advisory and capped by `sample_limit`; Go state remains the
+     source of truth when counts diverge.
    - Publish failure is non-fatal after aggregate state is saved; state-store
      leasing remains the recovery path.
 
@@ -132,6 +135,14 @@ The endpoint returns:
 - consumer model, concurrency, and max in-flight settings;
 - source of outbox and generic job work discovery;
 - redacted DSN and operational notes.
+
+When `mode=shadow_publish`, the response also contains `shadow_publish`:
+
+- publish attempts, successes, and failures;
+- per-subject publish counts;
+- per-work-kind reconciliation for `outbox_delivery` and `agent_job`;
+- sampled Go state count, sampled lifecycle event count, and their deltas
+  against successful queue publishes.
 
 ## Concurrent Consumption
 
@@ -229,6 +240,9 @@ type WorkQueueConsumer interface {
 - Non-local queue configuration does not activate external leasing yet.
 - `shadow_publish` can publish NATS JetStream notifications for new outbox
   deliveries and agent jobs.
+- `shadow_publish` exposes publish success/failure diagnostics by subject.
+- `shadow_publish` reconciles sampled queue publish counts against Go state
+  stores and lifecycle event streams.
 - Existing outbox/job tests continue to pass.
-- TODO and review records document that actual adapter implementation remains a
-  separate migration slice.
+- TODO and review records document that `dual_read_compare` and
+  `external_lease` remain separate migration slices.

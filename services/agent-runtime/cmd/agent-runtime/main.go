@@ -103,7 +103,12 @@ func main() {
 	}
 	if workQueue != nil {
 		queueBackendView.ExternalQueueActive = true
+		queueBackendView.MigrationPhase = "shadow_publish"
 		queueBackendView.Notes = append(queueBackendView.Notes, "NATS JetStream shadow_publish adapter is active")
+	}
+	var workQueueDiagnostics outport.WorkQueuePublishDiagnosticReader
+	if diagnostics, ok := workQueue.(outport.WorkQueuePublishDiagnosticReader); ok {
+		workQueueDiagnostics = diagnostics
 	}
 
 	ingestor := appservice.NewMessageIngestServiceWithRuntimeStores(
@@ -134,7 +139,13 @@ func main() {
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
-	queueBackend := appservice.NewQueueBackendService(queueBackendView)
+	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
+		Diagnostics:    workQueueDiagnostics,
+		OutboxRepo:     outboxRepository,
+		OutboxEvents:   outboxEventStore,
+		AgentJobRepo:   agentJobRepository,
+		AgentJobEvents: agentJobEventStore,
+	})
 
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)

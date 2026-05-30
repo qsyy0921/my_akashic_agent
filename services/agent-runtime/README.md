@@ -317,6 +317,9 @@ When `nats_jetstream + shadow_publish + AKASHIC_QUEUE_DSN` are configured,
 `agent-runtime` publishes work notifications after outbox deliveries and generic
 agent jobs are committed to Go state stores. Work discovery and leases still use
 Go state stores; NATS is not allowed to execute or lease work in this phase.
+The `/v1/queue-backend` response includes `shadow_publish` diagnostics with
+publish attempts, success/failure counts, per-subject counts, and sampled
+reconciliation deltas against the Go state store and lifecycle event stream.
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple

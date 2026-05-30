@@ -39,12 +39,13 @@
 - [x] 将 outbox delivery state 接入 Go-owned durable lifecycle event stream，新增 `/v1/outbox-events`、JSONL 持久化和 runtime overview 聚合。
 - [x] 评估并设计外部队列后端：确定 NATS JetStream 作为第一实现目标，支持后续多 goroutine 并发消费，保留 Redis Streams/RabbitMQ 适配边界，并新增 `/v1/queue-backend` 只读迁移诊断。
 - [x] 实现 NATS JetStream `shadow_publish` 适配器：创建 outbox/generic job 时先写 Go state store，再发布 work notification；当前不执行外部租约。
+- [x] 增加 NATS JetStream `shadow_publish` 诊断对账：记录发布成功/失败、按 subject 的通知数，并在 `/v1/queue-backend` 中对比 Go state store 与 event stream 的样本差异。
 
 ## 下一步
 
 - [ ] 配置当前运行态 `AKASHIC_ONEBOT_WS_URLS="qq=ws://127.0.0.1:3001,qq_2365524513=ws://127.0.0.1:3002"` 与 `AKASHIC_ONEBOT_ACCESS_TOKENS`，重启 `agent-runtime` 后确认 adapter enabled 日志。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 增加 NATS JetStream shadow publish 诊断对账：统计发布成功/失败、按 subject 的通知数、与 Go state/event stream 的数量差异。
+- [ ] 设计并实现 NATS JetStream `dual_read_compare`：Go 消费 MQ work notification 但仍通过 state store lease 校验，只记录队列候选与权威状态的差异，不执行外部租约。
 
 ## 边界约束
 
