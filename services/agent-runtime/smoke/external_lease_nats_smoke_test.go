@@ -123,6 +123,126 @@ func TestExternalLeaseNATSSmokeOutboxDispositions(t *testing.T) {
 	}
 }
 
+func TestExternalLeaseNATSSmokeAgentJobDuplicateTerminalAck(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("AKASHIC_NATS_SMOKE_DSN"))
+	if dsn == "" {
+		t.Skip("set AKASHIC_NATS_SMOKE_DSN to run the external lease NATS smoke")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	stream := "AKASHIC_SMOKE_AGENT_JOB_" + suffix
+	subjectPrefix := "akashic.smoke.agent_job." + suffix
+	durable := "AKASHIC_SMOKE_AGENT_JOB_" + suffix
+
+	publisher, err := natsqueue.NewPublisher(natsqueue.Config{
+		URL:           dsn,
+		Stream:        stream,
+		SubjectPrefix: subjectPrefix,
+		Timeout:       3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("new publisher: %v", err)
+	}
+	defer publisher.Close()
+	defer deleteSmokeStream(t, dsn, stream)
+
+	store := memory.NewStore()
+	jobs := appservice.NewAgentJobServiceWithEvents(store, store)
+	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
+	jobID := "smoke:agent_job:terminal:" + suffix
+	created, err := jobs.Create(ctx, command.CreateAgentJobCommand{
+		JobID:   jobID,
+		JobType: string(model.AgentJobRagIngest),
+		AgentID: "smoke-python-worker",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatalf("create agent job: %v", err)
+	}
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      created.JobID,
+		WorkerID:   "smoke-python-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("lease agent job: %v", err)
+	}
+	if _, err := jobs.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      created.JobID,
+		LeaseToken: leased.LeaseToken,
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("complete agent job: %v", err)
+	}
+
+	executor := &recordingLeaseExecutor{
+		inner: appservice.NewWorkQueueExternalLeaseService(
+			nil,
+			nil,
+			appservice.WithExternalLeaseAgentJobs(jobs),
+			appservice.WithExternalLeaseWorker("smoke-worker", 60),
+		),
+		results: make(chan query.QueueExternalLeaseExecutionView, 4),
+	}
+	consumer, err := natsqueue.NewExternalLeaseConsumer(natsqueue.ExternalLeaseConsumerConfig{
+		URL:                 dsn,
+		Stream:              stream,
+		SubjectPrefix:       subjectPrefix,
+		Durable:             durable,
+		WorkerID:            "smoke-worker",
+		LeaseTTLSeconds:     60,
+		NackDelay:           10 * time.Second,
+		Timeout:             3 * time.Second,
+		ConsumerConcurrency: 1,
+		MaxInFlight:         4,
+		IncludeAgentJobs:    true,
+	})
+	if err != nil {
+		t.Fatalf("new external lease consumer: %v", err)
+	}
+	defer consumer.Close()
+
+	runCtx, stopConsumer := context.WithCancel(ctx)
+	defer stopConsumer()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- consumer.Run(runCtx, executor)
+	}()
+
+	if err := publishAgentJobWork(dsn, stream, subjectPrefix, jobID, "dup-1"); err != nil {
+		t.Fatalf("publish duplicate terminal job 1: %v", err)
+	}
+	if err := publishAgentJobWork(dsn, stream, subjectPrefix, jobID, "dup-2"); err != nil {
+		t.Fatalf("publish duplicate terminal job 2: %v", err)
+	}
+
+	results := collectLeaseResults(t, ctx, executor.results, 2)
+	for _, result := range results {
+		if result.WorkID != jobID || result.Disposition != appservice.QueueLeaseDispositionAck || result.Reason != "agent_job_terminal" {
+			t.Fatalf("expected duplicate terminal agent job ack, got %+v", result)
+		}
+		if result.StateStatus != string(model.AgentJobSucceeded) || result.Attempts != 1 {
+			t.Fatalf("expected succeeded job state in duplicate ack, got %+v", result)
+		}
+	}
+
+	stopConsumer()
+	if err := <-errs; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("consumer stopped unexpectedly: %v", err)
+	}
+}
+
 type recordingLeaseExecutor struct {
 	inner   inport.WorkQueueLeaseExecutor
 	results chan query.QueueExternalLeaseExecutionView
@@ -236,7 +356,7 @@ func publishUnsupportedOutboxWork(dsn string, stream string, subjectPrefix strin
 	subject := subjectPrefix + ".outbox.qq.1049511700"
 	notification := natsqueue.WorkNotification{
 		SchemaVersion:      "1",
-		WorkKind:           "agent_job",
+		WorkKind:           "unsupported_work",
 		WorkID:             "smoke:unsupported:" + suffix,
 		AggregateID:        "smoke:unsupported:" + suffix,
 		Status:             "pending",
@@ -250,6 +370,36 @@ func publishUnsupportedOutboxWork(dsn string, stream string, subjectPrefix strin
 		return err
 	}
 	_, err = js.Publish(subject, raw, nats.MsgId(notification.WorkID), nats.ExpectStream(stream), nats.AckWait(3*time.Second))
+	return err
+}
+
+func publishAgentJobWork(dsn string, stream string, subjectPrefix string, jobID string, suffix string) error {
+	conn, err := nats.Connect(dsn, nats.Timeout(3*time.Second))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	js, err := conn.JetStream(nats.MaxWait(3 * time.Second))
+	if err != nil {
+		return err
+	}
+	subject := subjectPrefix + ".agent_job.rag_ingest"
+	notification := natsqueue.WorkNotification{
+		SchemaVersion:      "1",
+		WorkKind:           "agent_job",
+		WorkID:             jobID,
+		AggregateID:        jobID,
+		Status:             "succeeded",
+		Subject:            subject,
+		NotificationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+		ConsumerModel:      "goroutine_worker_pool",
+		StateAuthoritative: true,
+	}
+	raw, err := json.Marshal(notification)
+	if err != nil {
+		return err
+	}
+	_, err = js.Publish(subject, raw, nats.MsgId(jobID+":"+suffix), nats.ExpectStream(stream), nats.AckWait(3*time.Second))
 	return err
 }
 

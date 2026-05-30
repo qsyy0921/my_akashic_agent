@@ -372,6 +372,22 @@ leases are recovered before disposition. The live external lease consumer still
 keeps `execution_scope=outbox_delivery_only`; `agent_job` remains blocked until a
 NATS-level duplicate-delivery smoke and explicit execution-scope expansion are
 done.
+
+The optional `agent_job` result-ack scope is deliberately separate from the
+outbox cutover. Enable it only after the agent-job duplicate smoke has passed:
+
+```powershell
+$env:AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN = "true"
+$env:AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED = "true"
+$env:AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED = "true"
+```
+
+When these flags and the base external-lease gates pass, diagnostics report
+`execution_scope=outbox_delivery_and_agent_job_result_ack`. Python still
+executes the actual model/RAG/memory jobs; Go only acknowledges terminal queue
+notifications and delayed-`nack`s work still waiting for Python result
+writeback.
+
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple
@@ -411,10 +427,11 @@ Run the local external-lease smoke against a temporary NATS instance:
 
 ```powershell
 $env:AKASHIC_NATS_SMOKE_DSN = "nats://127.0.0.1:4222"
-go test ./smoke -run TestExternalLeaseNATSSmokeOutboxDispositions -count=1 -v
+go test ./smoke -run "TestExternalLeaseNATSSmoke(OutboxDispositions|AgentJobDuplicateTerminalAck)" -count=1 -v
 ```
 
-The smoke uses a fake DeliveryAdapter and does not send QQ or Telegram messages.
+The smoke uses a fake DeliveryAdapter and fake job state; it does not send QQ or
+Telegram messages and does not invoke Python workers.
 
 Persist proactive scheduling state across runtime restarts:
 

@@ -18,7 +18,10 @@ first guarded `external_lease` executor for outbox delivery only; agent jobs
 remain on Go state-store leasing until their worker idempotency is audited. The
 seventh slice adds a local NATS smoke that exercises success ack, retryable
 failure delayed nack, terminal failure ack, and unsupported work term without
-using real QQ or Telegram adapters.
+using real QQ or Telegram adapters. The eighth slice adds an explicit
+`agent_job` result-ack scope gate and a NATS-level duplicate terminal delivery
+smoke for generic jobs, while still keeping Python responsible for actual model
+execution.
 
 ## Context
 
@@ -352,6 +355,23 @@ Agent-job result acknowledgement now has a safe Go mapping:
   separate NATS-level duplicate-delivery smoke and explicit execution-scope
   expansion.
 
+Agent-job subject consumption is explicitly gated:
+
+- By default the NATS external lease consumer subscribes only to
+  `{subject_prefix}.outbox.>`.
+- When the runtime gate allows `agent_job`, the consumer uses
+  `{subject_prefix}.>` and the default durable changes from
+  `AKASHIC_EXTERNAL_LEASE_OUTBOX` to `AKASHIC_EXTERNAL_LEASE_ALL` to avoid
+  reusing an incompatible outbox-only durable.
+- `agent_job` is allowed only when base external-lease cutover gates pass and
+  all of these flags are set:
+  `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true`,
+  `AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true`, and
+  `AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true`.
+- The expanded scope is reported as
+  `outbox_delivery_and_agent_job_result_ack`; this means queue result
+  acknowledgement only, not Go execution of model/RAG/memory jobs.
+
 ## Concurrent Consumption
 
 Go should consume MQ work with a bounded goroutine worker pool:
@@ -509,5 +529,11 @@ boundary becomes independent.
 - Local `external_lease` smoke verifies those four dispositions with a fake
   DeliveryAdapter and a real NATS JetStream container, without sending real
   platform messages.
+- `external_lease` supports an explicitly gated `agent_job` result-ack scope:
+  pending/running jobs delayed `nack`, terminal duplicate deliveries `ack`,
+  missing state `term`, retryable failures return to pending and delayed
+  `nack`, and expired leases recover before disposition.
+- Local NATS JetStream smoke verifies duplicate terminal `agent_job`
+  notifications both `ack` without invoking Python or platform adapters.
 - `external_lease` does not execute generic `agent_job` work in this slice.
 - Existing outbox/job tests continue to pass.

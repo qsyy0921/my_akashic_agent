@@ -16,6 +16,7 @@ import (
 
 const (
 	defaultExternalLeaseDurable     = "AKASHIC_EXTERNAL_LEASE_OUTBOX"
+	defaultExternalLeaseAllDurable  = "AKASHIC_EXTERNAL_LEASE_ALL"
 	defaultExternalLeasePollTimeout = 2 * time.Second
 	defaultExternalLeaseNackDelay   = 30 * time.Second
 )
@@ -32,6 +33,7 @@ type ExternalLeaseConsumerConfig struct {
 	ConsumerConcurrency int
 	MaxInFlight         int
 	ChannelByAccount    map[string]string
+	IncludeAgentJobs    bool
 }
 
 type ExternalLeaseConsumer struct {
@@ -48,6 +50,7 @@ type ExternalLeaseConsumer struct {
 	consumerConcurrency int
 	maxInFlight         int
 	channelByAccount    map[string]string
+	includeAgentJobs    bool
 }
 
 func NewExternalLeaseConsumer(config ExternalLeaseConsumerConfig) (*ExternalLeaseConsumer, error) {
@@ -77,13 +80,14 @@ func NewExternalLeaseConsumer(config ExternalLeaseConsumerConfig) (*ExternalLeas
 		consumerConcurrency: config.ConsumerConcurrency,
 		maxInFlight:         config.MaxInFlight,
 		channelByAccount:    cloneMap(config.ChannelByAccount),
+		includeAgentJobs:    config.IncludeAgentJobs,
 	}
 	if err := consumer.ensureStream(); err != nil {
 		conn.Close()
 		return nil, err
 	}
 	sub, err := js.PullSubscribe(
-		consumer.subjectPrefix+".outbox.>",
+		externalLeaseSubscriptionSubject(consumer.subjectPrefix, consumer.includeAgentJobs),
 		consumer.durable,
 		nats.BindStream(consumer.stream),
 		nats.ManualAck(),
@@ -235,7 +239,11 @@ func normalizeExternalLeaseConsumerConfig(config ExternalLeaseConsumerConfig) Ex
 	config.Timeout = normalized.Timeout
 	durable := strings.TrimSpace(config.Durable)
 	if durable == "" {
-		config.Durable = defaultExternalLeaseDurable
+		if config.IncludeAgentJobs {
+			config.Durable = defaultExternalLeaseAllDurable
+		} else {
+			config.Durable = defaultExternalLeaseDurable
+		}
 	} else {
 		replacer := strings.NewReplacer(".", "_", "*", "_", ">", "_", "/", "_", "\\", "_")
 		config.Durable = safeSubjectToken(replacer.Replace(durable))
@@ -260,4 +268,12 @@ func normalizeExternalLeaseConsumerConfig(config ExternalLeaseConsumerConfig) Ex
 	}
 	config.ChannelByAccount = cloneMap(config.ChannelByAccount)
 	return config
+}
+
+func externalLeaseSubscriptionSubject(subjectPrefix string, includeAgentJobs bool) string {
+	subjectPrefix = cleanSubjectPrefix(subjectPrefix)
+	if includeAgentJobs {
+		return subjectPrefix + ".>"
+	}
+	return subjectPrefix + ".outbox.>"
 }

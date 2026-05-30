@@ -101,3 +101,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-52-agent-job-lease-work.md`
 - `2026-05-31-phase8-53-agent-job-timeout-recovery.md`
 - `2026-05-31-phase8-54-agent-job-result-ack-mapping.md`
+- `2026-05-31-phase8-55-agent-job-nats-scope-gate.md`

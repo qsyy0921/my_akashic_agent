@@ -48,6 +48,10 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		subjectPrefix = "akashic.work"
 	}
 	externalLease := queueExternalLeaseGate(provider, mode, dsnConfigured)
+	agentJobQueueSource := "agent_job_state_store"
+	if externalLeaseAllowsAgentJobs(externalLease) {
+		agentJobQueueSource = "agent_job_state_store_with_nats_result_ack"
+	}
 
 	return query.QueueBackendView{
 		Provider:                provider,
@@ -63,7 +67,7 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		ConsumerConcurrency:     consumerConcurrency,
 		MaxInFlight:             maxInFlight,
 		OutboxQueueSource:       "outbox_state_store",
-		AgentJobQueueSource:     "agent_job_state_store",
+		AgentJobQueueSource:     agentJobQueueSource,
 		DSNConfigured:           dsnConfigured,
 		DSNRedacted:             redactQueueDSN(dsn),
 		RecommendedFirstBackend: "nats_jetstream",
@@ -176,6 +180,9 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	cutoverRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER")
 	dualReadSmokePassed := boolEnv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED")
 	stateLeaseWorkersDisabled := boolEnv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED")
+	agentJobRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED")
+	agentJobDuplicateSmokePassed := boolEnv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED")
+	strictAgentJobLeaseToken := boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")
 	executorImplemented := true
 	gate := &query.QueueExternalLeaseGate{
 		Enabled:          true,
@@ -204,12 +211,34 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 		gate.ExecutionScope = "outbox_delivery_only"
 		gate.AllowedWorkKinds = []string{"outbox_delivery"}
 	}
-	gate.BlockedWorkKinds = append(gate.BlockedWorkKinds, query.QueueExternalLeaseBlock{
-		WorkKind:       "agent_job",
-		Reason:         "agent jobs are executed by Python workers, so NATS ack must be tied to Python result writeback rather than Go dispatch completion",
-		RequiredChange: "run NATS-level duplicate-delivery smoke and explicitly expand execution scope before moving agent_job to external lease",
-	})
+	if gate.AllowExecution && agentJobRequested && agentJobDuplicateSmokePassed && strictAgentJobLeaseToken {
+		gate.ExecutionScope = "outbox_delivery_and_agent_job_result_ack"
+		gate.AllowedWorkKinds = append(gate.AllowedWorkKinds, "agent_job")
+		gate.Notes = append(gate.Notes, "agent_job NATS subjects are enabled only for result acknowledgement; Python still executes model/RAG/memory work")
+	} else {
+		required := "set AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true, AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true, and AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true before moving agent_job subjects to external lease"
+		if !gate.AllowExecution {
+			required = "pass the base external-lease gates before enabling agent_job subjects"
+		}
+		gate.BlockedWorkKinds = append(gate.BlockedWorkKinds, query.QueueExternalLeaseBlock{
+			WorkKind:       "agent_job",
+			Reason:         "agent jobs are executed by Python workers, so NATS ack must be tied to Python result writeback rather than Go dispatch completion",
+			RequiredChange: required,
+		})
+	}
 	return gate
+}
+
+func externalLeaseAllowsAgentJobs(gate *query.QueueExternalLeaseGate) bool {
+	if gate == nil || !gate.AllowExecution {
+		return false
+	}
+	for _, kind := range gate.AllowedWorkKinds {
+		if kind == "agent_job" {
+			return true
+		}
+	}
+	return false
 }
 
 func addExternalLeaseCheck(gate *query.QueueExternalLeaseGate, name string, passed bool, detail string) {
@@ -352,6 +381,7 @@ func newWorkQueueExternalLeaseConsumer(view query.QueueBackendView) (*natsqueue.
 		ConsumerConcurrency: view.ConsumerConcurrency,
 		MaxInFlight:         view.MaxInFlight,
 		ChannelByAccount:    keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+		IncludeAgentJobs:    externalLeaseAllowsAgentJobs(view.ExternalLease),
 	})
 	if err != nil {
 		return nil, nil, err

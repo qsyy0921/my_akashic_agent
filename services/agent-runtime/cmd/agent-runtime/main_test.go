@@ -258,6 +258,38 @@ func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing
 	}
 }
 
+func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
+	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.ExternalLease == nil || !view.ExternalLease.AllowExecution {
+		t.Fatalf("expected external lease ready: %#v", view.ExternalLease)
+	}
+	if view.ExternalLease.ExecutionScope != "outbox_delivery_and_agent_job_result_ack" {
+		t.Fatalf("expected expanded execution scope: %#v", view.ExternalLease)
+	}
+	assertContainsString(t, view.ExternalLease.AllowedWorkKinds, "outbox_delivery")
+	assertContainsString(t, view.ExternalLease.AllowedWorkKinds, "agent_job")
+	if len(view.ExternalLease.BlockedWorkKinds) != 0 {
+		t.Fatalf("agent_job should not remain blocked: %#v", view.ExternalLease.BlockedWorkKinds)
+	}
+	if view.AgentJobQueueSource != "agent_job_state_store_with_nats_result_ack" {
+		t.Fatalf("unexpected agent job queue source: %#v", view)
+	}
+}
+
 func TestQueueBackendViewFromEnvRejectsUnknownProvider(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "kafka")
 

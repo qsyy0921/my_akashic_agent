@@ -101,4 +101,22 @@ func TestNormalizeExternalLeaseConsumerConfigUsesDedicatedDefaultDurable(t *test
 	if config.NackDelay != defaultExternalLeaseNackDelay {
 		t.Fatalf("unexpected default nack delay: %s", config.NackDelay)
 	}
+	if got := externalLeaseSubscriptionSubject(config.SubjectPrefix, config.IncludeAgentJobs); got != "akashic.work.outbox.>" {
+		t.Fatalf("unexpected outbox-only subscription subject: %s", got)
+	}
+}
+
+func TestNormalizeExternalLeaseConsumerConfigCanIncludeAgentJobSubjects(t *testing.T) {
+	config := normalizeExternalLeaseConsumerConfig(ExternalLeaseConsumerConfig{
+		URL:              "nats://127.0.0.1:4222",
+		SubjectPrefix:    "akashic.work",
+		IncludeAgentJobs: true,
+	})
+
+	if config.Durable != defaultExternalLeaseAllDurable {
+		t.Fatalf("unexpected default all-work durable: %q", config.Durable)
+	}
+	if got := externalLeaseSubscriptionSubject(config.SubjectPrefix, config.IncludeAgentJobs); got != "akashic.work.>" {
+		t.Fatalf("unexpected all-work subscription subject: %s", got)
+	}
 }
