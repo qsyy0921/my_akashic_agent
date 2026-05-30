@@ -1,0 +1,107 @@
+/// <reference path="../../types/akashic-dashboard.d.ts" />
+
+interface RuntimeOverviewCard {
+  id: string;
+  label: string;
+  value: string | number | boolean;
+  status: string;
+  detail: Record<string, unknown>;
+}
+
+interface RuntimeOverviewResponse {
+  summary: Record<string, string | number | boolean>;
+  cards: RuntimeOverviewCard[];
+  status: Record<string, unknown>;
+  jobs_by_status: Record<string, number>;
+  jobs_by_type: Record<string, number>;
+  outbox_by_status: Record<string, number>;
+  recent_events: Record<string, unknown>[];
+  checkpoint_lag: Record<string, unknown>[];
+}
+
+function _runtimeStatusTag(status: string): string {
+  const cls = `runtime-overview-status runtime-overview-${status || "muted"}`;
+  return `<span class="${cls}">${escapeHtml(status || "muted")}</span>`;
+}
+
+function _formatJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+function _short(value: unknown, limit: number): string {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+window.AkashicDashboard.registerPlugin({
+  id: "runtime_overview",
+  label: "Runtime Overview",
+  viewLabel: "runtime overview",
+  pageSize: 25,
+  rowKey: "id",
+  defaultSortBy: "label",
+  defaultSortOrder: "asc",
+
+  countTitle(total: number): string {
+    return `${total} 个运行指标`;
+  },
+
+  columns: [
+    { key: "label", label: "Metric", flex: true, cellClass: "cell-type", rawTitle: true },
+    { key: "value", label: "Value", width: 120, cellClass: "mono cell-metric", align: "right" },
+    { key: "status", label: "Status", width: 120, renderCell: (value) => _runtimeStatusTag(String(value || "")) },
+    { key: "detail", label: "Detail", width: 260, renderCell: (value) => escapeHtml(_short(_formatJson(value), 96)), cellClass: "content-preview" },
+  ],
+
+  async getCount(): Promise<number | null> {
+    const payload = await api<RuntimeOverviewResponse>("/api/dashboard/runtime-overview?limit=1&event_limit=1");
+    return payload.cards?.length || 0;
+  },
+
+  async fetchPage({ page, pageSize }: FetchPageOpts): Promise<FetchPageResult> {
+    const payload = await api<RuntimeOverviewResponse>("/api/dashboard/runtime-overview");
+    const cards = payload.cards || [];
+    const start = Math.max(0, (page - 1) * pageSize);
+    return {
+      items: cards.slice(start, start + pageSize) as unknown as Record<string, unknown>[],
+      total: cards.length,
+    };
+  },
+
+  fetchDetail(item: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return Promise.resolve(item);
+  },
+
+  renderDetail(item: Record<string, unknown> | null, container: HTMLElement): void {
+    if (!item) {
+      container.innerHTML = `
+        <div class="runtime-overview-empty">
+          <div class="detail-title">Runtime Overview</div>
+          <div class="detail-subtext">Go agent-runtime 的健康状态、任务租约、死信、游标延迟和事件流摘要。</div>
+        </div>
+      `;
+      return;
+    }
+    const card = item as unknown as RuntimeOverviewCard;
+    container.innerHTML = `
+      <div class="runtime-overview-detail">
+        <div class="runtime-overview-toolbar">
+          <div>
+            <div class="detail-title">${escapeHtml(card.label || "-")}</div>
+            <div class="detail-subtext">${_runtimeStatusTag(card.status || "muted")} · ${escapeHtml(String(card.value ?? "-"))}</div>
+          </div>
+        </div>
+        <div class="runtime-overview-section">
+          <div class="detail-label">Detail</div>
+          <pre class="runtime-overview-json">${escapeHtml(_formatJson(card.detail || {}))}</pre>
+        </div>
+      </div>
+    `;
+  },
+});
+
+export {};

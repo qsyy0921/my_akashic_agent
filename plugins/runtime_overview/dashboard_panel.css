@@ -1,0 +1,53 @@
+.runtime-overview-empty,
+.runtime-overview-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-overview-empty .detail-subtext {
+  color: var(--muted-text);
+}
+
+.runtime-overview-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.runtime-overview-section {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.runtime-overview-json {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.runtime-overview-status {
+  font-weight: 600;
+}
+
+.runtime-overview-ok {
+  color: #16a34a;
+}
+
+.runtime-overview-warn {
+  color: #d97706;
+}
+
+.runtime-overview-danger {
+  color: var(--danger);
+}
+
+.runtime-overview-muted {
+  color: var(--muted-text);
+}

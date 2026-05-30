@@ -37,6 +37,9 @@ execution.
   generic agent jobs.
 - `013-rag-eval-jobs.md`: Go-owned `rag_eval` lifecycle with Python eval
   worker execution.
+- `014-runtime-dashboard-overview.md`: read-only dashboard aggregation for
+  runtime health, worker leases, stale jobs, dead letters, checkpoint lag, and
+  job event stream.
 - `015-delivery-dispatch-plan.md`: Go-owned outbound dispatch planning before
   Python compatibility workers perform platform sends.
 - `016-telegram-delivery-adapter.md`: Go-owned Telegram HTTP Bot API sender
