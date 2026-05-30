@@ -69,10 +69,12 @@ a stable message envelope rather than platform-specific payloads.
 - `channel` identifies one concrete bot account route.
 - `bot_account` is the account that received or will send the message.
 - Raw platform payloads are optional for storage, never required by the Agent.
+- Go runtime JSON APIs declare `Content-Type: application/json; charset=utf-8`
+  so Chinese QQ/TG content round-trips correctly in Windows PowerShell clients.
 
 ## Acceptance Tests
 
 - QQ private message maps to the inbound schema.
 - QQ group message maps to the inbound schema.
 - Outbound event for `qq_1049511700` is routed only to that account.
-
+- HTTP JSON handlers declare UTF-8 in `Content-Type`.

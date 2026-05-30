@@ -17,6 +17,16 @@ import (
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
 )
 
+func TestJSONHandlersDeclareUTF8(t *testing.T) {
+	response := httptest.NewRecorder()
+
+	httptrigger.HealthHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if got := response.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Fatalf("expected utf-8 json content type, got %q", got)
+	}
+}
+
 func TestShadowIngestEndpointAuditsWithoutAgentInbound(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestServiceWithMediaAssets(

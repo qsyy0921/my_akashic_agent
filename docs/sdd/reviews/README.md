@@ -65,3 +65,4 @@ Current architecture review sequence:
 - `2026-05-30-phase8-16-group-memory-runtime-inbox-source.md`
 - `2026-05-30-phase8-17-ragflow-runtime-inbox-source.md`
 - `2026-05-30-phase8-18-knowledge-checkpoints.md`
+- `2026-05-30-phase8-19-runtime-json-utf8.md`
