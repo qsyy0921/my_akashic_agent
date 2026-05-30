@@ -334,6 +334,35 @@ async def test_agent_gateway_client_records_and_checks_send_ledger():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_checks_private_echo():
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        calls.append((request.url.path, params))
+        assert request.url.path == "/v1/send-ledger/private-echo"
+        assert params == {
+            "from_user_id": "1049511700",
+            "to_bot_id": "2365524513",
+            "window_seconds": "180",
+            "has_image": "true",
+        }
+        return _ok({"echo": True, "reason": "recent_image_echo"})
+
+    client = _client(handler)
+
+    echo = await client.private_echo(
+        from_user_id="1049511700",
+        to_bot_id="2365524513",
+        has_image=True,
+    )
+
+    assert echo["echo"] is True
+    assert echo["reason"] == "recent_image_echo"
+    assert calls[0][0] == "/v1/send-ledger/private-echo"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_sends_outbound_to_runtime():
     calls: list[tuple[str, str, dict[str, Any]]] = []
 

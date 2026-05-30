@@ -86,6 +86,16 @@ class _FakeSendLedger:
         return self.recent
 
 
+class _FakePrivateEchoLedger:
+    def __init__(self, *, echo: bool = False) -> None:
+        self.echo = echo
+        self.echo_queries: list[dict[str, Any]] = []
+
+    async def private_echo(self, **kwargs) -> dict[str, Any]:
+        self.echo_queries.append(dict(kwargs))
+        return {"echo": self.echo, "reason": "recent_image_echo" if self.echo else "not_recent"}
+
+
 def _http_requester(handler) -> HttpRequester:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return HttpRequester(
@@ -1509,6 +1519,53 @@ async def test_qq_channel_ignores_runtime_send_ledger_echo(
             "from_bot_id": "1049511700",
             "conversation_id": "2365524513",
             "content": "Akashic 刚发出的回复",
+            "window_seconds": 180,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_qq_channel_prefers_runtime_private_echo_check(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    ledger = _FakePrivateEchoLedger(echo=True)
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+        private_outbound_guard=mod.RecentPrivateOutboundGuard(),
+        send_ledger_client=ledger,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    await channel._bot.private_handler(
+        SimpleNamespace(user_id="1049511700", raw_message="[CQ:image,url=http://example.test/a.jpg]")
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+    assert ledger.echo_queries == [
+        {
+            "from_user_id": "1049511700",
+            "to_bot_id": "2365524513",
+            "text": "",
+            "has_image": True,
             "window_seconds": 180,
         }
     ]

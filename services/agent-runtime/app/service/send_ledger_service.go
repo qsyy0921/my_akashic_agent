@@ -78,6 +78,70 @@ func (s *SendLedgerService) RecentlySent(ctx context.Context, cmd command.CheckR
 	}, nil
 }
 
+func (s *SendLedgerService) CheckPrivateEcho(ctx context.Context, cmd command.CheckPrivateEchoCommand) (query.PrivateEchoView, error) {
+	if s == nil || s.ledger == nil {
+		return query.PrivateEchoView{}, errors.New("send ledger service requires ledger")
+	}
+	fromUserID := strings.TrimSpace(cmd.FromUserID)
+	toBotID := strings.TrimSpace(cmd.ToBotID)
+	if fromUserID == "" {
+		return query.PrivateEchoView{}, errors.New("from user id required")
+	}
+	if toBotID == "" {
+		return query.PrivateEchoView{}, errors.New("to bot id required")
+	}
+	content, reason := privateEchoContent(cmd)
+	if strings.TrimSpace(content) == "" && strings.TrimSpace(cmd.ContentHash) == "" {
+		return query.PrivateEchoView{
+			Echo:          false,
+			FromUserID:    fromUserID,
+			ToBotID:       toBotID,
+			WindowSeconds: int(echoWindow(cmd.Window).Seconds()),
+			Reason:        "empty_content",
+		}, nil
+	}
+	contentHash, err := contentHashFromLedgerInput(content, cmd.ContentHash)
+	if err != nil {
+		return query.PrivateEchoView{}, err
+	}
+	window := echoWindow(cmd.Window)
+	echo := s.ledger.RecentlySent(fromUserID, toBotID, contentHash, window)
+	if !echo {
+		reason = "not_recent"
+	}
+	return query.PrivateEchoView{
+		Echo:          echo,
+		FromUserID:    fromUserID,
+		ToBotID:       toBotID,
+		ContentHash:   contentHash,
+		WindowSeconds: int(window.Seconds()),
+		Reason:        reason,
+	}, nil
+}
+
+func privateEchoContent(cmd command.CheckPrivateEchoCommand) (string, string) {
+	if text := strings.TrimSpace(cmd.Text); text != "" {
+		return text, "recent_text_echo"
+	}
+	switch {
+	case cmd.HasImage:
+		return domainservice.OutboundImageMarker, "recent_image_echo"
+	case cmd.HasFile:
+		return domainservice.OutboundFileMarker, "recent_file_echo"
+	case cmd.HasForward:
+		return domainservice.OutboundForwardMarker, "recent_forward_echo"
+	default:
+		return "", "empty_content"
+	}
+}
+
+func echoWindow(window time.Duration) time.Duration {
+	if window <= 0 {
+		return 180 * time.Second
+	}
+	return window
+}
+
 func (s *SendLedgerService) List(ctx context.Context, filter query.SendRecordFilter) ([]query.SendRecordView, error) {
 	if s == nil || s.ledger == nil {
 		return nil, errors.New("send ledger service requires ledger")

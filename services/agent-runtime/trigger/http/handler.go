@@ -51,6 +51,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/jobs/", AgentJobStateHandler(agentJobs))
 	mux.Handle("/v1/send-ledger/records", SendLedgerRecordsHandler(sendLedger))
 	mux.Handle("/v1/send-ledger/recent", SendLedgerRecentHandler(sendLedger))
+	mux.Handle("/v1/send-ledger/private-echo", SendLedgerPrivateEchoHandler(sendLedger))
 	mux.Handle("/v1/inbox", InboxEventsHandler(inboxEvents))
 	mux.Handle("/v1/inbox/", InboxEventStateHandler(inboxEvents))
 }
@@ -366,6 +367,15 @@ func parseNonNegativeInt(value string, fallback int) int {
 	return parsed
 }
 
+func parseBoolQuery(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func DeliveryAdaptersHandler(viewer inport.DeliveryAdapterDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if viewer == nil {
@@ -485,6 +495,35 @@ func SendLedgerRecentHandler(sendLedger inport.SendLedgerManager) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: recent})
+	})
+}
+
+func SendLedgerPrivateEchoHandler(sendLedger inport.SendLedgerManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sendLedger == nil {
+			http.Error(w, "send ledger disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		windowSeconds := parsePositiveInt(r.URL.Query().Get("window_seconds"), 180, 86400)
+		echo, err := sendLedger.CheckPrivateEcho(r.Context(), command.CheckPrivateEchoCommand{
+			FromUserID:  r.URL.Query().Get("from_user_id"),
+			ToBotID:     r.URL.Query().Get("to_bot_id"),
+			Text:        r.URL.Query().Get("text"),
+			HasImage:    parseBoolQuery(r.URL.Query().Get("has_image")),
+			HasFile:     parseBoolQuery(r.URL.Query().Get("has_file")),
+			HasForward:  parseBoolQuery(r.URL.Query().Get("has_forward")),
+			ContentHash: r.URL.Query().Get("content_hash"),
+			Window:      time.Duration(windowSeconds) * time.Second,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: echo})
 	})
 }
 

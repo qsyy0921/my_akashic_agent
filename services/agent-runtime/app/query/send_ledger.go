@@ -21,3 +21,12 @@ type RecentSendView struct {
 	ContentHash    string `json:"content_hash"`
 	WindowSeconds  int    `json:"window_seconds"`
 }
+
+type PrivateEchoView struct {
+	Echo          bool   `json:"echo"`
+	FromUserID    string `json:"from_user_id"`
+	ToBotID       string `json:"to_bot_id"`
+	ContentHash   string `json:"content_hash,omitempty"`
+	WindowSeconds int    `json:"window_seconds"`
+	Reason        string `json:"reason"`
+}

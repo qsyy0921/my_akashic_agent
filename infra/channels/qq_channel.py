@@ -1267,6 +1267,29 @@ class QQChannel:
         client = self._send_ledger_client
         if client is None:
             return False
+        if hasattr(client, "private_echo"):
+            try:
+                result = await client.private_echo(
+                    from_user_id=str(user_id),
+                    to_bot_id=self._bot_uin,
+                    text=str(text or ""),
+                    has_image=bool(img_urls),
+                    window_seconds=180,
+                )
+                return (
+                    bool(result.get("echo"))
+                    if isinstance(result, dict)
+                    else bool(result)
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[qq] runtime send ledger private echo check failed channel=%s from=%s err=%s",
+                    self._channel,
+                    user_id,
+                    exc,
+                )
+                # Older runtimes do not expose the private-echo endpoint yet; keep
+                # the recent-send query as a compatibility fallback.
         content = str(text or "").strip()
         if not content and img_urls:
             content = OUTBOUND_IMAGE_MARKER

@@ -1346,6 +1346,56 @@ func TestSendLedgerEndpointRecordsListsAndChecksRecentEcho(t *testing.T) {
 	}
 }
 
+func TestSendLedgerPrivateEchoEndpointUsesImageMarker(t *testing.T) {
+	store := memory.NewStore()
+	sendLedger := appservice.NewSendLedgerService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterRoutes(
+		mux,
+		appservice.NewMessageIngestService(
+			store,
+			store,
+			store,
+			store,
+			domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+			domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+		),
+		appservice.NewMessageIngestService(
+			store,
+			store,
+			store,
+			store,
+			domainservice.NewProvenanceClassifier([]string{"1049511700", "2365524513"}),
+			domainservice.NewLoopGuard([]string{"1049511700", "2365524513"}, 15*time.Second, 6),
+		),
+		appservice.NewShadowQueryService(store),
+		appservice.NewMessageSendService(store, store, store, store),
+		appservice.NewImageJobService(store, store),
+		appservice.NewOutboxService(store, store),
+		appservice.NewMediaAssetService(store),
+		appservice.NewAgentJobService(store),
+		sendLedger,
+		appservice.NewInboxEventService(store),
+	)
+	body := []byte(`{"from_bot_id":"1049511700","conversation_id":"2365524513","content":"[图片]"}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/send-ledger/records", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected record accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/send-ledger/private-echo?from_user_id=1049511700&to_bot_id=2365524513&has_image=true&window_seconds=180", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected echo 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"echo":true`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"reason":"recent_image_echo"`)) {
+		t.Fatalf("private echo response missing image echo: %s", response.Body.String())
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)

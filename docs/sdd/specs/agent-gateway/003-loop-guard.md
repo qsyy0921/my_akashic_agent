@@ -29,6 +29,11 @@ must not run indefinitely.
 - `cooldown`: same bot pair cannot immediately restart after stop.
 - `send_ledger`: messages sent by Akashic are recorded by content hash and
   short time window, so platform echo is observed but not replied to.
+- `private_echo`: Go exposes `GET /v1/send-ledger/private-echo` for the QQ
+  compatibility channel. The caller supplies `from_user_id`, `to_bot_id`, text,
+  and attachment hints. Go applies the same send-ledger lookup plus compatibility
+  markers (`[图片]`, `[文件]`, `[转发消息]`) and returns an explainable echo
+  decision without mutating state.
 
 ## State Machine
 
@@ -55,3 +60,4 @@ active -> explicit_stop
 - Untagged peer bot message is observe-only.
 - Tagged peer bot message within hop budget is accepted.
 - Recent outbound content echo is observe-only.
+- Empty-text image echo is detected through the Go-owned `[图片]` marker lookup.

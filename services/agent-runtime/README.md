@@ -515,6 +515,7 @@ Record and query recent bot sends:
 POST /v1/send-ledger/records
 GET  /v1/send-ledger/records?from_bot_id=1049511700&conversation_id=2365524513&limit=50
 GET  /v1/send-ledger/recent?from_bot_id=1049511700&conversation_id=2365524513&content=hello&window_seconds=60
+GET  /v1/send-ledger/private-echo?from_user_id=1049511700&to_bot_id=2365524513&has_image=true&window_seconds=180
 ```
 
 `POST /v1/send-ledger/records` accepts either `content` or `content_hash`. When
@@ -523,6 +524,9 @@ the loop guard. Python compatibility senders should call this endpoint after a
 successful QQ/Telegram send until platform dispatch is fully cut over to Go.
 When `integrations.agent_runtime.enabled=true`, the Python QQ and Telegram
 compatibility channels record successful sends here on a best-effort basis.
+`/v1/send-ledger/private-echo` is read-only and centralizes private echo
+classification for compatibility channels. Empty-text image/file/forward echoes
+are checked with the shared markers `[图片]`, `[文件]`, and `[转发消息]`.
 
 Persist outbound delivery state across runtime restarts:
 

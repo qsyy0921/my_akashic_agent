@@ -387,6 +387,44 @@ class AgentGatewayClient:
             )
         return bool(data.get("recent"))
 
+    async def private_echo(
+        self,
+        *,
+        from_user_id: str,
+        to_bot_id: str,
+        text: str = "",
+        has_image: bool = False,
+        has_file: bool = False,
+        has_forward: bool = False,
+        content_hash: str = "",
+        window_seconds: int = 180,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "from_user_id": str(from_user_id),
+            "to_bot_id": str(to_bot_id),
+            "window_seconds": max(1, int(window_seconds)),
+        }
+        if text:
+            params["text"] = str(text)
+        if has_image:
+            params["has_image"] = "true"
+        if has_file:
+            params["has_file"] = "true"
+        if has_forward:
+            params["has_forward"] = "true"
+        if content_hash:
+            params["content_hash"] = str(content_hash)
+        data = await self._request(
+            "GET",
+            "/v1/send-ledger/private-echo",
+            params=params,
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime private-echo response is not an object"
+            )
+        return data
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 

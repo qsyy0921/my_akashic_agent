@@ -53,3 +53,80 @@ func TestSendLedgerServiceRecordsAndQueriesRecentSend(t *testing.T) {
 		t.Fatalf("unexpected records: %+v", items)
 	}
 }
+
+func TestSendLedgerServiceDetectsPrivateImageEchoWithMarker(t *testing.T) {
+	store := memory.NewStore()
+	ledger := appservice.NewSendLedgerService(store)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	if _, err := ledger.Record(ctx, command.RecordSendCommand{
+		FromBotID:      "1049511700",
+		ConversationID: "2365524513",
+		Content:        service.OutboundImageMarker,
+		Timestamp:      now,
+	}); err != nil {
+		t.Fatalf("record image marker: %v", err)
+	}
+
+	echo, err := ledger.CheckPrivateEcho(ctx, command.CheckPrivateEchoCommand{
+		FromUserID: "1049511700",
+		ToBotID:    "2365524513",
+		HasImage:   true,
+		Window:     3 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("check private echo: %v", err)
+	}
+	if !echo.Echo || echo.Reason != "recent_image_echo" || echo.WindowSeconds != 180 {
+		t.Fatalf("expected recent image echo, got %+v", echo)
+	}
+	if echo.ContentHash != service.ContentHash(service.OutboundImageMarker) {
+		t.Fatalf("unexpected image marker hash: %+v", echo)
+	}
+}
+
+func TestSendLedgerServiceTextEchoTakesPrecedenceOverAttachmentMarker(t *testing.T) {
+	store := memory.NewStore()
+	ledger := appservice.NewSendLedgerService(store)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	if _, err := ledger.Record(ctx, command.RecordSendCommand{
+		FromBotID:      "1049511700",
+		ConversationID: "2365524513",
+		Content:        "caption",
+		Timestamp:      now,
+	}); err != nil {
+		t.Fatalf("record text: %v", err)
+	}
+
+	echo, err := ledger.CheckPrivateEcho(ctx, command.CheckPrivateEchoCommand{
+		FromUserID: "1049511700",
+		ToBotID:    "2365524513",
+		Text:       "caption",
+		HasImage:   true,
+	})
+	if err != nil {
+		t.Fatalf("check private text echo: %v", err)
+	}
+	if !echo.Echo || echo.Reason != "recent_text_echo" || echo.WindowSeconds != 180 {
+		t.Fatalf("expected recent text echo, got %+v", echo)
+	}
+}
+
+func TestSendLedgerServicePrivateEchoReturnsEmptyContentWithoutLookup(t *testing.T) {
+	store := memory.NewStore()
+	ledger := appservice.NewSendLedgerService(store)
+
+	echo, err := ledger.CheckPrivateEcho(context.Background(), command.CheckPrivateEchoCommand{
+		FromUserID: "1049511700",
+		ToBotID:    "2365524513",
+	})
+	if err != nil {
+		t.Fatalf("check private empty echo: %v", err)
+	}
+	if echo.Echo || echo.Reason != "empty_content" || echo.ContentHash != "" {
+		t.Fatalf("expected empty content to be non-echo, got %+v", echo)
+	}
+}

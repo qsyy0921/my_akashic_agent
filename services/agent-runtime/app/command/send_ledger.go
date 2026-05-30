@@ -19,3 +19,14 @@ type CheckRecentSendCommand struct {
 	ContentHash    string
 	Window         time.Duration
 }
+
+type CheckPrivateEchoCommand struct {
+	FromUserID  string
+	ToBotID     string
+	Text        string
+	HasImage    bool
+	HasFile     bool
+	HasForward  bool
+	ContentHash string
+	Window      time.Duration
+}
