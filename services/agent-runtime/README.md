@@ -931,6 +931,10 @@ admission is enabled.
 `/v1/agent-job-external-lease/readiness` gate, including result-ack readiness,
 strict lease token, execution owner/scope and Python worker coverage blockers
 before generic jobs use NATS external lease result acknowledgement.
+`Agent Job External Lease Plan` summarizes the read-only
+`/v1/agent-job-external-lease/plan`, including current, desired and recommended
+execution owner, decision and blocker count before generic AgentJob queue
+acknowledgement is moved to NATS result-ack.
 `Outbound Cutover` summarizes the read-only `/v1/outbound-cutover/plan`,
 including current, desired and recommended execution owner, decision and blocker
 count before QQ/NapCat delivery ownership is moved to Go local outbox worker or

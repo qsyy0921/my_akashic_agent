@@ -202,4 +202,7 @@ execution.
 - `076-agent-job-external-lease-plan.md`: Go exposes a read-only `agent_job`
   external lease result-ack cutover plan with required checks, env hints,
   verification steps and rollback steps while Python keeps AI execution.
+- `077-runtime-overview-agent-job-external-lease-plan.md`: Runtime overview
+  aggregates the `agent_job` external lease plan into summary/card/detail
+  fields without mutating queue, worker or AI execution state.
 - Agent architecture boundary specs live under `../agent-architecture/`.

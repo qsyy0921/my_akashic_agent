@@ -35,6 +35,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgePlannerReady      runtimeKnowledgeJobPlannerReadinessChecker
 	KnowledgePlannerPlan       command.PlanKnowledgeJobsCommand
 	AgentJobExternalLeaseReady runtimeAgentJobExternalLeaseReadinessChecker
+	AgentJobExternalLeasePlan  runtimeAgentJobExternalLeasePlanner
 	OutboundCutoverPlan        runtimeOutboundCutoverPlanner
 	ReceiverStatuses           runtimeReceiverStatusesGetter
 	ReceiverLeases             runtimeReceiverLeasesGetter
@@ -109,6 +110,10 @@ type runtimeAgentJobExternalLeaseReadinessChecker interface {
 	CheckAgentJobExternalLeaseReadiness(ctx context.Context, cmd command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error)
 }
 
+type runtimeAgentJobExternalLeasePlanner interface {
+	PlanAgentJobExternalLease(ctx context.Context, cmd command.PlanAgentJobExternalLeaseCommand) (query.AgentJobExternalLeasePlanView, error)
+}
+
 type runtimeOutboundCutoverPlanner interface {
 	PlanOutboundCutover(ctx context.Context, cmd command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error)
 }
@@ -166,6 +171,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePlanner      query.KnowledgeJobPlannerPreviewView
 		knowledgeReady        query.KnowledgeJobPlannerReadinessView
 		agentJobExternalLease query.AgentJobExternalLeaseReadinessView
+		agentJobExternalPlan  query.AgentJobExternalLeasePlanView
 		outboundCutover       query.OutboundCutoverPlanView
 		receiverStatuses      query.ReceiverStatusesView
 		receiverLeases        query.ReceiverLeasesView
@@ -327,6 +333,20 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.AgentJobExternalLeasePlan != nil {
+			if item, err := deps.AgentJobExternalLeasePlan.PlanAgentJobExternalLease(ctx, command.PlanAgentJobExternalLeaseCommand{
+				Readiness: command.CheckAgentJobExternalLeaseReadinessCommand{
+					JobLimit:          limit,
+					EventLimit:        eventLimit,
+					StaleAfterSeconds: staleAfterSeconds,
+				},
+			}); err != nil {
+				errors = append(errors, runtimeOverviewError("agent-job-external-lease-plan", err))
+			} else {
+				agentJobExternalPlan = item
+			}
+		}
+
 		if deps.OutboundCutoverPlan != nil {
 			if item, err := deps.OutboundCutoverPlan.PlanOutboundCutover(ctx, command.PlanOutboundCutoverCommand{}); err != nil {
 				errors = append(errors, runtimeOverviewError("outbound-cutover-plan", err))
@@ -379,6 +399,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePlanner,
 		knowledgeReady,
 		agentJobExternalLease,
+		agentJobExternalPlan,
 		outboundCutover,
 		receiverStatuses,
 		receiverLeases,
@@ -404,6 +425,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePlanner,
 		knowledgeReady,
 		agentJobExternalLease,
+		agentJobExternalPlan,
 		outboundCutover,
 		receiverStatuses,
 		receiverLeases,
@@ -426,6 +448,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		KnowledgeJobPlanner:    knowledgePlanner,
 		KnowledgePlannerReady:  knowledgeReady,
 		AgentJobExternalLease:  agentJobExternalLease,
+		AgentJobExternalPlan:   agentJobExternalPlan,
 		OutboundCutoverPlan:    outboundCutover,
 		ReceiverStatuses:       receiverStatuses,
 		ReceiverLeases:         receiverLeases,
@@ -464,6 +487,7 @@ func runtimeOverviewSummary(
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
+	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
@@ -657,26 +681,32 @@ func runtimeOverviewSummary(
 		"agent_job_worker_coverage_failed_job_types": agentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
 			return item.FailedWorkers > 0
 		}),
-		"agent_job_external_lease_ready":            agentJobExternalLease.Ready,
-		"agent_job_external_lease_reason":           agentJobExternalLease.Reason,
-		"agent_job_external_lease_blockers":         len(agentJobExternalLease.Blockers),
-		"agent_job_external_lease_result_ack_ready": agentJobExternalLease.AgentJobResultAckReady,
-		"agent_job_external_lease_worker_ready":     agentJobExternalLease.AgentJobWorkerReady,
-		"agent_job_external_lease_strict_token":     agentJobExternalLease.StrictLeaseTokenEnabled,
-		"agent_job_external_lease_execution_owner":  agentJobExternalLease.ExecutionOwner,
-		"agent_job_external_lease_execution_scope":  agentJobExternalLease.ExecutionScope,
-		"outbox_metric_events":                      outboxMetrics.SampledEvents,
-		"outbox_metric_dead_letters":                outboxMetrics.DeadLetters.CurrentTotal,
-		"outbox_pressure_accounts":                  outboxMetrics.Pressure.Accounts,
-		"outbox_pressure_high_accounts":             outboxMetrics.Pressure.HighPressureAccounts,
-		"outbox_pressure_max_active":                outboxMetrics.Pressure.MaxActive,
-		"outbox_pressure_max_queued":                outboxMetrics.Pressure.MaxQueued,
-		"outbound_cutover_plan_ready":               outboundCutover.Ready,
-		"outbound_cutover_plan_decision":            outboundCutover.Decision,
-		"outbound_cutover_plan_blockers":            len(outboundCutover.Blockers),
-		"outbound_cutover_plan_current_owner":       outboundCutover.CurrentExecutionOwner,
-		"outbound_cutover_plan_desired_owner":       outboundCutover.DesiredExecutionOwner,
-		"outbound_cutover_plan_recommended_owner":   outboundCutover.RecommendedExecutionOwner,
+		"agent_job_external_lease_ready":                  agentJobExternalLease.Ready,
+		"agent_job_external_lease_reason":                 agentJobExternalLease.Reason,
+		"agent_job_external_lease_blockers":               len(agentJobExternalLease.Blockers),
+		"agent_job_external_lease_result_ack_ready":       agentJobExternalLease.AgentJobResultAckReady,
+		"agent_job_external_lease_worker_ready":           agentJobExternalLease.AgentJobWorkerReady,
+		"agent_job_external_lease_strict_token":           agentJobExternalLease.StrictLeaseTokenEnabled,
+		"agent_job_external_lease_execution_owner":        agentJobExternalLease.ExecutionOwner,
+		"agent_job_external_lease_execution_scope":        agentJobExternalLease.ExecutionScope,
+		"agent_job_external_lease_plan_ready":             agentJobExternalPlan.Ready,
+		"agent_job_external_lease_plan_decision":          agentJobExternalPlan.Decision,
+		"agent_job_external_lease_plan_blockers":          len(agentJobExternalPlan.Blockers),
+		"agent_job_external_lease_plan_current_owner":     agentJobExternalPlan.CurrentExecutionOwner,
+		"agent_job_external_lease_plan_desired_owner":     agentJobExternalPlan.DesiredExecutionOwner,
+		"agent_job_external_lease_plan_recommended_owner": agentJobExternalPlan.RecommendedExecutionOwner,
+		"outbox_metric_events":                            outboxMetrics.SampledEvents,
+		"outbox_metric_dead_letters":                      outboxMetrics.DeadLetters.CurrentTotal,
+		"outbox_pressure_accounts":                        outboxMetrics.Pressure.Accounts,
+		"outbox_pressure_high_accounts":                   outboxMetrics.Pressure.HighPressureAccounts,
+		"outbox_pressure_max_active":                      outboxMetrics.Pressure.MaxActive,
+		"outbox_pressure_max_queued":                      outboxMetrics.Pressure.MaxQueued,
+		"outbound_cutover_plan_ready":                     outboundCutover.Ready,
+		"outbound_cutover_plan_decision":                  outboundCutover.Decision,
+		"outbound_cutover_plan_blockers":                  len(outboundCutover.Blockers),
+		"outbound_cutover_plan_current_owner":             outboundCutover.CurrentExecutionOwner,
+		"outbound_cutover_plan_desired_owner":             outboundCutover.DesiredExecutionOwner,
+		"outbound_cutover_plan_recommended_owner":         outboundCutover.RecommendedExecutionOwner,
 	}
 }
 
@@ -699,6 +729,7 @@ func runtimeOverviewCards(
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
+	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
@@ -718,6 +749,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("agent_job_pressure", "Agent Job Pressure", runtimeAgentJobPressureValue(agentJobMetrics), runtimeAgentJobPressureStatus(agentJobMetrics), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_worker_coverage", "Agent Job Worker Coverage", runtimeAgentJobWorkerCoverageValue(agentJobWorkerCoverage), runtimeAgentJobWorkerCoverageStatus(agentJobWorkerCoverage), map[string]any{"agent_job_worker_coverage": agentJobWorkerCoverage}),
 		runtimeOverviewCard("agent_job_external_lease_readiness", "Agent Job External Lease", agentJobExternalLeaseValue(agentJobExternalLease), agentJobExternalLeaseStatus(agentJobExternalLease), map[string]any{"agent_job_external_lease_readiness": agentJobExternalLease}),
+		runtimeOverviewCard("agent_job_external_lease_plan", "Agent Job External Lease Plan", agentJobExternalLeasePlanValue(agentJobExternalPlan), agentJobExternalLeasePlanStatus(agentJobExternalPlan), map[string]any{"agent_job_external_lease_plan": agentJobExternalPlan}),
 		runtimeOverviewCard("outbox_metrics", "Outbox Metrics", intSummary(summary, "outbox_metric_events"), statusIfPositive(intSummary(summary, "outbox_metric_dead_letters"), "danger", "ok"), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("outbox_pressure", "Outbox Pressure", runtimeOutboxPressureValue(outboxMetrics), runtimeOutboxPressureStatus(outboxMetrics), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("outbox_events", "Outbox Events", intSummary(summary, "outbox_events"), statusIfPositive(intSummary(summary, "outbox_events"), "ok", "muted"), map[string]any{"outbox_metrics": outboxMetrics}),
@@ -1043,6 +1075,32 @@ func agentJobExternalLeaseValue(view query.AgentJobExternalLeaseReadinessView) s
 	}
 	if view.Reason != "" {
 		return fmt.Sprintf("%s:%d", view.Reason, len(view.Blockers))
+	}
+	return fmt.Sprintf("blocked:%d", len(view.Blockers))
+}
+
+func agentJobExternalLeasePlanStatus(view query.AgentJobExternalLeasePlanView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if view.Ready {
+		return "ok"
+	}
+	if len(view.Blockers) > 0 || view.Decision == "blocked" {
+		return "warn"
+	}
+	return "ok"
+}
+
+func agentJobExternalLeasePlanValue(view query.AgentJobExternalLeasePlanView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	if view.Ready {
+		return "ready"
+	}
+	if view.Decision != "" {
+		return fmt.Sprintf("%s:%d", view.Decision, len(view.Blockers))
 	}
 	return fmt.Sprintf("blocked:%d", len(view.Blockers))
 }

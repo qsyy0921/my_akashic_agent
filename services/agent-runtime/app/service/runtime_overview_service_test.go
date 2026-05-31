@@ -370,6 +370,47 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			},
 			SideEffect: "none",
 		}},
+		AgentJobExternalLeasePlan: staticRuntimeAgentJobExternalLeasePlan{view: query.AgentJobExternalLeasePlanView{
+			Ready:                     false,
+			Decision:                  "blocked",
+			DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+			RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+			CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+			Readiness: query.AgentJobExternalLeaseReadinessView{
+				Ready:          false,
+				Reason:         "agent_job_external_lease_not_ready",
+				ExecutionOwner: "python_ai_worker_state_store_lease",
+				SideEffect:     "none",
+			},
+			RequiredChecks: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "precheck",
+				Action:    "check_agent_job_external_lease_readiness",
+				Method:    "GET",
+				Endpoint:  "/v1/agent-job-external-lease/readiness",
+			}},
+			EnableSteps: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "enable",
+				Action:    "configure_agent_job_nats_result_ack",
+				Env:       map[string]string{"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "true"},
+			}},
+			VerificationSteps: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "verify",
+				Action:    "read_queue_backend",
+				Method:    "GET",
+				Endpoint:  "/v1/queue-backend",
+			}},
+			RollbackSteps: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "rollback",
+				Action:    "disable_agent_job_result_ack_scope",
+				Env:       map[string]string{"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "false"},
+			}},
+			Blockers:   []string{"agent_job_external_lease_readiness_not_ready", "agent_job_worker_coverage_blocked"},
+			SideEffect: "none",
+		}},
 		OutboundCutoverPlan: staticRuntimeOutboundCutoverPlan{view: query.OutboundCutoverPlanView{
 			Ready:                     false,
 			Decision:                  "blocked",
@@ -551,6 +592,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["agent_job_external_lease_execution_scope"] != "agent_job_result_ack_only" {
 		t.Fatalf("unexpected agent job external lease readiness summary: %#v", view.Summary)
 	}
+	if view.Summary["agent_job_external_lease_plan_ready"] != false ||
+		view.Summary["agent_job_external_lease_plan_decision"] != "blocked" ||
+		view.Summary["agent_job_external_lease_plan_blockers"] != 2 ||
+		view.Summary["agent_job_external_lease_plan_current_owner"] != "python_ai_worker_state_store_lease" ||
+		view.Summary["agent_job_external_lease_plan_desired_owner"] != "python_ai_worker_with_nats_result_ack" ||
+		view.Summary["agent_job_external_lease_plan_recommended_owner"] != "python_ai_worker_with_nats_result_ack" {
+		t.Fatalf("unexpected agent job external lease plan summary: %#v", view.Summary)
+	}
 	if view.Summary["outbound_cutover_plan_ready"] != false ||
 		view.Summary["outbound_cutover_plan_decision"] != "blocked" ||
 		view.Summary["outbound_cutover_plan_blockers"] != 2 ||
@@ -606,6 +655,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_readiness", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_external_lease_readiness", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_external_lease_readiness", "agent_job_external_lease_not_ready:3")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_external_lease_plan", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_external_lease_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbound_cutover_plan", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "outbound_cutover_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
@@ -649,6 +700,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.AgentJobExternalLease.ExecutionScope != "agent_job_result_ack_only" ||
 		len(view.AgentJobExternalLease.Blockers) != 3 {
 		t.Fatalf("unexpected agent job external lease readiness detail: %+v", view.AgentJobExternalLease)
+	}
+	if view.AgentJobExternalPlan.Decision != "blocked" ||
+		view.AgentJobExternalPlan.DesiredExecutionOwner != "python_ai_worker_with_nats_result_ack" ||
+		len(view.AgentJobExternalPlan.RollbackSteps) == 0 {
+		t.Fatalf("unexpected agent job external lease plan detail: %+v", view.AgentJobExternalPlan)
 	}
 	if view.OutboundCutoverPlan.Decision != "blocked" || len(view.OutboundCutoverPlan.RollbackSteps) == 0 {
 		t.Fatalf("unexpected outbound cutover plan detail: %+v", view.OutboundCutoverPlan)
@@ -814,6 +870,14 @@ type staticRuntimeAgentJobExternalLeaseReadiness struct {
 }
 
 func (s staticRuntimeAgentJobExternalLeaseReadiness) CheckAgentJobExternalLeaseReadiness(context.Context, command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeAgentJobExternalLeasePlan struct {
+	view query.AgentJobExternalLeasePlanView
+}
+
+func (s staticRuntimeAgentJobExternalLeasePlan) PlanAgentJobExternalLease(context.Context, command.PlanAgentJobExternalLeaseCommand) (query.AgentJobExternalLeasePlanView, error) {
 	return s.view, nil
 }
 
