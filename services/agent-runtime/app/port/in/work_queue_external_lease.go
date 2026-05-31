@@ -10,3 +10,7 @@ import (
 type WorkQueueLeaseExecutor interface {
 	ExecuteWorkQueueLease(ctx context.Context, cmd command.ExecuteWorkQueueLeaseCommand) (query.QueueExternalLeaseExecutionView, error)
 }
+
+type WorkQueueExternalLeaseDiagnosticReader interface {
+	SnapshotExternalLeaseDiagnostics(ctx context.Context) (query.QueueExternalLeaseDiagnostics, error)
+}

@@ -17,7 +17,7 @@
 ## Queue / Worker / Runtime
 
 - 设计并验证更合适的 MQ 方案，保留多线程消费和可替换边界，避免把 NATS/RabbitMQ/Redis Streams 细节泄漏到 domain。
-- 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ ack/nack 和诊断一致性。
+- 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ result-ack live smoke 和切换门禁。
 
 ## Knowledge / Memory / RAG
 

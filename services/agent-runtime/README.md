@@ -565,6 +565,11 @@ When `AKASHIC_QUEUE_MODE=external_lease`, the runtime only exposes a blocked
 cutover gate in `/v1/queue-backend`. It reports required checks plus ack, nack,
 retry, dead-letter, and rollback policies. Setting the mode alone does not move
 work discovery away from Go state-store leasing.
+When the external lease consumer is actually running, `/v1/queue-backend`
+also includes `external_lease.diagnostics` with bounded recent execution
+samples and disposition / reason / work-kind counters. These diagnostics are
+read-only observations of Go's queue ack/nack/term decisions; the authoritative
+state remains the outbox, AgentJob, and lifecycle event stores.
 After both explicit cutover flags pass, the first executor consumes only
 `outbox` NATS subjects. It leases the Go outbox aggregate by work id, dispatches
 through configured Go DeliveryAdapters, then maps success to NATS `ack`,

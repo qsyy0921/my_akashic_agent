@@ -116,4 +116,7 @@ execution.
 - `046-agent-worker-status-heartbeat-renewal.md`: Python AI workers renew
   Go-owned worker-status leases during long-running jobs without changing
   AgentJob lease semantics.
+- `047-external-lease-execution-diagnostics.md`: Go-owned diagnostics for
+  external queue lease execution disposition, reason, work-kind counters, and
+  bounded recent samples.
 - Agent architecture boundary specs live under `../agent-architecture/`.

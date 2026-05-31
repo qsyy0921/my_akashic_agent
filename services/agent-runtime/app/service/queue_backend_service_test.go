@@ -128,11 +128,81 @@ func TestQueueBackendServiceExposesDualReadDiagnostics(t *testing.T) {
 	}
 }
 
+func TestQueueBackendServiceExposesExternalLeaseExecutionDiagnostics(t *testing.T) {
+	service := NewQueueBackendServiceWithDiagnostics(query.QueueBackendView{
+		Provider:       "nats_jetstream",
+		Mode:           "external_lease",
+		MigrationPhase: "external_lease",
+		ExternalLease:  &query.QueueExternalLeaseGate{Enabled: true, AllowExecution: true},
+	}, QueueBackendDiagnosticsDeps{
+		ExternalLease: fakeExternalLeaseDiagnosticsReader{
+			snapshot: query.QueueExternalLeaseDiagnostics{
+				Enabled:       true,
+				SampleLimit:   100,
+				ExecutedTotal: 2,
+				Dispositions: []query.QueueExternalLeaseCounter{
+					{Name: "ack", Count: 1},
+					{Name: "nack", Count: 1},
+				},
+				RecentExecutions: []query.QueueExternalLeaseExecutionView{
+					{WorkKind: "agent_job", WorkID: "job-1", Disposition: "nack", Reason: "agent_job_waiting_for_result"},
+				},
+			},
+		},
+	})
+
+	view, err := service.Get(context.Background())
+	if err != nil {
+		t.Fatalf("get queue backend: %v", err)
+	}
+	if view.ExternalLease == nil || view.ExternalLease.Diagnostics == nil {
+		t.Fatalf("expected external lease diagnostics: %+v", view.ExternalLease)
+	}
+	if !view.ExternalLease.Diagnostics.Enabled || view.ExternalLease.Diagnostics.ExecutedTotal != 2 {
+		t.Fatalf("unexpected external lease diagnostics: %+v", view.ExternalLease.Diagnostics)
+	}
+	if len(view.ExternalLease.Diagnostics.RecentExecutions) != 1 ||
+		view.ExternalLease.Diagnostics.RecentExecutions[0].Reason != "agent_job_waiting_for_result" {
+		t.Fatalf("unexpected recent executions: %+v", view.ExternalLease.Diagnostics.RecentExecutions)
+	}
+}
+
+func TestQueueBackendServiceReportsMissingExternalLeaseDiagnosticsRecorder(t *testing.T) {
+	service := NewQueueBackendServiceWithDiagnostics(query.QueueBackendView{
+		Provider:       "nats_jetstream",
+		Mode:           "external_lease",
+		MigrationPhase: "external_lease_gate",
+		ExternalLease:  &query.QueueExternalLeaseGate{Enabled: true, AllowExecution: false},
+	}, QueueBackendDiagnosticsDeps{})
+
+	view, err := service.Get(context.Background())
+	if err != nil {
+		t.Fatalf("get queue backend: %v", err)
+	}
+	if view.ExternalLease == nil || view.ExternalLease.Diagnostics == nil {
+		t.Fatalf("expected external lease diagnostics placeholder: %+v", view.ExternalLease)
+	}
+	if view.ExternalLease.Diagnostics.Enabled {
+		t.Fatalf("diagnostics should be disabled without active recorder: %+v", view.ExternalLease.Diagnostics)
+	}
+	if len(view.ExternalLease.Diagnostics.Notes) == 0 {
+		t.Fatalf("expected diagnostic note when recorder is absent")
+	}
+}
+
 type fakeQueueDiagnosticsReader struct {
 	snapshot query.QueueShadowPublishDiagnostics
 }
 
 func (r fakeQueueDiagnosticsReader) SnapshotWorkQueuePublishDiagnostics(context.Context) (query.QueueShadowPublishDiagnostics, error) {
+	return r.snapshot, nil
+}
+
+type fakeExternalLeaseDiagnosticsReader struct {
+	snapshot query.QueueExternalLeaseDiagnostics
+}
+
+func (r fakeExternalLeaseDiagnosticsReader) SnapshotExternalLeaseDiagnostics(context.Context) (query.QueueExternalLeaseDiagnostics, error) {
 	return r.snapshot, nil
 }
 

@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
@@ -15,6 +17,8 @@ const (
 	QueueLeaseDispositionAck  = "ack"
 	QueueLeaseDispositionNack = "nack"
 	QueueLeaseDispositionTerm = "term"
+
+	externalLeaseDiagnosticsSampleLimit = 100
 )
 
 type WorkQueueExternalLeaseService struct {
@@ -24,6 +28,17 @@ type WorkQueueExternalLeaseService struct {
 	channelByAccount map[string]string
 	workerID         string
 	leaseTTLSeconds  int
+	diagnosticsMu    sync.Mutex
+	diagnostics      queueExternalLeaseDiagnostics
+}
+
+type queueExternalLeaseDiagnostics struct {
+	executedTotal int
+	errorTotal    int
+	dispositions  map[string]int
+	reasons       map[string]int
+	workKinds     map[string]int
+	recent        []query.QueueExternalLeaseExecutionView
 }
 
 type WorkQueueExternalLeaseOption func(*WorkQueueExternalLeaseService)
@@ -38,6 +53,12 @@ func NewWorkQueueExternalLeaseService(
 		dispatch:        dispatch,
 		workerID:        "agent-runtime-external-lease",
 		leaseTTLSeconds: 300,
+		diagnostics: queueExternalLeaseDiagnostics{
+			dispositions: make(map[string]int),
+			reasons:      make(map[string]int),
+			workKinds:    make(map[string]int),
+			recent:       make([]query.QueueExternalLeaseExecutionView, 0, externalLeaseDiagnosticsSampleLimit),
+		},
 	}
 	for _, option := range options {
 		if option != nil {
@@ -74,6 +95,17 @@ func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 	ctx context.Context,
 	cmd command.ExecuteWorkQueueLeaseCommand,
 ) (query.QueueExternalLeaseExecutionView, error) {
+	result, err := s.executeWorkQueueLease(ctx, cmd)
+	if s != nil {
+		s.recordExternalLeaseExecution(cmd, result, err)
+	}
+	return result, err
+}
+
+func (s *WorkQueueExternalLeaseService) executeWorkQueueLease(
+	ctx context.Context,
+	cmd command.ExecuteWorkQueueLeaseCommand,
+) (query.QueueExternalLeaseExecutionView, error) {
 	if err := ctx.Err(); err != nil {
 		return query.QueueExternalLeaseExecutionView{}, err
 	}
@@ -102,6 +134,95 @@ func (s *WorkQueueExternalLeaseService) ExecuteWorkQueueLease(
 		view.Disposition = QueueLeaseDispositionTerm
 		view.Reason = "unsupported_work_kind"
 		return view, nil
+	}
+}
+
+func (s *WorkQueueExternalLeaseService) SnapshotExternalLeaseDiagnostics(
+	ctx context.Context,
+) (query.QueueExternalLeaseDiagnostics, error) {
+	if err := ctx.Err(); err != nil {
+		return query.QueueExternalLeaseDiagnostics{}, err
+	}
+	if s == nil {
+		return query.QueueExternalLeaseDiagnostics{}, errors.New("work queue external lease service is nil")
+	}
+	s.diagnosticsMu.Lock()
+	defer s.diagnosticsMu.Unlock()
+	return query.QueueExternalLeaseDiagnostics{
+		Enabled:          true,
+		SampleLimit:      externalLeaseDiagnosticsSampleLimit,
+		ExecutedTotal:    s.diagnostics.executedTotal,
+		ErrorTotal:       s.diagnostics.errorTotal,
+		Dispositions:     sortedExternalLeaseCounters(s.diagnostics.dispositions),
+		Reasons:          sortedExternalLeaseCounters(s.diagnostics.reasons),
+		WorkKinds:        sortedExternalLeaseCounters(s.diagnostics.workKinds),
+		RecentExecutions: cloneExternalLeaseExecutions(s.diagnostics.recent),
+		Notes: []string{
+			"external_lease diagnostics are in-memory runtime observations",
+			"state store and lifecycle event streams remain authoritative",
+		},
+	}, nil
+}
+
+func (s *WorkQueueExternalLeaseService) recordExternalLeaseExecution(
+	cmd command.ExecuteWorkQueueLeaseCommand,
+	view query.QueueExternalLeaseExecutionView,
+	err error,
+) {
+	if s == nil {
+		return
+	}
+	if view.WorkKind == "" {
+		view.WorkKind = normalizeWorkKind(cmd.WorkKind)
+	}
+	if view.WorkID == "" {
+		view.WorkID = firstNonBlank(cmd.WorkID, cmd.AggregateID)
+	}
+	if view.AggregateID == "" {
+		view.AggregateID = strings.TrimSpace(cmd.AggregateID)
+	}
+	if view.Subject == "" {
+		view.Subject = strings.TrimSpace(cmd.Subject)
+	}
+	if view.ExecutedAt == "" {
+		timestamp := cmd.Timestamp
+		if timestamp.IsZero() {
+			timestamp = time.Now().UTC()
+		}
+		view.ExecutedAt = formatQueueCompareTime(timestamp)
+	}
+	if err != nil {
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "executor_error"
+	}
+	if view.Disposition == "" {
+		view.Disposition = QueueLeaseDispositionTerm
+	}
+	if view.Reason == "" {
+		view.Reason = "unspecified"
+	}
+
+	s.diagnosticsMu.Lock()
+	defer s.diagnosticsMu.Unlock()
+	if s.diagnostics.dispositions == nil {
+		s.diagnostics.dispositions = make(map[string]int)
+	}
+	if s.diagnostics.reasons == nil {
+		s.diagnostics.reasons = make(map[string]int)
+	}
+	if s.diagnostics.workKinds == nil {
+		s.diagnostics.workKinds = make(map[string]int)
+	}
+	s.diagnostics.executedTotal++
+	if err != nil {
+		s.diagnostics.errorTotal++
+	}
+	s.diagnostics.dispositions[view.Disposition]++
+	s.diagnostics.reasons[view.Reason]++
+	s.diagnostics.workKinds[view.WorkKind]++
+	s.diagnostics.recent = append([]query.QueueExternalLeaseExecutionView{view}, s.diagnostics.recent...)
+	if len(s.diagnostics.recent) > externalLeaseDiagnosticsSampleLimit {
+		s.diagnostics.recent = s.diagnostics.recent[:externalLeaseDiagnosticsSampleLimit]
 	}
 }
 
@@ -348,4 +469,30 @@ func mergeStringMaps(left map[string]string, right map[string]string) map[string
 		merged[key] = value
 	}
 	return merged
+}
+
+func sortedExternalLeaseCounters(items map[string]int) []query.QueueExternalLeaseCounter {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]query.QueueExternalLeaseCounter, 0, len(items))
+	for name, count := range items {
+		result = append(result, query.QueueExternalLeaseCounter{Name: name, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Count == result[j].Count {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Count > result[j].Count
+	})
+	return result
+}
+
+func cloneExternalLeaseExecutions(items []query.QueueExternalLeaseExecutionView) []query.QueueExternalLeaseExecutionView {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]query.QueueExternalLeaseExecutionView, len(items))
+	copy(result, items)
+	return result
 }

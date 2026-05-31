@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 )
@@ -136,6 +137,71 @@ func TestWorkQueueExternalLeaseServiceTermsUnsupportedWork(t *testing.T) {
 	}
 	if result.Disposition != QueueLeaseDispositionTerm || result.Reason != "unsupported_work_kind" {
 		t.Fatalf("expected term unsupported, got %+v", result)
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceRecordsExecutionDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 0, 33, 0, 0, time.UTC)
+	if err := saveExternalLeaseDelivery(ctx, store, "outbox:lease:diag:ack", 3, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveExternalLeaseDelivery(ctx, store, "outbox:lease:diag:nack", 3, now); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingLeaseDeliveryAdapter{}
+	service := NewWorkQueueExternalLeaseService(
+		NewOutboxServiceWithEvents(store, store, store),
+		NewDeliveryDispatchServiceWithAdapters(store, adapter),
+	)
+
+	if _, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "outbox_delivery",
+		WorkID:    "outbox:lease:diag:ack",
+		Timestamp: now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("execute ack: %v", err)
+	}
+	adapter.err = leaseDeliveryError{kind: string(model.DeliveryErrorPlatformTimeout), message: "platform timeout"}
+	if _, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "outbox_delivery",
+		WorkID:    "outbox:lease:diag:nack",
+		Timestamp: now.Add(2 * time.Second),
+	}); err != nil {
+		t.Fatalf("execute nack: %v", err)
+	}
+	if _, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "unsupported",
+		WorkID:    "ignored",
+		Timestamp: now.Add(3 * time.Second),
+	}); err != nil {
+		t.Fatalf("execute term: %v", err)
+	}
+
+	diagnostics, err := service.SnapshotExternalLeaseDiagnostics(ctx)
+	if err != nil {
+		t.Fatalf("snapshot diagnostics: %v", err)
+	}
+	if !diagnostics.Enabled || diagnostics.ExecutedTotal != 3 || diagnostics.ErrorTotal != 0 {
+		t.Fatalf("unexpected diagnostics totals: %+v", diagnostics)
+	}
+	if externalLeaseCounter(diagnostics.Dispositions, "ack") != 1 ||
+		externalLeaseCounter(diagnostics.Dispositions, "nack") != 1 ||
+		externalLeaseCounter(diagnostics.Dispositions, "term") != 1 {
+		t.Fatalf("unexpected dispositions: %+v", diagnostics.Dispositions)
+	}
+	if externalLeaseCounter(diagnostics.Reasons, "delivery_succeeded") != 1 ||
+		externalLeaseCounter(diagnostics.Reasons, "delivery_retry_scheduled") != 1 ||
+		externalLeaseCounter(diagnostics.Reasons, "unsupported_work_kind") != 1 {
+		t.Fatalf("unexpected reasons: %+v", diagnostics.Reasons)
+	}
+	if externalLeaseCounter(diagnostics.WorkKinds, "outbox_delivery") != 2 ||
+		externalLeaseCounter(diagnostics.WorkKinds, "unsupported") != 1 {
+		t.Fatalf("unexpected work kinds: %+v", diagnostics.WorkKinds)
+	}
+	if len(diagnostics.RecentExecutions) != 3 || diagnostics.RecentExecutions[0].Reason != "unsupported_work_kind" {
+		t.Fatalf("expected newest recent execution first, got %+v", diagnostics.RecentExecutions)
 	}
 }
 
@@ -397,4 +463,13 @@ func (e leaseDeliveryError) Error() string {
 
 func (e leaseDeliveryError) DeliveryErrorKind() string {
 	return e.kind
+}
+
+func externalLeaseCounter(items []query.QueueExternalLeaseCounter, name string) int {
+	for _, item := range items {
+		if item.Name == name {
+			return item.Count
+		}
+	}
+	return 0
 }

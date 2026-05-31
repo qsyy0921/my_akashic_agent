@@ -107,21 +107,22 @@ type QueueCandidateComparisonView struct {
 }
 
 type QueueExternalLeaseGate struct {
-	Enabled          bool                      `json:"enabled"`
-	CutoverRequested bool                      `json:"cutover_requested"`
-	AllowExecution   bool                      `json:"allow_execution"`
-	GateState        string                    `json:"gate_state"`
-	ExecutionScope   string                    `json:"execution_scope"`
-	AckPolicy        string                    `json:"ack_policy"`
-	NackPolicy       string                    `json:"nack_policy"`
-	RetryPolicy      string                    `json:"retry_policy"`
-	DeadLetterPolicy string                    `json:"dead_letter_policy"`
-	RollbackPolicy   string                    `json:"rollback_policy"`
-	AllowedWorkKinds []string                  `json:"allowed_work_kinds,omitempty"`
-	BlockedWorkKinds []QueueExternalLeaseBlock `json:"blocked_work_kinds,omitempty"`
-	RequiredChecks   []QueueExternalLeaseCheck `json:"required_checks"`
-	Blockers         []string                  `json:"blockers,omitempty"`
-	Notes            []string                  `json:"notes,omitempty"`
+	Enabled          bool                           `json:"enabled"`
+	CutoverRequested bool                           `json:"cutover_requested"`
+	AllowExecution   bool                           `json:"allow_execution"`
+	GateState        string                         `json:"gate_state"`
+	ExecutionScope   string                         `json:"execution_scope"`
+	AckPolicy        string                         `json:"ack_policy"`
+	NackPolicy       string                         `json:"nack_policy"`
+	RetryPolicy      string                         `json:"retry_policy"`
+	DeadLetterPolicy string                         `json:"dead_letter_policy"`
+	RollbackPolicy   string                         `json:"rollback_policy"`
+	AllowedWorkKinds []string                       `json:"allowed_work_kinds,omitempty"`
+	BlockedWorkKinds []QueueExternalLeaseBlock      `json:"blocked_work_kinds,omitempty"`
+	RequiredChecks   []QueueExternalLeaseCheck      `json:"required_checks"`
+	Blockers         []string                       `json:"blockers,omitempty"`
+	Notes            []string                       `json:"notes,omitempty"`
+	Diagnostics      *QueueExternalLeaseDiagnostics `json:"diagnostics,omitempty"`
 }
 
 type QueueExternalLeaseCheck struct {

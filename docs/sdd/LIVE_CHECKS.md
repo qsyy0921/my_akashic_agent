@@ -17,6 +17,7 @@
 - [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 上报 `starting` / `idle` / `running` / `stopped` 或 stale。
 - [ ] 验证 worker status fencing：故意以相同 `worker_id` 启动第二个 Python AI worker 进程时，Go `/v1/agent-worker-statuses/report` 应返回 409 conflict，原实例状态不被覆盖；原实例 stopped 或 lease 过期后新实例可接管。
 - [ ] 验证长任务 worker status 续租：触发一次耗时 image / knowledge / rag_eval / outbox 任务，确认 `/v1/agent-worker-statuses` 中对应 worker 的 `updated_at` 在任务运行期间持续推进，且 `lease_active=true`，不会误判 stale。
+- [ ] 启用 NATS `external_lease` smoke 时观察 `/v1/queue-backend`：`external_lease.diagnostics.executed_total` 应随消费增长，`dispositions` 应反映 ack/nack/term，recent executions 不触发 Python AI job 或真实平台发送。
 
 ## Proactive
 

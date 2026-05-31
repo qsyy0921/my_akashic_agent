@@ -11,3 +11,20 @@ type QueueExternalLeaseExecutionView struct {
 	Attempts    int    `json:"attempts,omitempty"`
 	ExecutedAt  string `json:"executed_at"`
 }
+
+type QueueExternalLeaseDiagnostics struct {
+	Enabled          bool                              `json:"enabled"`
+	SampleLimit      int                               `json:"sample_limit"`
+	ExecutedTotal    int                               `json:"executed_total"`
+	ErrorTotal       int                               `json:"error_total"`
+	Dispositions     []QueueExternalLeaseCounter       `json:"dispositions,omitempty"`
+	Reasons          []QueueExternalLeaseCounter       `json:"reasons,omitempty"`
+	WorkKinds        []QueueExternalLeaseCounter       `json:"work_kinds,omitempty"`
+	RecentExecutions []QueueExternalLeaseExecutionView `json:"recent_executions,omitempty"`
+	Notes            []string                          `json:"notes,omitempty"`
+}
+
+type QueueExternalLeaseCounter struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}

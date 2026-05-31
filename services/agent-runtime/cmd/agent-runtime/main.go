@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	inport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/in"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
@@ -187,6 +188,7 @@ func main() {
 	if closeExternalLeaseConsumer != nil {
 		defer closeExternalLeaseConsumer()
 	}
+	var externalLeaseDiagnostics inport.WorkQueueExternalLeaseDiagnosticReader
 	if externalLeaseConsumer != nil {
 		queueBackendView.ExternalQueueActive = true
 		queueBackendView.MigrationPhase = "external_lease"
@@ -203,6 +205,7 @@ func main() {
 			),
 			appservice.WithExternalLeaseAgentJobs(agentJobs),
 		)
+		externalLeaseDiagnostics = externalLeaseExecutor
 		externalLeaseCtx, cancelExternalLease := context.WithCancel(context.Background())
 		defer cancelExternalLease()
 		go func() {
@@ -280,6 +283,7 @@ func main() {
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
+		ExternalLease:  externalLeaseDiagnostics,
 		OutboxRepo:     outboxRepository,
 		OutboxEvents:   outboxEventStore,
 		AgentJobRepo:   agentJobRepository,

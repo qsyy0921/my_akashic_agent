@@ -16,6 +16,7 @@ type QueueBackendService struct {
 	view           query.QueueBackendView
 	diagnostics    outport.WorkQueuePublishDiagnosticReader
 	compare        inport.WorkQueueCompareDiagnosticReader
+	externalLease  inport.WorkQueueExternalLeaseDiagnosticReader
 	outboxRepo     outport.OutboxRepository
 	outboxEvents   outport.OutboxDeliveryEventStore
 	agentJobRepo   outport.AgentJobRepository
@@ -29,6 +30,7 @@ func NewQueueBackendService(view query.QueueBackendView) *QueueBackendService {
 type QueueBackendDiagnosticsDeps struct {
 	Diagnostics    outport.WorkQueuePublishDiagnosticReader
 	Compare        inport.WorkQueueCompareDiagnosticReader
+	ExternalLease  inport.WorkQueueExternalLeaseDiagnosticReader
 	OutboxRepo     outport.OutboxRepository
 	OutboxEvents   outport.OutboxDeliveryEventStore
 	AgentJobRepo   outport.AgentJobRepository
@@ -40,6 +42,7 @@ func NewQueueBackendServiceWithDiagnostics(view query.QueueBackendView, deps Que
 		view:           view,
 		diagnostics:    deps.Diagnostics,
 		compare:        deps.Compare,
+		externalLease:  deps.ExternalLease,
 		outboxRepo:     deps.OutboxRepo,
 		outboxEvents:   deps.OutboxEvents,
 		agentJobRepo:   deps.AgentJobRepo,
@@ -69,7 +72,37 @@ func (s *QueueBackendService) Get(ctx context.Context) (query.QueueBackendView, 
 		}
 		view.DualReadCompare = &diagnostics
 	}
+	if view.Mode == "external_lease" && view.ExternalLease != nil {
+		diagnostics, err := s.externalLeaseDiagnostics(ctx)
+		if err != nil {
+			return query.QueueBackendView{}, err
+		}
+		view.ExternalLease.Diagnostics = &diagnostics
+	}
 	return view, nil
+}
+
+func (s *QueueBackendService) externalLeaseDiagnostics(ctx context.Context) (query.QueueExternalLeaseDiagnostics, error) {
+	diagnostics := query.QueueExternalLeaseDiagnostics{
+		Enabled:     s != nil && s.externalLease != nil,
+		SampleLimit: externalLeaseDiagnosticsSampleLimit,
+		Notes: []string{
+			"external_lease diagnostics are read-only and do not lease or acknowledge queue work",
+		},
+	}
+	if s == nil {
+		return diagnostics, nil
+	}
+	if s.externalLease == nil {
+		diagnostics.Notes = append(diagnostics.Notes, "no active external lease execution recorder")
+		return diagnostics, nil
+	}
+	snapshot, err := s.externalLease.SnapshotExternalLeaseDiagnostics(ctx)
+	if err != nil {
+		return query.QueueExternalLeaseDiagnostics{}, err
+	}
+	snapshot.Notes = append(diagnostics.Notes, snapshot.Notes...)
+	return snapshot, nil
 }
 
 func (s *QueueBackendService) dualReadDiagnostics(ctx context.Context) (query.QueueDualReadDiagnostics, error) {
