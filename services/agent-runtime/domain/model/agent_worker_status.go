@@ -20,6 +20,7 @@ const (
 
 type AgentWorkerStatus struct {
 	WorkerID       string
+	InstanceID     string
 	WorkerType     string
 	Status         AgentWorkerLifecycleStatus
 	CurrentJobID   string
@@ -30,10 +31,12 @@ type AgentWorkerStatus struct {
 	Source         string
 	Metadata       map[string]string
 	UpdatedAt      time.Time
+	LeaseUntil     time.Time
 }
 
 type AgentWorkerStatusSpec struct {
 	WorkerID       string
+	InstanceID     string
 	WorkerType     string
 	Status         string
 	CurrentJobID   string
@@ -43,6 +46,7 @@ type AgentWorkerStatusSpec struct {
 	FailedTotal    int
 	Source         string
 	Metadata       map[string]string
+	LeaseUntil     time.Time
 }
 
 func NewAgentWorkerStatus(spec AgentWorkerStatusSpec, updatedAt time.Time) (AgentWorkerStatus, error) {
@@ -51,6 +55,7 @@ func NewAgentWorkerStatus(spec AgentWorkerStatusSpec, updatedAt time.Time) (Agen
 	}
 	status := AgentWorkerStatus{
 		WorkerID:       strings.TrimSpace(spec.WorkerID),
+		InstanceID:     strings.TrimSpace(spec.InstanceID),
 		WorkerType:     strings.TrimSpace(spec.WorkerType),
 		Status:         normalizeAgentWorkerStatus(spec.Status),
 		CurrentJobID:   strings.TrimSpace(spec.CurrentJobID),
@@ -61,6 +66,7 @@ func NewAgentWorkerStatus(spec AgentWorkerStatusSpec, updatedAt time.Time) (Agen
 		Source:         strings.TrimSpace(spec.Source),
 		Metadata:       cloneStringMap(spec.Metadata),
 		UpdatedAt:      updatedAt.UTC(),
+		LeaseUntil:     spec.LeaseUntil.UTC(),
 	}
 	if status.Source == "" {
 		status.Source = "unknown"
@@ -102,6 +108,16 @@ func (s AgentWorkerStatus) HeartbeatActive() bool {
 	}
 }
 
+func (s AgentWorkerStatus) LeaseActive(now time.Time) bool {
+	if strings.TrimSpace(s.InstanceID) == "" || s.LeaseUntil.IsZero() {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return s.HeartbeatActive() && s.LeaseUntil.After(now.UTC())
+}
+
 func (s AgentWorkerStatus) WithStaleHeartbeat(now time.Time, staleAfter time.Duration) AgentWorkerStatus {
 	if staleAfter <= 0 || !s.HeartbeatActive() {
 		return s
@@ -121,6 +137,7 @@ func (s AgentWorkerStatus) WithStaleHeartbeat(now time.Time, staleAfter time.Dur
 	if next.Metadata == nil {
 		next.Metadata = map[string]string{}
 	}
+	next.LeaseUntil = time.Time{}
 	next.Metadata["last_status"] = string(s.Status)
 	next.Metadata["stale_after_seconds"] = fmt.Sprintf("%d", int(staleAfter.Seconds()))
 	return next

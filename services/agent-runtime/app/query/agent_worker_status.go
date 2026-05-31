@@ -6,6 +6,7 @@ type AgentWorkerStatusFilter struct {
 
 type AgentWorkerStatusView struct {
 	WorkerID       string            `json:"worker_id"`
+	InstanceID     string            `json:"instance_id,omitempty"`
 	WorkerType     string            `json:"worker_type"`
 	Status         string            `json:"status"`
 	CurrentJobID   string            `json:"current_job_id,omitempty"`
@@ -16,6 +17,8 @@ type AgentWorkerStatusView struct {
 	Source         string            `json:"source,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 	UpdatedAt      string            `json:"updated_at"`
+	LeaseUntil     string            `json:"lease_until,omitempty"`
+	LeaseActive    bool              `json:"lease_active"`
 	Stale          bool              `json:"stale"`
 }
 

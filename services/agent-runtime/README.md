@@ -522,6 +522,9 @@ GET  /v1/agent-worker-statuses?stale_after_seconds=180
 `failed`, and `stopped` states best-effort. Go stores the latest state in
 `agent-worker-statuses.json` by default, applies read-time heartbeat stale
 detection, and exposes the result in the runtime overview `Agent Workers` card.
+New Python reporters include `instance_id` and `lease_ttl_seconds`; Go rejects
+active same-`worker_id` status overwrites from a different instance until the
+lease expires or the owning instance reports `stopped`/`failed`.
 This endpoint is diagnostic only; it does not execute jobs, poll platforms, or
 send messages.
 

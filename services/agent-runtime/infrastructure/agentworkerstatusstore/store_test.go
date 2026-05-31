@@ -16,10 +16,12 @@ func TestStorePersistsAgentWorkerStatuses(t *testing.T) {
 	}
 	status, err := model.NewAgentWorkerStatus(model.AgentWorkerStatusSpec{
 		WorkerID:       "worker-a",
+		InstanceID:     "instance-a",
 		WorkerType:     "image_generation",
 		Status:         "idle",
 		ProcessedTotal: 3,
 		Source:         "python",
+		LeaseUntil:     time.Date(2026, 5, 31, 10, 2, 0, 0, time.UTC),
 	}, time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("new status: %v", err)
@@ -39,7 +41,10 @@ func TestStorePersistsAgentWorkerStatuses(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("len(items) = %d, want 1", len(items))
 	}
-	if items[0].WorkerID != "worker-a" || items[0].ProcessedTotal != 3 {
+	if items[0].WorkerID != "worker-a" ||
+		items[0].InstanceID != "instance-a" ||
+		items[0].ProcessedTotal != 3 ||
+		items[0].LeaseUntil.IsZero() {
 		t.Fatalf("unexpected persisted item: %#v", items[0])
 	}
 }

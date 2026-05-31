@@ -125,12 +125,14 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 
 	body := strings.NewReader(`{
 		"worker_id":"worker-a",
+		"instance_id":"instance-a",
 		"worker_type":"knowledge",
 		"status":"running",
 		"current_job_id":"group-memory-1",
 		"processed_total":2,
 		"failed_total":1,
 		"source":"python",
+		"lease_ttl_seconds":120,
 		"timestamp":"2026-05-31T10:00:00Z"
 	}`)
 	report := httptest.NewRecorder()
@@ -146,13 +148,30 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 	}
 	for _, expected := range []string{
 		`"worker_id":"worker-a"`,
+		`"instance_id":"instance-a"`,
 		`"worker_type":"knowledge"`,
+		`"lease_until":"2026-05-31T10:02:00Z"`,
 		`"running":1`,
 		`"side_effect":"none"`,
 	} {
 		if !bytes.Contains(list.Body.Bytes(), []byte(expected)) {
 			t.Fatalf("response missing %s: %s", expected, list.Body.String())
 		}
+	}
+
+	conflict := httptest.NewRecorder()
+	conflictBody := strings.NewReader(`{
+		"worker_id":"worker-a",
+		"instance_id":"instance-b",
+		"worker_type":"knowledge",
+		"status":"running",
+		"source":"python",
+		"lease_ttl_seconds":120,
+		"timestamp":"2026-05-31T10:00:01Z"
+	}`)
+	mux.ServeHTTP(conflict, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/report", conflictBody))
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", conflict.Code, conflict.Body.String())
 	}
 }
 

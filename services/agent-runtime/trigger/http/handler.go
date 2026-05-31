@@ -16,6 +16,7 @@ import (
 	inport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/in"
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/types"
 )
 
@@ -2202,19 +2203,25 @@ func AgentWorkerStatusReportHandler(manager inport.AgentWorkerStatusManager) htt
 			return
 		}
 		item, err := manager.ReportAgentWorkerStatus(r.Context(), command.ReportAgentWorkerStatusCommand{
-			WorkerID:       request.WorkerID,
-			WorkerType:     request.WorkerType,
-			Status:         request.Status,
-			CurrentJobID:   request.CurrentJobID,
-			LastJobID:      request.LastJobID,
-			LastError:      request.LastError,
-			ProcessedTotal: request.ProcessedTotal,
-			FailedTotal:    request.FailedTotal,
-			Source:         request.Source,
-			Metadata:       request.Metadata,
-			Timestamp:      timestamp,
+			WorkerID:        request.WorkerID,
+			InstanceID:      request.InstanceID,
+			WorkerType:      request.WorkerType,
+			Status:          request.Status,
+			CurrentJobID:    request.CurrentJobID,
+			LastJobID:       request.LastJobID,
+			LastError:       request.LastError,
+			ProcessedTotal:  request.ProcessedTotal,
+			FailedTotal:     request.FailedTotal,
+			Source:          request.Source,
+			Metadata:        request.Metadata,
+			Timestamp:       timestamp,
+			LeaseTTLSeconds: request.LeaseTTLSeconds,
 		})
 		if err != nil {
+			if errors.Is(err, appservice.ErrAgentWorkerLeaseConflict) {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

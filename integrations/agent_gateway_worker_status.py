@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from typing import Any
 
 
@@ -16,11 +18,17 @@ class AgentWorkerStatusReporter:
     ) -> None:
         self._client = client
         self._worker_id = str(worker_id or "akashic-python-worker")
+        self._instance_id = f"{self._worker_id}:{os.getpid()}:{secrets.token_hex(6)}"
         self._worker_type = str(worker_type or "unknown")
         self._logger = logger
         self._label = str(label or self._worker_type)
         self._processed_total = 0
         self._failed_total = 0
+        config = getattr(client, "_config", None)
+        self._lease_ttl_seconds = max(
+            30,
+            int(getattr(config, "lease_ttl_seconds", 120) or 120),
+        )
 
     async def starting(self) -> None:
         await self._report("starting")
@@ -58,6 +66,7 @@ class AgentWorkerStatusReporter:
         try:
             await method(
                 worker_id=self._worker_id,
+                instance_id=self._instance_id,
                 worker_type=self._worker_type,
                 status=status,
                 current_job_id=current_job_id,
@@ -65,6 +74,7 @@ class AgentWorkerStatusReporter:
                 last_error=last_error,
                 processed_total=self._processed_total,
                 failed_total=self._failed_total,
+                lease_ttl_seconds=self._lease_ttl_seconds,
                 metadata=metadata or {},
             )
         except Exception:

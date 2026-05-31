@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -51,5 +52,70 @@ func TestAgentWorkerStatusServiceReportsAndMarksStale(t *testing.T) {
 	}
 	if view.Workers[0].Metadata["last_status"] != "running" {
 		t.Fatalf("last_status metadata = %q, want running", view.Workers[0].Metadata["last_status"])
+	}
+}
+
+func TestAgentWorkerStatusServiceRejectsActiveLeaseConflict(t *testing.T) {
+	service := NewAgentWorkerStatusService()
+	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+
+	first, err := service.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "worker-a",
+		InstanceID:      "instance-a",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		Source:          "python",
+		Timestamp:       now,
+		LeaseTTLSeconds: 120,
+	})
+	if err != nil {
+		t.Fatalf("first report: %v", err)
+	}
+	if first.InstanceID != "instance-a" || first.LeaseUntil == "" {
+		t.Fatalf("unexpected first view: %+v", first)
+	}
+
+	_, err = service.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "worker-a",
+		InstanceID:      "instance-b",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		Source:          "python",
+		Timestamp:       now.Add(time.Second),
+		LeaseTTLSeconds: 120,
+	})
+	if !errors.Is(err, ErrAgentWorkerLeaseConflict) {
+		t.Fatalf("expected lease conflict, got %v", err)
+	}
+
+	released, err := service.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:   "worker-a",
+		InstanceID: "instance-a",
+		WorkerType: "knowledge",
+		Status:     "stopped",
+		Source:     "python",
+		Timestamp:  now.Add(2 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("release report: %v", err)
+	}
+	if released.LeaseActive || released.LeaseUntil != "" {
+		t.Fatalf("expected released lease, got %+v", released)
+	}
+
+	second, err := service.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "worker-a",
+		InstanceID:      "instance-b",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		Source:          "python",
+		Timestamp:       now.Add(3 * time.Second),
+		LeaseTTLSeconds: 120,
+	})
+	if err != nil {
+		t.Fatalf("second report after release: %v", err)
+	}
+	if second.InstanceID != "instance-b" {
+		t.Fatalf("unexpected second instance: %+v", second)
 	}
 }

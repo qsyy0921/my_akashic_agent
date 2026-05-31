@@ -148,3 +148,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-99-proactive-drift-state.md`
 - `2026-05-31-phase8-100-proactive-tick-log-state.md`
 - `2026-05-31-phase8-101-dashboard-proactive-tick-log-runtime-fallback.md`
+- `2026-05-31-phase8-102-agent-worker-status-lease-fencing.md`

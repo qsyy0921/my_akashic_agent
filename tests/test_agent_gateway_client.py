@@ -175,6 +175,7 @@ async def test_agent_gateway_client_reports_agent_worker_status():
         assert request.url.path == "/v1/agent-worker-statuses/report"
         assert body == {
             "worker_id": "worker-a",
+            "instance_id": "instance-a",
             "worker_type": "knowledge",
             "status": "running",
             "current_job_id": "job-1",
@@ -182,6 +183,7 @@ async def test_agent_gateway_client_reports_agent_worker_status():
             "last_error": "",
             "processed_total": 2,
             "failed_total": 1,
+            "lease_ttl_seconds": 120,
             "source": "python",
             "metadata": {"loop": "knowledge"},
         }
@@ -189,6 +191,7 @@ async def test_agent_gateway_client_reports_agent_worker_status():
 
     result = await _client(handler).report_agent_worker_status(
         worker_id="worker-a",
+        instance_id="instance-a",
         worker_type="knowledge",
         status="running",
         current_job_id="job-1",

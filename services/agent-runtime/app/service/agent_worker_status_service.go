@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -15,6 +16,29 @@ import (
 )
 
 const defaultAgentWorkerStatusStaleSeconds = 180
+const defaultAgentWorkerStatusLeaseTTLSeconds = 120
+
+var ErrAgentWorkerLeaseConflict = errors.New("agent worker status lease conflict")
+
+type AgentWorkerLeaseConflictError struct {
+	WorkerID           string
+	ExistingInstanceID string
+	LeaseUntil         time.Time
+}
+
+func (e AgentWorkerLeaseConflictError) Error() string {
+	return fmt.Sprintf(
+		"%s: worker_id=%s existing_instance_id=%s lease_until=%s",
+		ErrAgentWorkerLeaseConflict,
+		e.WorkerID,
+		e.ExistingInstanceID,
+		e.LeaseUntil.UTC().Format(time.RFC3339Nano),
+	)
+}
+
+func (e AgentWorkerLeaseConflictError) Unwrap() error {
+	return ErrAgentWorkerLeaseConflict
+}
 
 type AgentWorkerStatusService struct {
 	mu         sync.RWMutex
@@ -72,10 +96,15 @@ func (s *AgentWorkerStatusService) ReportAgentWorkerStatus(
 	}
 	timestamp := cmd.Timestamp
 	if timestamp.IsZero() {
-		timestamp = time.Now().UTC()
+		if s.clock != nil {
+			timestamp = s.clock().UTC()
+		} else {
+			timestamp = time.Now().UTC()
+		}
 	}
 	status, err := model.NewAgentWorkerStatus(model.AgentWorkerStatusSpec{
 		WorkerID:       cmd.WorkerID,
+		InstanceID:     cmd.InstanceID,
 		WorkerType:     cmd.WorkerType,
 		Status:         cmd.Status,
 		CurrentJobID:   cmd.CurrentJobID,
@@ -89,10 +118,19 @@ func (s *AgentWorkerStatusService) ReportAgentWorkerStatus(
 	if err != nil {
 		return query.AgentWorkerStatusView{}, err
 	}
+	if status.InstanceID != "" && status.HeartbeatActive() {
+		status.LeaseUntil = timestamp.Add(agentWorkerStatusLeaseTTL(cmd.LeaseTTLSeconds))
+	}
 
 	s.mu.Lock()
 	if s.workers == nil {
 		s.workers = make(map[string]model.AgentWorkerStatus)
+	}
+	if existing, ok := s.workers[status.WorkerID]; ok {
+		if err := rejectAgentWorkerStatusLeaseConflict(existing, status, timestamp); err != nil {
+			s.mu.Unlock()
+			return query.AgentWorkerStatusView{}, err
+		}
 	}
 	if s.repository != nil {
 		if err := s.repository.SaveAgentWorkerStatus(ctx, status); err != nil {
@@ -210,6 +248,33 @@ func agentWorkerStatusStaleAfter(seconds int) time.Duration {
 		seconds = 24 * 60 * 60
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func agentWorkerStatusLeaseTTL(seconds int) time.Duration {
+	if seconds <= 0 {
+		seconds = defaultAgentWorkerStatusLeaseTTLSeconds
+	}
+	if seconds < 30 {
+		seconds = 30
+	}
+	if seconds > 60*60 {
+		seconds = 60 * 60
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func rejectAgentWorkerStatusLeaseConflict(existing model.AgentWorkerStatus, incoming model.AgentWorkerStatus, now time.Time) error {
+	if !existing.LeaseActive(now) {
+		return nil
+	}
+	if existing.InstanceID == "" || incoming.InstanceID == existing.InstanceID {
+		return nil
+	}
+	return AgentWorkerLeaseConflictError{
+		WorkerID:           existing.WorkerID,
+		ExistingInstanceID: existing.InstanceID,
+		LeaseUntil:         existing.LeaseUntil,
+	}
 }
 
 func agentWorkerStatusMetadataWithStale(items map[string]string, staleAfter time.Duration) map[string]string {

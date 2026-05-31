@@ -271,6 +271,7 @@ class AgentGatewayClient:
         self,
         *,
         worker_id: str,
+        instance_id: str = "",
         worker_type: str,
         status: str,
         current_job_id: str = "",
@@ -278,6 +279,7 @@ class AgentGatewayClient:
         last_error: str = "",
         processed_total: int = 0,
         failed_total: int = 0,
+        lease_ttl_seconds: int | None = None,
         metadata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         data = await self._request(
@@ -285,6 +287,7 @@ class AgentGatewayClient:
             "/v1/agent-worker-statuses/report",
             json_body={
                 "worker_id": str(worker_id or ""),
+                "instance_id": str(instance_id or ""),
                 "worker_type": str(worker_type or ""),
                 "status": str(status or ""),
                 "current_job_id": str(current_job_id or ""),
@@ -292,6 +295,10 @@ class AgentGatewayClient:
                 "last_error": str(last_error or ""),
                 "processed_total": max(0, int(processed_total or 0)),
                 "failed_total": max(0, int(failed_total or 0)),
+                "lease_ttl_seconds": max(
+                    0,
+                    int(lease_ttl_seconds or self._config.lease_ttl_seconds),
+                ),
                 "source": "python",
                 "metadata": metadata or {},
             },

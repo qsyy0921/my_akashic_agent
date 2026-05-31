@@ -193,4 +193,6 @@ async def test_image_worker_reports_worker_status_on_process():
     status_call = next(call for call in client.calls if call[0] == "report_agent_worker_status")
     assert status_call[1]["worker_type"] == "image_generation"
     assert status_call[1]["status"] == "idle"
+    assert status_call[1]["instance_id"].startswith("worker-a:")
+    assert status_call[1]["lease_ttl_seconds"] == 120
     assert status_call[1]["metadata"] == {"reason": "no_job"}

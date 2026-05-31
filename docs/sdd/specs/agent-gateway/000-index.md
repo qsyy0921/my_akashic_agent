@@ -110,4 +110,7 @@ execution.
 - `044-dashboard-proactive-tick-log-runtime-fallback.md`: Dashboard proactive
   tick log read fallback to Go runtime when SQLite mirror has no matching
   records, plus Go query pagination/sort filters.
+- `045-agent-worker-status-lease-fencing.md`: Go-owned lease/fencing for
+  Python AI worker status ownership, preventing active same-worker-id status
+  overwrites from another process instance.
 - Agent architecture boundary specs live under `../agent-architecture/`.
