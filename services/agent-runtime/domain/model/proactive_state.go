@@ -10,6 +10,11 @@ const (
 	ProactiveSessionMarkContextOnlyLastAt = "context_only_last_at"
 	ProactiveSessionMarkDriftLastAt       = "drift_last_at"
 	ProactiveGlobalMarkBGContextMainAt    = "bg_context_last_main_at"
+
+	ProactiveDriftSkillStatusIdle       = "idle"
+	ProactiveDriftSkillStatusInProgress = "in_progress"
+	ProactiveDriftMessageResultSent     = "sent"
+	ProactiveDriftMessageResultSilent   = "silent"
 )
 
 type ProactiveDeliveryRecord struct {
@@ -312,6 +317,113 @@ func proactiveQuotaKeyOrDefault(value string) string {
 		return "default"
 	}
 	return value
+}
+
+type ProactiveDriftSkillState struct {
+	SkillName string
+	LastRunAt time.Time
+	RunCount  int
+	Status    string
+	Next      string
+}
+
+func NewProactiveDriftSkillState(skillName string, lastRunAt time.Time, runCount int, status string, next string) (ProactiveDriftSkillState, error) {
+	state := ProactiveDriftSkillState{
+		SkillName: strings.TrimSpace(skillName),
+		LastRunAt: lastRunAt.UTC(),
+		RunCount:  runCount,
+		Status:    normalizeProactiveDriftSkillStatus(status),
+		Next:      strings.TrimSpace(next),
+	}
+	if err := state.Validate(); err != nil {
+		return ProactiveDriftSkillState{}, err
+	}
+	return state, nil
+}
+
+func (s ProactiveDriftSkillState) Validate() error {
+	if strings.TrimSpace(s.SkillName) == "" {
+		return errors.New("proactive drift skill state requires skill_name")
+	}
+	if s.RunCount < 0 {
+		return errors.New("proactive drift skill state requires non-negative run_count")
+	}
+	switch strings.TrimSpace(s.Status) {
+	case ProactiveDriftSkillStatusIdle, ProactiveDriftSkillStatusInProgress:
+	default:
+		return errors.New("proactive drift skill state has invalid status")
+	}
+	return nil
+}
+
+func (s ProactiveDriftSkillState) WithFinish(runAt time.Time, next string) (ProactiveDriftSkillState, error) {
+	if runAt.IsZero() {
+		runAt = time.Now().UTC()
+	}
+	return NewProactiveDriftSkillState(
+		s.SkillName,
+		runAt,
+		max(0, s.RunCount)+1,
+		ProactiveDriftSkillStatusInProgress,
+		next,
+	)
+}
+
+type ProactiveDriftRecentRun struct {
+	SkillName     string
+	RunAt         time.Time
+	OneLine       string
+	MessageResult string
+}
+
+func NewProactiveDriftRecentRun(skillName string, runAt time.Time, oneLine string, messageResult string) (ProactiveDriftRecentRun, error) {
+	if runAt.IsZero() {
+		runAt = time.Now().UTC()
+	}
+	run := ProactiveDriftRecentRun{
+		SkillName:     strings.TrimSpace(skillName),
+		RunAt:         runAt.UTC(),
+		OneLine:       strings.TrimSpace(oneLine),
+		MessageResult: normalizeProactiveDriftMessageResult(messageResult),
+	}
+	if err := run.Validate(); err != nil {
+		return ProactiveDriftRecentRun{}, err
+	}
+	return run, nil
+}
+
+func (r ProactiveDriftRecentRun) Validate() error {
+	if strings.TrimSpace(r.SkillName) == "" {
+		return errors.New("proactive drift recent run requires skill_name")
+	}
+	if r.RunAt.IsZero() {
+		return errors.New("proactive drift recent run requires run_at")
+	}
+	if strings.TrimSpace(r.OneLine) == "" {
+		return errors.New("proactive drift recent run requires one_line")
+	}
+	switch strings.TrimSpace(r.MessageResult) {
+	case ProactiveDriftMessageResultSent, ProactiveDriftMessageResultSilent:
+	default:
+		return errors.New("proactive drift recent run has invalid message_result")
+	}
+	return nil
+}
+
+func normalizeProactiveDriftSkillStatus(value string) string {
+	value = strings.TrimSpace(value)
+	if value == ProactiveDriftSkillStatusInProgress {
+		return value
+	}
+	return ProactiveDriftSkillStatusIdle
+}
+
+func normalizeProactiveDriftMessageResult(value string) string {
+	value = strings.TrimSpace(value)
+	if value == ProactiveDriftMessageResultSent {
+		return value
+	}
+	return ProactiveDriftMessageResultSilent
 }
 
 func NormalizeProactiveSourceKey(value string) string {

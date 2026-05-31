@@ -372,6 +372,100 @@ async def test_finish_drift_saves_silent_message_result(tmp_path: Path):
     assert store.load_drift()["recent_runs"][-1]["message_result"] == "silent"
 
 
+class _FakeRuntimeDriftState:
+    def __init__(self) -> None:
+        self.finish_calls: list[dict[str, Any]] = []
+        self.summary: dict[str, Any] = {"version": 1, "recent_runs": [], "note": ""}
+        self.skill_state: dict[str, Any] | None = None
+
+    def record_drift_finish(self, **kwargs: Any) -> dict[str, Any]:
+        self.finish_calls.append(kwargs)
+        return {"side_effect": "runtime_state_write"}
+
+    def get_drift_summary(self, limit: int = 10) -> dict[str, Any]:
+        return self.summary
+
+    def get_drift_skill_state(self, skill_name: str) -> dict[str, Any] | None:
+        return self.skill_state
+
+
+def test_drift_state_store_writes_runtime_and_local_mirror(tmp_path: Path):
+    _write_skill(tmp_path)
+    runtime = _FakeRuntimeDriftState()
+    store = DriftStateStore(tmp_path, runtime_state=runtime)
+    now = datetime(2026, 5, 31, 10, 0, tzinfo=timezone.utc)
+
+    store.save_finish(
+        skill_used="explore-curiosity",
+        one_line="整理攻略",
+        next_action="继续核验",
+        message_result="silent",
+        note="runtime note",
+        now_utc=now,
+    )
+
+    assert runtime.finish_calls[0]["skill_used"] == "explore-curiosity"
+    assert runtime.finish_calls[0]["next_action"] == "继续核验"
+    assert store.load_drift()["recent_runs"][-1]["one_line"] == "整理攻略"
+    state = json.loads(
+        (tmp_path / "skills" / "explore-curiosity" / "state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert state["run_count"] == 1
+
+
+def test_drift_state_store_reads_runtime_skill_state(tmp_path: Path):
+    _write_skill(tmp_path)
+    runtime = _FakeRuntimeDriftState()
+    runtime.skill_state = {
+        "skill_name": "explore-curiosity",
+        "last_run_at": "2026-05-31T10:00:00Z",
+        "run_count": 3,
+        "status": "in_progress",
+        "next": "继续核验",
+        "found": True,
+    }
+    store = DriftStateStore(tmp_path, runtime_state=runtime)
+
+    skills = store.scan_skills()
+
+    assert skills[0].run_count == 3
+    assert skills[0].status == "in_progress"
+    assert skills[0].next == "继续核验"
+
+
+def test_drift_state_store_merges_runtime_summary_with_local(tmp_path: Path):
+    _write_skill(tmp_path)
+    runtime = _FakeRuntimeDriftState()
+    runtime.summary = {
+        "version": 1,
+        "recent_runs": [
+            {
+                "skill": "explore-curiosity",
+                "run_at": "2026-05-31T10:05:00Z",
+                "one_line": "runtime",
+                "message_result": "silent",
+            }
+        ],
+        "note": "runtime note",
+    }
+    store = DriftStateStore(tmp_path, runtime_state=runtime)
+    store.save_finish(
+        skill_used="explore-curiosity",
+        one_line="local",
+        next_action="next",
+        message_result="silent",
+        note=None,
+        now_utc=datetime(2026, 5, 31, 10, 0, tzinfo=timezone.utc),
+    )
+
+    drift = store.load_drift()
+
+    assert [row["one_line"] for row in drift["recent_runs"]] == ["local", "runtime"]
+    assert drift["note"] == "runtime note"
+
+
 @pytest.mark.asyncio
 async def test_drift_writefile_returns_json_error_on_directory_target(tmp_path: Path):
     _write_skill(tmp_path)

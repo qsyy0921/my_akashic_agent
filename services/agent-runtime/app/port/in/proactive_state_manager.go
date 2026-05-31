@@ -25,6 +25,9 @@ type ProactiveStateManager interface {
 
 	RecordDriftRun(ctx context.Context, cmd command.RecordProactiveDriftRunCommand) (query.ProactiveTimestampView, error)
 	LastDriftRun(ctx context.Context, sessionKey string) (query.ProactiveTimestampView, error)
+	RecordDriftFinish(ctx context.Context, cmd command.RecordProactiveDriftFinishCommand) (query.ProactiveDriftFinishView, error)
+	DriftSummary(ctx context.Context, limit int) (query.ProactiveDriftSummaryView, error)
+	DriftSkillState(ctx context.Context, skillName string) (query.ProactiveDriftSkillStateView, error)
 
 	RecordBGContextMain(ctx context.Context, cmd command.RecordProactiveBGContextMainCommand) (query.ProactiveTimestampView, error)
 	LastBGContextMain(ctx context.Context) (query.ProactiveTimestampView, error)

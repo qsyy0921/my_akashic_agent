@@ -274,6 +274,7 @@ class AgentTickFactory:
             builtin_skills_dir=BUILTIN_DRIFT_SKILLS_DIR,
             include_builtin_skills=True,
             builtin_skill_names=BUILTIN_DRIFT_SKILL_NAMES,
+            runtime_state=self._deps.state_store,
         )
         return DriftTurnPipeline(
             DriftTurnPipelineDeps(

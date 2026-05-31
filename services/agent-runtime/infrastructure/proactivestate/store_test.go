@@ -69,6 +69,17 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if err := store.SaveProactiveAnyActionQuota(ctx, quota); err != nil {
 		t.Fatal(err)
 	}
+	driftState, err := model.NewProactiveDriftSkillState("explore-curiosity", now.Add(4*time.Minute), 3, model.ProactiveDriftSkillStatusInProgress, "next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	driftRun, err := model.NewProactiveDriftRecentRun("explore-curiosity", now.Add(4*time.Minute), "did work", model.ProactiveDriftMessageResultSilent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveDriftFinish(ctx, driftState, driftRun, "note", 10); err != nil {
+		t.Fatal(err)
+	}
 
 	reloaded, err := proactivestate.NewStore(path)
 	if err != nil {
@@ -136,6 +147,20 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	}
 	if !ok || foundQuota.Used != 2 {
 		t.Fatalf("expected persisted quota, got ok=%v quota=%+v", ok, foundQuota)
+	}
+	foundDrift, ok, err := reloaded.FindProactiveDriftSkillState(ctx, "explore-curiosity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || foundDrift.RunCount != 3 || foundDrift.Next != "next" {
+		t.Fatalf("expected persisted drift skill state, got ok=%v state=%+v", ok, foundDrift)
+	}
+	driftRuns, driftNote, err := reloaded.ListProactiveDriftRecentRuns(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if driftNote != "note" || len(driftRuns) != 1 || driftRuns[0].OneLine != "did work" {
+		t.Fatalf("expected persisted drift runs, note=%q runs=%+v", driftNote, driftRuns)
 	}
 
 	result, err := reloaded.CleanupProactiveState(ctx, model.ProactiveStateRetentionCutoffs{

@@ -28,6 +28,9 @@ type Store struct {
 	sessionMarks  map[string]model.ProactiveSessionMark
 	globalMarks   map[string]model.ProactiveGlobalMark
 	anyAction     map[string]model.ProactiveAnyActionQuota
+	driftSkills   map[string]model.ProactiveDriftSkillState
+	driftRuns     []model.ProactiveDriftRecentRun
+	driftNote     string
 }
 
 type persistedState struct {
@@ -39,6 +42,9 @@ type persistedState struct {
 	SessionMarks []model.ProactiveSessionMark             `json:"session_marks"`
 	GlobalMarks  []model.ProactiveGlobalMark              `json:"global_marks,omitempty"`
 	AnyAction    []model.ProactiveAnyActionQuota          `json:"anyaction_quotas,omitempty"`
+	DriftSkills  []model.ProactiveDriftSkillState         `json:"drift_skills,omitempty"`
+	DriftRuns    []model.ProactiveDriftRecentRun          `json:"drift_recent_runs,omitempty"`
+	DriftNote    string                                   `json:"drift_note,omitempty"`
 }
 
 func NewStore(path string) (*Store, error) {
@@ -56,6 +62,8 @@ func NewStore(path string) (*Store, error) {
 		sessionMarks: make(map[string]model.ProactiveSessionMark),
 		globalMarks:  make(map[string]model.ProactiveGlobalMark),
 		anyAction:    make(map[string]model.ProactiveAnyActionQuota),
+		driftSkills:  make(map[string]model.ProactiveDriftSkillState),
+		driftRuns:    make([]model.ProactiveDriftRecentRun, 0),
 	}
 	if err := os.MkdirAll(filepath.Dir(cleanPath), 0o755); err != nil {
 		return nil, err
@@ -249,6 +257,50 @@ func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) 
 	return quota, ok, nil
 }
 
+func (s *Store) SaveProactiveDriftFinish(_ context.Context, state model.ProactiveDriftSkillState, run model.ProactiveDriftRecentRun, note string, recentLimit int) error {
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	if err := run.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.driftSkills[strings.TrimSpace(state.SkillName)] = state
+	s.driftRuns = append(s.driftRuns, run)
+	if recentLimit <= 0 || recentLimit > 50 {
+		recentLimit = 10
+	}
+	if len(s.driftRuns) > recentLimit {
+		s.driftRuns = append([]model.ProactiveDriftRecentRun(nil), s.driftRuns[len(s.driftRuns)-recentLimit:]...)
+	}
+	if strings.TrimSpace(note) != "" {
+		s.driftNote = strings.TrimSpace(note)
+	}
+	return s.flush()
+}
+
+func (s *Store) FindProactiveDriftSkillState(_ context.Context, skillName string) (model.ProactiveDriftSkillState, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.driftSkills[strings.TrimSpace(skillName)]
+	return state, ok, nil
+}
+
+func (s *Store) ListProactiveDriftRecentRuns(_ context.Context, limit int) ([]model.ProactiveDriftRecentRun, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	start := len(s.driftRuns) - limit
+	if start < 0 {
+		start = 0
+	}
+	items := append([]model.ProactiveDriftRecentRun(nil), s.driftRuns[start:]...)
+	return items, s.driftNote, nil
+}
+
 func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -368,6 +420,19 @@ func (s *Store) load() error {
 		}
 		s.anyAction[quota.QuotaKey] = quota
 	}
+	for _, skill := range state.DriftSkills {
+		if err := skill.Validate(); err != nil {
+			continue
+		}
+		s.driftSkills[strings.TrimSpace(skill.SkillName)] = skill
+	}
+	for _, run := range state.DriftRuns {
+		if err := run.Validate(); err != nil {
+			continue
+		}
+		s.driftRuns = append(s.driftRuns, run)
+	}
+	s.driftNote = strings.TrimSpace(state.DriftNote)
 	return nil
 }
 
@@ -381,6 +446,9 @@ func (s *Store) flush() error {
 		SessionMarks: make([]model.ProactiveSessionMark, 0, len(s.sessionMarks)),
 		GlobalMarks:  make([]model.ProactiveGlobalMark, 0, len(s.globalMarks)),
 		AnyAction:    make([]model.ProactiveAnyActionQuota, 0, len(s.anyAction)),
+		DriftSkills:  make([]model.ProactiveDriftSkillState, 0, len(s.driftSkills)),
+		DriftRuns:    append([]model.ProactiveDriftRecentRun(nil), s.driftRuns...),
+		DriftNote:    s.driftNote,
 	}
 	for _, key := range s.deliveryOrder {
 		if record, ok := s.deliveries[key]; ok {
@@ -401,6 +469,9 @@ func (s *Store) flush() error {
 	}
 	for _, quota := range s.anyAction {
 		state.AnyAction = append(state.AnyAction, quota)
+	}
+	for _, skill := range s.driftSkills {
+		state.DriftSkills = append(state.DriftSkills, skill)
 	}
 
 	payload, err := json.MarshalIndent(state, "", "  ")

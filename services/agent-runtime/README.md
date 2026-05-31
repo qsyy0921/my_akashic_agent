@@ -641,11 +641,15 @@ $env:AKASHIC_PROACTIVE_STATE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\
 
 This state is deterministic runtime infrastructure: delivery dedupe,
 delivery-window counts, source item seen dedupe, rejection cooldowns,
-context-only send markers, drift interval markers, and AnyAction daily quota
-windows.
+context-only send markers, drift interval markers, drift skill run state,
+drift recent-run summaries, and AnyAction daily quota windows.
 Python still owns prompt selection, LLM decisions, and final proactive content.
 When `integrations.agent_runtime.enabled=true`, Python `ProactiveLoop` uses these
 routes for scheduling state and keeps SQLite as a compatibility fallback.
+Python `DriftStateStore` also uses the drift routes for `run_count`, `status`,
+`next`, recent runs, and note, while still mirroring to workspace JSON files as
+a fallback. Skill file scanning, `SKILL.md` parsing, and drift tool execution
+remain in Python.
 
 ```text
 POST /v1/proactive/deliveries
@@ -661,6 +665,9 @@ GET  /v1/proactive/context-only/last?session_key=telegram:100
 GET  /v1/proactive/context-only/count?session_key=telegram:100&window_hours=24
 POST /v1/proactive/drift-runs
 GET  /v1/proactive/drift-runs/last?session_key=telegram:100
+POST /v1/proactive/drift/finish
+GET  /v1/proactive/drift/summary?limit=10
+GET  /v1/proactive/drift/skills/explore-curiosity
 POST /v1/proactive/bg-context/main
 GET  /v1/proactive/bg-context/main/last
 GET  /v1/proactive/anyaction/quota?quota_key=default&reset_hour=12&timezone=Asia%2FShanghai

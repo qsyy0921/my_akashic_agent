@@ -32,5 +32,9 @@ type ProactiveStateRepository interface {
 	SaveProactiveAnyActionQuota(ctx context.Context, quota model.ProactiveAnyActionQuota) error
 	FindProactiveAnyActionQuota(ctx context.Context, quotaKey string) (model.ProactiveAnyActionQuota, bool, error)
 
+	SaveProactiveDriftFinish(ctx context.Context, state model.ProactiveDriftSkillState, run model.ProactiveDriftRecentRun, note string, recentLimit int) error
+	FindProactiveDriftSkillState(ctx context.Context, skillName string) (model.ProactiveDriftSkillState, bool, error)
+	ListProactiveDriftRecentRuns(ctx context.Context, limit int) ([]model.ProactiveDriftRecentRun, string, error)
+
 	CleanupProactiveState(ctx context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error)
 }

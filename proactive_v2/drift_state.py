@@ -56,6 +56,105 @@ def _parse_skill_frontmatter(content: str) -> dict[str, str | list[str]]:
     return metadata
 
 
+def _normalize_drift_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    recent_runs = raw.get("recent_runs")
+    if not isinstance(recent_runs, list):
+        recent_runs = []
+    rows: list[dict[str, str]] = []
+    for row in recent_runs:
+        if not isinstance(row, dict):
+            continue
+        skill = _clip(row.get("skill") or row.get("skill_name") or "", 80)
+        run_at = _clip(row.get("run_at", ""), 80)
+        one_line = _clip(row.get("one_line", ""), 150)
+        message_result = _clip(row.get("message_result", "silent"), 20)
+        if message_result not in {"sent", "silent"}:
+            message_result = "silent"
+        if not skill or not run_at or not one_line:
+            continue
+        rows.append(
+            {
+                "skill": skill,
+                "run_at": run_at,
+                "one_line": one_line,
+                "message_result": message_result,
+            }
+        )
+    return {
+        "version": 1,
+        "recent_runs": rows[-10:],
+        "note": _clip(raw.get("note", ""), 150),
+    }
+
+
+def _merge_drift_payloads(
+    runtime: dict[str, Any],
+    local: dict[str, Any],
+) -> dict[str, Any]:
+    runtime = _normalize_drift_payload(runtime)
+    local = _normalize_drift_payload(local)
+    by_key: dict[tuple[str, str, str], dict[str, str]] = {}
+    for row in [*local.get("recent_runs", []), *runtime.get("recent_runs", [])]:
+        if not isinstance(row, dict):
+            continue
+        key = (
+            str(row.get("skill", "")),
+            str(row.get("run_at", "")),
+            str(row.get("one_line", "")),
+        )
+        if all(key):
+            by_key[key] = {
+                "skill": key[0],
+                "run_at": key[1],
+                "one_line": key[2],
+                "message_result": str(row.get("message_result", "silent")),
+            }
+    rows = list(by_key.values())
+    rows.sort(key=lambda row: parse_iso(row["run_at"]) or datetime.min.replace(tzinfo=timezone.utc))
+    return {
+        "version": 1,
+        "recent_runs": rows[-10:],
+        "note": _clip(runtime.get("note") or local.get("note") or "", 150),
+    }
+
+
+def _runtime_skill_state_to_local(raw: dict[str, Any]) -> dict[str, Any] | None:
+    if not bool(raw.get("found")):
+        return None
+    skill_name = _clip(raw.get("skill_name", ""), 80)
+    if not skill_name:
+        return None
+    status = str(raw.get("status") or "idle").strip()
+    if status not in {"idle", "in_progress"}:
+        status = "idle"
+    return {
+        "version": 1,
+        "last_run_at": _clip(raw.get("last_run_at", ""), 80),
+        "run_count": max(0, int(raw.get("run_count") or 0)),
+        "status": status,
+        "next": _clip(raw.get("next", ""), 100),
+    }
+
+
+def _merge_skill_state(
+    runtime: dict[str, Any],
+    local: dict[str, Any],
+) -> dict[str, Any]:
+    runtime_ts = parse_iso(str(runtime.get("last_run_at") or ""))
+    local_ts = parse_iso(str(local.get("last_run_at") or ""))
+    runtime_count = max(0, int(runtime.get("run_count", 0) or 0))
+    local_count = max(0, int(local.get("run_count", 0) or 0))
+    if runtime_ts is not None and (local_ts is None or runtime_ts >= local_ts):
+        chosen = dict(runtime)
+    elif runtime_count >= local_count:
+        chosen = dict(runtime)
+    else:
+        chosen = dict(local)
+    chosen["run_count"] = max(runtime_count, local_count)
+    chosen["version"] = 1
+    return chosen
+
+
 @dataclass
 class SkillMeta:
     name: str
@@ -76,6 +175,7 @@ class DriftStateStore:
         builtin_skills_dir: Path | None = None,
         include_builtin_skills: bool = False,
         builtin_skill_names: set[str] | None = None,
+        runtime_state: Any | None = None,
     ) -> None:
         self.drift_dir = drift_dir.expanduser()
         self.skills_dir = self.drift_dir / "skills"
@@ -87,6 +187,7 @@ class DriftStateStore:
         )
         self.include_builtin_skills = include_builtin_skills
         self.builtin_skill_names = set(builtin_skill_names or set())
+        self.runtime_state = runtime_state
         self.skills_dir.mkdir(parents=True, exist_ok=True)
 
     def scan_skills(self) -> list[SkillMeta]:
@@ -124,6 +225,13 @@ class DriftStateStore:
         return {skill.name for skill in self.scan_skills()}
 
     def load_drift(self) -> dict[str, Any]:
+        local = self._load_drift_local()
+        runtime = self._load_runtime_drift_summary()
+        if runtime is None:
+            return local
+        return _merge_drift_payloads(runtime, local)
+
+    def _load_drift_local(self) -> dict[str, Any]:
         raw = load_json(self.drift_file, default=None, domain="drift_state") or {}
         recent_runs = raw.get("recent_runs")
         if not isinstance(recent_runs, list):
@@ -152,6 +260,19 @@ class DriftStateStore:
             "note": _clip(raw.get("note", ""), 150),
         }
 
+    def _load_runtime_drift_summary(self) -> dict[str, Any] | None:
+        getter = getattr(self.runtime_state, "get_drift_summary", None)
+        if not callable(getter):
+            return None
+        try:
+            data = getter(limit=10)
+        except Exception as exc:
+            logger.warning("[drift_state] runtime drift summary unavailable: %s", exc)
+            return None
+        if not isinstance(data, dict):
+            return None
+        return _normalize_drift_payload(data)
+
     def skill_dir_for(self, skill_name: str) -> Path | None:
         name = str(skill_name or "").strip()
         if not name:
@@ -179,11 +300,25 @@ class DriftStateStore:
         skill_dir = self.skill_dir_for(skill_name) or (self.skills_dir / skill_name)
         skill_dir.mkdir(parents=True, exist_ok=True)
         state = self._load_skill_state(skill_dir)
+        next_text = _clip(next_action, 100)
+        one_line_text = _clip(one_line, 150)
+        message_result_text = (
+            message_result if message_result in {"sent", "silent"} else "silent"
+        )
+        note_text = _clip(note, 150) if note is not None else None
         logger.info(
             "[drift_state] save_finish: skill=%s next=%s note=%s",
             skill_name,
-            _clip(next_action, 100),
+            next_text,
             bool(note),
+        )
+        self._save_runtime_finish(
+            skill_used=skill_name,
+            one_line=one_line_text,
+            next_action=next_text,
+            message_result=message_result_text,
+            note=note_text,
+            now_utc=now_utc,
         )
         atomic_save_json(
             skill_dir / "state.json",
@@ -192,7 +327,7 @@ class DriftStateStore:
                 "last_run_at": now_utc.isoformat(),
                 "run_count": max(0, int(state.get("run_count", 0) or 0)) + 1,
                 "status": "in_progress",
-                "next": _clip(next_action, 100),
+                "next": next_text,
             },
             domain="drift_state",
         )
@@ -203,8 +338,8 @@ class DriftStateStore:
             {
                 "skill": skill_name,
                 "run_at": now_utc.isoformat(),
-                "one_line": _clip(one_line, 150),
-                "message_result": message_result,
+                "one_line": one_line_text,
+                "message_result": message_result_text,
             }
         )
         payload = {
@@ -213,12 +348,54 @@ class DriftStateStore:
             "note": drift.get("note", ""),
         }
         if note is not None:
-            payload["note"] = _clip(note, 150)
+            payload["note"] = note_text or ""
         atomic_save_json(self.drift_file, payload, domain="drift_state")
 
     def _load_skill_state(self, skill_dir: Path) -> dict[str, Any]:
         raw = load_json(skill_dir / "state.json", default=None, domain="drift_state") or {}
-        return raw if isinstance(raw, dict) else {}
+        local = raw if isinstance(raw, dict) else {}
+        runtime = self._load_runtime_skill_state(skill_dir.name)
+        if runtime is None:
+            return local
+        return _merge_skill_state(runtime, local)
+
+    def _load_runtime_skill_state(self, skill_name: str) -> dict[str, Any] | None:
+        getter = getattr(self.runtime_state, "get_drift_skill_state", None)
+        if not callable(getter):
+            return None
+        try:
+            data = getter(skill_name)
+        except Exception as exc:
+            logger.warning("[drift_state] runtime drift skill state unavailable: %s", exc)
+            return None
+        if not isinstance(data, dict):
+            return None
+        return _runtime_skill_state_to_local(data)
+
+    def _save_runtime_finish(
+        self,
+        *,
+        skill_used: str,
+        one_line: str,
+        next_action: str,
+        message_result: str,
+        note: str | None,
+        now_utc: datetime,
+    ) -> None:
+        recorder = getattr(self.runtime_state, "record_drift_finish", None)
+        if not callable(recorder):
+            return
+        try:
+            recorder(
+                skill_used=skill_used,
+                one_line=one_line,
+                next_action=next_action,
+                message_result=message_result,
+                note=note,
+                now_utc=now_utc,
+            )
+        except Exception as exc:
+            logger.warning("[drift_state] runtime drift finish save failed: %s", exc)
 
     @staticmethod
     def _normalize_status(raw: Any) -> str:

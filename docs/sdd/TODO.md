@@ -105,6 +105,7 @@
 - [x] 增加 Go-owned scheduler job CRUD：Go 新增 `/v1/scheduler/jobs/upsert` 和 `DELETE /v1/scheduler/jobs/{job_id}`，Python `schedule` / `cancel_schedule` 的新增和取消优先走单任务 upsert/delete，减少多进程全量 snapshot 覆盖风险；执行后重排仍暂时走 snapshot replace，AI 和平台发送仍留在 Python。
 - [x] 增加 Go-owned scheduler completion mutation：Go 新增 `POST /v1/scheduler/jobs/{job_id}/complete`，按 `holder_id + lease_token` 校验 active execution lease 后执行 recurring reschedule 或 one-shot delete，并在成功后释放 lease；Python 执行完成后不再全量替换 Go snapshot，AI、next fire 计算和平台发送仍留在 Python。
 - [x] 补齐 scheduler startup recovery 与 Go-owned job state 的一致性：Python `load_and_recover()` 对 missed recurring job 的 fire_at 推进通过 Go `/v1/scheduler/jobs/upsert` 回写，对超过 grace 的 one-shot job 通过 `DELETE /v1/scheduler/jobs/{job_id}` 删除；mutation 在完整 recovered map 构造后执行，避免本地 mirror 写半成品，启动恢复不触发 QQ/Telegram 发送。
+- [x] 将 proactive drift 完成态和 skill runtime state 迁移到 Go：Go 在现有 `ProactiveStateService` 中新增 `/v1/proactive/drift/finish`、`/v1/proactive/drift/summary`、`/v1/proactive/drift/skills/{skill_name}`，负责 recent runs、note、per-skill `run_count/status/next/last_run_at` 的文件态持久化；Python `DriftStateStore` 优先读写 Go 并继续写 workspace JSON mirror，skill 文件扫描、LLM 决策、MCP/tool 执行仍留在 Python。
 
 ## 下一步
 
@@ -117,6 +118,7 @@
 - [ ] 观察 proactive AnyAction quota live 状态：主动推送实际触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中 `anyaction_quotas.used` 增长，且原 `proactive_quota.json` fallback 不会让 quota 放宽；如果后续要跨进程统一随机 draw，再单独设计 Go-owned admission decision。
 - [ ] 观察 proactive seen/rejection/cleanup live 状态：主动推送候选流运行后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `seen_items` 或 `rejection_cooldowns`，并在 cleanup 触发后确认过期记录减少，且 SQLite fallback 不会放宽去重。
 - [ ] 观察 proactive background context live 状态：background context 主 topic 触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `global_marks` / `bg_context_last_main_at`，且 SQLite fallback 不会让节流时间回退。
+- [ ] 观察 proactive drift state live 状态：启用 drift 后完成一次 `finish_drift`，确认 Go `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `drift_skills`、`drift_recent_runs` 和可选 `drift_note`，同时 workspace `drift/skills/<skill>/state.json` 与 `drift/drift.json` 仍作为 mirror 写入；如果 runtime 不可用，旧 JSON fallback 行为应保持。
 - [ ] 观察 scheduler job snapshot live 状态：通过 schedule tool 创建一个只读/测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-jobs.json` 出现对应 job，取消或执行后 Go snapshot 同步移除或重排，同时本地 `schedules.json` fallback 仍存在，且不触发额外 QQ/Telegram 发送。
 - [ ] 观察 scheduler diagnostics live 状态：创建一个测试提醒后确认 `GET /v1/scheduler/diagnostics` 与 `GET /v1/runtime-overview` 的 `scheduler_jobs_*` summary 同步变化；如出现 overdue，应结合 Python scheduler 进程状态判断，不直接认为任务执行失败。
 - [ ] 观察 scheduler execution lease live 状态：创建测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-leases.json` 只在执行中短暂出现 lease，`GET /v1/scheduler/leases` 不泄漏 token；多 Python 进程场景应看到后来的进程因 `active_lease_held` 跳过同一 job。

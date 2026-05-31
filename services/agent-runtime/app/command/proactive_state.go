@@ -67,6 +67,15 @@ type RecordProactiveDriftRunCommand struct {
 	Timestamp  time.Time
 }
 
+type RecordProactiveDriftFinishCommand struct {
+	SkillUsed     string
+	OneLine       string
+	Next          string
+	MessageResult string
+	Note          string
+	Timestamp     time.Time
+}
+
 type RecordProactiveBGContextMainCommand struct {
 	Timestamp time.Time
 }

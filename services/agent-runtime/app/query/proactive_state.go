@@ -65,6 +65,37 @@ type ProactiveTimestampView struct {
 	Found      bool   `json:"found"`
 }
 
+type ProactiveDriftSkillStateView struct {
+	SkillName  string `json:"skill_name"`
+	LastRunAt  string `json:"last_run_at,omitempty"`
+	RunCount   int    `json:"run_count"`
+	Status     string `json:"status"`
+	Next       string `json:"next"`
+	Found      bool   `json:"found"`
+	SideEffect string `json:"side_effect"`
+}
+
+type ProactiveDriftRecentRunView struct {
+	SkillName     string `json:"skill"`
+	RunAt         string `json:"run_at"`
+	OneLine       string `json:"one_line"`
+	MessageResult string `json:"message_result"`
+}
+
+type ProactiveDriftSummaryView struct {
+	Version    int                           `json:"version"`
+	RecentRuns []ProactiveDriftRecentRunView `json:"recent_runs"`
+	Note       string                        `json:"note"`
+	SideEffect string                        `json:"side_effect"`
+}
+
+type ProactiveDriftFinishView struct {
+	SkillState ProactiveDriftSkillStateView `json:"skill_state"`
+	RecentRun  ProactiveDriftRecentRunView  `json:"recent_run"`
+	Note       string                       `json:"note"`
+	SideEffect string                       `json:"side_effect"`
+}
+
 type ProactiveAnyActionQuotaView struct {
 	QuotaKey     string `json:"quota_key"`
 	WindowKey    string `json:"window_key"`

@@ -69,6 +69,40 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
             return httpx.Response(202, json={"code": "OK", "data": body})
         if request.url.path == "/v1/proactive/drift-runs/last":
             return _ok({"found": True, "timestamp": "2026-05-30T10:00:00Z"})
+        if request.url.path == "/v1/proactive/drift/finish":
+            assert body["skill_used"] == "explore-curiosity"
+            assert body["one_line"] == "整理攻略"
+            assert body["next"] == "继续核验"
+            return httpx.Response(202, json={"code": "OK", "data": {"side_effect": "runtime_state_write"}})
+        if request.url.path == "/v1/proactive/drift/summary":
+            assert params["limit"] == "10"
+            return _ok(
+                {
+                    "version": 1,
+                    "recent_runs": [
+                        {
+                            "skill": "explore-curiosity",
+                            "run_at": "2026-05-30T10:10:00Z",
+                            "one_line": "整理攻略",
+                            "message_result": "silent",
+                        }
+                    ],
+                    "note": "runtime note",
+                    "side_effect": "none",
+                }
+            )
+        if request.url.path == "/v1/proactive/drift/skills/explore-curiosity":
+            return _ok(
+                {
+                    "skill_name": "explore-curiosity",
+                    "last_run_at": "2026-05-30T10:10:00Z",
+                    "run_count": 3,
+                    "status": "in_progress",
+                    "next": "继续核验",
+                    "found": True,
+                    "side_effect": "none",
+                }
+            )
         if request.url.path == "/v1/proactive/bg-context/main":
             assert body["timestamp"] == now.isoformat()
             return httpx.Response(202, json={"code": "OK", "data": body})
@@ -114,6 +148,18 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         2026, 5, 30, 10, 0, tzinfo=timezone.utc
     )
 
+    finish = store.record_drift_finish(
+        skill_used="explore-curiosity",
+        one_line="整理攻略",
+        next_action="继续核验",
+        message_result="silent",
+        note=None,
+        now_utc=now,
+    )
+    assert finish["side_effect"] == "runtime_state_write"
+    assert store.get_drift_summary()["note"] == "runtime note"
+    assert store.get_drift_skill_state("explore-curiosity")["run_count"] == 3
+
     store.mark_bg_context_main_send(now)
 
     assert store.get_bg_context_last_main_at() == datetime(
@@ -138,6 +184,9 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         "/v1/proactive/context-only/last",
         "/v1/proactive/drift-runs",
         "/v1/proactive/drift-runs/last",
+        "/v1/proactive/drift/finish",
+        "/v1/proactive/drift/summary",
+        "/v1/proactive/drift/skills/explore-curiosity",
         "/v1/proactive/bg-context/main",
         "/v1/proactive/bg-context/main/last",
         "/v1/proactive/cleanup",

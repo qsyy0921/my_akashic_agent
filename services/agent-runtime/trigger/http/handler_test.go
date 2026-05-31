@@ -2676,6 +2676,36 @@ func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/drift/finish", bytes.NewReader([]byte(`{"skill_used":"explore-curiosity","one_line":"整理攻略线索","next":"继续核验","message_result":"sent","note":"游戏群","timestamp":"2026-05-30T12:05:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected drift finish 202, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"side_effect":"runtime_state_write"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"run_count":1`)) {
+		t.Fatalf("drift finish response missing state write: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/proactive/drift/summary?limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected drift summary 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"side_effect":"none"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"skill":"explore-curiosity"`)) {
+		t.Fatalf("drift summary response missing recent run: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/proactive/drift/skills/explore-curiosity", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected drift skill state 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"found":true`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"skill_name":"explore-curiosity"`)) {
+		t.Fatalf("drift skill response missing state: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/bg-context/main", bytes.NewReader([]byte(`{"timestamp":"2026-05-30T12:30:00Z"}`))))
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("expected bg context 202, got %d: %s", response.Code, response.Body.String())

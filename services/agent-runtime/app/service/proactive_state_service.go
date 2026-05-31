@@ -246,6 +246,87 @@ func (s *ProactiveStateService) LastDriftRun(ctx context.Context, sessionKey str
 	return s.lastSessionMark(ctx, sessionKey, model.ProactiveSessionMarkDriftLastAt)
 }
 
+func (s *ProactiveStateService) RecordDriftFinish(ctx context.Context, cmd command.RecordProactiveDriftFinishCommand) (query.ProactiveDriftFinishView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveDriftFinishView{}, errors.New("proactive state service requires repository")
+	}
+	skillName := clipProactiveText(cmd.SkillUsed, 80)
+	if skillName == "" {
+		return query.ProactiveDriftFinishView{}, errors.New("skill_used required")
+	}
+	timestamp := timestampOrNow(cmd.Timestamp)
+	existing, found, err := s.repository.FindProactiveDriftSkillState(ctx, skillName)
+	if err != nil {
+		return query.ProactiveDriftFinishView{}, err
+	}
+	if !found {
+		existing, err = model.NewProactiveDriftSkillState(skillName, time.Time{}, 0, model.ProactiveDriftSkillStatusIdle, "")
+		if err != nil {
+			return query.ProactiveDriftFinishView{}, err
+		}
+	}
+	state, err := existing.WithFinish(timestamp, clipProactiveText(cmd.Next, 100))
+	if err != nil {
+		return query.ProactiveDriftFinishView{}, err
+	}
+	run, err := model.NewProactiveDriftRecentRun(
+		skillName,
+		timestamp,
+		clipProactiveText(cmd.OneLine, 150),
+		cmd.MessageResult,
+	)
+	if err != nil {
+		return query.ProactiveDriftFinishView{}, err
+	}
+	note := clipProactiveText(cmd.Note, 150)
+	if note == "" {
+		_, existingNote, err := s.repository.ListProactiveDriftRecentRuns(ctx, 1)
+		if err != nil {
+			return query.ProactiveDriftFinishView{}, err
+		}
+		note = existingNote
+	}
+	if err := s.repository.SaveProactiveDriftFinish(ctx, state, run, note, 10); err != nil {
+		return query.ProactiveDriftFinishView{}, err
+	}
+	return assembler.ToProactiveDriftFinishView(state, run, note, "runtime_state_write"), nil
+}
+
+func (s *ProactiveStateService) DriftSummary(ctx context.Context, limit int) (query.ProactiveDriftSummaryView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveDriftSummaryView{}, errors.New("proactive state service requires repository")
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	items, note, err := s.repository.ListProactiveDriftRecentRuns(ctx, limit)
+	if err != nil {
+		return query.ProactiveDriftSummaryView{}, err
+	}
+	return assembler.ToProactiveDriftSummaryView(items, note, "none"), nil
+}
+
+func (s *ProactiveStateService) DriftSkillState(ctx context.Context, skillName string) (query.ProactiveDriftSkillStateView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveDriftSkillStateView{}, errors.New("proactive state service requires repository")
+	}
+	skillName = clipProactiveText(skillName, 80)
+	if skillName == "" {
+		return query.ProactiveDriftSkillStateView{}, errors.New("skill_name required")
+	}
+	state, found, err := s.repository.FindProactiveDriftSkillState(ctx, skillName)
+	if err != nil {
+		return query.ProactiveDriftSkillStateView{}, err
+	}
+	if !found {
+		state, err = model.NewProactiveDriftSkillState(skillName, time.Time{}, 0, model.ProactiveDriftSkillStatusIdle, "")
+		if err != nil {
+			return query.ProactiveDriftSkillStateView{}, err
+		}
+	}
+	return assembler.ToProactiveDriftSkillStateView(state, found, "none"), nil
+}
+
 func (s *ProactiveStateService) RecordBGContextMain(ctx context.Context, cmd command.RecordProactiveBGContextMainCommand) (query.ProactiveTimestampView, error) {
 	if s == nil || s.repository == nil {
 		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")
@@ -389,6 +470,18 @@ func proactiveQuotaKey(value string) string {
 		return "default"
 	}
 	return value
+}
+
+func clipProactiveText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
 
 func proactiveAnyActionWindow(now time.Time, resetHour int, timezoneName string) (string, time.Time, error) {

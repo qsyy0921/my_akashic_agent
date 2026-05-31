@@ -242,6 +242,49 @@ func TestProactiveStateServiceRecordsContextAndDriftMarks(t *testing.T) {
 	}
 }
 
+func TestProactiveStateServiceRecordsDriftFinishAndSummary(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	svc := service.NewProactiveStateService(memory.NewStore())
+
+	finished, err := svc.RecordDriftFinish(ctx, command.RecordProactiveDriftFinishCommand{
+		SkillUsed:     "explore-curiosity",
+		OneLine:       "整理了群里的攻略线索",
+		Next:          "继续核验来源",
+		MessageResult: "sent",
+		Note:          "优先游戏群",
+		Timestamp:     now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.SkillState.RunCount != 1 ||
+		finished.SkillState.Status != "in_progress" ||
+		finished.RecentRun.SkillName != "explore-curiosity" ||
+		finished.SideEffect != "runtime_state_write" {
+		t.Fatalf("unexpected finish view: %+v", finished)
+	}
+
+	state, err := svc.DriftSkillState(ctx, "explore-curiosity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Found || state.RunCount != 1 || state.Next != "继续核验来源" {
+		t.Fatalf("unexpected skill state: %+v", state)
+	}
+
+	summary, err := svc.DriftSummary(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.SideEffect != "none" ||
+		summary.Note != "优先游戏群" ||
+		len(summary.RecentRuns) != 1 ||
+		summary.RecentRuns[0].MessageResult != "sent" {
+		t.Fatalf("unexpected drift summary: %+v", summary)
+	}
+}
+
 func TestProactiveStateServiceAnyActionQuotaRolloverAndRecord(t *testing.T) {
 	ctx := context.Background()
 	svc := service.NewProactiveStateService(memory.NewStore())

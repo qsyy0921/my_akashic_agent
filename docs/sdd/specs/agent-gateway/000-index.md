@@ -101,4 +101,7 @@ execution.
 - `041-scheduler-recovery-reconciliation.md`: Python startup scheduler recovery
   persists recurring misfire advancement and expired one-shot deletion through
   existing Go-owned scheduler CRUD.
+- `042-proactive-drift-state.md`: Go-owned proactive drift skill state and
+  recent-run summary, with Python retaining skill file scanning and AI/tool
+  execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -45,6 +45,9 @@ type Store struct {
 	proactiveSessionMarks  map[string]model.ProactiveSessionMark
 	proactiveGlobalMarks   map[string]model.ProactiveGlobalMark
 	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
+	proactiveDriftSkills   map[string]model.ProactiveDriftSkillState
+	proactiveDriftRuns     []model.ProactiveDriftRecentRun
+	proactiveDriftNote     string
 	schedulerJobs          map[string]model.SchedulerJob
 	schedulerJobOrder      []string
 	schedulerLeases        map[string]model.SchedulerExecutionLease
@@ -76,6 +79,8 @@ func NewStore() *Store {
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
 		proactiveGlobalMarks:  make(map[string]model.ProactiveGlobalMark),
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
+		proactiveDriftSkills:  make(map[string]model.ProactiveDriftSkillState),
+		proactiveDriftRuns:    make([]model.ProactiveDriftRecentRun, 0),
 		schedulerJobs:         make(map[string]model.SchedulerJob),
 		schedulerLeases:       make(map[string]model.SchedulerExecutionLease),
 	}
@@ -1115,6 +1120,53 @@ func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) 
 	defer s.mu.Unlock()
 	quota, ok := s.proactiveAnyAction[strings.TrimSpace(quotaKey)]
 	return quota, ok, nil
+}
+
+func (s *Store) SaveProactiveDriftFinish(_ context.Context, state model.ProactiveDriftSkillState, run model.ProactiveDriftRecentRun, note string, recentLimit int) error {
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	if err := run.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.proactiveDriftSkills == nil {
+		s.proactiveDriftSkills = make(map[string]model.ProactiveDriftSkillState)
+	}
+	s.proactiveDriftSkills[strings.TrimSpace(state.SkillName)] = state
+	s.proactiveDriftRuns = append(s.proactiveDriftRuns, run)
+	if recentLimit <= 0 || recentLimit > 50 {
+		recentLimit = 10
+	}
+	if len(s.proactiveDriftRuns) > recentLimit {
+		s.proactiveDriftRuns = append([]model.ProactiveDriftRecentRun(nil), s.proactiveDriftRuns[len(s.proactiveDriftRuns)-recentLimit:]...)
+	}
+	if strings.TrimSpace(note) != "" {
+		s.proactiveDriftNote = strings.TrimSpace(note)
+	}
+	return nil
+}
+
+func (s *Store) FindProactiveDriftSkillState(_ context.Context, skillName string) (model.ProactiveDriftSkillState, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.proactiveDriftSkills[strings.TrimSpace(skillName)]
+	return state, ok, nil
+}
+
+func (s *Store) ListProactiveDriftRecentRuns(_ context.Context, limit int) ([]model.ProactiveDriftRecentRun, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	start := len(s.proactiveDriftRuns) - limit
+	if start < 0 {
+		start = 0
+	}
+	items := append([]model.ProactiveDriftRecentRun(nil), s.proactiveDriftRuns[start:]...)
+	return items, s.proactiveDriftNote, nil
 }
 
 func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {

@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -369,6 +370,53 @@ class AgentRuntimeProactiveStateStore:
         except Exception as exc:
             self._log_fallback("mark_drift_run", exc)
         self._fallback.mark_drift_run(session_key, timestamp)
+
+    def record_drift_finish(
+        self,
+        *,
+        skill_used: str,
+        one_line: str,
+        next_action: str,
+        message_result: str,
+        note: str | None,
+        now_utc: datetime,
+    ) -> dict[str, Any]:
+        data = self._request(
+            "POST",
+            "/v1/proactive/drift/finish",
+            json_body={
+                "skill_used": skill_used,
+                "one_line": one_line,
+                "next": next_action,
+                "message_result": message_result,
+                "note": note or "",
+                "timestamp": now_utc.isoformat(),
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentRuntimeProactiveStateError("drift finish response is not an object")
+        return data
+
+    def get_drift_summary(self, limit: int = 10) -> dict[str, Any]:
+        data = self._request(
+            "GET",
+            "/v1/proactive/drift/summary",
+            params={"limit": max(1, int(limit))},
+        )
+        if not isinstance(data, dict):
+            raise AgentRuntimeProactiveStateError("drift summary response is not an object")
+        return data
+
+    def get_drift_skill_state(self, skill_name: str) -> dict[str, Any] | None:
+        data = self._request(
+            "GET",
+            f"/v1/proactive/drift/skills/{quote(str(skill_name), safe='')}",
+        )
+        if not isinstance(data, dict):
+            raise AgentRuntimeProactiveStateError("drift skill response is not an object")
+        if not bool(data.get("found")):
+            return None
+        return data
 
     def get_last_context_only_at(self, session_key: str) -> datetime | None:
         try:

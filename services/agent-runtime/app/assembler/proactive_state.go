@@ -81,6 +81,53 @@ func ToProactiveGlobalTimestampView(key string, timestamp time.Time, found bool)
 	}
 }
 
+func ToProactiveDriftSkillStateView(state model.ProactiveDriftSkillState, found bool, sideEffect string) query.ProactiveDriftSkillStateView {
+	return query.ProactiveDriftSkillStateView{
+		SkillName:  state.SkillName,
+		LastRunAt:  formatProactiveTime(state.LastRunAt),
+		RunCount:   state.RunCount,
+		Status:     state.Status,
+		Next:       state.Next,
+		Found:      found,
+		SideEffect: sideEffect,
+	}
+}
+
+func ToProactiveDriftRecentRunView(run model.ProactiveDriftRecentRun) query.ProactiveDriftRecentRunView {
+	return query.ProactiveDriftRecentRunView{
+		SkillName:     run.SkillName,
+		RunAt:         formatProactiveTime(run.RunAt),
+		OneLine:       run.OneLine,
+		MessageResult: run.MessageResult,
+	}
+}
+
+func ToProactiveDriftRecentRunViews(items []model.ProactiveDriftRecentRun) []query.ProactiveDriftRecentRunView {
+	views := make([]query.ProactiveDriftRecentRunView, 0, len(items))
+	for _, item := range items {
+		views = append(views, ToProactiveDriftRecentRunView(item))
+	}
+	return views
+}
+
+func ToProactiveDriftSummaryView(items []model.ProactiveDriftRecentRun, note string, sideEffect string) query.ProactiveDriftSummaryView {
+	return query.ProactiveDriftSummaryView{
+		Version:    1,
+		RecentRuns: ToProactiveDriftRecentRunViews(items),
+		Note:       note,
+		SideEffect: sideEffect,
+	}
+}
+
+func ToProactiveDriftFinishView(state model.ProactiveDriftSkillState, run model.ProactiveDriftRecentRun, note string, sideEffect string) query.ProactiveDriftFinishView {
+	return query.ProactiveDriftFinishView{
+		SkillState: ToProactiveDriftSkillStateView(state, true, sideEffect),
+		RecentRun:  ToProactiveDriftRecentRunView(run),
+		Note:       note,
+		SideEffect: sideEffect,
+	}
+}
+
 func ToProactiveAnyActionQuotaView(record model.ProactiveAnyActionQuota, found bool, sideEffect string) query.ProactiveAnyActionQuotaView {
 	return query.ProactiveAnyActionQuotaView{
 		QuotaKey:     record.QuotaKey,

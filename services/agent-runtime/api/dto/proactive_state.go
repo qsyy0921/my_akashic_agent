@@ -11,6 +11,15 @@ type RecordProactiveSessionRequest struct {
 	Timestamp  string `json:"timestamp,omitempty"`
 }
 
+type RecordProactiveDriftFinishRequest struct {
+	SkillUsed     string `json:"skill_used"`
+	OneLine       string `json:"one_line"`
+	Next          string `json:"next"`
+	MessageResult string `json:"message_result"`
+	Note          string `json:"note,omitempty"`
+	Timestamp     string `json:"timestamp,omitempty"`
+}
+
 type RecordProactiveTimestampRequest struct {
 	Timestamp string `json:"timestamp,omitempty"`
 }

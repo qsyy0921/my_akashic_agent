@@ -249,6 +249,9 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/context-only/count", ProactiveContextOnlyCountHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs", ProactiveDriftRunsHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs/last", ProactiveDriftRunLastHandler(proactiveState))
+	mux.Handle("/v1/proactive/drift/finish", ProactiveDriftFinishHandler(proactiveState))
+	mux.Handle("/v1/proactive/drift/summary", ProactiveDriftSummaryHandler(proactiveState))
+	mux.Handle("/v1/proactive/drift/skills/", ProactiveDriftSkillStateHandler(proactiveState))
 	mux.Handle("/v1/proactive/bg-context/main", ProactiveBGContextMainHandler(proactiveState))
 	mux.Handle("/v1/proactive/bg-context/main/last", ProactiveBGContextMainLastHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/quota", ProactiveAnyActionQuotaHandler(proactiveState))
@@ -2598,6 +2601,84 @@ func ProactiveDriftRunLastHandler(proactiveState inport.ProactiveStateManager) h
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveDriftFinishHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveDriftFinishRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := proactiveState.RecordDriftFinish(r.Context(), command.RecordProactiveDriftFinishCommand{
+			SkillUsed:     request.SkillUsed,
+			OneLine:       request.OneLine,
+			Next:          request.Next,
+			MessageResult: request.MessageResult,
+			Note:          request.Note,
+			Timestamp:     timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveDriftSummaryHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := proactiveState.DriftSummary(r.Context(), parseNonNegativeInt(r.URL.Query().Get("limit"), 10))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveDriftSkillStateHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		skillName := strings.TrimPrefix(r.URL.Path, "/v1/proactive/drift/skills/")
+		if decoded, err := url.PathUnescape(skillName); err == nil {
+			skillName = decoded
+		}
+		view, err := proactiveState.DriftSkillState(r.Context(), skillName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 
