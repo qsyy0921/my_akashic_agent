@@ -220,4 +220,7 @@ execution.
 - `082-runtime-overview-delivery-smoke.md`: Runtime overview aggregates
   delivery smoke readiness so dashboard and operators can inspect QQ/Telegram
   send-path cutover gates without sending messages or invoking AI.
+- `083-dashboard-runtime-overview-new-fields.md`: Python dashboard normalizes
+  the latest Go-owned runtime overview delivery-smoke and media-asset-content
+  fields without taking ownership of runtime state or AI processing.
 - Agent architecture boundary specs live under `../agent-architecture/`.

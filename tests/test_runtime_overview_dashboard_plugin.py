@@ -636,6 +636,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "delivery_adapters": 2,
             "delivery_adapters_enabled": 1,
             "delivery_adapters_disabled": 1,
+            "delivery_smoke_ready": False,
+            "delivery_smoke_reason": "delivery_smoke_not_ready",
+            "delivery_smoke_cases": 2,
+            "delivery_smoke_ready_cases": 1,
+            "delivery_smoke_not_ready_cases": 1,
+            "delivery_smoke_blockers": 1,
             "queue_backend_provider": "nats_jetstream",
             "queue_backend_mode": "external_lease",
             "queue_consumer_concurrency": 8,
@@ -657,6 +663,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "observe_capture_image": 1,
             "observe_capture_file": 0,
             "observe_capture_content_ready": 1,
+            "media_asset_content_assets": 3,
+            "media_asset_content_ready": 1,
+            "media_asset_content_forbidden": 1,
+            "media_asset_content_unavailable": 1,
+            "media_asset_content_disabled": 0,
+            "media_asset_content_error": 0,
             "receiver_statuses": 2,
             "receiver_status_connected": 1,
             "receiver_status_suspended": 1,
@@ -691,6 +703,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "cards": [
             {"id": "delivery_adapters", "label": "Delivery Adapters", "value": 1, "status": "warn"},
+            {"id": "delivery_smoke", "label": "Delivery Smoke", "value": "1/2", "status": "danger"},
             {
                 "id": "queue_backend",
                 "label": "Queue Backend",
@@ -700,6 +713,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
+            {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
             {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
             {
@@ -715,10 +729,79 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "outbox_metrics", "label": "Outbox Metrics", "value": 7, "status": "danger"},
         ],
         "delivery_adapters": delivery_adapters,
+        "delivery_smoke_readiness": {
+            "ready": False,
+            "reason": "delivery_smoke_not_ready",
+            "cases": [
+                {
+                    "name": "qq_private_text_2365524513_to_1049511700",
+                    "ready": True,
+                    "reason": "delivery_adapter_ready",
+                },
+                {
+                    "name": "qq_group_text_1049511700_to_27234224",
+                    "ready": False,
+                    "reason": "delivery_adapter_unavailable",
+                    "missing_channels": ["qq_1049511700"],
+                },
+            ],
+            "totals": {"cases": 2, "ready": 1, "not_ready": 1},
+            "blockers": [
+                "qq_group_text_1049511700_to_27234224:missing_channel:qq_1049511700"
+            ],
+            "side_effect": "none",
+        },
         "queue_backend": queue_backend,
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
+        "media_asset_content_diagnostics": {
+            "items": [
+                {
+                    "asset_id": "asset:qq:1049511700:group:27234224:1",
+                    "channel": {
+                        "kind": "qq",
+                        "account_id": "1049511700",
+                        "conversation_id": "27234224",
+                        "conversation_type": "group",
+                    },
+                    "source_message_id": "qq:gqq:27234224:119",
+                    "sender_id": "2952887906",
+                    "kind": "image",
+                    "mime_type": "image/jpeg",
+                    "name": "akashic_qq_image.jpg",
+                    "size_bytes": 120,
+                    "content_status": "ready",
+                    "content_reason": "media_asset_content_ready",
+                    "content_endpoint": "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content",
+                    "content_mime_type": "image/jpeg",
+                    "content_size_bytes": 120,
+                    "updated_at": "2026-05-31T12:00:00Z",
+                },
+                {
+                    "asset_id": "asset:forbidden",
+                    "channel": {"kind": "qq"},
+                    "content_status": "forbidden",
+                    "content_reason": "media_asset_content_forbidden",
+                },
+                {
+                    "asset_id": "asset:missing",
+                    "channel": {"kind": "qq"},
+                    "content_status": "unavailable",
+                    "content_reason": "media_asset_content_unavailable",
+                },
+            ],
+            "totals": {
+                "assets": 3,
+                "ready": 1,
+                "forbidden": 1,
+                "unavailable": 1,
+                "disabled": 0,
+                "error": 0,
+            },
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
         "scheduler_jobs": scheduler_jobs,
@@ -814,6 +897,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["delivery_adapters"] == 2
     assert payload["summary"]["delivery_adapters_enabled"] == 1
     assert payload["summary"]["delivery_adapters_disabled"] == 1
+    assert payload["summary"]["delivery_smoke_ready"] is False
+    assert payload["summary"]["delivery_smoke_reason"] == "delivery_smoke_not_ready"
+    assert payload["summary"]["delivery_smoke_cases"] == 2
+    assert payload["summary"]["delivery_smoke_ready_cases"] == 1
+    assert payload["summary"]["delivery_smoke_not_ready_cases"] == 1
+    assert payload["summary"]["delivery_smoke_blockers"] == 1
     assert payload["summary"]["queue_backend_provider"] == "nats_jetstream"
     assert payload["summary"]["queue_backend_mode"] == "external_lease"
     assert payload["summary"]["queue_consumer_concurrency"] == 8
@@ -828,6 +917,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["observe_capture_targets"] == 1
     assert payload["summary"]["observe_capture_warning"] == 1
     assert payload["summary"]["observe_capture_file"] == 0
+    assert payload["summary"]["media_asset_content_assets"] == 3
+    assert payload["summary"]["media_asset_content_ready"] == 1
+    assert payload["summary"]["media_asset_content_forbidden"] == 1
+    assert payload["summary"]["media_asset_content_unavailable"] == 1
     assert payload["summary"]["receiver_statuses"] == 2
     assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["receiver_leases"] == 1
@@ -852,6 +945,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["delivery_adapters"][0]["channel"] == "qq_2365524513"
     adapter_card = next(item for item in payload["cards"] if item["id"] == "delivery_adapters")
     assert adapter_card["status"] == "warn"
+    smoke_card = next(item for item in payload["cards"] if item["id"] == "delivery_smoke")
+    assert smoke_card["value"] == "1/2"
+    assert smoke_card["status"] == "danger"
+    assert payload["delivery_smoke_readiness"]["totals"]["not_ready"] == 1
+    assert payload["delivery_smoke_readiness"]["cases"][1]["missing_channels"] == [
+        "qq_1049511700"
+    ]
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
@@ -869,6 +969,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert observe_capture_card["status"] == "warn"
     assert payload["observe_capture"]["targets"][0]["blockers"] == ["file_not_seen"]
     assert payload["observe_capture"]["totals"]["image_covered"] == 1
+    media_card = next(item for item in payload["cards"] if item["id"] == "media_asset_content")
+    assert media_card["value"] == "1/3"
+    assert media_card["status"] == "danger"
+    assert payload["media_asset_content_diagnostics"]["totals"]["forbidden"] == 1
+    assert (
+        payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
+        == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
+    )
     receiver_card = next(item for item in payload["cards"] if item["id"] == "receiver_statuses")
     assert receiver_card["status"] == "warn"
     assert payload["receiver_statuses"]["receivers"][1]["reason"] == "getupdates_conflict"

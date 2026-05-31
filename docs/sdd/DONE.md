@@ -99,6 +99,7 @@
 - 已实现 Go-owned runtime overview aggregate endpoint，聚合 adapter、queue、send ledger、inbox、agent job、outbox、knowledge、observe、receiver、worker、scheduler 等诊断。
 - runtime overview summary/card 已接入 selected queue provider capability：可直接展示 NATS-first 推荐阶段、provider 实现状态、多 goroutine consumer、delayed nack、external lease 和 agent_job result-ack 能力。
 - dashboard 优先读取 Go aggregate，并保留必要 fallback。
+- dashboard 已规范化 Go-owned runtime overview 的 `delivery_smoke_readiness` 和 `media_asset_content_diagnostics`：前端/API 可稳定读取最新 detail 与 summary 默认值，Python 只做只读展示适配，不执行发送、租约、OCR/VLM、文件解析或 AI。
 
 ## SDD / 迭代治理
 

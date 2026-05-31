@@ -186,3 +186,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-137-media-asset-content-diagnostics.md`
 - `2026-05-31-phase8-138-runtime-overview-media-asset-content.md`
 - `2026-05-31-phase8-139-runtime-overview-delivery-smoke.md`
+- `2026-05-31-phase8-140-dashboard-runtime-overview-new-fields.md`

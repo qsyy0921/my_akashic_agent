@@ -1107,6 +1107,13 @@ def _normalize_go_runtime_overview(
     scheduler_jobs = _normalize_scheduler_job_diagnostics(
         _mapping_or_empty(item.get("scheduler_jobs"))
     )
+    delivery_smoke_readiness = _normalize_delivery_smoke_readiness(
+        _mapping_or_empty(item.get("delivery_smoke_readiness")),
+        runtime_base_url=runtime_base_url,
+    )
+    media_asset_content = _normalize_media_asset_content_diagnostics(
+        _mapping_or_empty(item.get("media_asset_content_diagnostics"))
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1148,11 +1155,13 @@ def _normalize_go_runtime_overview(
         "recent_outbox_events": [],
         "diagnostics": diagnostics,
         "delivery_adapters": delivery_adapters,
+        "delivery_smoke_readiness": delivery_smoke_readiness,
         "queue_backend": queue_backend,
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
+        "media_asset_content_diagnostics": media_asset_content,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
         "scheduler_jobs": scheduler_jobs,
@@ -1189,6 +1198,12 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "delivery_adapters": 0,
         "delivery_adapters_enabled": 0,
         "delivery_adapters_disabled": 0,
+        "delivery_smoke_ready": False,
+        "delivery_smoke_reason": "",
+        "delivery_smoke_cases": 0,
+        "delivery_smoke_ready_cases": 0,
+        "delivery_smoke_not_ready_cases": 0,
+        "delivery_smoke_blockers": 0,
         "queue_backend_provider": "unknown",
         "queue_backend_mode": "unknown",
         "queue_consumer_concurrency": 0,
@@ -1215,6 +1230,12 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "observe_capture_receiver_connected": 0,
         "observe_capture_receiver_status_connected": 0,
         "observe_capture_receiver_activity_recent": 0,
+        "media_asset_content_assets": 0,
+        "media_asset_content_ready": 0,
+        "media_asset_content_forbidden": 0,
+        "media_asset_content_unavailable": 0,
+        "media_asset_content_disabled": 0,
+        "media_asset_content_error": 0,
         "receiver_statuses": 0,
         "receiver_status_connected": 0,
         "receiver_status_suspended": 0,
@@ -1445,6 +1466,78 @@ def _normalize_observe_capture_target(item: Mapping[str, Any]) -> dict[str, Any]
             "file_seen": bool(coverage.get("file_seen")),
             "media_content_ready": bool(coverage.get("media_content_ready")),
         },
+    }
+
+
+def _normalize_media_asset_content_diagnostics(item: Mapping[str, Any]) -> dict[str, Any]:
+    items_raw = item.get("items")
+    if not isinstance(items_raw, list):
+        items_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    assets = [
+        _normalize_media_asset_content_item(value)
+        for value in items_raw
+        if isinstance(value, Mapping)
+    ]
+    totals = _mapping_or_empty(item.get("totals"))
+    return {
+        "items": assets,
+        "totals": {
+            "assets": _int_value(totals.get("assets"), fallback=len(assets)),
+            "ready": _int_value(
+                totals.get("ready"),
+                fallback=sum(1 for value in assets if value["content_status"] == "ready"),
+            ),
+            "forbidden": _int_value(
+                totals.get("forbidden"),
+                fallback=sum(
+                    1 for value in assets if value["content_status"] == "forbidden"
+                ),
+            ),
+            "unavailable": _int_value(
+                totals.get("unavailable"),
+                fallback=sum(
+                    1 for value in assets if value["content_status"] == "unavailable"
+                ),
+            ),
+            "disabled": _int_value(
+                totals.get("disabled"),
+                fallback=sum(1 for value in assets if value["content_status"] == "disabled"),
+            ),
+            "error": _int_value(
+                totals.get("error"),
+                fallback=sum(1 for value in assets if value["content_status"] == "error"),
+            ),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_media_asset_content_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    channel = _mapping_or_empty(item.get("channel"))
+    return {
+        "asset_id": _text(item.get("asset_id")),
+        "channel": {
+            "kind": _text(channel.get("kind")),
+            "account_id": _text(channel.get("account_id")),
+            "conversation_id": _text(channel.get("conversation_id")),
+            "conversation_type": _text(channel.get("conversation_type")),
+        },
+        "source_message_id": _text(item.get("source_message_id")),
+        "sender_id": _text(item.get("sender_id")),
+        "kind": _text(item.get("kind")),
+        "mime_type": _text(item.get("mime_type")),
+        "name": _text(item.get("name")),
+        "size_bytes": _int_value(item.get("size_bytes"), fallback=0),
+        "content_status": _text(item.get("content_status")),
+        "content_reason": _text(item.get("content_reason")),
+        "content_endpoint": _text(item.get("content_endpoint")),
+        "content_mime_type": _text(item.get("content_mime_type")),
+        "content_size_bytes": _int_value(item.get("content_size_bytes"), fallback=0),
+        "updated_at": _text(item.get("updated_at")),
     }
 
 
