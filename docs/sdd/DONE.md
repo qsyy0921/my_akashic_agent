@@ -21,6 +21,7 @@
 - 已实现 Go external lease outbox executor 账号级发送节流：复用同一 account rate limiter，在租约前判断被节流账号并返回 `nack/delivery_rate_limited`，不拿 outbox lease、不调用 delivery adapter，避免未来 NATS cutover 绕过限流。
 - 已实现 Telegram DeliveryAdapter、QQ/NapCat OneBot HTTP/WebSocket DeliveryAdapter、adapter diagnostics、live health 和 runtime config 脱敏诊断。
 - 已加入可选 Go local outbox delivery worker，默认关闭，避免未完成 cutover 时触发真实平台发送。
+- 已实现 outbound cutover readiness：`/v1/outbound-cutover/readiness` 聚合 OneBot 配置、delivery smoke matrix、queue backend execution owner 和 runtime worker 状态，判断 QQ/NapCat 发送链路是否可交给 Go 执行，且不发送平台消息。
 
 ## 观察群与接收链路
 

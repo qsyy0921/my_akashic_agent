@@ -9,6 +9,7 @@
 - [ ] 继续验证 QQ 群实时采集质量：Go `/v1/observe-capture-diagnostics` 应显示观察群文本、图片、文件覆盖和 media content ready 状态；新文件样本出现后确认 file coverage 从 0 变为 covered，且 observe-only 不回复。
 - [ ] 若 Telegram `getUpdates` conflict 再次出现，检查 Go `/v1/receiver-statuses` 的 `status=suspended`、`reason=getupdates_conflict`，并确认 `/v1/receiver-leases` 没有重复 Akashic receiver；若仍冲突，排查外部 polling 进程或改 webhook。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels` 或启用 Go local outbox worker。
+- [ ] 做 QQ/NapCat cutover 前先查看 `/v1/outbound-cutover/readiness`：应同时满足 OneBot aliases 完整、delivery smoke ready、`execution_ready=true`；若 local worker 和 NATS external lease 都没执行 outbox，应出现 `outbox_execution_path_not_ready`。
 - [ ] 继续观察 QQ/NapCat `message_id` 和 group upload file 字段在真实重连/重投场景的稳定性；如果 NapCat 暴露新的文件 notice 字段名，补进 `_file_meta_from_notice` 和 file-event dedupe key metadata。
 
 ## AgentJob / Worker / Queue

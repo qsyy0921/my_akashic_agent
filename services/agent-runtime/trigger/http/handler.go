@@ -171,6 +171,13 @@ func RegisterDeliverySmokeRoutes(
 	mux.Handle("/v1/delivery-smoke/readiness", DeliverySmokeReadinessHandler(checker))
 }
 
+func RegisterOutboundCutoverRoutes(
+	mux *http.ServeMux,
+	checker inport.OutboundCutoverReadinessChecker,
+) {
+	mux.Handle("/v1/outbound-cutover/readiness", OutboundCutoverReadinessHandler(checker))
+}
+
 func RegisterObserveTargetRoutes(
 	mux *http.ServeMux,
 	manager inport.ObserveTargetManager,
@@ -1403,6 +1410,48 @@ func DeliverySmokeReadinessHandler(checker inport.DeliverySmokeReadinessChecker)
 			GroupIDs:              request.GroupIDs,
 			ChannelByAccount:      request.ChannelByAccount,
 			IncludeSyntheticMedia: request.IncludeSyntheticMedia,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
+	})
+}
+
+func OutboundCutoverReadinessHandler(checker inport.OutboundCutoverReadinessChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checker == nil {
+			http.Error(w, "outbound cutover readiness disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.DeliverySmokeReadinessRequest
+		raw, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
+		if err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(string(raw)) != "" {
+			if err := json.Unmarshal(raw, &request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+		}
+		result, err := checker.CheckOutboundCutoverReadiness(r.Context(), command.CheckOutboundCutoverReadinessCommand{
+			Smoke: command.CheckDeliverySmokeReadinessCommand{
+				Cases:                 deliverySmokeCaseCommands(request.Cases),
+				GroupIDs:              request.GroupIDs,
+				ChannelByAccount:      request.ChannelByAccount,
+				IncludeSyntheticMedia: request.IncludeSyntheticMedia,
+			},
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, types.Result{

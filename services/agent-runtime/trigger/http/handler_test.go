@@ -1675,6 +1675,54 @@ func TestDeliverySmokeReadinessEndpointChecksMatrixWithoutSending(t *testing.T) 
 	}
 }
 
+func TestOutboundCutoverReadinessEndpointReturnsReadOnlyGate(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterOutboundCutoverRoutes(mux, staticOutboundCutoverReadinessChecker{
+		view: query.OutboundCutoverReadinessView{
+			Ready:                    false,
+			Reason:                   "outbound_cutover_not_ready",
+			OneBotReady:              true,
+			SmokeReady:               false,
+			ExecutionReady:           true,
+			ExecutionOwner:           "go_local_outbox_worker",
+			LocalOutboxWorkerReady:   true,
+			ExternalLeaseOutboxReady: false,
+			QueueProvider:            "local",
+			QueueMode:                "local_state_store",
+			ExpectedOneBotChannels:   []string{"qq_1049511700", "qq_2365524513"},
+			Blockers:                 []string{"delivery_smoke_not_ready"},
+			DeliverySmokeReadiness: query.DeliverySmokeReadinessView{
+				Ready:      false,
+				Reason:     "delivery_smoke_not_ready",
+				Totals:     map[string]int{"cases": 1, "ready": 0, "not_ready": 1},
+				SideEffect: "none",
+			},
+			SideEffect: "none",
+		},
+	})
+
+	request := []byte(`{"cases":[{"name":"qq_private_text","channel_kind":"qq","account_id":"1049511700","conversation_id":"2365524513","conversation_type":"private","content":"hello"}]}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound-cutover/readiness", bytes.NewReader(request)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected cutover readiness 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"outbound_cutover_not_ready"`,
+		`"onebot_ready":true`,
+		`"smoke_ready":false`,
+		`"execution_ready":true`,
+		`"execution_owner":"go_local_outbox_worker"`,
+		`"delivery_smoke_not_ready"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("cutover readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -3180,6 +3228,14 @@ type staticKnowledgeJobPlannerReadinessChecker struct {
 }
 
 func (s staticKnowledgeJobPlannerReadinessChecker) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
+	return s.view, nil
+}
+
+type staticOutboundCutoverReadinessChecker struct {
+	view query.OutboundCutoverReadinessView
+}
+
+func (s staticOutboundCutoverReadinessChecker) CheckOutboundCutoverReadiness(context.Context, command.CheckOutboundCutoverReadinessCommand) (query.OutboundCutoverReadinessView, error) {
 	return s.view, nil
 }
 

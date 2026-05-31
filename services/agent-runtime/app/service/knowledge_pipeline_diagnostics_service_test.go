@@ -19,7 +19,7 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "27234224")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-ready-text", "ready text", nil, 62)
@@ -160,7 +160,7 @@ func TestKnowledgePipelineDiagnosticsServiceShowsConfiguredDatasetBeforeRuntimeO
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTargetWithMetadata(t, observeTargets, "27234224", map[string]string{
 		"ragflow_dataset_ids":   "ds-configured,ds-configured",
 		"ragflow_dataset_count": "1",
@@ -224,7 +224,7 @@ func TestKnowledgePipelineDiagnosticsServiceWarnsOnEmptyRagIndex(t *testing.T) {
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "27234224")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-empty-index", "empty index", nil, 77)
@@ -338,7 +338,7 @@ func TestKnowledgePipelineDiagnosticsServiceWarnsOnCheckpointLag(t *testing.T) {
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "3219982")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-lag-text", "lag text", nil, 50)
@@ -413,7 +413,7 @@ func TestKnowledgePipelineDiagnosticsServiceMarksCheckpointStagnant(t *testing.T
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "164369633")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "164369633", "msg-stagnant-text", "stagnant text", nil, 80)
@@ -485,7 +485,7 @@ func TestKnowledgePipelineDiagnosticsServiceWarnsOnStaleActiveLease(t *testing.T
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "27234224")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-stale-lease", "stale lease", nil, 32)
@@ -559,7 +559,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksExpiredActiveLease(t *testing.
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "3219982")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-expired-lease", "expired lease", nil, 48)
@@ -636,7 +636,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 
 	observeTargets := NewObserveTargetService()
 	receiverStatuses := NewReceiverStatusService()
-	agentWorkers := NewAgentWorkerStatusService()
+	agentWorkers := newKnowledgePipelineAgentWorkerStatusService(now)
 	syncObserveTarget(t, observeTargets, "3219982")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
 	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-blocked-text", "blocked text", nil, 118)
@@ -769,6 +769,14 @@ func newKnowledgePipelineDiagnosticsServiceForTest(
 		store,
 		store,
 	)
+}
+
+func newKnowledgePipelineAgentWorkerStatusService(now time.Time) *AgentWorkerStatusService {
+	service := NewAgentWorkerStatusService()
+	service.clock = func() time.Time {
+		return now
+	}
+	return service
 }
 
 func ingestObserveMessageForGroup(t *testing.T, store *memory.Store, groupID string, suffix string, content string, attachments []command.AttachmentCommand) {

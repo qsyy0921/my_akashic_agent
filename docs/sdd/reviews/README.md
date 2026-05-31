@@ -174,3 +174,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-125-knowledge-job-planner-readiness.md`
 - `2026-05-31-phase8-126-runtime-overview-knowledge-planner-readiness.md`
 - `2026-05-31-phase8-127-knowledge-pipeline-rag-index-state.md`
+- `2026-05-31-phase8-128-outbound-cutover-readiness.md`

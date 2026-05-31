@@ -11,7 +11,7 @@
 
 ## QQ / Telegram / Observe
 
-- 推进 QQ/NapCat Go adapter cutover：先完成只读 readiness 和 live send smoke，再决定是否把 QQ channel alias 加入 Go outbound 或启用 Go local outbox worker。
+- 推进 QQ/NapCat Go adapter cutover：只读 `/v1/outbound-cutover/readiness` 已完成；后续先做真实 live send smoke，再决定是否把 QQ channel alias 加入 Go outbound 或启用 Go local outbox worker。
 - 继续梳理 Telegram/QQ inbound 接收与 Python agent 回复之间的边界，避免接收、发送、推理状态交叉堆在 Python。
 
 ## Queue / Worker / Runtime

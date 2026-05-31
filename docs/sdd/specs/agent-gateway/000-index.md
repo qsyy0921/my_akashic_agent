@@ -183,4 +183,7 @@ execution.
 - `070-knowledge-pipeline-rag-index-state-diagnostics.md`: Go derives
   per-dataset RAG index readiness from checkpoint metadata without calling
   RAGFlow or changing Python RAG execution.
+- `071-outbound-cutover-readiness.md`: Go exposes a read-only outbound cutover
+  preflight that combines OneBot config, delivery smoke readiness, queue
+  execution owner and runtime worker state before enabling Go platform sends.
 - Agent architecture boundary specs live under `../agent-architecture/`.

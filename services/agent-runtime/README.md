@@ -338,6 +338,19 @@ send explicit `cases` in the request body. The endpoint only verifies Go
 dispatch planning and `DeliveryAdapter` channel availability; response
 `side_effect` is always `none`.
 
+Check whether outbound sending is ready to cut over to Go:
+
+```text
+POST /v1/outbound-cutover/readiness
+```
+
+This read-only gate combines sanitized OneBot runtime config, delivery smoke
+readiness, queue backend execution owner, and runtime worker diagnostics. It is
+ready only when expected OneBot aliases are configured, the smoke matrix can be
+planned to available adapters, and either the Go local outbox worker or NATS
+external lease can execute `outbox_delivery`. It does not send platform
+messages, enqueue outbox records, or mutate worker flags.
+
 Register and query media/file metadata:
 
 ```text

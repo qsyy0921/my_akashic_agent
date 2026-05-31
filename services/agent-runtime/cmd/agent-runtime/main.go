@@ -314,6 +314,12 @@ func main() {
 		AgentJobRepo:   agentJobRepository,
 		AgentJobEvents: agentJobEventStore,
 	})
+	outboundCutoverReadiness := appservice.NewOutboundCutoverReadinessService(appservice.OutboundCutoverReadinessDeps{
+		RuntimeConfig:  runtimeConfig,
+		DeliverySmoke:  deliverySmokeReadiness,
+		QueueBackend:   queueBackend,
+		RuntimeWorkers: runtimeWorkers,
+	})
 	runtimeOverview := appservice.NewRuntimeOverviewService(appservice.RuntimeOverviewDeps{
 		QueueBackend:          queueBackend,
 		RuntimeConfig:         runtimeConfig,
@@ -354,6 +360,7 @@ func main() {
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
 	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, deliveryAdapterHealth)
 	httptrigger.RegisterDeliverySmokeRoutes(mux, deliverySmokeReadiness)
+	httptrigger.RegisterOutboundCutoverRoutes(mux, outboundCutoverReadiness)
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterAgentWorkerStatusRoutes(mux, agentWorkerStatuses)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
