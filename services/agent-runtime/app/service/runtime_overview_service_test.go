@@ -351,6 +351,25 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Preview:                query.KnowledgeJobPlannerPreviewView{TotalJobs: 3, Targets: 1, SideEffect: "none"},
 			SideEffect:             "none",
 		}},
+		AgentJobExternalLeaseReady: staticRuntimeAgentJobExternalLeaseReadiness{view: query.AgentJobExternalLeaseReadinessView{
+			Ready:                   false,
+			Reason:                  "agent_job_external_lease_not_ready",
+			ExternalLeaseReady:      true,
+			AgentJobResultAckReady:  false,
+			StrictLeaseTokenEnabled: true,
+			AgentJobWorkerReady:     false,
+			ExecutionOwner:          "python_ai_worker_with_nats_result_ack",
+			QueueProvider:           "nats_jetstream",
+			QueueMode:               "external_lease",
+			ExecutionScope:          "agent_job_result_ack_only",
+			AllowedWorkKinds:        []string{"agent_job"},
+			Blockers: []string{
+				"agent_job_result_ack_gate_missing",
+				"agent_job_worker_unavailable",
+				"agent_job_external_lease_smoke_missing",
+			},
+			SideEffect: "none",
+		}},
 		OutboundCutoverPlan: staticRuntimeOutboundCutoverPlan{view: query.OutboundCutoverPlanView{
 			Ready:                     false,
 			Decision:                  "blocked",
@@ -522,6 +541,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_job_planner_readiness_worker_stopped"] != 1 {
 		t.Fatalf("unexpected knowledge planner readiness summary: %#v", view.Summary)
 	}
+	if view.Summary["agent_job_external_lease_ready"] != false ||
+		view.Summary["agent_job_external_lease_reason"] != "agent_job_external_lease_not_ready" ||
+		view.Summary["agent_job_external_lease_blockers"] != 3 ||
+		view.Summary["agent_job_external_lease_result_ack_ready"] != false ||
+		view.Summary["agent_job_external_lease_worker_ready"] != false ||
+		view.Summary["agent_job_external_lease_strict_token"] != true ||
+		view.Summary["agent_job_external_lease_execution_owner"] != "python_ai_worker_with_nats_result_ack" ||
+		view.Summary["agent_job_external_lease_execution_scope"] != "agent_job_result_ack_only" {
+		t.Fatalf("unexpected agent job external lease readiness summary: %#v", view.Summary)
+	}
 	if view.Summary["outbound_cutover_plan_ready"] != false ||
 		view.Summary["outbound_cutover_plan_decision"] != "blocked" ||
 		view.Summary["outbound_cutover_plan_blockers"] != 2 ||
@@ -575,6 +604,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_preview", "3/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_readiness", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_readiness", "blocked:2")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_external_lease_readiness", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_external_lease_readiness", "agent_job_external_lease_not_ready:3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbound_cutover_plan", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "outbound_cutover_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
@@ -613,6 +644,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.KnowledgePlannerReady.Ready || len(view.KnowledgePlannerReady.Blockers) != 2 {
 		t.Fatalf("unexpected knowledge planner readiness detail: %+v", view.KnowledgePlannerReady)
+	}
+	if view.AgentJobExternalLease.Ready ||
+		view.AgentJobExternalLease.ExecutionScope != "agent_job_result_ack_only" ||
+		len(view.AgentJobExternalLease.Blockers) != 3 {
+		t.Fatalf("unexpected agent job external lease readiness detail: %+v", view.AgentJobExternalLease)
 	}
 	if view.OutboundCutoverPlan.Decision != "blocked" || len(view.OutboundCutoverPlan.RollbackSteps) == 0 {
 		t.Fatalf("unexpected outbound cutover plan detail: %+v", view.OutboundCutoverPlan)
@@ -770,6 +806,14 @@ type staticKnowledgeJobPlannerReadiness struct {
 }
 
 func (s staticKnowledgeJobPlannerReadiness) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeAgentJobExternalLeaseReadiness struct {
+	view query.AgentJobExternalLeaseReadinessView
+}
+
+func (s staticRuntimeAgentJobExternalLeaseReadiness) CheckAgentJobExternalLeaseReadiness(context.Context, command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error) {
 	return s.view, nil
 }
 

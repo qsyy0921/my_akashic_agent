@@ -195,4 +195,8 @@ execution.
 - `074-agent-job-external-lease-readiness.md`: Go exposes a read-only
   `agent_job` external lease result-ack readiness gate combining queue gate,
   strict lease tokens, runtime config and Python worker coverage.
+- `075-runtime-overview-agent-job-external-lease-readiness.md`: Runtime
+  overview aggregates the `agent_job` external lease readiness gate into
+  summary/card/detail fields without mutating queue, worker or AI execution
+  state.
 - Agent architecture boundary specs live under `../agent-architecture/`.
