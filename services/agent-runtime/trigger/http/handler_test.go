@@ -2135,6 +2135,52 @@ func TestKnowledgeCheckpointEndpointUpsertsAndGetsCheckpoint(t *testing.T) {
 	}
 }
 
+func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
+	store := memory.NewStore()
+	schedulerJobs := appservice.NewSchedulerJobService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterSchedulerJobRoutes(mux, schedulerJobs)
+
+	body := []byte(`{
+		"source":"python_scheduler",
+		"jobs":[{
+			"id":"job-1",
+			"trigger":"after",
+			"tier":"instant",
+			"fire_at":"2026-06-01T09:00:00Z",
+			"channel":"qq",
+			"chat_id":"1049511700",
+			"message":"提醒",
+			"timezone":"Asia/Shanghai",
+			"created_at":"2026-06-01T08:00:00Z",
+			"enabled":true
+		}]
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/jobs/snapshot", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected scheduler snapshot 202, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"side_effect":"runtime_state_write"`)) {
+		t.Fatalf("snapshot response missing side effect: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/jobs", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected scheduler list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"id":"job-1"`,
+		`"channel":"qq"`,
+		`"fire_at":"2026-06-01T09:00:00Z"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("scheduler list missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestKnowledgeWorkerDiagnosticsEndpointSummarizesJobsAndCheckpoints(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

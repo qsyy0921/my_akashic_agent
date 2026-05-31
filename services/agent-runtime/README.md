@@ -668,6 +668,22 @@ POST /v1/proactive/anyaction/actions
 POST /v1/proactive/cleanup
 ```
 
+Persist Python scheduler job snapshots in Go while keeping the Python tick loop
+and AI execution unchanged:
+
+```powershell
+$env:AKASHIC_SCHEDULER_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\scheduler-jobs.json"
+```
+
+When `integrations.agent_runtime.enabled=true`, Python `JobStore` writes the
+complete scheduler snapshot to Go and still keeps the local `schedules.json` as a
+fallback.
+
+```text
+GET  /v1/scheduler/jobs
+POST /v1/scheduler/jobs/snapshot
+```
+
 Read and advance knowledge/RAG checkpoints:
 
 ```text

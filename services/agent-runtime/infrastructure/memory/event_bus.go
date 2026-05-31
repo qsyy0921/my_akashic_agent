@@ -44,6 +44,8 @@ type Store struct {
 	proactiveSessionMarks  map[string]model.ProactiveSessionMark
 	proactiveGlobalMarks   map[string]model.ProactiveGlobalMark
 	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
+	schedulerJobs          map[string]model.SchedulerJob
+	schedulerJobOrder      []string
 }
 
 type ObservedEvent struct {
@@ -72,6 +74,7 @@ func NewStore() *Store {
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
 		proactiveGlobalMarks:  make(map[string]model.ProactiveGlobalMark),
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
+		schedulerJobs:         make(map[string]model.SchedulerJob),
 	}
 }
 
@@ -1160,6 +1163,40 @@ func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.Proactive
 		}
 	}
 	return result, nil
+}
+
+func (s *Store) ReplaceSchedulerJobs(_ context.Context, jobs []model.SchedulerJob) error {
+	nextJobs := make(map[string]model.SchedulerJob, len(jobs))
+	nextOrder := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if err := job.Validate(); err != nil {
+			return err
+		}
+		if _, exists := nextJobs[job.ID]; exists {
+			continue
+		}
+		nextJobs[job.ID] = job
+		nextOrder = append(nextOrder, job.ID)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schedulerJobs = nextJobs
+	s.schedulerJobOrder = nextOrder
+	return nil
+}
+
+func (s *Store) ListSchedulerJobs(_ context.Context) ([]model.SchedulerJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	items := make([]model.SchedulerJob, 0, len(s.schedulerJobOrder))
+	for _, jobID := range s.schedulerJobOrder {
+		if job, ok := s.schedulerJobs[jobID]; ok {
+			items = append(items, job)
+		}
+	}
+	return items, nil
 }
 
 func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {

@@ -15,6 +15,7 @@ Scheduler: 定时任务核心模块
 
 import asyncio
 from importlib import import_module
+import json
 import logging
 import re
 import statistics
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from zoneinfo import ZoneInfo
+
+import httpx
 
 from core.common.timekit import parse_iso as _parse_iso
 from infra.persistence.json_store import load_json, save_json
@@ -285,26 +288,61 @@ class ScheduledJob:
 class JobStore:
     """JSON 文件持久化，读写 ScheduledJob 列表。"""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        runtime_config: Any = None,
+        runtime_transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self.path = path
+        self._runtime_config = runtime_config
+        self._runtime_transport = runtime_transport
+        self._runtime_base_url = str(getattr(runtime_config, "base_url", "") or "").rstrip("/")
+        self._runtime_timeout = float(
+            getattr(runtime_config, "request_timeout_seconds", 5.0) or 5.0
+        )
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def load(self) -> list[ScheduledJob]:
-        # 1. 读取原始列表
+        local_jobs = self._load_local()
+        if self._runtime_enabled():
+            try:
+                raw = self._request_runtime("GET", "/v1/scheduler/jobs")
+                if isinstance(raw, list):
+                    runtime_jobs = [self._from_dict(d) for d in raw if isinstance(d, dict)]
+                    if runtime_jobs or not local_jobs:
+                        return runtime_jobs
+                    logger.info(
+                        "[job_store] agent-runtime scheduler store is empty; using local fallback"
+                    )
+            except Exception as e:
+                logger.warning("[job_store] agent-runtime 加载失败，回退本地 JSON: %s", e)
+        return local_jobs
+
+    def save(self, jobs: dict[str, ScheduledJob]) -> None:
+        data = [self._to_dict(j) for j in jobs.values()]
+        if self._runtime_enabled():
+            try:
+                self._request_runtime(
+                    "POST",
+                    "/v1/scheduler/jobs/snapshot",
+                    json_body={"jobs": data, "source": "python_scheduler"},
+                )
+            except Exception as e:
+                logger.warning("[job_store] agent-runtime 保存失败，继续写本地 JSON: %s", e)
+        save_json(self.path, data, domain="job_store")
+
+    # ── private ──
+
+    def _load_local(self) -> list[ScheduledJob]:
         raw = load_json(self.path, default=[], domain="job_store")
 
-        # 2. 反序列化
         try:
             return [self._from_dict(d) for d in raw]
         except Exception as e:
             logger.warning("[job_store] 反序列化失败: %s", e)
             return []
-
-    def save(self, jobs: dict[str, ScheduledJob]) -> None:
-        data = [self._to_dict(j) for j in jobs.values()]
-        save_json(self.path, data, domain="job_store")
-
-    # ── private ──
 
     def _to_dict(self, job: ScheduledJob) -> dict[str, Any]:
         d = asdict(job)
@@ -321,6 +359,44 @@ class JobStore:
     @staticmethod
     def _parse_dt(s: str) -> datetime:
         return _parse_iso(s) or datetime.now(timezone.utc)
+
+    def _runtime_enabled(self) -> bool:
+        return bool(getattr(self._runtime_config, "enabled", False)) and bool(
+            self._runtime_base_url
+        )
+
+    def _request_runtime(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+    ) -> Any:
+        with httpx.Client(
+            timeout=self._runtime_timeout,
+            transport=self._runtime_transport,
+            trust_env=True,
+        ) as client:
+            response = client.request(
+                method.upper(),
+                self._runtime_base_url + path,
+                json=json_body,
+                headers={"Content-Type": "application/json"},
+            )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"agent-runtime HTTP {response.status_code}: {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            raise RuntimeError("agent-runtime scheduler response is not json")
+        if not isinstance(payload, dict):
+            return payload
+        code = payload.get("code")
+        if code not in (None, "OK", 0):
+            raise RuntimeError(str(payload.get("message") or payload))
+        return payload.get("data", payload)
 
 
 # ── SchedulerService ─────────────────────────────────────────────
@@ -346,8 +422,14 @@ class SchedulerService:
         agent_loop_provider: Callable[[], Any] | None = None,
         tracker: LatencyTracker | None = None,
         _now_fn: Callable[[], datetime] | None = None,
+        runtime_config: Any = None,
+        runtime_transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.store = JobStore(store_path)
+        self.store = JobStore(
+            store_path,
+            runtime_config=runtime_config,
+            runtime_transport=runtime_transport,
+        )
         self.push_tool = push_tool
         self.agent_loop = agent_loop
         self._agent_loop_provider = agent_loop_provider

@@ -256,6 +256,14 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/cleanup", ProactiveCleanupHandler(proactiveState))
 }
 
+func RegisterSchedulerJobRoutes(
+	mux *http.ServeMux,
+	schedulerJobs inport.SchedulerJobManager,
+) {
+	mux.Handle("/v1/scheduler/jobs", SchedulerJobsHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/jobs/snapshot", SchedulerJobSnapshotHandler(schedulerJobs))
+}
+
 func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: map[string]string{"status": "ok"}})
@@ -474,6 +482,54 @@ func KnowledgeCheckpointsHandler(checkpoints inport.KnowledgeCheckpointManager) 
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func SchedulerJobsHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := schedulerJobs.ListSchedulerJobs(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func SchedulerJobSnapshotHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.SchedulerJobSnapshotRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		cmd, err := toReplaceSchedulerJobsCommand(request)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := schedulerJobs.ReplaceSchedulerJobs(r.Context(), cmd)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 
@@ -2829,6 +2885,45 @@ func toCreateAgentJobCommand(request dto.CreateAgentJobRequest) (command.CreateA
 	}, nil
 }
 
+func toReplaceSchedulerJobsCommand(request dto.SchedulerJobSnapshotRequest) (command.ReplaceSchedulerJobsCommand, error) {
+	jobs := make([]command.SchedulerJobCommand, 0, len(request.Jobs))
+	for _, item := range request.Jobs {
+		fireAt, err := parseRequiredTimestamp(item.FireAt, "fire_at")
+		if err != nil {
+			return command.ReplaceSchedulerJobsCommand{}, err
+		}
+		createdAt, err := parseOptionalTimestamp(item.CreatedAt)
+		if err != nil {
+			return command.ReplaceSchedulerJobsCommand{}, err
+		}
+		enabled := true
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		jobs = append(jobs, command.SchedulerJobCommand{
+			ID:              item.ID,
+			Trigger:         item.Trigger,
+			Tier:            item.Tier,
+			FireAt:          fireAt,
+			Channel:         item.Channel,
+			ChatID:          item.ChatID,
+			IntervalSeconds: item.IntervalSeconds,
+			CronExpr:        item.CronExpr,
+			Message:         item.Message,
+			Prompt:          item.Prompt,
+			Name:            item.Name,
+			Timezone:        item.Timezone,
+			CreatedAt:       createdAt,
+			RunCount:        item.RunCount,
+			Enabled:         enabled,
+		})
+	}
+	return command.ReplaceSchedulerJobsCommand{
+		Jobs:   jobs,
+		Source: request.Source,
+	}, nil
+}
+
 func parseOptionalTimestamp(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
@@ -2838,6 +2933,13 @@ func parseOptionalTimestamp(value string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return parsed, nil
+}
+
+func parseRequiredTimestamp(value string, field string) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, errors.New(field + " is required")
+	}
+	return time.Parse(time.RFC3339Nano, value)
 }
 
 func toAttachmentCommands(items []dto.AttachmentDTO) []command.AttachmentCommand {

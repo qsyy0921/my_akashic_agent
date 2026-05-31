@@ -308,6 +308,7 @@ def build_registered_tools(
         workspace,
         push_tool,
         agent_loop_provider=agent_loop_provider,
+        runtime_config=getattr(config, "agent_runtime", None),
     )
     peer_process_manager, peer_poller = build_peer_agent_resources(
         config, bus, http_resources

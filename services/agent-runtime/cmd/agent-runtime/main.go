@@ -30,6 +30,7 @@ import (
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
 	receiverleasestore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverleasestore"
 	receiverstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
+	schedulerjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/schedulerjobstore"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
@@ -100,6 +101,10 @@ func main() {
 	proactiveStateRepository, err := newProactiveStateRepository()
 	if err != nil {
 		log.Fatalf("init proactive state repository: %v", err)
+	}
+	schedulerJobRepository, err := newSchedulerJobRepository()
+	if err != nil {
+		log.Fatalf("init scheduler job repository: %v", err)
 	}
 	queueBackendView, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -238,6 +243,7 @@ func main() {
 		ChannelByAccount: deliverySmokeChannelByAccount,
 	})
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
+	schedulerJobs := appservice.NewSchedulerJobService(schedulerJobRepository)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
@@ -312,6 +318,7 @@ func main() {
 	httptrigger.RegisterReceiverStatusRoutes(mux, receiverStatuses)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
+	httptrigger.RegisterSchedulerJobRoutes(mux, schedulerJobs)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",
@@ -642,6 +649,23 @@ func newProactiveStateRepository() (outport.ProactiveStateRepository, error) {
 	}
 	if path, ok := defaultRuntimeStatePath("proactive-state.json"); ok {
 		return proactivestate.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newSchedulerJobRepository() (outport.SchedulerJobRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_SCHEDULER_JOBS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return schedulerjobstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_SCHEDULER_JOBS_PATH")); path != "" {
+		return schedulerjobstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("scheduler-jobs.json"); ok {
+		return schedulerjobstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

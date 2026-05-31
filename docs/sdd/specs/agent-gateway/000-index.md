@@ -88,4 +88,6 @@ execution.
   deterministic runtime state, while Python keeps SQLite fallback cleanup.
 - `035-proactive-bg-context-global-mark.md`: Go-owned global mark for proactive
   background-context main-topic send timestamp.
+- `036-scheduler-job-store.md`: Go-owned durable snapshot store for Python
+  scheduler jobs, while Python keeps tick loop and AI execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.
