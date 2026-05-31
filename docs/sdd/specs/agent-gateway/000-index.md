@@ -205,4 +205,7 @@ execution.
 - `077-runtime-overview-agent-job-external-lease-plan.md`: Runtime overview
   aggregates the `agent_job` external lease plan into summary/card/detail
   fields without mutating queue, worker or AI execution state.
+- `078-agent-job-capacity-plan.md`: Go exposes a read-only AgentJob capacity
+  plan that turns pressure plus Python worker coverage into operational
+  recommendations without scheduling or AI execution side effects.
 - Agent architecture boundary specs live under `../agent-architecture/`.

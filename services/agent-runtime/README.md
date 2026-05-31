@@ -520,6 +520,19 @@ not auto-scale Python workers, reject enqueue, or change retry/lease behavior.
 It is read-only and does not lease jobs, execute Python workers, or acknowledge
 external queue messages.
 
+Inspect the read-only AgentJob capacity plan:
+
+```text
+GET /v1/agent-job-capacity/plan?job_limit=200&event_limit=50&stale_after_seconds=900
+```
+
+The capacity plan combines AgentJob pressure with Python AI worker status. It
+recommends operational actions such as recovering a missing knowledge worker,
+restarting stale workers, inspecting failed workers, or tuning Python worker
+concurrency when active workers exist but pressure remains high. It is advisory
+only: Go does not start workers, change concurrency, lease/retry jobs,
+acknowledge MQ messages, or execute model/RAG/memory/OCR/VLM/image work.
+
 Persist outbox delivery lifecycle events as a JSONL stream:
 
 ```powershell

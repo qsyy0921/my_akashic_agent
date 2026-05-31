@@ -1866,6 +1866,57 @@ func TestAgentJobExternalLeasePlanEndpointReturnsReadOnlyPlan(t *testing.T) {
 	}
 }
 
+func TestAgentJobCapacityPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobCapacityRoutes(mux, staticAgentJobCapacityPlanner{
+		view: query.AgentJobCapacityPlanView{
+			Ready:  false,
+			Reason: "agent_job_capacity_attention_required",
+			Summary: query.AgentJobCapacitySummaryView{
+				JobTypes:                1,
+				HighPressureJobTypes:    1,
+				CapacityBlockedJobTypes: 1,
+				MaxPending:              10,
+			},
+			Items: []query.AgentJobCapacityPlanItemView{{
+				JobType:        "group_memory_extract",
+				Severity:       "danger",
+				Action:         "start_or_recover_python_worker",
+				Recommendation: "Start or recover a Python knowledge worker.",
+				Pending:        10,
+				HighPressure:   true,
+				PressureReason: "pending>=10",
+				Coverage: query.AgentJobWorkerCoverageView{
+					JobType:        "group_memory_extract",
+					HighPressure:   true,
+					CoverageStatus: "danger",
+					CoverageReason: "high_pressure_no_registered_worker",
+				},
+			}},
+			Blockers:   []string{"agent_job_capacity_blocked", "agent_job_high_pressure"},
+			SideEffect: "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-capacity/plan?job_limit=10&stale_after_seconds=60", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job capacity plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"agent_job_capacity_attention_required"`,
+		`"capacity_blocked_job_types":1`,
+		`"action":"start_or_recover_python_worker"`,
+		`"agent_job_high_pressure"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job capacity plan response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -3403,6 +3454,14 @@ type staticAgentJobExternalLeasePlanner struct {
 }
 
 func (s staticAgentJobExternalLeasePlanner) PlanAgentJobExternalLease(context.Context, command.PlanAgentJobExternalLeaseCommand) (query.AgentJobExternalLeasePlanView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobCapacityPlanner struct {
+	view query.AgentJobCapacityPlanView
+}
+
+func (s staticAgentJobCapacityPlanner) PlanAgentJobCapacity(context.Context, command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error) {
 	return s.view, nil
 }
 

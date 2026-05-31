@@ -323,6 +323,10 @@ func main() {
 	agentJobExternalLeasePlan := appservice.NewAgentJobExternalLeasePlanService(appservice.AgentJobExternalLeasePlanDeps{
 		Readiness: agentJobExternalLeaseReadiness,
 	})
+	agentJobCapacityPlan := appservice.NewAgentJobCapacityPlanService(appservice.AgentJobCapacityPlanDeps{
+		AgentJobs:    agentJobMetrics,
+		AgentWorkers: agentWorkerStatuses,
+	})
 	outboundCutoverReadiness := appservice.NewOutboundCutoverReadinessService(appservice.OutboundCutoverReadinessDeps{
 		RuntimeConfig:  runtimeConfig,
 		DeliverySmoke:  deliverySmokeReadiness,
@@ -369,6 +373,7 @@ func main() {
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)
 	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
+	httptrigger.RegisterAgentJobCapacityRoutes(mux, agentJobCapacityPlan)
 	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, agentJobExternalLeaseReadiness, agentJobExternalLeasePlan)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)
