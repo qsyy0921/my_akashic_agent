@@ -44,6 +44,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/outbox/lease-next", OutboxLeaseNextHandler(outbox))
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
+	mux.Handle("/v1/media-assets/content-diagnostics", MediaAssetContentDiagnosticsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
 	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
@@ -1887,6 +1888,36 @@ func mediaAssetFilterFromQuery(r *http.Request) query.MediaAssetFilter {
 		SourceMessageIDSuffix: values.Get("source_message_id_suffix"),
 		Kind:                  values.Get("asset_kind"),
 	}
+}
+
+func mediaAssetContentDiagnosticsFilterFromQuery(r *http.Request) query.MediaAssetContentDiagnosticsFilter {
+	values := r.URL.Query()
+	return query.MediaAssetContentDiagnosticsFilter{
+		AssetID:               values.Get("asset_id"),
+		Limit:                 parsePositiveInt(values.Get("limit"), 50, 200),
+		ChannelKind:           firstQueryValue(values.Get("channel_kind"), values.Get("kind")),
+		AccountID:             values.Get("account_id"),
+		ConversationID:        values.Get("conversation_id"),
+		ConversationType:      values.Get("conversation_type"),
+		SourceMessageID:       values.Get("source_message_id"),
+		SourceMessageIDSuffix: values.Get("source_message_id_suffix"),
+		Kind:                  values.Get("asset_kind"),
+	}
+}
+
+func MediaAssetContentDiagnosticsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := mediaAssets.ContentDiagnostics(r.Context(), mediaAssetContentDiagnosticsFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
 }
 
 func firstQueryValue(values ...string) string {

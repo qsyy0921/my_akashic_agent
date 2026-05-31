@@ -13,6 +13,7 @@
 
 - 推进 QQ/NapCat Go adapter cutover：只读 `/v1/outbound-cutover/readiness`、`/v1/outbound-cutover/plan` 和 runtime overview 聚合已完成；后续先做真实 live send smoke，再决定是否把 QQ channel alias 加入 Go outbound 或启用 Go local outbox worker。
 - 继续梳理 Telegram/QQ inbound 接收与 Python agent 回复之间的边界，避免接收、发送、推理状态交叉堆在 Python。
+- media asset content diagnostics 已提供按资产预检；若前端需要全局附件健康概览，可后续聚合到 runtime overview 或 dashboard drilldown，但不要在 Go 中加入 OCR/VLM/文件语义解析。
 
 ## Queue / Worker / Runtime
 

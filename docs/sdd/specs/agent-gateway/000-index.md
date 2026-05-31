@@ -211,4 +211,7 @@ execution.
 - `079-runtime-overview-agent-job-capacity-plan.md`: Runtime overview
   aggregates the AgentJob capacity plan into summary/card/detail fields without
   starting workers, scheduling jobs or mutating queue/config state.
+- `080-media-asset-content-diagnostics.md`: Go exposes read-only media asset
+  content readiness diagnostics for frontend attachment troubleshooting without
+  changing content access policy or running multimodal AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -2143,6 +2143,24 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	if got := response.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("unexpected content type: %s", got)
 	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/content-diagnostics?asset_id="+assetID, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content diagnostics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"content_status":"ready"`,
+		`"content_reason":"media_asset_content_ready"`,
+		`"ready":1`,
+		`"side_effect":"none"`,
+		`"/v1/media-assets/asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1/content"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("content diagnostics response missing %s: %s", expected, bodyText)
+		}
+	}
 }
 
 type fakeDeliveryAdapter struct {

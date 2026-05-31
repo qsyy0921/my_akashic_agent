@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -117,6 +118,122 @@ func (s *MediaAssetService) OpenContent(ctx context.Context, assetID string) (ou
 		return outport.MediaAssetContent{}, errors.New("media asset not found")
 	}
 	return s.contentReader.OpenMediaAssetContent(ctx, asset)
+}
+
+func (s *MediaAssetService) ContentDiagnostics(
+	ctx context.Context,
+	filter query.MediaAssetContentDiagnosticsFilter,
+) (query.MediaAssetContentDiagnosticsView, error) {
+	if s == nil || s.repository == nil {
+		return query.MediaAssetContentDiagnosticsView{}, errors.New("media asset service requires repository")
+	}
+	if err := ctx.Err(); err != nil {
+		return query.MediaAssetContentDiagnosticsView{}, err
+	}
+	assets, err := s.contentDiagnosticAssets(ctx, filter)
+	if err != nil {
+		return query.MediaAssetContentDiagnosticsView{}, err
+	}
+	items := make([]query.MediaAssetContentDiagnosticItemView, 0, len(assets))
+	totals := map[string]int{
+		"assets":      len(assets),
+		"ready":       0,
+		"forbidden":   0,
+		"unavailable": 0,
+		"disabled":    0,
+		"error":       0,
+	}
+	for _, asset := range assets {
+		item := s.contentDiagnosticItem(ctx, asset)
+		totals[item.ContentStatus]++
+		items = append(items, item)
+	}
+	return query.MediaAssetContentDiagnosticsView{
+		Items:      items,
+		Totals:     totals,
+		SideEffect: "none",
+		Notes: []string{
+			"read-only media asset content diagnostics; opened content is closed immediately",
+			"Go checks deterministic content access only; Python remains responsible for OCR, VLM, file parsing and semantic extraction",
+		},
+	}, nil
+}
+
+func (s *MediaAssetService) contentDiagnosticAssets(
+	ctx context.Context,
+	filter query.MediaAssetContentDiagnosticsFilter,
+) ([]model.MediaAsset, error) {
+	assetID := strings.TrimSpace(filter.AssetID)
+	if assetID != "" {
+		asset, ok, err := s.repository.FindMediaAsset(ctx, assetID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("media asset not found")
+		}
+		return []model.MediaAsset{asset}, nil
+	}
+	return s.repository.ListMediaAssets(ctx, query.MediaAssetFilter{
+		Limit:                 filter.Limit,
+		ChannelKind:           filter.ChannelKind,
+		AccountID:             filter.AccountID,
+		ConversationID:        filter.ConversationID,
+		ConversationType:      filter.ConversationType,
+		SourceMessageID:       filter.SourceMessageID,
+		SourceMessageIDSuffix: filter.SourceMessageIDSuffix,
+		Kind:                  filter.Kind,
+	})
+}
+
+func (s *MediaAssetService) contentDiagnosticItem(
+	ctx context.Context,
+	asset model.MediaAsset,
+) query.MediaAssetContentDiagnosticItemView {
+	status := "disabled"
+	reason := "media_asset_content_disabled"
+	contentMimeType := ""
+	contentSizeBytes := int64(0)
+	if s.contentReader != nil {
+		content, err := s.contentReader.OpenMediaAssetContent(ctx, asset)
+		switch {
+		case err == nil:
+			status = "ready"
+			reason = "media_asset_content_ready"
+			contentMimeType = content.MimeType
+			contentSizeBytes = content.SizeBytes
+			_ = content.Body.Close()
+		case errors.Is(err, outport.ErrMediaAssetContentDisabled):
+			status = "disabled"
+			reason = "media_asset_content_disabled"
+		case errors.Is(err, outport.ErrMediaAssetContentForbidden):
+			status = "forbidden"
+			reason = "media_asset_content_forbidden"
+		case errors.Is(err, outport.ErrMediaAssetContentUnavailable):
+			status = "unavailable"
+			reason = "media_asset_content_unavailable"
+		default:
+			status = "error"
+			reason = "media_asset_content_error"
+		}
+	}
+	view := assembler.ToMediaAssetView(asset)
+	return query.MediaAssetContentDiagnosticItemView{
+		AssetID:          view.AssetID,
+		Channel:          view.Channel,
+		SourceMessageID:  view.SourceMessageID,
+		SenderID:         view.SenderID,
+		Kind:             view.Kind,
+		MimeType:         view.MimeType,
+		Name:             view.Name,
+		SizeBytes:        view.SizeBytes,
+		ContentStatus:    status,
+		ContentReason:    reason,
+		ContentEndpoint:  "/v1/media-assets/" + url.PathEscape(view.AssetID) + "/content",
+		ContentMimeType:  contentMimeType,
+		ContentSizeBytes: contentSizeBytes,
+		UpdatedAt:        view.UpdatedAt,
+	}
 }
 
 func generatedAssetID(cmd command.RegisterMediaAssetCommand) string {

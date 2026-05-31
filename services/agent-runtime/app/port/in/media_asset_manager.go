@@ -13,4 +13,5 @@ type MediaAssetManager interface {
 	Get(ctx context.Context, assetID string) (query.MediaAssetView, error)
 	List(ctx context.Context, filter query.MediaAssetFilter) ([]query.MediaAssetView, error)
 	OpenContent(ctx context.Context, assetID string) (outport.MediaAssetContent, error)
+	ContentDiagnostics(ctx context.Context, filter query.MediaAssetContentDiagnosticsFilter) (query.MediaAssetContentDiagnosticsView, error)
 }

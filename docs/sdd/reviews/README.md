@@ -183,3 +183,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-134-runtime-overview-agent-job-external-lease-plan.md`
 - `2026-05-31-phase8-135-agent-job-capacity-plan.md`
 - `2026-05-31-phase8-136-runtime-overview-agent-job-capacity-plan.md`
+- `2026-05-31-phase8-137-media-asset-content-diagnostics.md`

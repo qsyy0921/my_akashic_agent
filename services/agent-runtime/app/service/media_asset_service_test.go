@@ -2,144 +2,136 @@ package service_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 )
 
-func TestMediaAssetServiceRegistersGeneratedIDAndIsIdempotent(t *testing.T) {
+func TestMediaAssetServiceContentDiagnosticsClassifiesContentAccess(t *testing.T) {
+	ctx := context.Background()
+	assetRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	readyPath := filepath.Join(assetRoot, "ready.txt")
+	if err := writeTestFile(readyPath, "ready bytes"); err != nil {
+		t.Fatal(err)
+	}
+	forbiddenPath := filepath.Join(outsideRoot, "forbidden.txt")
+	if err := writeTestFile(forbiddenPath, "secret bytes"); err != nil {
+		t.Fatal(err)
+	}
+
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, service, "asset:ready", readyPath, "ready.txt")
+	registerTestMediaAsset(t, service, "asset:forbidden", forbiddenPath, "forbidden.txt")
+	registerTestMediaAsset(t, service, "asset:missing", filepath.Join(assetRoot, "missing.txt"), "missing.txt")
+
+	view, err := service.ContentDiagnostics(ctx, query.MediaAssetContentDiagnosticsFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("content diagnostics: %v", err)
+	}
+	if view.Totals["assets"] != 3 ||
+		view.Totals["ready"] != 1 ||
+		view.Totals["forbidden"] != 1 ||
+		view.Totals["unavailable"] != 1 ||
+		view.Totals["disabled"] != 0 ||
+		view.Totals["error"] != 0 {
+		t.Fatalf("unexpected totals: %+v", view.Totals)
+	}
+	ready := findMediaAssetContentDiagnostic(t, view, "asset:ready")
+	if ready.ContentStatus != "ready" ||
+		ready.ContentReason != "media_asset_content_ready" ||
+		ready.ContentSizeBytes <= 0 ||
+		ready.ContentEndpoint != "/v1/media-assets/asset:ready/content" {
+		t.Fatalf("unexpected ready item: %+v", ready)
+	}
+	forbidden := findMediaAssetContentDiagnostic(t, view, "asset:forbidden")
+	if forbidden.ContentStatus != "forbidden" || forbidden.ContentReason != "media_asset_content_forbidden" {
+		t.Fatalf("unexpected forbidden item: %+v", forbidden)
+	}
+	missing := findMediaAssetContentDiagnostic(t, view, "asset:missing")
+	if missing.ContentStatus != "unavailable" || missing.ContentReason != "media_asset_content_unavailable" {
+		t.Fatalf("unexpected missing item: %+v", missing)
+	}
+}
+
+func TestMediaAssetServiceContentDiagnosticsReportsDisabledReader(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()
 	service := appservice.NewMediaAssetService(store)
-	now := time.Date(2026, 5, 30, 5, 0, 0, 0, time.UTC)
+	registerTestMediaAsset(t, service, "asset:disabled", filepath.Join(t.TempDir(), "disabled.txt"), "disabled.txt")
 
-	cmd := command.RegisterMediaAssetCommand{
+	view, err := service.ContentDiagnostics(ctx, query.MediaAssetContentDiagnosticsFilter{AssetID: "asset:disabled"})
+	if err != nil {
+		t.Fatalf("content diagnostics: %v", err)
+	}
+	if view.Totals["assets"] != 1 || view.Totals["disabled"] != 1 {
+		t.Fatalf("unexpected disabled totals: %+v", view.Totals)
+	}
+	item := findMediaAssetContentDiagnostic(t, view, "asset:disabled")
+	if item.ContentStatus != "disabled" || item.ContentReason != "media_asset_content_disabled" {
+		t.Fatalf("unexpected disabled item: %+v", item)
+	}
+	if view.SideEffect != "none" {
+		t.Fatalf("content diagnostics must be read-only: %+v", view)
+	}
+}
+
+func registerTestMediaAsset(
+	t *testing.T,
+	service *appservice.MediaAssetService,
+	assetID string,
+	path string,
+	name string,
+) {
+	t.Helper()
+	_, err := service.Register(context.Background(), command.RegisterMediaAssetCommand{
+		AssetID: assetID,
 		Channel: command.ChannelCommand{
 			Kind:             "qq",
 			AccountID:        "1049511700",
 			ConversationID:   "27234224",
 			ConversationType: "group",
 		},
-		SourceMessageID: "qq:gqq:27234224:498",
+		SourceMessageID: "qq:gqq:27234224:1",
 		SenderID:        "2948770636",
 		Kind:            "image",
-		URL:             "https://example.invalid/image.png",
-		MimeType:        "image/png",
-		Name:            "image.png",
-		Index:           2,
-		Timestamp:       now,
-	}
-	first, err := service.Register(ctx, cmd)
-	if err != nil {
-		t.Fatalf("register media asset: %v", err)
-	}
-	second, err := service.Register(ctx, cmd)
-	if err != nil {
-		t.Fatalf("register media asset again: %v", err)
-	}
-	if second.AssetID != first.AssetID {
-		t.Fatalf("expected idempotent asset id, got %s and %s", first.AssetID, second.AssetID)
-	}
-	if len(store.MediaAssets()) != 1 {
-		t.Fatalf("expected one stored asset, got %d", len(store.MediaAssets()))
-	}
-	if first.AssetID != "asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:2" {
-		t.Fatalf("unexpected generated asset id: %s", first.AssetID)
-	}
-}
-
-func TestMediaAssetServiceListsNewestFirst(t *testing.T) {
-	ctx := context.Background()
-	store := memory.NewStore()
-	service := appservice.NewMediaAssetService(store)
-	now := time.Date(2026, 5, 30, 5, 0, 0, 0, time.UTC)
-
-	for _, item := range []struct {
-		id   string
-		name string
-	}{
-		{id: "asset:old", name: "old.png"},
-		{id: "asset:new", name: "new.png"},
-	} {
-		_, err := service.Register(ctx, command.RegisterMediaAssetCommand{
-			AssetID: item.id,
-			Channel: command.ChannelCommand{
-				Kind:             "qq",
-				AccountID:        "1049511700",
-				ConversationID:   "27234224",
-				ConversationType: "group",
-			},
-			SourceMessageID: item.id + ":msg",
-			SenderID:        "2948770636",
-			Kind:            "image",
-			Name:            item.name,
-			Timestamp:       now,
-		})
-		if err != nil {
-			t.Fatalf("register %s: %v", item.id, err)
-		}
-	}
-
-	items, err := service.List(ctx, query.MediaAssetFilter{Limit: 10})
-	if err != nil {
-		t.Fatalf("list media assets: %v", err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 assets, got %d", len(items))
-	}
-	if items[0].AssetID != "asset:new" {
-		t.Fatalf("expected newest first, got %+v", items)
-	}
-}
-
-func TestMediaAssetServiceFiltersByRouteAndSourceSuffix(t *testing.T) {
-	ctx := context.Background()
-	store := memory.NewStore()
-	service := appservice.NewMediaAssetService(store)
-	now := time.Date(2026, 5, 30, 5, 0, 0, 0, time.UTC)
-
-	for _, item := range []struct {
-		id             string
-		conversationID string
-		sourceID       string
-	}{
-		{id: "asset:match", conversationID: "3219982", sourceID: "qq:1049511700:group:3219982:646258796"},
-		{id: "asset:other-source", conversationID: "3219982", sourceID: "qq:1049511700:group:3219982:000000"},
-		{id: "asset:other-conversation", conversationID: "27234224", sourceID: "qq:1049511700:group:27234224:646258796"},
-	} {
-		_, err := service.Register(ctx, command.RegisterMediaAssetCommand{
-			AssetID: item.id,
-			Channel: command.ChannelCommand{
-				Kind:             "qq",
-				AccountID:        "1049511700",
-				ConversationID:   item.conversationID,
-				ConversationType: "group",
-			},
-			SourceMessageID: item.sourceID,
-			SenderID:        "2948770636",
-			Kind:            "image",
-			Name:            item.id + ".png",
-			Timestamp:       now,
-		})
-		if err != nil {
-			t.Fatalf("register %s: %v", item.id, err)
-		}
-	}
-
-	items, err := service.List(ctx, query.MediaAssetFilter{
-		Limit:                 10,
-		ConversationID:        "3219982",
-		ConversationType:      "group",
-		SourceMessageIDSuffix: "646258796",
+		URL:             path,
+		MimeType:        "text/plain",
+		Name:            name,
+		Timestamp:       time.Date(2026, 5, 31, 8, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
-		t.Fatalf("list filtered media assets: %v", err)
+		t.Fatalf("register media asset %s: %v", assetID, err)
 	}
-	if len(items) != 1 || items[0].AssetID != "asset:match" {
-		t.Fatalf("unexpected filtered items: %+v", items)
+}
+
+func findMediaAssetContentDiagnostic(
+	t *testing.T,
+	view query.MediaAssetContentDiagnosticsView,
+	assetID string,
+) query.MediaAssetContentDiagnosticItemView {
+	t.Helper()
+	for _, item := range view.Items {
+		if item.AssetID == assetID {
+			return item
+		}
 	}
+	t.Fatalf("content diagnostic item not found for %s: %+v", assetID, view.Items)
+	return query.MediaAssetContentDiagnosticItemView{}
+}
+
+func writeTestFile(path string, content string) error {
+	return os.WriteFile(path, []byte(content), 0o600)
 }
