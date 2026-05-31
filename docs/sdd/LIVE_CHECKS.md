@@ -15,6 +15,7 @@
 
 - [ ] 观察 Go `AgentJob` admission dedupe live 效果：重启 Python knowledge worker 后确认 `group_memory_extract` / `rag_ingest` pending 数不再按分钟无界增长。
 - [ ] 查看 `/v1/job-metrics` 与 `/v1/runtime-overview.summary`：当 `group_memory_extract` / `rag_ingest` 堆积时，`pressure.by_type` 应反映 pending / active / oldest_pending_age_seconds，`agent_job_pressure_high_job_types` 应随 high pressure job type 增长。
+- [ ] 查看 `/v1/runtime-overview` 的 `agent_job_worker_coverage_*` 和 `Agent Job Worker Coverage` card：当 knowledge / rag_eval / image job 堆积时，应能区分 no active worker、stale worker、failed worker 和 active worker available。
 - [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 上报 `starting` / `idle` / `running` / `stopped` 或 stale。
 - [ ] 验证 worker status fencing：故意以相同 `worker_id` 启动第二个 Python AI worker 进程时，Go `/v1/agent-worker-statuses/report` 应返回 409 conflict，原实例状态不被覆盖；原实例 stopped 或 lease 过期后新实例可接管。
 - [ ] 验证长任务 worker status 续租：触发一次耗时 image / knowledge / rag_eval / outbox 任务，确认 `/v1/agent-worker-statuses` 中对应 worker 的 `updated_at` 在任务运行期间持续推进，且 `lease_active=true`，不会误判 stale。

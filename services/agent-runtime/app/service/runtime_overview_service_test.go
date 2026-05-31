@@ -95,20 +95,82 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				ByType:       map[string]int{"rag_eval": 1},
 			},
 			Pressure: query.AgentJobPressureMetricsView{
-				JobTypes:                2,
+				JobTypes:                4,
 				HighPressureJobTypes:    1,
 				MaxPending:              11,
 				MaxActive:               2,
 				OldestPendingAgeSeconds: 1800,
-				ByType: []query.AgentJobTypePressureView{{
-					JobType:                 "group_memory_extract",
-					Pending:                 11,
-					Active:                  0,
-					OldestPendingAgeSeconds: 1800,
-					HighPressure:            true,
-					PressureReason:          "pending>=10",
-				}},
+				ByType: []query.AgentJobTypePressureView{
+					{
+						JobType:                 "group_memory_extract",
+						Pending:                 11,
+						Active:                  0,
+						OldestPendingAgeSeconds: 1800,
+						HighPressure:            true,
+						PressureReason:          "pending>=10",
+					},
+					{
+						JobType:        "rag_ingest",
+						Pending:        1,
+						Active:         0,
+						HighPressure:   false,
+						PressureReason: "",
+					},
+					{
+						JobType:        "image_generation",
+						Pending:        0,
+						Active:         1,
+						HighPressure:   false,
+						PressureReason: "",
+					},
+					{
+						JobType:        "rag_eval",
+						Pending:        1,
+						Active:         0,
+						HighPressure:   false,
+						PressureReason: "",
+					},
+				},
 			},
+		}},
+		AgentWorkers: staticRuntimeAgentWorkers{view: query.AgentWorkerStatusesView{
+			Workers: []query.AgentWorkerStatusView{
+				{
+					WorkerID:   "knowledge-worker-1",
+					WorkerType: "knowledge",
+					Status:     "stopped",
+					Stale:      true,
+					UpdatedAt:  "2026-05-31T11:20:00Z",
+				},
+				{
+					WorkerID:    "image-worker-1",
+					WorkerType:  "image_generation",
+					Status:      "running",
+					LeaseActive: true,
+					UpdatedAt:   "2026-05-31T11:59:00Z",
+				},
+				{
+					WorkerID:   "rag-eval-worker-1",
+					WorkerType: "rag_eval",
+					Status:     "failed",
+					UpdatedAt:  "2026-05-31T11:58:00Z",
+				},
+			},
+			Totals: map[string]int{
+				"workers":          3,
+				"starting":         0,
+				"idle":             0,
+				"running":          1,
+				"failed":           1,
+				"stopped":          1,
+				"stale":            1,
+				"knowledge":        1,
+				"image_generation": 1,
+				"rag_eval":         1,
+				"outbox_delivery":  0,
+				"other_type":       0,
+			},
+			SideEffect: "none",
 		}},
 		OutboxMetrics: staticRuntimeOutboxMetrics{view: query.OutboxMetricsView{
 			SampledDeliveries: 2,
@@ -283,12 +345,18 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["inbound_dedupe_records"] != 2 || view.Summary["inbound_dedupe_duplicate_seen_total"] != 1 {
 		t.Fatalf("unexpected inbound dedupe summary: %#v", view.Summary)
 	}
-	if view.Summary["agent_job_pressure_job_types"] != 2 ||
+	if view.Summary["agent_job_pressure_job_types"] != 4 ||
 		view.Summary["agent_job_pressure_high_job_types"] != 1 ||
 		view.Summary["agent_job_pressure_max_pending"] != 11 ||
 		view.Summary["agent_job_pressure_max_active"] != 2 ||
 		view.Summary["agent_job_pressure_oldest_pending_age_seconds"] != 1800 {
 		t.Fatalf("unexpected agent job pressure summary: %#v", view.Summary)
+	}
+	if view.Summary["agent_job_worker_coverage_job_types"] != 4 ||
+		view.Summary["agent_job_worker_coverage_uncovered_job_types"] != 3 ||
+		view.Summary["agent_job_worker_coverage_stale_job_types"] != 2 ||
+		view.Summary["agent_job_worker_coverage_failed_job_types"] != 1 {
+		t.Fatalf("unexpected agent job worker coverage summary: %#v", view.Summary)
 	}
 	if view.Summary["outbox_pressure_accounts"] != 2 ||
 		view.Summary["outbox_pressure_high_accounts"] != 1 ||
@@ -311,9 +379,30 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_pressure", "warn")
-	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_pressure", "1/2")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_pressure", "1/4")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_worker_coverage", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_worker_coverage", "3/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
+	if len(view.AgentJobWorkerCoverage) != 4 {
+		t.Fatalf("unexpected agent job worker coverage items: %+v", view.AgentJobWorkerCoverage)
+	}
+	if view.AgentJobWorkerCoverage[0].JobType != "group_memory_extract" ||
+		view.AgentJobWorkerCoverage[0].CoverageStatus != "danger" ||
+		view.AgentJobWorkerCoverage[0].CoverageReason != "high_pressure_no_active_worker" {
+		t.Fatalf("unexpected first agent job worker coverage item: %+v", view.AgentJobWorkerCoverage[0])
+	}
+	if view.AgentJobWorkerCoverage[2].JobType != "image_generation" ||
+		view.AgentJobWorkerCoverage[2].CoverageStatus != "ok" ||
+		view.AgentJobWorkerCoverage[2].ActiveWorkers != 1 ||
+		view.AgentJobWorkerCoverage[2].RunningWorkers != 1 {
+		t.Fatalf("unexpected image coverage item: %+v", view.AgentJobWorkerCoverage[2])
+	}
+	if view.AgentJobWorkerCoverage[3].JobType != "rag_eval" ||
+		view.AgentJobWorkerCoverage[3].CoverageStatus != "warn" ||
+		view.AgentJobWorkerCoverage[3].CoverageReason != "failed_worker_present" {
+		t.Fatalf("unexpected rag_eval coverage item: %+v", view.AgentJobWorkerCoverage[3])
+	}
 }
 
 func assertRuntimeOverviewCardValue(t *testing.T, cards []query.RuntimeOverviewCardView, id string, value string) {
@@ -419,6 +508,14 @@ type staticRuntimeWorkerDiagnostics struct {
 }
 
 func (s staticRuntimeWorkerDiagnostics) GetRuntimeWorkers(context.Context) (query.RuntimeWorkerDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeAgentWorkers struct {
+	view query.AgentWorkerStatusesView
+}
+
+func (s staticRuntimeAgentWorkers) ListAgentWorkerStatuses(context.Context, query.AgentWorkerStatusFilter) (query.AgentWorkerStatusesView, error) {
 	return s.view, nil
 }
 

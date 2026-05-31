@@ -799,7 +799,10 @@ metrics, inbox metrics, agent job metrics, outbox metrics, and knowledge worker
 diagnostics into the same summary/card shape consumed by the Python dashboard.
 `Agent Job Pressure` highlights job-type backlog pressure separately from
 dead-letter and event throughput so knowledge/RAG buildup can be seen without
-inspecting multiple endpoints manually.
+inspecting multiple endpoints manually. `Agent Job Worker Coverage` correlates
+that pressure with Python worker heartbeat coverage, so backlog can be
+distinguished between “worker exists and is healthy”, “worker stale/failed”, and
+“no active worker available”.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

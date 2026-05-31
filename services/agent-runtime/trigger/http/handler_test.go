@@ -57,15 +57,25 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, staticRuntimeOverviewViewer{
 		view: query.RuntimeOverviewView{
 			Summary: map[string]any{
-				"queue_backend_provider": "nats_jetstream",
-				"inbox_metric_events":    9,
+				"queue_backend_provider":                        "nats_jetstream",
+				"inbox_metric_events":                           9,
+				"agent_job_worker_coverage_job_types":           2,
+				"agent_job_worker_coverage_uncovered_job_types": 1,
 			},
-			Cards: []query.RuntimeOverviewCardView{{
-				ID:     "inbox_metrics",
-				Label:  "Inbox Metrics",
-				Value:  9,
-				Status: "ok",
-			}},
+			Cards: []query.RuntimeOverviewCardView{
+				{
+					ID:     "inbox_metrics",
+					Label:  "Inbox Metrics",
+					Value:  9,
+					Status: "ok",
+				},
+				{
+					ID:     "agent_job_worker_coverage",
+					Label:  "Agent Job Worker Coverage",
+					Value:  "1/2",
+					Status: "warn",
+				},
+			},
 			Status: query.RuntimeOverviewStatusView{
 				RuntimeAvailable: true,
 				HealthAvailable:  true,
@@ -84,6 +94,10 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"id":"inbox_metrics"`)) {
 		t.Fatalf("response missing card: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"agent_job_worker_coverage_job_types":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"agent_job_worker_coverage"`)) {
+		t.Fatalf("response missing agent job worker coverage diagnostics: %s", response.Body.String())
 	}
 }
 

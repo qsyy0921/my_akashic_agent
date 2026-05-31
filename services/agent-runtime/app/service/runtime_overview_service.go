@@ -278,6 +278,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		}
 	}
 
+	agentJobWorkerCoverage := runtimeAgentJobWorkerCoverage(agentJobMetrics, agentWorkers)
 	summary := runtimeOverviewSummary(
 		deliveryAdapters,
 		queueBackend,
@@ -295,6 +296,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
+		agentJobWorkerCoverage,
 	)
 	cards := runtimeOverviewCards(
 		summary,
@@ -314,28 +316,30 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
+		agentJobWorkerCoverage,
 		errors,
 	)
 
 	return query.RuntimeOverviewView{
-		Summary:           summary,
-		Cards:             cards,
-		DeliveryAdapters:  deliveryAdapters,
-		QueueBackend:      queueBackend,
-		RuntimeConfig:     runtimeConfig,
-		RuntimeWorkers:    runtimeWorkers,
-		AgentWorkers:      agentWorkers,
-		ObserveTargets:    observeTargets,
-		ObserveCapture:    observeCapture,
-		ReceiverStatuses:  receiverStatuses,
-		ReceiverLeases:    receiverLeases,
-		SchedulerJobs:     schedulerJobs,
-		SendLedgerMetrics: sendLedger,
-		InboxMetrics:      inboxMetrics,
-		InboundDedupe:     inboundDedupe,
-		AgentJobMetrics:   agentJobMetrics,
-		OutboxMetrics:     outboxMetrics,
-		Diagnostics:       diagnostics,
+		Summary:                summary,
+		Cards:                  cards,
+		DeliveryAdapters:       deliveryAdapters,
+		QueueBackend:           queueBackend,
+		RuntimeConfig:          runtimeConfig,
+		RuntimeWorkers:         runtimeWorkers,
+		AgentWorkers:           agentWorkers,
+		ObserveTargets:         observeTargets,
+		ObserveCapture:         observeCapture,
+		ReceiverStatuses:       receiverStatuses,
+		ReceiverLeases:         receiverLeases,
+		SchedulerJobs:          schedulerJobs,
+		SendLedgerMetrics:      sendLedger,
+		InboxMetrics:           inboxMetrics,
+		InboundDedupe:          inboundDedupe,
+		AgentJobMetrics:        agentJobMetrics,
+		AgentJobWorkerCoverage: agentJobWorkerCoverage,
+		OutboxMetrics:          outboxMetrics,
+		Diagnostics:            diagnostics,
 		Status: query.RuntimeOverviewStatusView{
 			RuntimeAvailable: true,
 			HealthAvailable:  true,
@@ -362,6 +366,7 @@ func runtimeOverviewSummary(
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
+	agentJobWorkerCoverage []query.AgentJobWorkerCoverageView,
 ) map[string]any {
 	enabledAdapters := 0
 	for _, item := range deliveryAdapters {
@@ -505,12 +510,22 @@ func runtimeOverviewSummary(
 		"agent_job_pressure_max_pending":                agentJobMetrics.Pressure.MaxPending,
 		"agent_job_pressure_max_active":                 agentJobMetrics.Pressure.MaxActive,
 		"agent_job_pressure_oldest_pending_age_seconds": agentJobMetrics.Pressure.OldestPendingAgeSeconds,
-		"outbox_metric_events":                          outboxMetrics.SampledEvents,
-		"outbox_metric_dead_letters":                    outboxMetrics.DeadLetters.CurrentTotal,
-		"outbox_pressure_accounts":                      outboxMetrics.Pressure.Accounts,
-		"outbox_pressure_high_accounts":                 outboxMetrics.Pressure.HighPressureAccounts,
-		"outbox_pressure_max_active":                    outboxMetrics.Pressure.MaxActive,
-		"outbox_pressure_max_queued":                    outboxMetrics.Pressure.MaxQueued,
+		"agent_job_worker_coverage_job_types":           len(agentJobWorkerCoverage),
+		"agent_job_worker_coverage_uncovered_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+			return len(item.ExpectedWorkerTypes) > 0 && item.ActiveWorkers == 0
+		}),
+		"agent_job_worker_coverage_stale_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+			return item.StaleWorkers > 0
+		}),
+		"agent_job_worker_coverage_failed_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+			return item.FailedWorkers > 0
+		}),
+		"outbox_metric_events":          outboxMetrics.SampledEvents,
+		"outbox_metric_dead_letters":    outboxMetrics.DeadLetters.CurrentTotal,
+		"outbox_pressure_accounts":      outboxMetrics.Pressure.Accounts,
+		"outbox_pressure_high_accounts": outboxMetrics.Pressure.HighPressureAccounts,
+		"outbox_pressure_max_active":    outboxMetrics.Pressure.MaxActive,
+		"outbox_pressure_max_queued":    outboxMetrics.Pressure.MaxQueued,
 	}
 }
 
@@ -532,6 +547,7 @@ func runtimeOverviewCards(
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
+	agentJobWorkerCoverage []query.AgentJobWorkerCoverageView,
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
 	queueValue := queueBackendCardValue(queueBackend)
@@ -544,6 +560,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("job_events", "Job Events", intSummary(summary, "job_events"), statusIfPositive(intSummary(summary, "job_events"), "ok", "muted"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_metrics", "Agent Job Metrics", intSummary(summary, "agent_job_metric_events"), statusIfPositive(intSummary(summary, "agent_job_metric_dead_letters"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_pressure", "Agent Job Pressure", runtimeAgentJobPressureValue(agentJobMetrics), runtimeAgentJobPressureStatus(agentJobMetrics), map[string]any{"agent_job_metrics": agentJobMetrics}),
+		runtimeOverviewCard("agent_job_worker_coverage", "Agent Job Worker Coverage", runtimeAgentJobWorkerCoverageValue(agentJobWorkerCoverage), runtimeAgentJobWorkerCoverageStatus(agentJobWorkerCoverage), map[string]any{"agent_job_worker_coverage": agentJobWorkerCoverage}),
 		runtimeOverviewCard("outbox_metrics", "Outbox Metrics", intSummary(summary, "outbox_metric_events"), statusIfPositive(intSummary(summary, "outbox_metric_dead_letters"), "danger", "ok"), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("outbox_pressure", "Outbox Pressure", runtimeOutboxPressureValue(outboxMetrics), runtimeOutboxPressureStatus(outboxMetrics), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("outbox_events", "Outbox Events", intSummary(summary, "outbox_events"), statusIfPositive(intSummary(summary, "outbox_events"), "ok", "muted"), map[string]any{"outbox_metrics": outboxMetrics}),
@@ -698,6 +715,138 @@ func runtimeAgentJobPressureStatus(view query.AgentJobMetricsView) string {
 
 func runtimeAgentJobPressureValue(view query.AgentJobMetricsView) string {
 	return fmt.Sprintf("%d/%d", view.Pressure.HighPressureJobTypes, view.Pressure.JobTypes)
+}
+
+func runtimeAgentJobWorkerCoverage(view query.AgentJobMetricsView, workers query.AgentWorkerStatusesView) []query.AgentJobWorkerCoverageView {
+	if len(view.Pressure.ByType) == 0 {
+		return nil
+	}
+	workersByType := make(map[string][]query.AgentWorkerStatusView)
+	for _, worker := range workers.Workers {
+		workersByType[worker.WorkerType] = append(workersByType[worker.WorkerType], worker)
+	}
+	items := make([]query.AgentJobWorkerCoverageView, 0, len(view.Pressure.ByType))
+	for _, pressure := range view.Pressure.ByType {
+		expected := expectedWorkerTypesForAgentJobType(pressure.JobType)
+		item := query.AgentJobWorkerCoverageView{
+			JobType:             pressure.JobType,
+			ExpectedWorkerTypes: append([]string(nil), expected...),
+			HighPressure:        pressure.HighPressure,
+			PressureReason:      pressure.PressureReason,
+			CoverageStatus:      "muted",
+		}
+		if len(expected) == 0 {
+			item.CoverageReason = "no_expected_worker_mapping"
+			items = append(items, item)
+			continue
+		}
+		for _, workerType := range expected {
+			for _, worker := range workersByType[workerType] {
+				item.WorkerCount++
+				if worker.Stale {
+					item.StaleWorkers++
+				}
+				switch worker.Status {
+				case "starting", "idle":
+					item.ActiveWorkers++
+				case "running":
+					item.ActiveWorkers++
+					item.RunningWorkers++
+				case "failed":
+					item.FailedWorkers++
+				}
+			}
+		}
+		item.CoverageStatus, item.CoverageReason = agentJobWorkerCoverageStatus(item)
+		items = append(items, item)
+	}
+	return items
+}
+
+func expectedWorkerTypesForAgentJobType(jobType string) []string {
+	switch jobType {
+	case "group_memory_extract", "rag_ingest":
+		return []string{"knowledge"}
+	case "rag_eval":
+		return []string{"rag_eval"}
+	case "image_generation":
+		return []string{"image_generation"}
+	default:
+		return nil
+	}
+}
+
+func agentJobWorkerCoverageStatus(item query.AgentJobWorkerCoverageView) (string, string) {
+	if len(item.ExpectedWorkerTypes) == 0 {
+		return "muted", "no_expected_worker_mapping"
+	}
+	if item.HighPressure && item.ActiveWorkers == 0 {
+		if item.WorkerCount == 0 {
+			return "danger", "high_pressure_no_registered_worker"
+		}
+		return "danger", "high_pressure_no_active_worker"
+	}
+	if item.ActiveWorkers == 0 {
+		if item.WorkerCount == 0 {
+			return "warn", "no_registered_worker"
+		}
+		if item.FailedWorkers > 0 {
+			return "warn", "failed_worker_present"
+		}
+		if item.StaleWorkers > 0 {
+			return "warn", "stale_worker_present"
+		}
+		return "warn", "no_active_worker"
+	}
+	if item.FailedWorkers > 0 {
+		return "warn", "failed_worker_present"
+	}
+	if item.StaleWorkers > 0 {
+		return "warn", "stale_worker_present"
+	}
+	return "ok", "active_worker_available"
+}
+
+func runtimeAgentJobWorkerCoverageCount(items []query.AgentJobWorkerCoverageView, include func(query.AgentJobWorkerCoverageView) bool) int {
+	total := 0
+	for _, item := range items {
+		if include(item) {
+			total++
+		}
+	}
+	return total
+}
+
+func runtimeAgentJobWorkerCoverageStatus(items []query.AgentJobWorkerCoverageView) string {
+	if len(items) == 0 {
+		return "muted"
+	}
+	for _, item := range items {
+		if item.CoverageStatus == "danger" {
+			return "danger"
+		}
+	}
+	for _, item := range items {
+		if item.CoverageStatus == "warn" {
+			return "warn"
+		}
+	}
+	for _, item := range items {
+		if item.CoverageStatus == "ok" {
+			return "ok"
+		}
+	}
+	return "muted"
+}
+
+func runtimeAgentJobWorkerCoverageValue(items []query.AgentJobWorkerCoverageView) string {
+	if len(items) == 0 {
+		return "0/0"
+	}
+	uncovered := runtimeAgentJobWorkerCoverageCount(items, func(item query.AgentJobWorkerCoverageView) bool {
+		return len(item.ExpectedWorkerTypes) > 0 && item.ActiveWorkers == 0
+	})
+	return fmt.Sprintf("%d/%d", uncovered, len(items))
 }
 
 func externalLeaseStatus(view query.QueueBackendView) string {

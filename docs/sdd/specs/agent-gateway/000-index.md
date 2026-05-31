@@ -140,4 +140,7 @@ execution.
 - `056-agent-job-pressure-diagnostics.md`: Go-owned AgentJob backlog and
   pressure diagnostics for pending/active job-type buildup, especially
   knowledge and RAG workers.
+- `057-agent-job-worker-coverage-diagnostics.md`: Runtime overview correlates
+  Go-owned AgentJob pressure with Python worker heartbeat coverage so backlog
+  can be explained by missing, stale, or failed worker capacity.
 - Agent architecture boundary specs live under `../agent-architecture/`.
