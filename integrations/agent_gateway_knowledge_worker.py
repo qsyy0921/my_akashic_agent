@@ -67,6 +67,7 @@ class AgentGatewayKnowledgeWorker:
             worker_type="knowledge",
             logger=logger,
             label="agent_runtime_knowledge_worker",
+            lease_ttl_seconds=self._lease_ttl,
         )
 
     async def enqueue_once(self) -> dict[str, Any]:
@@ -114,10 +115,15 @@ class AgentGatewayKnowledgeWorker:
             logger=logger,
             label="agent_runtime_knowledge_worker",
         )
+        status_heartbeat = self._status.running_heartbeat(
+            current_job_id=job_id,
+            interval_seconds=self._heartbeat_interval,
+        )
         try:
             await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
+            status_heartbeat.start()
             if job_type == "group_memory_extract":
                 result = await self._process_group_memory_job(job)
             elif job_type == "rag_ingest":
@@ -155,6 +161,7 @@ class AgentGatewayKnowledgeWorker:
                 "error": message,
             }
         finally:
+            await status_heartbeat.stop()
             await heartbeat.stop()
 
     async def run(self) -> None:

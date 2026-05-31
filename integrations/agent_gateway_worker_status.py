@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -15,6 +16,7 @@ class AgentWorkerStatusReporter:
         worker_type: str,
         logger: logging.Logger,
         label: str,
+        lease_ttl_seconds: int | None = None,
     ) -> None:
         self._client = client
         self._worker_id = str(worker_id or "akashic-python-worker")
@@ -27,7 +29,7 @@ class AgentWorkerStatusReporter:
         config = getattr(client, "_config", None)
         self._lease_ttl_seconds = max(
             30,
-            int(getattr(config, "lease_ttl_seconds", 120) or 120),
+            int(lease_ttl_seconds or getattr(config, "lease_ttl_seconds", 120) or 120),
         )
 
     async def starting(self) -> None:
@@ -50,6 +52,18 @@ class AgentWorkerStatusReporter:
 
     async def stopped(self) -> None:
         await self._report("stopped")
+
+    def running_heartbeat(
+        self,
+        *,
+        current_job_id: str,
+        interval_seconds: float,
+    ) -> "AgentWorkerStatusHeartbeat":
+        return AgentWorkerStatusHeartbeat(
+            reporter=self,
+            current_job_id=current_job_id,
+            interval_seconds=interval_seconds,
+        )
 
     async def _report(
         self,
@@ -83,3 +97,41 @@ class AgentWorkerStatusReporter:
                 self._label,
                 exc_info=True,
             )
+
+
+class AgentWorkerStatusHeartbeat:
+    def __init__(
+        self,
+        *,
+        reporter: AgentWorkerStatusReporter,
+        current_job_id: str,
+        interval_seconds: float,
+    ) -> None:
+        self._reporter = reporter
+        self._current_job_id = str(current_job_id or "")
+        self._interval_seconds = max(1.0, float(interval_seconds or 30.0))
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        if not self._current_job_id or self._task is not None:
+            return
+        self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        task = self._task
+        self._task = None
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+
+    async def beat_once(self) -> None:
+        await self._reporter._report("running", current_job_id=self._current_job_id)
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self._interval_seconds)
+            await self.beat_once()

@@ -525,6 +525,11 @@ detection, and exposes the result in the runtime overview `Agent Workers` card.
 New Python reporters include `instance_id` and `lease_ttl_seconds`; Go rejects
 active same-`worker_id` status overwrites from a different instance until the
 lease expires or the owning instance reports `stopped`/`failed`.
+Long-running Python AI workers also renew this diagnostic worker status lease by
+periodically reporting `running` with the current job id while image,
+knowledge, RAG eval, or compatibility outbox work is executing. This is separate
+from AgentJob lease renewal and only keeps the worker liveness/fencing view
+fresh.
 This endpoint is diagnostic only; it does not execute jobs, poll platforms, or
 send messages.
 

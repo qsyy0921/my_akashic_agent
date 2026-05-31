@@ -194,5 +194,5 @@ async def test_image_worker_reports_worker_status_on_process():
     assert status_call[1]["worker_type"] == "image_generation"
     assert status_call[1]["status"] == "idle"
     assert status_call[1]["instance_id"].startswith("worker-a:")
-    assert status_call[1]["lease_ttl_seconds"] == 120
+    assert status_call[1]["lease_ttl_seconds"] == 300
     assert status_call[1]["metadata"] == {"reason": "no_job"}

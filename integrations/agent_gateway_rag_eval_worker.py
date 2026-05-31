@@ -75,6 +75,7 @@ class AgentGatewayRagEvalWorker:
             worker_type="rag_eval",
             logger=logger,
             label="agent_runtime_rag_eval_worker",
+            lease_ttl_seconds=self._lease_ttl,
         )
 
     async def process_once(self) -> dict[str, Any]:
@@ -99,10 +100,15 @@ class AgentGatewayRagEvalWorker:
             logger=logger,
             label="agent_runtime_rag_eval_worker",
         )
+        status_heartbeat = self._status.running_heartbeat(
+            current_job_id=job_id,
+            interval_seconds=self._heartbeat_interval,
+        )
         try:
             await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
+            status_heartbeat.start()
             result = await self._evaluator.execute(job)
             await self._client.complete_job(
                 job_id,
@@ -138,6 +144,7 @@ class AgentGatewayRagEvalWorker:
                 "error": message,
             }
         finally:
+            await status_heartbeat.stop()
             await heartbeat.stop()
 
     async def run(self) -> None:

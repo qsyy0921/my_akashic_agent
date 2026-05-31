@@ -8,6 +8,18 @@ the invariants.
 
 ## Workflow
 
+0. **Iteration Contract**
+   - At the start of a turn, read `TODO.md`, `DONE.md`, `LIVE_CHECKS.md`,
+     `BACKLOG.md`, and `git status`.
+   - `TODO.md` is the current iteration contract. Finish every unchecked item
+     in it before ending the iteration.
+   - If an item cannot be finished because of an external blocker, record the
+     blocker, required condition, and resume command. Otherwise do not leave
+     partial TODO items behind.
+   - Put future ideas in `BACKLOG.md` and live/manual validation in
+     `LIVE_CHECKS.md`; do not inflate `TODO.md` with work that is not committed
+     for the current iteration.
+
 1. **Problem Statement**
    - Describe the user-visible problem.
    - State non-goals to prevent scope creep.
@@ -23,7 +35,8 @@ the invariants.
    - If a file would grow past 500 lines, split first.
 
 4. **Implementation**
-   - Implement the smallest vertical slice.
+   - Implement the smallest complete vertical slice that satisfies the whole
+     current `TODO.md` contract.
    - Keep domain logic pure where possible.
    - Put IO behind ports/adapters.
 
@@ -45,4 +58,18 @@ A change is not accepted if:
 - it creates hidden coupling between Python and Go internals;
 - it lacks tests for loop prevention, dedupe, or retry behavior;
 - it expands an already oversized module instead of extracting a boundary.
+- it ends with unchecked current-iteration TODO items that are not explicitly
+  blocked by external state.
 
+## Go / Python Ownership Rule
+
+- Go owns deterministic runtime infrastructure: routing state, idempotency,
+  durable stores, lifecycle transitions, retries, leases, checkpoints, assets,
+  queues, audit, and operational diagnostics.
+- Python owns agent intelligence: model/provider routing, prompt and context
+  pipelines, tool execution, memory/RAG extraction and ranking, embeddings,
+  rerank, OCR/VLM, image-generation execution, evaluation scripts, and fast AI
+  experiments.
+- Python may keep compatibility mirrors while migrating, but mirrors must not
+  become a second source of truth for infrastructure state once Go has the
+  matching domain API.

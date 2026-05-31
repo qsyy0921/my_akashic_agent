@@ -17,7 +17,7 @@
 ## Queue / Worker / Runtime
 
 - 设计并验证更合适的 MQ 方案，保留多线程消费和可替换边界，避免把 NATS/RabbitMQ/Redis Streams 细节泄漏到 domain。
-- 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing；后续继续收敛 job lease、心跳、ack/fail、重试和诊断一致性。
+- 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ ack/nack 和诊断一致性。
 
 ## Knowledge / Memory / RAG
 
@@ -27,4 +27,4 @@
 ## SDD / 文档治理
 
 - 继续清理 SDD 文档结构：TODO 只记录本轮任务，DONE 记录已完成，LIVE_CHECKS 记录现场验证，BACKLOG 记录后续候选。
-- 每次迁移切片都补 spec、review、测试命令和风险说明，避免代码先行导致结构再次变乱。
+- 每次迭代都补 spec、review、测试命令和风险说明，并在结束前完成全部当前 TODO，避免代码先行或半成品切片导致结构再次变乱。

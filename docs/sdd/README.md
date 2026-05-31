@@ -6,10 +6,15 @@ multi-channel messaging refactor.
 
 SDD here means: write the behavior contract first, implement against that
 contract, then review code by checking the contract, invariants, and tests.
+For the Go migration, each iteration treats `TODO.md` as a closure contract:
+all unchecked current-iteration items must be completed, moved back to
+`BACKLOG.md`, or marked with a real external blocker before the iteration ends.
 
 ## Directory Layout
 
 - `PROCESS.md`: the workflow for spec, implementation, review, and acceptance.
+- `ITERATION_PROMPT.md`: resume prompt for future Codex sessions, including
+  TODO closure and Go/Python ownership rules.
 - `templates/spec-template.md`: required structure for a feature spec.
 - `templates/review-checklist.md`: checklist used for AI-generated code review.
 - `IMPLEMENTATION_FREEZE.md`: active gate for Go/Python split and group memory
@@ -48,3 +53,13 @@ For the Go/Python architecture split, group-message memory, and RAG migration,
 `IMPLEMENTATION_FREEZE.md` is active as a cutover gate. Non-production Go
 control-plane slices may be implemented with review records and tests; production
 platform cutover still requires a specific review and rollback plan.
+
+## Ownership Summary
+
+- Go owns deterministic backend runtime: account-aware routing, durable inbox /
+  outbox, leases, retries, dedupe, queue lifecycle, media assets, checkpoints,
+  scheduling control plane, audit, and dashboard diagnostics.
+- Python owns AI runtime behavior: model/provider selection, prompt/context
+  construction, tool execution, memory/RAG algorithms, embedding/rerank,
+  OCR/VLM enrichment, image-generation execution, evaluation, and fast
+  provider-specific experiments.

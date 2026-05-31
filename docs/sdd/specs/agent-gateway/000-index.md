@@ -113,4 +113,7 @@ execution.
 - `045-agent-worker-status-lease-fencing.md`: Go-owned lease/fencing for
   Python AI worker status ownership, preventing active same-worker-id status
   overwrites from another process instance.
+- `046-agent-worker-status-heartbeat-renewal.md`: Python AI workers renew
+  Go-owned worker-status leases during long-running jobs without changing
+  AgentJob lease semantics.
 - Agent architecture boundary specs live under `../agent-architecture/`.

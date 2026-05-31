@@ -41,6 +41,7 @@ class AgentGatewayImageWorker:
             worker_type="image_generation",
             logger=logger,
             label="agent_runtime_image_worker",
+            lease_ttl_seconds=self._lease_ttl,
         )
 
     async def process_once(self) -> dict[str, Any]:
@@ -66,10 +67,15 @@ class AgentGatewayImageWorker:
             logger=logger,
             label="agent_runtime_image_worker",
         )
+        status_heartbeat = self._status.running_heartbeat(
+            current_job_id=job_id,
+            interval_seconds=self._heartbeat_interval,
+        )
         try:
             await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
+            status_heartbeat.start()
             if legacy_job_id:
                 await self._client.mark_image_job_running(legacy_job_id)
             tool_result = await self._execute_image_tool(job)
@@ -120,6 +126,7 @@ class AgentGatewayImageWorker:
                 "error": message,
             }
         finally:
+            await status_heartbeat.stop()
             await heartbeat.stop()
 
     async def run(self) -> None:

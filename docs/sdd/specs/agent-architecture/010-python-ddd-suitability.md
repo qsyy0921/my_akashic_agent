@@ -63,6 +63,9 @@ agent runtime / orchestration
 
 - Keep model calls, prompt strategy, tool execution, extraction, RAG ranking,
   and fast AI experiments in Python.
+- Keep provider-specific behavior in Python: MiMo/OpenAI/ChatGPT proxy quirks,
+  streaming recovery, OCR/VLM prompts, image generation execution, embedding
+  model selection, rerank thresholds, and eval harnesses.
 - Define ports at integration boundaries, for example runtime job client,
   inbox message source, RAG indexer, image generation tool, and model provider.
 - Use clear service classes for use cases such as `AgentRuntimeKnowledgeWorker`
@@ -71,6 +74,9 @@ agent runtime / orchestration
   narrow.
 - Do not let Python own durable infrastructure once Go has a matching domain and
   API.
+- Treat Python local files/databases used during migration as compatibility
+  mirrors or algorithm caches unless the spec explicitly declares them
+  authoritative.
 
 ## Boundary Example
 

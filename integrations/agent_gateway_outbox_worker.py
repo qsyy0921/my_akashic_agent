@@ -52,6 +52,7 @@ class AgentGatewayOutboxWorker:
         }
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
+        self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
         self._stopped = asyncio.Event()
         self._status = AgentWorkerStatusReporter(
             client=client,
@@ -59,6 +60,7 @@ class AgentGatewayOutboxWorker:
             worker_type="outbox_delivery",
             logger=logger,
             label="agent_runtime_outbox_worker",
+            lease_ttl_seconds=self._lease_ttl,
         )
 
     async def process_once(self) -> dict[str, Any]:
@@ -72,8 +74,13 @@ class AgentGatewayOutboxWorker:
             return {"processed": False, "reason": "no_delivery"}
 
         event_id = str(delivery.get("event_id") or "")
+        status_heartbeat = self._status.running_heartbeat(
+            current_job_id=event_id,
+            interval_seconds=self._heartbeat_interval,
+        )
         try:
             await self._status.running(current_job_id=event_id)
+            status_heartbeat.start()
             results = await self._dispatch_delivery(delivery)
             await self._client.mark_outbox_succeeded(event_id)
             await self._status.succeeded(last_job_id=event_id)
@@ -97,6 +104,8 @@ class AgentGatewayOutboxWorker:
                 "error_kind": str(error_kind),
                 "error": message,
             }
+        finally:
+            await status_heartbeat.stop()
 
     async def run(self) -> None:
         logger.info(
