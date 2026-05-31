@@ -98,4 +98,7 @@ execution.
   tool-driven add/cancel, reducing snapshot overwrite risk.
 - `040-scheduler-completion-mutation.md`: Go-owned lease-fenced scheduler
   completion mutation for recurring reschedule and one-shot delete.
+- `041-scheduler-recovery-reconciliation.md`: Python startup scheduler recovery
+  persists recurring misfire advancement and expired one-shot deletion through
+  existing Go-owned scheduler CRUD.
 - Agent architecture boundary specs live under `../agent-architecture/`.

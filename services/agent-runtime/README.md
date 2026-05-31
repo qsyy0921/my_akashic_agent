@@ -711,6 +711,11 @@ trigger tick execution, AI calls, outbox creation, or platform sends.
 `/v1/scheduler/jobs/{job_id}/complete` requires the current execution lease
 holder and token, then performs either `action=reschedule` with a full job body
 or `action=delete`, and releases the lease only after the state write succeeds.
+Python scheduler startup recovery also uses the single-job CRUD endpoints: missed
+recurring jobs are advanced and persisted through upsert, while expired one-shot
+jobs beyond the grace window are deleted through the delete endpoint. This
+recovery reconciliation does not execute jobs, acquire scheduler execution
+leases, call AI, create outbox records, or send platform messages.
 
 Read and advance knowledge/RAG checkpoints:
 

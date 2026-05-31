@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, call
 
@@ -27,6 +28,13 @@ def make_service(tmp_path, mock_push, mock_loop, now, tracker=None):
 
 def json_request(request: httpx.Request) -> dict:
     return json.loads(request.read().decode("utf-8"))
+
+
+def runtime_job_payload(job: ScheduledJob) -> dict:
+    payload = asdict(job)
+    payload["fire_at"] = job.fire_at.isoformat()
+    payload["created_at"] = job.created_at.isoformat()
+    return payload
 
 
 # ── Execution: INSTANT ───────────────────────────────────────────
@@ -588,6 +596,7 @@ def test_misfire_beyond_grace_discarded(tmp_path, mock_push, mock_loop, fixed_no
     svc.load_and_recover()
 
     assert job.id not in svc._jobs
+    assert json.loads((tmp_path / "jobs.json").read_text(encoding="utf-8")) == []
 
 
 def test_every_misfire_advances_to_future(tmp_path, mock_push, mock_loop, fixed_now):
@@ -605,6 +614,104 @@ def test_every_misfire_advances_to_future(tmp_path, mock_push, mock_loop, fixed_
 
     assert job.id in svc._jobs
     assert svc._jobs[job.id].fire_at > fixed_now
+    persisted = json.loads((tmp_path / "jobs.json").read_text(encoding="utf-8"))
+    assert len(persisted) == 1
+    assert persisted[0]["id"] == job.id
+    assert persisted[0]["fire_at"] == svc._jobs[job.id].fire_at.isoformat()
+
+
+def test_load_and_recover_reconciles_runtime_scheduler_crud(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    recurring = make_job(
+        trigger="every",
+        tier="instant",
+        fire_at=fixed_now - timedelta(hours=3),
+        interval_seconds=3600,
+    )
+    recurring.id = "runtime-recurring"
+    expired = make_job(
+        trigger="after",
+        tier="instant",
+        fire_at=fixed_now - timedelta(seconds=400),
+    )
+    expired.id = "runtime-expired"
+    future = make_job(
+        trigger="at",
+        tier="instant",
+        fire_at=fixed_now + timedelta(hours=1),
+    )
+    future.id = "runtime-future"
+    runtime_jobs = [
+        runtime_job_payload(recurring),
+        runtime_job_payload(expired),
+        runtime_job_payload(future),
+    ]
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/jobs" and request.method == "GET":
+            return httpx.Response(200, json={"code": "OK", "data": runtime_jobs})
+        if request.url.path == "/v1/scheduler/jobs/upsert":
+            body = json_request(request)
+            assert body["source"] == "python_scheduler"
+            assert body["job"]["id"] == "runtime-recurring"
+            assert datetime.fromisoformat(body["job"]["fire_at"]) > fixed_now
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "runtime-recurring",
+                        "created": False,
+                        "deleted": False,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+        if request.url.path == "/v1/scheduler/jobs/runtime-expired":
+            assert request.url.params["source"] == "python_scheduler"
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "runtime-expired",
+                        "found": True,
+                        "deleted": True,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected runtime request: {request.method} {request.url}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+
+    svc.load_and_recover()
+
+    assert "runtime-recurring" in svc._jobs
+    assert "runtime-expired" not in svc._jobs
+    assert "runtime-future" in svc._jobs
+    assert svc._jobs["runtime-recurring"].fire_at > fixed_now
+    assert [request.url.path for request in requests] == [
+        "/v1/scheduler/jobs",
+        "/v1/scheduler/jobs/upsert",
+        "/v1/scheduler/jobs/runtime-expired",
+    ]
+    persisted = json.loads((tmp_path / "jobs.json").read_text(encoding="utf-8"))
+    assert {item["id"] for item in persisted} == {"runtime-recurring", "runtime-future"}
 
 
 # ── Cancel ───────────────────────────────────────────────────────

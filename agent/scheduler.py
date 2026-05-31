@@ -545,6 +545,8 @@ class SchedulerService:
         now = self._now()
         jobs = self.store.load()
         count_loaded = 0
+        advanced_jobs: list[ScheduledJob] = []
+        expired_job_ids: list[str] = []
 
         for job in jobs:
             if not job.enabled:
@@ -559,6 +561,7 @@ class SchedulerService:
                     # 推进到下一个未来时间
                     job.fire_at = self._advance_every(job, now)
                     self._jobs[job.id] = job
+                    advanced_jobs.append(job)
                     count_loaded += 1
                 elif age <= self.GRACE_SECONDS:
                     # 在宽限期内，保留（下次 tick 会执行）
@@ -569,9 +572,15 @@ class SchedulerService:
                         f"Job {job.id[:8]} ({job.name or 'unnamed'}) expired "
                         f"{age:.0f}s ago, beyond grace period — discarded"
                     )
+                    expired_job_ids.append(job.id)
             else:
                 self._jobs[job.id] = job
                 count_loaded += 1
+
+        for job in advanced_jobs:
+            self.store.upsert(job, self._jobs)
+        for job_id in expired_job_ids:
+            self.store.delete(job_id, self._jobs)
 
         logger.info(f"SchedulerService recovered {count_loaded} jobs")
 

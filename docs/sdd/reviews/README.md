@@ -144,3 +144,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-95-scheduler-execution-lease.md`
 - `2026-05-31-phase8-96-scheduler-job-crud.md`
 - `2026-05-31-phase8-97-scheduler-completion-mutation.md`
+- `2026-05-31-phase8-98-scheduler-recovery-reconciliation.md`
