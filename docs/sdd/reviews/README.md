@@ -172,3 +172,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-123-knowledge-job-planner-preview.md`
 - `2026-05-31-phase8-124-runtime-overview-knowledge-planner-preview.md`
 - `2026-05-31-phase8-125-knowledge-job-planner-readiness.md`
+- `2026-05-31-phase8-126-runtime-overview-knowledge-planner-readiness.md`

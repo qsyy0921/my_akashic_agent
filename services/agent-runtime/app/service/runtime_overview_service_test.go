@@ -333,6 +333,20 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			}},
 			SideEffect: "none",
 		}},
+		KnowledgePlannerReady: staticKnowledgeJobPlannerReadiness{view: query.KnowledgeJobPlannerReadinessView{
+			Ready:                  false,
+			Reason:                 "knowledge_job_planner_not_ready",
+			PlannerEnabled:         true,
+			PlannerRunning:         false,
+			KnowledgeWorkerReady:   false,
+			KnowledgeWorkerActive:  0,
+			KnowledgeWorkerStale:   1,
+			KnowledgeWorkerFailed:  0,
+			KnowledgeWorkerStopped: 1,
+			Blockers:               []string{"knowledge_job_planner_worker_not_running", "knowledge_worker_unavailable"},
+			Preview:                query.KnowledgeJobPlannerPreviewView{TotalJobs: 3, Targets: 1, SideEffect: "none"},
+			SideEffect:             "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -448,6 +462,17 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_job_planner_preview_rag_ingest_jobs"] != 2 {
 		t.Fatalf("unexpected knowledge planner preview summary: %#v", view.Summary)
 	}
+	if view.Summary["knowledge_job_planner_readiness_ready"] != false ||
+		view.Summary["knowledge_job_planner_readiness_blockers"] != 2 ||
+		view.Summary["knowledge_job_planner_readiness_planner_enabled"] != true ||
+		view.Summary["knowledge_job_planner_readiness_planner_running"] != false ||
+		view.Summary["knowledge_job_planner_readiness_worker_ready"] != false ||
+		view.Summary["knowledge_job_planner_readiness_worker_active"] != 0 ||
+		view.Summary["knowledge_job_planner_readiness_worker_stale"] != 1 ||
+		view.Summary["knowledge_job_planner_readiness_worker_failed"] != 0 ||
+		view.Summary["knowledge_job_planner_readiness_worker_stopped"] != 1 {
+		t.Fatalf("unexpected knowledge planner readiness summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -491,6 +516,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_preview", "3/1")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_readiness", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_readiness", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
@@ -524,6 +551,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
 		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
+	}
+	if view.KnowledgePlannerReady.Ready || len(view.KnowledgePlannerReady.Blockers) != 2 {
+		t.Fatalf("unexpected knowledge planner readiness detail: %+v", view.KnowledgePlannerReady)
 	}
 }
 
@@ -670,6 +700,14 @@ type staticKnowledgeJobPlannerPreview struct {
 }
 
 func (s staticKnowledgeJobPlannerPreview) PreviewKnowledgeJobs(context.Context, command.PlanKnowledgeJobsCommand) (query.KnowledgeJobPlannerPreviewView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgeJobPlannerReadiness struct {
+	view query.KnowledgeJobPlannerReadinessView
+}
+
+func (s staticKnowledgeJobPlannerReadiness) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
 	return s.view, nil
 }
 
