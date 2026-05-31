@@ -237,6 +237,7 @@ request_timeout_seconds = 5
 worker_id = "akashic-python-worker"
 lease_ttl_seconds = 300
 poll_interval_seconds = 2
+receiver_heartbeat_interval_seconds = 30
 knowledge_job_interval_seconds = 60
 # 默认关闭；打开后 Python eval worker 会从 Go runtime 租用 rag_eval job 并执行离线RAG评测。
 rag_eval_worker_enabled = false

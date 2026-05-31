@@ -188,6 +188,56 @@ func TestNewObserveTargetServiceDefaultsToFileBackedRuntimeState(t *testing.T) {
 	}
 }
 
+func TestNewReceiverStatusServiceDefaultsToFileBackedRuntimeState(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "runtime-state")
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
+	t.Setenv("AKASHIC_RECEIVER_STATUSES_DSN", "")
+	t.Setenv("AKASHIC_RECEIVER_STATUSES_PATH", "")
+
+	service, err := newReceiverStatusService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReportReceiverStatus(context.Background(), command.ReportReceiverStatusCommand{
+		Kind:        "qq",
+		ChannelName: "qq",
+		AccountID:   "1049511700",
+		Status:      "connected",
+		Reason:      "heartbeat",
+		Source:      "python_channel",
+		Timestamp:   time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := newReceiverStatusService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := reopened.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["receivers"] != 1 || view.Totals["connected"] != 1 {
+		t.Fatalf("expected default file-backed receiver status persistence: %#v", view)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "receiver-statuses.json")); err != nil {
+		t.Fatalf("expected receiver statuses state file: %v", err)
+	}
+}
+
+func TestReceiverStatusStaleAfterFromEnvClampsMinimum(t *testing.T) {
+	t.Setenv("AKASHIC_RECEIVER_STATUS_STALE_SECONDS", "10")
+
+	got, err := receiverStatusStaleAfterFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 30*time.Second {
+		t.Fatalf("expected minimum stale threshold, got %s", got)
+	}
+}
+
 func TestOneBotEndpointsFromEnvReadsMultiEndpointConfig(t *testing.T) {
 	t.Setenv("AKASHIC_ONEBOT_HTTP_BASE_URLS", "qq_1049511700=http://127.0.0.1:3001, qq_2365524513=http://127.0.0.1:3002")
 	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq_1049511700=token-a,qq_2365524513=token-b")

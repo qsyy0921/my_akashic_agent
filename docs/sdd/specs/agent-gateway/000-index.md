@@ -68,4 +68,7 @@ execution.
   single-instance long-running platform polling loops.
 - `026-observe-capture-diagnostics.md`: Go-owned read-only diagnostics for
   observe-only QQ group text/image/file capture and safe media content coverage.
+- `027-receiver-status-heartbeat.md`: durable receiver status storage and
+  Python QQ/Telegram heartbeat reporting for restart-safe connectivity
+  diagnostics.
 - Agent architecture boundary specs live under `../agent-architecture/`.

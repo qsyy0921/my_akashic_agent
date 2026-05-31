@@ -88,6 +88,7 @@ class TelegramChannel:
         channel_name: str = _CHANNEL,
         send_ledger_client: Any | None = None,
         receiver_status_client: Any | None = None,
+        receiver_heartbeat_interval_seconds: float = 30.0,
     ) -> None:
         self._token = token
         self._bus = bus
@@ -118,6 +119,12 @@ class TelegramChannel:
         self.user_map = self._identity_index.mapping
         self._polling_conflict_task: asyncio.Task[None] | None = None
         self._receiver_lease_task: asyncio.Task[None] | None = None
+        self._receiver_status_task: asyncio.Task[None] | None = None
+        self._receiver_status_connected = False
+        self._receiver_heartbeat_interval_seconds = max(
+            10.0,
+            float(receiver_heartbeat_interval_seconds or 30.0),
+        )
         self._receiver_lease_receiver_id = ""
         self._receiver_lease_token = ""
         self._receiver_lease_ttl_seconds = 120
@@ -236,6 +243,8 @@ class TelegramChannel:
             reason="polling_started",
             metadata={"polling": "running"},
         )
+        self._receiver_status_connected = True
+        self._start_receiver_status_heartbeat()
         logger.info(f"TelegramChannel 已启动  已知用户: {len(self.user_map)}")
 
     async def _initialize_with_retries(self) -> None:
@@ -267,12 +276,20 @@ class TelegramChannel:
     async def stop(self) -> None:
         if self._polling_conflict_task and not self._polling_conflict_task.done():
             await self._polling_conflict_task
+        await self._stop_receiver_status_heartbeat(report_stopped=True)
         await self._stop_receiver_lease_renewal()
         if self._live_tasks:
             _ = await asyncio.gather(*self._live_tasks, return_exceptions=True)
         updater = self._app.updater
         if updater and updater.running:
             await updater.stop()
+        if self._receiver_status_connected:
+            await self._report_receiver_status(
+                "stopped",
+                reason="channel_stop",
+                metadata={"polling": "stopped"},
+            )
+            self._receiver_status_connected = False
         await self._release_receiver_lease()
         await self._app.stop()
         await self._app.shutdown()
@@ -960,6 +977,7 @@ class TelegramChannel:
             return
         try:
             await updater.stop()
+            await self._stop_receiver_status_heartbeat(report_stopped=False)
             await self._stop_receiver_lease_renewal()
             await self._release_receiver_lease()
             await self._report_receiver_status(
@@ -967,6 +985,7 @@ class TelegramChannel:
                 reason="getupdates_conflict",
                 metadata={"polling": "stopped"},
             )
+            self._receiver_status_connected = False
             logger.warning(
                 "[telegram] polling 已停止；当前进程不再接收 Telegram 消息。"
             )
@@ -1028,6 +1047,39 @@ class TelegramChannel:
                 )
             except Exception as exc:
                 logger.warning("[telegram] receiver lease 续租失败: %s", exc)
+
+    def _start_receiver_status_heartbeat(self) -> None:
+        if self._receiver_status_client is None:
+            return
+        if self._receiver_status_task and not self._receiver_status_task.done():
+            return
+        self._receiver_status_task = asyncio.create_task(
+            self._receiver_status_heartbeat_loop()
+        )
+
+    async def _stop_receiver_status_heartbeat(self, *, report_stopped: bool) -> None:
+        task = self._receiver_status_task
+        self._receiver_status_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        if report_stopped and self._receiver_status_connected:
+            await self._report_receiver_status(
+                "stopped",
+                reason="channel_stop",
+                metadata={"polling": "stopped", "heartbeat": "stopped"},
+            )
+            self._receiver_status_connected = False
+
+    async def _receiver_status_heartbeat_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._receiver_heartbeat_interval_seconds)
+            await self._report_receiver_status(
+                "connected",
+                reason="heartbeat",
+                metadata={"polling": "running", "heartbeat": "true"},
+            )
 
     async def _release_receiver_lease(self) -> None:
         client = self._receiver_status_client

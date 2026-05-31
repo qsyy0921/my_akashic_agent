@@ -26,6 +26,7 @@ import (
 	outboxeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxeventstore"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
+	receiverstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
@@ -236,7 +237,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init observe target service: %v", err)
 	}
-	receiverStatuses := appservice.NewReceiverStatusService()
+	receiverStatuses, err := newReceiverStatusService()
+	if err != nil {
+		log.Fatalf("init receiver status service: %v", err)
+	}
 	observeCaptureDiagnostics := appservice.NewObserveCaptureDiagnosticsService(
 		observeTargets,
 		receiverStatuses,
@@ -650,6 +654,53 @@ func newObserveTargetService() (*appservice.ObserveTargetService, error) {
 		return appservice.NewObserveTargetServiceWithRepository(context.Background(), store)
 	}
 	return appservice.NewObserveTargetService(), nil
+}
+
+func newReceiverStatusService() (*appservice.ReceiverStatusService, error) {
+	staleAfter, err := receiverStatusStaleAfterFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_STATUSES_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return appservice.NewReceiverStatusService(), nil
+		}
+		store, err := receiverstatusstore.NewStore(dsn)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_STATUSES_PATH")); path != "" {
+		store, err := receiverstatusstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+	}
+	if path, ok := defaultRuntimeStatePath("receiver-statuses.json"); ok {
+		store, err := receiverstatusstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+	}
+	return appservice.NewReceiverStatusService(), nil
+}
+
+func receiverStatusStaleAfterFromEnv() (time.Duration, error) {
+	seconds, err := positiveIntEnv("AKASHIC_RECEIVER_STATUS_STALE_SECONDS", 180, 3600)
+	if err != nil {
+		return 0, err
+	}
+	if seconds <= 0 {
+		return 0, nil
+	}
+	if seconds < 30 {
+		seconds = 30
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {

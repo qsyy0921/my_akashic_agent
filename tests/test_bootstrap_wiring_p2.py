@@ -555,6 +555,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
                     "worker_id": "worker-test",
                     "lease_ttl_seconds": 180,
                     "poll_interval_seconds": 3,
+                    "receiver_heartbeat_interval_seconds": 12,
                     "knowledge_job_interval_seconds": 30,
                     "rag_eval_worker_enabled": True,
                     "outbox_worker_enabled": True,
@@ -572,6 +573,7 @@ def test_config_load_reads_agent_gateway_integration_block(tmp_path: Path):
     assert cfg.agent_gateway.worker_id == "worker-test"
     assert cfg.agent_gateway.lease_ttl_seconds == 180
     assert cfg.agent_gateway.poll_interval_seconds == 3
+    assert cfg.agent_gateway.receiver_heartbeat_interval_seconds == 12
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 30
     assert cfg.agent_gateway.rag_eval_worker_enabled is True
     assert cfg.agent_gateway.outbox_worker_enabled is True
@@ -603,6 +605,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
                     "worker_id": "runtime-worker",
                     "lease_ttl_seconds": 99,
                     "poll_interval_seconds": 4,
+                    "receiver_heartbeat_interval_seconds": 15,
                     "knowledge_job_interval_seconds": 45,
                     "rag_eval_worker_enabled": True,
                     "outbox_worker_enabled": True,
@@ -620,6 +623,7 @@ def test_config_load_reads_agent_runtime_integration_block_with_compatibility(
     assert cfg.agent_gateway.worker_id == "runtime-worker"
     assert cfg.agent_gateway.lease_ttl_seconds == 99
     assert cfg.agent_gateway.poll_interval_seconds == 4
+    assert cfg.agent_gateway.receiver_heartbeat_interval_seconds == 15
     assert cfg.agent_gateway.knowledge_job_interval_seconds == 45
     assert cfg.agent_gateway.rag_eval_worker_enabled is True
     assert cfg.agent_gateway.outbox_worker_enabled is True

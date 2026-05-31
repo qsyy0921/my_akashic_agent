@@ -6,27 +6,61 @@ import (
 	"encoding/hex"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/assembler"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
 type ReceiverStatusService struct {
-	mu        sync.RWMutex
-	receivers map[string]model.ReceiverStatus
-	leases    map[string]model.ReceiverLease
+	mu               sync.RWMutex
+	receivers        map[string]model.ReceiverStatus
+	leases           map[string]model.ReceiverLease
+	statusRepository outport.ReceiverStatusRepository
+	statusStaleAfter time.Duration
+	statusClock      func() time.Time
 }
 
 func NewReceiverStatusService() *ReceiverStatusService {
 	return &ReceiverStatusService{
-		receivers: make(map[string]model.ReceiverStatus),
-		leases:    make(map[string]model.ReceiverLease),
+		receivers:        make(map[string]model.ReceiverStatus),
+		leases:           make(map[string]model.ReceiverLease),
+		statusStaleAfter: 0,
+		statusClock:      time.Now,
 	}
+}
+
+func NewReceiverStatusServiceWithRepository(
+	ctx context.Context,
+	repository outport.ReceiverStatusRepository,
+	staleAfter time.Duration,
+) (*ReceiverStatusService, error) {
+	service := NewReceiverStatusService()
+	service.statusRepository = repository
+	service.statusStaleAfter = staleAfter
+	if repository == nil {
+		return service, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	items, err := repository.ListReceiverStatuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if err := item.Validate(); err != nil {
+			continue
+		}
+		service.receivers[item.ReceiverID] = item
+	}
+	return service, nil
 }
 
 func (s *ReceiverStatusService) ReportReceiverStatus(ctx context.Context, cmd command.ReportReceiverStatusCommand) (query.ReceiverStatusesView, error) {
@@ -60,11 +94,17 @@ func (s *ReceiverStatusService) ReportReceiverStatus(ctx context.Context, cmd co
 	if s.receivers == nil {
 		s.receivers = make(map[string]model.ReceiverStatus)
 	}
+	if s.statusRepository != nil {
+		if err := s.statusRepository.SaveReceiverStatus(ctx, status); err != nil {
+			s.mu.Unlock()
+			return query.ReceiverStatusesView{}, err
+		}
+	}
 	s.receivers[status.ReceiverID] = status
-	items := s.snapshotLocked()
+	items := s.statusSnapshotLocked()
 	s.mu.Unlock()
 
-	view := receiverStatusesView(items)
+	view := receiverStatusesView(s.applyReceiverStatusStaleness(items))
 	view.Notes = append(view.Notes, "reported")
 	return view, nil
 }
@@ -77,9 +117,9 @@ func (s *ReceiverStatusService) ListReceiverStatuses(ctx context.Context) (query
 		return query.ReceiverStatusesView{}, errors.New("receiver status service is nil")
 	}
 	s.mu.RLock()
-	items := s.snapshotLocked()
+	items := s.statusSnapshotLocked()
 	s.mu.RUnlock()
-	return receiverStatusesView(items), nil
+	return receiverStatusesView(s.applyReceiverStatusStaleness(items)), nil
 }
 
 func (s *ReceiverStatusService) AcquireReceiverLease(ctx context.Context, cmd command.AcquireReceiverLeaseCommand) (query.ReceiverLeaseView, error) {
@@ -223,12 +263,50 @@ func (s *ReceiverStatusService) ListReceiverLeases(ctx context.Context) (query.R
 	return receiverLeasesView(items, now), nil
 }
 
-func (s *ReceiverStatusService) snapshotLocked() []model.ReceiverStatus {
+func (s *ReceiverStatusService) statusSnapshotLocked() []model.ReceiverStatus {
 	items := make([]model.ReceiverStatus, 0, len(s.receivers))
 	for _, item := range s.receivers {
 		items = append(items, item)
 	}
 	return model.SortedReceiverStatuses(items)
+}
+
+func (s *ReceiverStatusService) applyReceiverStatusStaleness(items []model.ReceiverStatus) []model.ReceiverStatus {
+	if s == nil || s.statusStaleAfter <= 0 {
+		return items
+	}
+	now := time.Now().UTC()
+	if s.statusClock != nil {
+		now = s.statusClock().UTC()
+	}
+	result := append([]model.ReceiverStatus(nil), items...)
+	for index, item := range result {
+		if item.Status != model.ReceiverStatusConnected && item.Status != model.ReceiverStatusStarting {
+			continue
+		}
+		if item.UpdatedAt.IsZero() || now.Sub(item.UpdatedAt.UTC()) <= s.statusStaleAfter {
+			continue
+		}
+		lastStatus := item.Status
+		item.Status = model.ReceiverStatusStopped
+		item.Reason = "heartbeat_stale"
+		if item.LastError == "" {
+			item.LastError = "last receiver heartbeat exceeded stale threshold"
+		}
+		item.Metadata = cloneReceiverStatusMetadata(item.Metadata)
+		item.Metadata["last_status"] = string(lastStatus)
+		item.Metadata["stale_after_seconds"] = strconv.Itoa(int(s.statusStaleAfter.Seconds()))
+		result[index] = item
+	}
+	return result
+}
+
+func cloneReceiverStatusMetadata(items map[string]string) map[string]string {
+	cloned := make(map[string]string, len(items)+2)
+	for key, value := range items {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *ReceiverStatusService) leaseSnapshotLocked() []model.ReceiverLease {

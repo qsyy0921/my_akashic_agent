@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 from typing import Any
 
 from agent.config_models import Config
@@ -23,6 +25,68 @@ class _CompositeChannel:
             stop = getattr(channel, "stop", None)
             if callable(stop):
                 await stop()
+
+
+class _ReceiverStatusHeartbeat:
+    def __init__(
+        self,
+        client: Any | None,
+        *,
+        kind: str,
+        channel_name: str,
+        account_id: str = "",
+        endpoint: str = "",
+        interval_seconds: float = 30.0,
+        metadata: dict[str, str] | None = None,
+    ) -> None:
+        self._client = client
+        self._kind = kind
+        self._channel_name = channel_name
+        self._account_id = account_id
+        self._endpoint = endpoint
+        self._interval_seconds = max(10.0, float(interval_seconds or 30.0))
+        self._metadata = dict(metadata or {})
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        if self._client is None or self._task is not None:
+            return
+        self._task = asyncio.create_task(
+            self._run(),
+            name=f"receiver-status-heartbeat:{self._kind}:{self._channel_name}",
+        )
+
+    async def stop(self) -> None:
+        task = self._task
+        self._task = None
+        if task is not None and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        await _report_receiver_status(
+            self._client,
+            kind=self._kind,
+            channel_name=self._channel_name,
+            account_id=self._account_id,
+            endpoint=self._endpoint,
+            status="stopped",
+            reason="channel_stop",
+            metadata={**self._metadata, "heartbeat": "stopped"},
+        )
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self._interval_seconds)
+            await _report_receiver_status(
+                self._client,
+                kind=self._kind,
+                channel_name=self._channel_name,
+                account_id=self._account_id,
+                endpoint=self._endpoint,
+                status="connected",
+                reason="heartbeat",
+                metadata={**self._metadata, "heartbeat": "true"},
+            )
 
 
 async def start_channels(
@@ -70,6 +134,7 @@ async def start_channels(
             channel_name=tg.channel_name,
             send_ledger_client=send_ledger_client,
             receiver_status_client=send_ledger_client,
+            receiver_heartbeat_interval_seconds=config.agent_runtime.receiver_heartbeat_interval_seconds,
         )
         try:
             await candidate.start()
@@ -152,6 +217,7 @@ async def start_channels(
         from infra.channels.qq_channel import QQChannel
 
         started_qq_channels = []
+        started_qq_heartbeats: list[_ReceiverStatusHeartbeat] = []
         for qq in qq_configs:
             candidate = QQChannel(
                 bot_uin=qq.bot_uin,
@@ -201,6 +267,17 @@ async def start_channels(
                     reason="ncatbot_started",
                     metadata={"websocket_uri": str(qq.websocket_uri or "")},
                 )
+                heartbeat = _ReceiverStatusHeartbeat(
+                    send_ledger_client,
+                    kind="qq",
+                    channel_name=qq.channel_name,
+                    account_id=str(qq.bot_uin),
+                    endpoint=str(qq.websocket_uri or ""),
+                    interval_seconds=config.agent_runtime.receiver_heartbeat_interval_seconds,
+                    metadata={"websocket_uri": str(qq.websocket_uri or "")},
+                )
+                heartbeat.start()
+                started_qq_heartbeats.append(heartbeat)
                 started_qq_channels.append(candidate)
                 push_tool.register_channel(
                     qq.channel_name,
@@ -209,10 +286,11 @@ async def start_channels(
                     image=candidate.send_image,
                 )
                 print(f"QQ Bot 已启动  |  channel: {qq.channel_name} | QQ 号: {qq.bot_uin}")
-        if len(started_qq_channels) == 1:
-            qq_channel = started_qq_channels[0]
-        elif len(started_qq_channels) > 1:
-            qq_channel = _CompositeChannel(started_qq_channels)
+        qq_stop_items = [*started_qq_channels, *started_qq_heartbeats]
+        if len(qq_stop_items) == 1:
+            qq_channel = qq_stop_items[0]
+        elif len(qq_stop_items) > 1:
+            qq_channel = _CompositeChannel(qq_stop_items)
 
     qqbot_channel = None
     if config.channels.qqbot and config.channels.qqbot.app_id:

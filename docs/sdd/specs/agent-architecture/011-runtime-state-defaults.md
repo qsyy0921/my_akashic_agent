@@ -7,11 +7,11 @@ Accepted
 ## Problem
 
 The Go `agent-runtime` owns deterministic infrastructure state: observe target
-configuration, inbox events, media assets, send ledger entries, outbox
-deliveries, generic jobs, job events, knowledge checkpoints, and proactive
-scheduling state. Most bounded contexts already had a file-backed adapter, but
-the process default was still memory-backed unless every store was configured
-separately.
+configuration, receiver status diagnostics, inbox events, media assets, send
+ledger entries, outbox deliveries, generic jobs, job events, knowledge
+checkpoints, and proactive scheduling state. Most bounded contexts already had a
+file-backed adapter, but the process default was still memory-backed unless
+every store was configured separately.
 
 That default made local observe-only QQ validation non-deterministic:
 
@@ -38,6 +38,7 @@ directory. The default files are:
 agent-jobs.json
 agent-job-events.jsonl
 observe-targets.json
+receiver-statuses.json
 media-assets.json
 send-ledger.json
 outbox.json
@@ -68,6 +69,8 @@ AKASHIC_MEDIA_ASSETS_DSN
 AKASHIC_MEDIA_ASSETS_PATH
 AKASHIC_OBSERVE_TARGETS_DSN
 AKASHIC_OBSERVE_TARGETS_PATH
+AKASHIC_RECEIVER_STATUSES_DSN
+AKASHIC_RECEIVER_STATUSES_PATH
 ...
 ```
 

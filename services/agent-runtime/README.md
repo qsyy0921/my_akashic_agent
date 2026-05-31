@@ -28,11 +28,11 @@ types          -> none
 
 The implementation keeps message event fanout in-memory to keep startup simple,
 while deterministic control-plane state defaults to file-backed persistence under
-`.akashic-workspace/agent-runtime`. This covers observe targets, inbox, media
-assets, send ledger, outbox, generic jobs, knowledge checkpoints, and proactive
-state. Individual stores can still be overridden by their `AKASHIC_*_DSN` or
-`AKASHIC_*_PATH` variables, and `memory` remains the explicit opt-out for
-ephemeral development runs.
+`.akashic-workspace/agent-runtime`. This covers observe targets, receiver
+statuses, inbox, media assets, send ledger, outbox, generic jobs, knowledge
+checkpoints, and proactive state. Individual stores can still be overridden by
+their `AKASHIC_*_DSN` or `AKASHIC_*_PATH` variables, and `memory` remains the
+explicit opt-out for ephemeral development runs.
 
 ## Run Locally
 
@@ -87,6 +87,18 @@ $env:AKASHIC_OBSERVE_TARGETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\
 Observe targets synced from Python config are file-backed so runtime overview
 and observe capture diagnostics can recover after restarting only
 `agent-runtime`.
+
+Override receiver status persistence:
+
+```powershell
+$env:AKASHIC_RECEIVER_STATUSES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\receiver-statuses.json"
+$env:AKASHIC_RECEIVER_STATUS_STALE_SECONDS = "180"
+```
+
+Receiver statuses are file-backed so QQ/Telegram connectivity diagnostics can
+recover after restarting only `agent-runtime`. Python receivers send periodic
+heartbeats; stale `connected` or `starting` heartbeats are shown as `stopped`
+after the configured stale window.
 
 Override agent job persistence:
 

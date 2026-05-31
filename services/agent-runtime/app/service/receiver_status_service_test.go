@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
 )
 
 func TestReceiverStatusServiceReportsLatestStatus(t *testing.T) {
@@ -64,6 +66,79 @@ func TestReceiverStatusServiceAggregatesMultipleKinds(t *testing.T) {
 	}
 	if view.Totals["connected"] != 1 || view.Totals["failed"] != 1 || view.Totals["suspended"] != 1 {
 		t.Fatalf("unexpected status totals: %#v", view.Totals)
+	}
+}
+
+func TestReceiverStatusServiceLoadsFileBackedStatus(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receiver-statuses.json")
+	store, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewReceiverStatusServiceWithRepository(context.Background(), store, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReportReceiverStatus(context.Background(), command.ReportReceiverStatusCommand{
+		Kind:        "qq",
+		ChannelName: "qq",
+		AccountID:   "1049511700",
+		Status:      "connected",
+		Reason:      "ncatbot_started",
+		Source:      "python_channel",
+		Timestamp:   time.Date(2026, 5, 31, 8, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedStore, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewReceiverStatusServiceWithRepository(context.Background(), reopenedStore, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := reopened.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["connected"] != 1 || view.Totals["qq"] != 1 {
+		t.Fatalf("expected persisted receiver status, got %#v", view)
+	}
+}
+
+func TestReceiverStatusServiceMarksStaleHeartbeatsStopped(t *testing.T) {
+	service := NewReceiverStatusService()
+	service.statusStaleAfter = 2 * time.Minute
+	service.statusClock = func() time.Time {
+		return time.Date(2026, 5, 31, 8, 5, 0, 0, time.UTC)
+	}
+	_, err := service.ReportReceiverStatus(context.Background(), command.ReportReceiverStatusCommand{
+		Kind:        "qq",
+		ChannelName: "qq",
+		AccountID:   "1049511700",
+		Status:      "connected",
+		Reason:      "heartbeat",
+		Source:      "python_channel",
+		Timestamp:   time.Date(2026, 5, 31, 8, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := service.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["connected"] != 0 || view.Totals["stopped"] != 1 {
+		t.Fatalf("expected stale connected status to be stopped: %#v", view.Totals)
+	}
+	if view.Receivers[0].Reason != "heartbeat_stale" {
+		t.Fatalf("expected heartbeat stale reason: %#v", view.Receivers[0])
+	}
+	if view.Receivers[0].Metadata["last_status"] != "connected" {
+		t.Fatalf("expected stale metadata to preserve last status: %#v", view.Receivers[0].Metadata)
 	}
 }
 
