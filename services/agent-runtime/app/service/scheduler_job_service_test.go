@@ -65,6 +65,75 @@ func TestSchedulerJobServiceRejectsInvalidSnapshot(t *testing.T) {
 	}
 }
 
+func TestSchedulerJobServiceUpsertAndDeleteJob(t *testing.T) {
+	ctx := context.Background()
+	service := appservice.NewSchedulerJobService(memory.NewStore())
+	fireAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+
+	created, err := service.UpsertSchedulerJob(ctx, command.UpsertSchedulerJobCommand{
+		Source: "python_scheduler",
+		Job: command.SchedulerJobCommand{
+			ID:        "job-crud",
+			Trigger:   "after",
+			Tier:      "instant",
+			FireAt:    fireAt,
+			Channel:   "qq",
+			ChatID:    "1049511700",
+			Message:   "提醒",
+			Timezone:  "Asia/Shanghai",
+			CreatedAt: fireAt.Add(-time.Hour),
+			Enabled:   true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Created == nil || !*created.Created || created.Job == nil || created.Job.ID != "job-crud" {
+		t.Fatalf("expected created job view: %+v", created)
+	}
+
+	updated, err := service.UpsertSchedulerJob(ctx, command.UpsertSchedulerJobCommand{
+		Source: "python_scheduler",
+		Job: command.SchedulerJobCommand{
+			ID:        "job-crud",
+			Trigger:   "after",
+			Tier:      "instant",
+			FireAt:    fireAt.Add(time.Hour),
+			Channel:   "qq",
+			ChatID:    "1049511700",
+			Message:   "更新提醒",
+			Timezone:  "Asia/Shanghai",
+			CreatedAt: fireAt.Add(-time.Hour),
+			Enabled:   true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Created == nil || *updated.Created || updated.Job == nil || updated.Job.Message != "更新提醒" {
+		t.Fatalf("expected updated job view: %+v", updated)
+	}
+
+	deleted, err := service.DeleteSchedulerJob(ctx, command.DeleteSchedulerJobCommand{
+		ID:     "job-crud",
+		Source: "python_scheduler",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Found == nil || !*deleted.Found || !deleted.Deleted {
+		t.Fatalf("expected delete found: %+v", deleted)
+	}
+
+	missing, err := service.DeleteSchedulerJob(ctx, command.DeleteSchedulerJobCommand{ID: "missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Found == nil || *missing.Found || missing.Deleted {
+		t.Fatalf("expected missing delete to be non-error: %+v", missing)
+	}
+}
+
 func TestSchedulerJobServiceDiagnosticsSummarizesTiming(t *testing.T) {
 	ctx := context.Background()
 	service := appservice.NewSchedulerJobService(memory.NewStore())

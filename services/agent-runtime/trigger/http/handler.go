@@ -262,6 +262,8 @@ func RegisterSchedulerJobRoutes(
 ) {
 	mux.Handle("/v1/scheduler/jobs", SchedulerJobsHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/jobs/snapshot", SchedulerJobSnapshotHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/jobs/upsert", SchedulerJobUpsertHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/jobs/", SchedulerJobStateHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/leases/acquire", SchedulerExecutionLeaseAcquireHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/leases/renew", SchedulerExecutionLeaseRenewHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/leases/release", SchedulerExecutionLeaseReleaseHandler(schedulerJobs))
@@ -537,6 +539,66 @@ func SchedulerJobSnapshotHandler(schedulerJobs inport.SchedulerJobManager) http.
 			return
 		}
 		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerJobUpsertHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.SchedulerJobUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		job, err := toSchedulerJobCommand(request.Job)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := schedulerJobs.UpsertSchedulerJob(r.Context(), command.UpsertSchedulerJobCommand{
+			Job:    job,
+			Source: request.Source,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerJobStateHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/v1/scheduler/jobs/")
+		jobID := strings.Trim(rest, "/")
+		if jobID == "" || strings.Contains(jobID, "/") {
+			http.Error(w, "invalid scheduler job id", http.StatusBadRequest)
+			return
+		}
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := schedulerJobs.DeleteSchedulerJob(r.Context(), command.DeleteSchedulerJobCommand{
+			ID:     jobID,
+			Source: r.URL.Query().Get("source"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 
@@ -3041,39 +3103,47 @@ func toCreateAgentJobCommand(request dto.CreateAgentJobRequest) (command.CreateA
 func toReplaceSchedulerJobsCommand(request dto.SchedulerJobSnapshotRequest) (command.ReplaceSchedulerJobsCommand, error) {
 	jobs := make([]command.SchedulerJobCommand, 0, len(request.Jobs))
 	for _, item := range request.Jobs {
-		fireAt, err := parseRequiredTimestamp(item.FireAt, "fire_at")
+		job, err := toSchedulerJobCommand(item)
 		if err != nil {
 			return command.ReplaceSchedulerJobsCommand{}, err
 		}
-		createdAt, err := parseOptionalTimestamp(item.CreatedAt)
-		if err != nil {
-			return command.ReplaceSchedulerJobsCommand{}, err
-		}
-		enabled := true
-		if item.Enabled != nil {
-			enabled = *item.Enabled
-		}
-		jobs = append(jobs, command.SchedulerJobCommand{
-			ID:              item.ID,
-			Trigger:         item.Trigger,
-			Tier:            item.Tier,
-			FireAt:          fireAt,
-			Channel:         item.Channel,
-			ChatID:          item.ChatID,
-			IntervalSeconds: item.IntervalSeconds,
-			CronExpr:        item.CronExpr,
-			Message:         item.Message,
-			Prompt:          item.Prompt,
-			Name:            item.Name,
-			Timezone:        item.Timezone,
-			CreatedAt:       createdAt,
-			RunCount:        item.RunCount,
-			Enabled:         enabled,
-		})
+		jobs = append(jobs, job)
 	}
 	return command.ReplaceSchedulerJobsCommand{
 		Jobs:   jobs,
 		Source: request.Source,
+	}, nil
+}
+
+func toSchedulerJobCommand(item dto.SchedulerJobDTO) (command.SchedulerJobCommand, error) {
+	fireAt, err := parseRequiredTimestamp(item.FireAt, "fire_at")
+	if err != nil {
+		return command.SchedulerJobCommand{}, err
+	}
+	createdAt, err := parseOptionalTimestamp(item.CreatedAt)
+	if err != nil {
+		return command.SchedulerJobCommand{}, err
+	}
+	enabled := true
+	if item.Enabled != nil {
+		enabled = *item.Enabled
+	}
+	return command.SchedulerJobCommand{
+		ID:              item.ID,
+		Trigger:         item.Trigger,
+		Tier:            item.Tier,
+		FireAt:          fireAt,
+		Channel:         item.Channel,
+		ChatID:          item.ChatID,
+		IntervalSeconds: item.IntervalSeconds,
+		CronExpr:        item.CronExpr,
+		Message:         item.Message,
+		Prompt:          item.Prompt,
+		Name:            item.Name,
+		Timezone:        item.Timezone,
+		CreatedAt:       createdAt,
+		RunCount:        item.RunCount,
+		Enabled:         enabled,
 	}, nil
 }
 

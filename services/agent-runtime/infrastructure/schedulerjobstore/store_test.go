@@ -49,6 +49,61 @@ func TestSchedulerJobStorePersistsSnapshotOrder(t *testing.T) {
 	}
 }
 
+func TestSchedulerJobStorePersistsUpsertAndDelete(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "scheduler-jobs.json")
+	store, err := schedulerjobstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fireAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	created, err := store.UpsertSchedulerJob(ctx, validJob("job-a", fireAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("expected first upsert to create")
+	}
+	updated := validJob("job-a", fireAt.Add(time.Hour))
+	updated.Message = "更新"
+	created, err = store.UpsertSchedulerJob(ctx, updated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("expected second upsert to update")
+	}
+	if _, err := store.UpsertSchedulerJob(ctx, validJob("job-b", fireAt.Add(2*time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	found, err := store.DeleteSchedulerJob(ctx, "job-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected delete to find job-a")
+	}
+	found, err = store.DeleteSchedulerJob(ctx, "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Fatal("expected missing delete to return found=false")
+	}
+
+	reopened, err := schedulerjobstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := reopened.ListSchedulerJobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "job-b" {
+		t.Fatalf("unexpected persisted jobs after upsert/delete: %+v", items)
+	}
+}
+
 func validJob(id string, fireAt time.Time) model.SchedulerJob {
 	return model.SchedulerJob{
 		ID:        id,

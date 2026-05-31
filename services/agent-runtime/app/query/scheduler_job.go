@@ -24,6 +24,16 @@ type SchedulerJobSnapshotView struct {
 	SideEffect string `json:"side_effect"`
 }
 
+type SchedulerJobMutationView struct {
+	Job        *SchedulerJobView `json:"job,omitempty"`
+	JobID      string            `json:"job_id,omitempty"`
+	Source     string            `json:"source,omitempty"`
+	Created    *bool             `json:"created,omitempty"`
+	Found      *bool             `json:"found,omitempty"`
+	Deleted    bool              `json:"deleted"`
+	SideEffect string            `json:"side_effect"`
+}
+
 type SchedulerJobDiagnosticsFilter struct {
 	Limit          int
 	Timestamp      string

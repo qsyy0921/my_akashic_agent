@@ -1189,6 +1189,38 @@ func (s *Store) ReplaceSchedulerJobs(_ context.Context, jobs []model.SchedulerJo
 	return nil
 }
 
+func (s *Store) UpsertSchedulerJob(_ context.Context, job model.SchedulerJob) (bool, error) {
+	if err := job.Validate(); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.schedulerJobs == nil {
+		s.schedulerJobs = make(map[string]model.SchedulerJob)
+	}
+	_, exists := s.schedulerJobs[job.ID]
+	s.schedulerJobs[job.ID] = job
+	if !exists {
+		s.schedulerJobOrder = append(s.schedulerJobOrder, job.ID)
+	}
+	return !exists, nil
+}
+
+func (s *Store) DeleteSchedulerJob(_ context.Context, jobID string) (bool, error) {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return false, errors.New("scheduler job delete requires id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.schedulerJobs[jobID]; !exists {
+		return false, nil
+	}
+	delete(s.schedulerJobs, jobID)
+	s.schedulerJobOrder = removeMemoryStringValue(s.schedulerJobOrder, jobID)
+	return true, nil
+}
+
 func (s *Store) ListSchedulerJobs(_ context.Context) ([]model.SchedulerJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1200,6 +1232,16 @@ func (s *Store) ListSchedulerJobs(_ context.Context) ([]model.SchedulerJob, erro
 		}
 	}
 	return items, nil
+}
+
+func removeMemoryStringValue(items []string, value string) []string {
+	result := items[:0]
+	for _, item := range items {
+		if item != value {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func (s *Store) SaveSchedulerExecutionLease(_ context.Context, lease model.SchedulerExecutionLease) error {

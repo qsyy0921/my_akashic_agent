@@ -2180,8 +2180,47 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 		}
 	}
 
+	upsertBody := []byte(`{
+		"source":"python_scheduler",
+		"job":{
+			"id":"job-2",
+			"trigger":"after",
+			"tier":"instant",
+			"fire_at":"2026-06-01T10:00:00Z",
+			"channel":"qq",
+			"chat_id":"2365524513",
+			"message":"第二个提醒",
+			"timezone":"Asia/Shanghai",
+			"created_at":"2026-06-01T08:30:00Z",
+			"enabled":true
+		}
+	}`)
 	response = httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/diagnostics?timestamp=2026-06-01T08:59:00Z&due_soon_seconds=120", nil))
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/jobs/upsert", bytes.NewReader(upsertBody)))
+	if response.Code != http.StatusOK ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"created":true`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"job_id":"job-2"`)) {
+		t.Fatalf("expected scheduler upsert response, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/v1/scheduler/jobs/job-1?source=python_scheduler", nil))
+	if response.Code != http.StatusOK ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"found":true`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"deleted":true`)) {
+		t.Fatalf("expected scheduler delete response, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/jobs", nil))
+	if response.Code != http.StatusOK ||
+		bytes.Contains(response.Body.Bytes(), []byte(`"id":"job-1"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"job-2"`)) {
+		t.Fatalf("expected scheduler list after CRUD, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/diagnostics?timestamp=2026-06-01T09:59:00Z&due_soon_seconds=120", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected scheduler diagnostics 200, got %d: %s", response.Code, response.Body.String())
 	}
@@ -2196,7 +2235,7 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 	}
 
 	acquireBody := []byte(`{
-		"job_id":"job-1",
+		"job_id":"job-2",
 		"holder_id":"scheduler:worker-a",
 		"ttl_seconds":120,
 		"timestamp":"2026-06-01T08:59:00Z",
@@ -2218,7 +2257,7 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 	}
 
 	denyBody := []byte(`{
-		"job_id":"job-1",
+		"job_id":"job-2",
 		"holder_id":"scheduler:worker-b",
 		"ttl_seconds":120,
 		"timestamp":"2026-06-01T08:59:01Z"
@@ -2232,7 +2271,7 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 	}
 
 	renewBody, _ := json.Marshal(map[string]any{
-		"job_id":      "job-1",
+		"job_id":      "job-2",
 		"holder_id":   "scheduler:worker-a",
 		"lease_token": acquirePayload.Data.LeaseToken,
 		"ttl_seconds": 300,
@@ -2245,7 +2284,7 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 	}
 
 	releaseBody, _ := json.Marshal(map[string]any{
-		"job_id":      "job-1",
+		"job_id":      "job-2",
 		"holder_id":   "scheduler:worker-a",
 		"lease_token": acquirePayload.Data.LeaseToken,
 		"timestamp":   "2026-06-01T09:00:00Z",

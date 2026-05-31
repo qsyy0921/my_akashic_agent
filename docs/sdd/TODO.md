@@ -102,6 +102,7 @@
 - [x] 将 Python scheduler 的 durable job snapshot 迁移到 Go：Go 新增 `GET /v1/scheduler/jobs` 和 `POST /v1/scheduler/jobs/snapshot`，默认文件态保存 `scheduler-jobs.json`；Python `JobStore` 保存时同步 Go snapshot、读取时优先 Go 并保留本地 `schedules.json` fallback，tick loop、cron/latency 和 AI 执行仍留在 Python。
 - [x] 增加 Go-owned scheduler diagnostics：Go 新增只读 `GET /v1/scheduler/diagnostics`，按 overdue/due-soon/disabled/future、trigger、tier、channel 聚合 scheduler snapshot，并接入 `GET /v1/runtime-overview` 的 `Scheduler Jobs` 卡片；不改变 Python tick loop，不触发 QQ/Telegram 发送。
 - [x] 增加 Go-owned scheduler execution lease：Go 新增 `/v1/scheduler/leases/acquire|renew|release|list`，默认文件态保存 `scheduler-leases.json`；Python scheduler 执行前 acquire、执行中 renew、保存 snapshot 后 release，避免多 Python scheduler 进程重复执行同一个 due job；Go 不执行 AI、cron 推进或平台发送。
+- [x] 增加 Go-owned scheduler job CRUD：Go 新增 `/v1/scheduler/jobs/upsert` 和 `DELETE /v1/scheduler/jobs/{job_id}`，Python `schedule` / `cancel_schedule` 的新增和取消优先走单任务 upsert/delete，减少多进程全量 snapshot 覆盖风险；执行后重排仍暂时走 snapshot replace，AI 和平台发送仍留在 Python。
 
 ## 下一步
 
@@ -117,6 +118,7 @@
 - [ ] 观察 scheduler job snapshot live 状态：通过 schedule tool 创建一个只读/测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-jobs.json` 出现对应 job，取消或执行后 Go snapshot 同步移除或重排，同时本地 `schedules.json` fallback 仍存在，且不触发额外 QQ/Telegram 发送。
 - [ ] 观察 scheduler diagnostics live 状态：创建一个测试提醒后确认 `GET /v1/scheduler/diagnostics` 与 `GET /v1/runtime-overview` 的 `scheduler_jobs_*` summary 同步变化；如出现 overdue，应结合 Python scheduler 进程状态判断，不直接认为任务执行失败。
 - [ ] 观察 scheduler execution lease live 状态：创建测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-leases.json` 只在执行中短暂出现 lease，`GET /v1/scheduler/leases` 不泄漏 token；多 Python 进程场景应看到后来的进程因 `active_lease_held` 跳过同一 job。
+- [ ] 观察 scheduler job CRUD live 状态：用 `schedule` 创建一个测试提醒后确认 Go `/v1/scheduler/jobs/upsert` 写入 `.akashic-workspace/agent-runtime/scheduler-jobs.json`，再用 `cancel_schedule` 确认 `DELETE /v1/scheduler/jobs/{job_id}` 移除对应 job；期间不应出现整库 snapshot 覆盖其它未执行 job。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

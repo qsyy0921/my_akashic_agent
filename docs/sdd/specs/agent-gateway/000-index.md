@@ -94,4 +94,6 @@ execution.
   diagnostics and runtime overview card.
 - `038-scheduler-execution-lease.md`: Go-owned per-job scheduler execution
   lease/fencing, while Python keeps tick loop and job execution.
+- `039-scheduler-job-crud.md`: Go-owned single scheduler job upsert/delete for
+  tool-driven add/cancel, reducing snapshot overwrite risk.
 - Agent architecture boundary specs live under `../agent-architecture/`.

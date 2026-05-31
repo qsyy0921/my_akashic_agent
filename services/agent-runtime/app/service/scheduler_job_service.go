@@ -60,24 +60,8 @@ func (s *SchedulerJobService) ReplaceSchedulerJobs(ctx context.Context, cmd comm
 	}
 	jobs := make([]model.SchedulerJob, 0, len(cmd.Jobs))
 	for _, item := range cmd.Jobs {
-		job := model.SchedulerJob{
-			ID:              strings.TrimSpace(item.ID),
-			Trigger:         strings.TrimSpace(item.Trigger),
-			Tier:            strings.TrimSpace(item.Tier),
-			FireAt:          utcOrZero(item.FireAt),
-			Channel:         strings.TrimSpace(item.Channel),
-			ChatID:          strings.TrimSpace(item.ChatID),
-			IntervalSeconds: item.IntervalSeconds,
-			CronExpr:        strings.TrimSpace(item.CronExpr),
-			Message:         item.Message,
-			Prompt:          item.Prompt,
-			Name:            strings.TrimSpace(item.Name),
-			Timezone:        timezoneOrUTC(item.Timezone),
-			CreatedAt:       createdAtOrNow(item.CreatedAt),
-			RunCount:        item.RunCount,
-			Enabled:         item.Enabled,
-		}
-		if err := job.Validate(); err != nil {
+		job, err := schedulerJobFromCommand(item)
+		if err != nil {
 			return query.SchedulerJobSnapshotView{}, err
 		}
 		jobs = append(jobs, job)
@@ -92,6 +76,50 @@ func (s *SchedulerJobService) ReplaceSchedulerJobs(ctx context.Context, cmd comm
 	}, nil
 }
 
+func (s *SchedulerJobService) UpsertSchedulerJob(ctx context.Context, cmd command.UpsertSchedulerJobCommand) (query.SchedulerJobMutationView, error) {
+	if s == nil || s.repository == nil {
+		return query.SchedulerJobMutationView{}, errors.New("scheduler job service requires repository")
+	}
+	job, err := schedulerJobFromCommand(cmd.Job)
+	if err != nil {
+		return query.SchedulerJobMutationView{}, err
+	}
+	created, err := s.repository.UpsertSchedulerJob(ctx, job)
+	if err != nil {
+		return query.SchedulerJobMutationView{}, err
+	}
+	jobView := assembler.ToSchedulerJobView(job)
+	return query.SchedulerJobMutationView{
+		Job:        &jobView,
+		JobID:      job.ID,
+		Source:     strings.TrimSpace(cmd.Source),
+		Created:    boolPtr(created),
+		Deleted:    false,
+		SideEffect: "runtime_state_write",
+	}, nil
+}
+
+func (s *SchedulerJobService) DeleteSchedulerJob(ctx context.Context, cmd command.DeleteSchedulerJobCommand) (query.SchedulerJobMutationView, error) {
+	if s == nil || s.repository == nil {
+		return query.SchedulerJobMutationView{}, errors.New("scheduler job service requires repository")
+	}
+	jobID := strings.TrimSpace(cmd.ID)
+	if jobID == "" {
+		return query.SchedulerJobMutationView{}, errors.New("scheduler job delete requires id")
+	}
+	found, err := s.repository.DeleteSchedulerJob(ctx, jobID)
+	if err != nil {
+		return query.SchedulerJobMutationView{}, err
+	}
+	return query.SchedulerJobMutationView{
+		JobID:      jobID,
+		Source:     strings.TrimSpace(cmd.Source),
+		Found:      boolPtr(found),
+		Deleted:    found,
+		SideEffect: "runtime_state_write",
+	}, nil
+}
+
 func (s *SchedulerJobService) ListSchedulerJobs(ctx context.Context) ([]query.SchedulerJobView, error) {
 	if s == nil || s.repository == nil {
 		return nil, errors.New("scheduler job service requires repository")
@@ -101,6 +129,30 @@ func (s *SchedulerJobService) ListSchedulerJobs(ctx context.Context) ([]query.Sc
 		return nil, err
 	}
 	return assembler.ToSchedulerJobViews(jobs), nil
+}
+
+func schedulerJobFromCommand(item command.SchedulerJobCommand) (model.SchedulerJob, error) {
+	job := model.SchedulerJob{
+		ID:              strings.TrimSpace(item.ID),
+		Trigger:         strings.TrimSpace(item.Trigger),
+		Tier:            strings.TrimSpace(item.Tier),
+		FireAt:          utcOrZero(item.FireAt),
+		Channel:         strings.TrimSpace(item.Channel),
+		ChatID:          strings.TrimSpace(item.ChatID),
+		IntervalSeconds: item.IntervalSeconds,
+		CronExpr:        strings.TrimSpace(item.CronExpr),
+		Message:         item.Message,
+		Prompt:          item.Prompt,
+		Name:            strings.TrimSpace(item.Name),
+		Timezone:        timezoneOrUTC(item.Timezone),
+		CreatedAt:       createdAtOrNow(item.CreatedAt),
+		RunCount:        item.RunCount,
+		Enabled:         item.Enabled,
+	}
+	if err := job.Validate(); err != nil {
+		return model.SchedulerJob{}, err
+	}
+	return job, nil
 }
 
 func (s *SchedulerJobService) GetSchedulerJobDiagnostics(ctx context.Context, filter query.SchedulerJobDiagnosticsFilter) (query.SchedulerJobDiagnosticsView, error) {

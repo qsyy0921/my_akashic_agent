@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote
 
 from zoneinfo import ZoneInfo
 
@@ -337,6 +338,39 @@ class JobStore:
         save_json(self.path, data, domain="job_store")
         return runtime_synced
 
+    def upsert(self, job: ScheduledJob, jobs: dict[str, ScheduledJob]) -> bool:
+        runtime_synced = True
+        if self._runtime_enabled():
+            try:
+                self._request_runtime(
+                    "POST",
+                    "/v1/scheduler/jobs/upsert",
+                    json_body={
+                        "job": self._to_dict(job),
+                        "source": "python_scheduler",
+                    },
+                )
+            except Exception as e:
+                logger.warning("[job_store] agent-runtime upsert 失败，继续写本地 JSON: %s", e)
+                runtime_synced = False
+        save_json(self.path, [self._to_dict(j) for j in jobs.values()], domain="job_store")
+        return runtime_synced
+
+    def delete(self, job_id: str, jobs: dict[str, ScheduledJob]) -> bool:
+        runtime_synced = True
+        if self._runtime_enabled():
+            try:
+                encoded_job_id = quote(str(job_id), safe="")
+                self._request_runtime(
+                    "DELETE",
+                    f"/v1/scheduler/jobs/{encoded_job_id}?source=python_scheduler",
+                )
+            except Exception as e:
+                logger.warning("[job_store] agent-runtime delete 失败，继续写本地 JSON: %s", e)
+                runtime_synced = False
+        save_json(self.path, [self._to_dict(j) for j in jobs.values()], domain="job_store")
+        return runtime_synced
+
     # ── private ──
 
     def _load_local(self) -> list[ScheduledJob]:
@@ -475,7 +509,7 @@ class SchedulerService:
         if job.fire_at.tzinfo is None:
             job.fire_at = job.fire_at.replace(tzinfo=timezone.utc)
         self._jobs[job.id] = job
-        self.store.save(self._jobs)
+        self.store.upsert(job, self._jobs)
         logger.info(
             f"Job added: {job.id[:8]} tier={job.tier} trigger={job.trigger} "
             f"fire_at={job.fire_at.isoformat()}"
@@ -485,15 +519,15 @@ class SchedulerService:
         if job_id not in self._jobs:
             return False
         del self._jobs[job_id]
-        self.store.save(self._jobs)
+        self.store.delete(job_id, self._jobs)
         return True
 
     def cancel_job_by_name(self, name: str) -> list[str]:
         cancelled = [jid for jid, j in self._jobs.items() if j.name == name]
         for jid in cancelled:
             del self._jobs[jid]
-        if cancelled:
-            self.store.save(self._jobs)
+        for jid in cancelled:
+            self.store.delete(jid, self._jobs)
         return cancelled
 
     def list_jobs(self) -> list[ScheduledJob]:

@@ -67,6 +67,43 @@ func (s *Store) ReplaceSchedulerJobs(_ context.Context, jobs []model.SchedulerJo
 	return s.flush()
 }
 
+func (s *Store) UpsertSchedulerJob(_ context.Context, job model.SchedulerJob) (bool, error) {
+	if s == nil {
+		return false, errors.New("scheduler job store is nil")
+	}
+	if err := job.Validate(); err != nil {
+		return false, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, exists := s.jobs[job.ID]
+	s.jobs[job.ID] = job
+	if !exists {
+		s.order = append(s.order, job.ID)
+	}
+	return !exists, s.flush()
+}
+
+func (s *Store) DeleteSchedulerJob(_ context.Context, jobID string) (bool, error) {
+	if s == nil {
+		return false, errors.New("scheduler job store is nil")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return false, errors.New("scheduler job delete requires id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.jobs[jobID]; !exists {
+		return false, s.flush()
+	}
+	delete(s.jobs, jobID)
+	s.order = removeSchedulerJobID(s.order, jobID)
+	return true, s.flush()
+}
+
 func (s *Store) ListSchedulerJobs(_ context.Context) ([]model.SchedulerJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,4 +171,14 @@ func (s *Store) flush() error {
 		}
 	}
 	return os.Rename(tmpPath, s.path)
+}
+
+func removeSchedulerJobID(items []string, jobID string) []string {
+	result := items[:0]
+	for _, item := range items {
+		if item != jobID {
+			result = append(result, item)
+		}
+	}
+	return result
 }

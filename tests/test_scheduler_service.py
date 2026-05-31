@@ -552,6 +552,65 @@ def test_cancel_job_by_id(tmp_path, mock_push, mock_loop, fixed_now):
     assert job.id not in svc._jobs
 
 
+def test_add_and_cancel_job_use_runtime_crud_when_enabled(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/jobs/upsert":
+            body = json_request(request)
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": body["job"]["id"],
+                        "created": True,
+                        "deleted": False,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+        if request.url.path.startswith("/v1/scheduler/jobs/"):
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": request.url.path.rsplit("/", 1)[-1],
+                        "found": True,
+                        "deleted": True,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected runtime request: {request.url.path}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+    job = make_job()
+
+    svc.add_job(job)
+    assert svc.cancel_job(job.id) is True
+
+    assert [request.url.path for request in requests] == [
+        "/v1/scheduler/jobs/upsert",
+        f"/v1/scheduler/jobs/{job.id}",
+    ]
+
+
 def test_cancel_nonexistent_returns_false(tmp_path, mock_push, mock_loop, fixed_now):
     svc = make_service(tmp_path, mock_push, mock_loop, fixed_now)
     assert svc.cancel_job("nonexistent-id") is False

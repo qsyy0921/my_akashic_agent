@@ -24,3 +24,13 @@ type ReplaceSchedulerJobsCommand struct {
 	Jobs   []SchedulerJobCommand
 	Source string
 }
+
+type UpsertSchedulerJobCommand struct {
+	Job    SchedulerJobCommand
+	Source string
+}
+
+type DeleteSchedulerJobCommand struct {
+	ID     string
+	Source string
+}

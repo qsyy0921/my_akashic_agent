@@ -680,11 +680,15 @@ When `integrations.agent_runtime.enabled=true`, Python `JobStore` writes the
 complete scheduler snapshot to Go and still keeps the local `schedules.json` as a
 fallback. Python `SchedulerService` also acquires a Go-owned execution lease
 before running a due job, renews it during long execution, and releases it after
-the scheduler snapshot has been saved.
+the scheduler snapshot has been saved. Tool-driven add/cancel paths use single
+job upsert/delete so one Python process does not have to replace the whole
+snapshot when registering or cancelling a reminder.
 
 ```text
 GET  /v1/scheduler/jobs
 POST /v1/scheduler/jobs/snapshot
+POST /v1/scheduler/jobs/upsert
+DELETE /v1/scheduler/jobs/{job_id}
 GET  /v1/scheduler/diagnostics?limit=50&due_soon_seconds=300
 POST /v1/scheduler/leases/acquire
 POST /v1/scheduler/leases/renew
@@ -699,6 +703,8 @@ runtime overview dashboard consumes that Go aggregate first and only calls this
 diagnostics endpoint as a read-only fallback when the aggregate is unavailable.
 Scheduler lease list responses never expose raw lease tokens; acquire/renew/
 release only return a token to the current holder.
+Scheduler job upsert/delete only mutate runtime scheduler state and do not
+trigger tick execution, AI calls, outbox creation, or platform sends.
 
 Read and advance knowledge/RAG checkpoints:
 

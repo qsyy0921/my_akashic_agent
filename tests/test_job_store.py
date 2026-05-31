@@ -1,5 +1,6 @@
 """Tests for JobStore persistence."""
 
+import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -171,6 +172,84 @@ class TestJobStoreLoadSave:
         body = requests[0].read().decode("utf-8")
         assert '"source":"python_scheduler"' in body.replace(" ", "")
         assert job.id in body
+
+    def test_upsert_posts_single_job_to_agent_runtime_and_local_json(self, tmp_path):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            body = json.loads(request.read().decode("utf-8"))
+            assert body["source"] == "python_scheduler"
+            assert body["job"]["id"] == job.id
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": job.id,
+                        "created": True,
+                        "deleted": False,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+
+        path = tmp_path / "jobs.json"
+        store = JobStore(
+            path,
+            runtime_config=AgentRuntimeIntegrationConfig(
+                enabled=True,
+                base_url="http://agent-runtime.test",
+            ),
+            runtime_transport=httpx.MockTransport(handler),
+        )
+        job = make_job(name="upserted")
+
+        assert store.upsert(job, {job.id: job}) is True
+
+        assert path.exists()
+        assert len(requests) == 1
+        assert requests[0].method == "POST"
+        assert requests[0].url.path == "/v1/scheduler/jobs/upsert"
+        assert store.load()[0].name == "upserted"
+
+    def test_delete_posts_single_job_to_agent_runtime_and_local_json(self, tmp_path):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": job.id,
+                        "found": True,
+                        "deleted": True,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+
+        path = tmp_path / "jobs.json"
+        job = make_job(name="deleted")
+        JobStore(path).save({job.id: job})
+        store = JobStore(
+            path,
+            runtime_config=AgentRuntimeIntegrationConfig(
+                enabled=True,
+                base_url="http://agent-runtime.test",
+            ),
+            runtime_transport=httpx.MockTransport(handler),
+        )
+
+        assert store.delete(job.id, {}) is True
+
+        assert len(requests) == 1
+        assert requests[0].method == "DELETE"
+        assert requests[0].url.path == f"/v1/scheduler/jobs/{job.id}"
+        assert requests[0].url.query.decode("utf-8") == "source=python_scheduler"
+        assert store.load() == []
 
     def test_runtime_load_failure_falls_back_to_local_json(self, tmp_path):
         path = tmp_path / "jobs.json"

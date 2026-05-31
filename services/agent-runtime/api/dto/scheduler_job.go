@@ -22,3 +22,8 @@ type SchedulerJobSnapshotRequest struct {
 	Jobs   []SchedulerJobDTO `json:"jobs"`
 	Source string            `json:"source,omitempty"`
 }
+
+type SchedulerJobUpsertRequest struct {
+	Job    SchedulerJobDTO `json:"job"`
+	Source string          `json:"source,omitempty"`
+}
