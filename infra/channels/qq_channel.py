@@ -66,6 +66,7 @@ _TRACE_TOOL_RESULT_LIMIT = 120
 _TRACE_DEFAULT_ACTOR = "Akashic"
 _NCATBOT_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 _RUNTIME_ECHO_CHECK_TIMEOUT_S = 2.0
+_INBOUND_DEDUPE_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass
@@ -402,6 +403,15 @@ def _extract_cq_images(raw: str) -> tuple[str, list[str]]:
     return text, urls
 
 
+def _platform_message_id(event: Any | None) -> str:
+    if event is None:
+        return ""
+    value = getattr(event, "message_id", None)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 async def _download_to_temp(
     urls: list[str],
     requester: HttpRequester,
@@ -630,7 +640,7 @@ class QQChannel:
                 return
             text = triggered
             if text.strip() == "/stop":
-                self._submit_to_main_loop(self._handle_stop_private(user_id))
+                self._submit_to_main_loop(self._handle_stop_private(user_id, event))
                 return
             preview = text[:60] + "..." if len(text) > 60 else text
             logger.info(
@@ -639,7 +649,7 @@ class QQChannel:
 
             self.user_map[user_id] = user_id
 
-            self._submit_to_main_loop(self._handle_private(user_id, text, img_urls))
+            self._submit_to_main_loop(self._handle_private(user_id, text, img_urls, event))
 
         @cast(Any, self._bot.on_group_message())
         async def _(event) -> None:
@@ -686,7 +696,7 @@ class QQChannel:
                 return
 
             if text.strip() == "/stop":
-                self._submit_to_main_loop(self._handle_stop_group(group_id, user_id))
+                self._submit_to_main_loop(self._handle_stop_group(group_id, user_id, event))
                 return
             preview = text[:60] + "..." if len(text) > 60 else text
             logger.info(
@@ -694,7 +704,7 @@ class QQChannel:
             )
 
             self._submit_to_main_loop(
-                self._handle_group(group_id, user_id, text, img_urls)
+                self._handle_group(group_id, user_id, text, img_urls, event)
             )
 
         @cast(Any, self._bot.on_notice())
@@ -796,9 +806,27 @@ class QQChannel:
     # ── 入站处理 ──────────────────────────────────────────────────────
 
     async def _handle_private(
-        self, user_id: str, content: str, img_urls: list[str] | None = None
+        self,
+        user_id: str,
+        content: str,
+        img_urls: list[str] | None = None,
+        event: Any | None = None,
     ) -> None:
         """私聊入站：chat_id = user_id"""
+        if await self._inbound_message_seen(
+            event=event,
+            conversation_type="private",
+            conversation_id=user_id,
+            sender_id=user_id,
+            message_kind="private",
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复私聊  channel=%s  user_id=%s  message_id=%s",
+                self._channel,
+                user_id,
+                _platform_message_id(event),
+            )
+            return
         await self._identity_index.remember(user_id, user_id)
         media = await _download_to_temp(
             img_urls or [],
@@ -816,7 +844,21 @@ class QQChannel:
             )
         )
 
-    async def _handle_stop_private(self, user_id: str) -> None:
+    async def _handle_stop_private(self, user_id: str, event: Any | None = None) -> None:
+        if await self._inbound_message_seen(
+            event=event,
+            conversation_type="private",
+            conversation_id=user_id,
+            sender_id=user_id,
+            message_kind="private_stop",
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复私聊 stop  channel=%s  user_id=%s  message_id=%s",
+                self._channel,
+                user_id,
+                _platform_message_id(event),
+            )
+            return
         if self._interrupt_controller is None:
             await self.send(user_id, "当前未启用中断功能。")
             return
@@ -833,8 +875,24 @@ class QQChannel:
         user_id: str,
         content: str,
         img_urls: list[str] | None = None,
+        event: Any | None = None,
     ) -> None:
         """群聊入站：chat_id = gqq:{group_id}，session 按群共享"""
+        if await self._inbound_message_seen(
+            event=event,
+            conversation_type="group",
+            conversation_id=group_id,
+            sender_id=user_id,
+            message_kind="group",
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复群聊  channel=%s  group_id=%s  user_id=%s  message_id=%s",
+                self._channel,
+                group_id,
+                user_id,
+                _platform_message_id(event),
+            )
+            return
         chat_id = f"{_GROUP_PREFIX}{group_id}"
         session = self._session_manager.get_or_create(f"{self._channel}:{chat_id}")
         if "group_id" not in session.metadata:
@@ -869,6 +927,21 @@ class QQChannel:
         event: Any | None = None,
     ) -> None:
         """群观察模式：只落库，不进入 agent 回复链路。"""
+        if await self._inbound_message_seen(
+            event=event,
+            conversation_type="group",
+            conversation_id=group_id,
+            sender_id=user_id,
+            message_kind="group_observe",
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复群观察  channel=%s  group_id=%s  user_id=%s  message_id=%s",
+                self._channel,
+                group_id,
+                user_id,
+                _platform_message_id(event),
+            )
+            return
         chat_id = f"{_GROUP_PREFIX}{group_id}"
         session = self._session_manager.get_or_create(f"{self._channel}:{chat_id}")
         metadata_changed = False
@@ -1078,7 +1151,27 @@ class QQChannel:
             logger.warning("[qq] 群文件下载失败  file=%r  err=%s", observed_file.name, exc)
             return ""
 
-    async def _handle_stop_group(self, group_id: str, user_id: str) -> None:
+    async def _handle_stop_group(
+        self,
+        group_id: str,
+        user_id: str,
+        event: Any | None = None,
+    ) -> None:
+        if await self._inbound_message_seen(
+            event=event,
+            conversation_type="group",
+            conversation_id=group_id,
+            sender_id=user_id,
+            message_kind="group_stop",
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复群聊 stop  channel=%s  group_id=%s  user_id=%s  message_id=%s",
+                self._channel,
+                group_id,
+                user_id,
+                _platform_message_id(event),
+            )
+            return
         chat_id = f"{_GROUP_PREFIX}{group_id}"
         if self._interrupt_controller is None:
             await self.send(chat_id, "当前未启用中断功能。")
@@ -1330,6 +1423,45 @@ class QQChannel:
                 chat_id,
                 exc,
             )
+
+    async def _inbound_message_seen(
+        self,
+        *,
+        event: Any | None,
+        conversation_type: str,
+        conversation_id: str,
+        sender_id: str,
+        message_kind: str,
+    ) -> bool:
+        message_id = _platform_message_id(event)
+        if not message_id:
+            return False
+        client = self._send_ledger_client
+        if client is None or not hasattr(client, "check_inbound_dedupe"):
+            return False
+        try:
+            result = await client.check_inbound_dedupe(
+                scope=f"qq:{self._channel}:{self._bot_uin}",
+                message_key=f"{conversation_type}:{conversation_id}:{message_id}",
+                ttl_seconds=_INBOUND_DEDUPE_TTL_SECONDS,
+                metadata={
+                    "message_kind": str(message_kind or ""),
+                    "channel": self._channel,
+                    "account_id": self._bot_uin,
+                    "conversation_type": str(conversation_type or ""),
+                    "conversation_id": str(conversation_id or ""),
+                    "sender_id": str(sender_id or ""),
+                },
+            )
+        except Exception as exc:
+            logger.debug(
+                "[qq] agent runtime inbound dedupe check failed channel=%s message_id=%s err=%s",
+                self._channel,
+                message_id,
+                exc,
+            )
+            return False
+        return bool(result.get("duplicate")) if isinstance(result, dict) else bool(result)
 
     def _require_main_loop(self) -> asyncio.AbstractEventLoop:
         if self._main_loop is None:

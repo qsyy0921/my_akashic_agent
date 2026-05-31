@@ -1725,6 +1725,127 @@ async def test_qq_channel_ignores_runtime_send_ledger_echo(
 
 
 @pytest.mark.asyncio
+async def test_qq_channel_uses_runtime_inbound_dedupe_for_private_message(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    ledger = _FakeSendLedger(inbound_duplicate=True)
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        allow_from=["1049511700"],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+        send_ledger_client=ledger,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: False)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    await channel._bot.private_handler(
+        SimpleNamespace(
+            user_id="1049511700",
+            raw_message="重复私聊",
+            message_id=501,
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+    assert ledger.inbound_queries == [
+        {
+            "scope": "qq:qq_2365524513:2365524513",
+            "message_key": "private:1049511700:501",
+            "ttl_seconds": 24 * 60 * 60,
+            "metadata": {
+                "message_kind": "private",
+                "channel": "qq_2365524513",
+                "account_id": "2365524513",
+                "conversation_type": "private",
+                "conversation_id": "1049511700",
+                "sender_id": "1049511700",
+            },
+        }
+    ]
+    assert session_manager.sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_qq_observe_group_uses_runtime_inbound_dedupe(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager()
+    ledger = _FakeSendLedger(inbound_duplicate=True)
+    group_cfg = SimpleNamespace(
+        group_id="100",
+        allow_from=[],
+        require_at=False,
+        observe_only=True,
+    )
+    channel = mod.QQChannel(
+        "2365524513",
+        bus,
+        session_manager,
+        groups=[group_cfg],
+        http_requester=SimpleNamespace(get=AsyncMock()),
+        channel_name="qq_2365524513",
+        send_ledger_client=ledger,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: False)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    await channel._bot.group_handler(
+        SimpleNamespace(
+            group_id="100",
+            user_id="9",
+            raw_message="重复群消息",
+            message_id=777,
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert bus.inbound == []
+    assert session_manager.sessions == {}
+    assert ledger.inbound_queries == [
+        {
+            "scope": "qq:qq_2365524513:2365524513",
+            "message_key": "group:100:777",
+            "ttl_seconds": 24 * 60 * 60,
+            "metadata": {
+                "message_kind": "group_observe",
+                "channel": "qq_2365524513",
+                "account_id": "2365524513",
+                "conversation_type": "group",
+                "conversation_id": "100",
+                "sender_id": "9",
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_qq_channel_prefers_runtime_private_echo_check(
     monkeypatch: pytest.MonkeyPatch,
 ):
