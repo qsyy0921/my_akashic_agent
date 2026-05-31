@@ -493,6 +493,53 @@ def test_config_load_reads_ragflow_integration_block(
     assert cfg.ragflow.request_timeout_seconds == 70
 
 
+def test_config_load_reads_group_ragflow_dataset_ids(tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "channels": {
+                "qq": {
+                    "bot_uin": "1049511700",
+                    "groups": [
+                        {
+                            "group_id": "27234224",
+                            "observe_only": True,
+                            "ragflow_dataset_ids": ["ds-hardware", "ds-guides"],
+                        },
+                        {
+                            "group_id": "3219982",
+                            "observe_only": True,
+                        },
+                        {
+                            "group_id": "164369633",
+                            "observe_only": True,
+                            "ragflowDatasetIds": [],
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.channels.qq is not None
+    assert cfg.channels.qq.groups[0].ragflow_dataset_ids == ["ds-hardware", "ds-guides"]
+    assert cfg.channels.qq.groups[1].ragflow_dataset_ids is None
+    assert cfg.channels.qq.groups[2].ragflow_dataset_ids == []
+
+
 def test_config_load_reads_shadow_runtime_integration_block_with_compatibility(
     tmp_path: Path,
 ):
@@ -1329,6 +1376,7 @@ def test_bootstrap_builds_agent_runtime_observe_targets_from_qq_config():
         Config,
         QQChannelConfig,
         QQGroupConfig,
+        RAGFlowIntegrationConfig,
     )
 
     config = Config(
@@ -1341,7 +1389,12 @@ def test_bootstrap_builds_agent_runtime_observe_targets_from_qq_config():
                 bot_uin="1049511700",
                 channel_name="qq",
                 groups=[
-                    QQGroupConfig(group_id="27234224", observe_only=True, require_at=False),
+                    QQGroupConfig(
+                        group_id="27234224",
+                        observe_only=True,
+                        require_at=False,
+                        ragflow_dataset_ids=["ds-group", "ds-guides"],
+                    ),
                     QQGroupConfig(group_id="reply-group", observe_only=False),
                 ],
             ),
@@ -1352,6 +1405,10 @@ def test_bootstrap_builds_agent_runtime_observe_targets_from_qq_config():
                     groups=[QQGroupConfig(group_id="3219982", observe_only=True)],
                 )
             ],
+        ),
+        ragflow=RAGFlowIntegrationConfig(
+            enabled=True,
+            default_dataset_ids=["ds-default"],
         ),
         agent_gateway=AgentGatewayIntegrationConfig(enabled=True),
     )
@@ -1364,8 +1421,16 @@ def test_bootstrap_builds_agent_runtime_observe_targets_from_qq_config():
     ]
     assert targets[0]["observe_only"] is True
     assert targets[0]["reply_allowed"] is False
-    assert targets[0]["metadata"] == {"channel_name": "qq"}
-    assert targets[1]["metadata"] == {"channel_name": "qq_2365524513"}
+    assert targets[0]["metadata"] == {
+        "channel_name": "qq",
+        "ragflow_dataset_ids": "ds-group,ds-guides",
+        "ragflow_dataset_count": "2",
+    }
+    assert targets[1]["metadata"] == {
+        "channel_name": "qq_2365524513",
+        "ragflow_dataset_ids": "ds-default",
+        "ragflow_dataset_count": "1",
+    }
 
 
 def test_bootstrap_runtime_outbox_worker_is_opt_in():

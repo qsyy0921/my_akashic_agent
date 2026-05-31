@@ -141,6 +141,7 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 			captureByTarget[target.TargetID],
 			groupMemoryByConversation[target.Channel.ConversationID],
 			ragIngestByConversation[target.Channel.ConversationID],
+			knowledgePipelineConfiguredDatasetIDs(target),
 			ragIngestByConversationDataset[target.Channel.ConversationID],
 			memoryCheckpointByConversation[target.Channel.ConversationID],
 			ragCheckpointByConversation[target.Channel.ConversationID],
@@ -380,6 +381,7 @@ func buildKnowledgePipelineView(
 	capture query.ObserveCaptureTargetDiagnosticsView,
 	groupMemoryJobs []model.AgentJob,
 	ragIngestJobs []model.AgentJob,
+	configuredDatasetIDs []string,
 	ragIngestJobsByDataset map[string][]model.AgentJob,
 	memoryCheckpoint *query.KnowledgeCheckpointView,
 	ragCheckpoints []query.KnowledgeCheckpointView,
@@ -392,6 +394,7 @@ func buildKnowledgePipelineView(
 		now,
 		staleAfterSeconds,
 		source,
+		configuredDatasetIDs,
 		ragIngestJobsByDataset,
 		ragCheckpointsByDataset,
 	)
@@ -430,10 +433,20 @@ func knowledgePipelineRagDatasets(
 	now time.Time,
 	staleAfterSeconds int,
 	source knowledgePipelineSourceState,
+	configuredDatasetIDs []string,
 	jobsByDataset map[string][]model.AgentJob,
 	checkpointsByDataset map[string][]query.KnowledgeCheckpointView,
 ) []query.KnowledgePipelineRagDatasetView {
 	keys := make(map[string]struct{})
+	configured := make(map[string]bool)
+	for _, key := range configuredDatasetIDs {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		keys[key] = struct{}{}
+		configured[key] = true
+	}
 	for key := range jobsByDataset {
 		if strings.TrimSpace(key) != "" {
 			keys[key] = struct{}{}
@@ -449,18 +462,32 @@ func knowledgePipelineRagDatasets(
 	}
 	items := make([]query.KnowledgePipelineRagDatasetView, 0, len(keys))
 	for datasetID := range keys {
+		runtimeObserved := len(jobsByDataset[datasetID]) > 0 || len(checkpointsByDataset[datasetID]) > 0
+		if !runtimeObserved && configured[datasetID] {
+			items = append(items, query.KnowledgePipelineRagDatasetView{
+				DatasetID:       datasetID,
+				Configured:      true,
+				RuntimeObserved: false,
+				JobStage:        knowledgePipelineJobStage(string(model.AgentJobRagIngest), nil, now, staleAfterSeconds),
+				Status:          "muted",
+				Reasons:         []string{"configured_dataset_not_started"},
+			})
+			continue
+		}
 		stage := knowledgePipelineJobStage(string(model.AgentJobRagIngest), jobsByDataset[datasetID], now, staleAfterSeconds)
 		checkpoint := latestKnowledgeCheckpointView(checkpointsByDataset[datasetID])
 		lag := knowledgePipelineCheckpointLag(checkpoint, source, now)
 		status, reasons := knowledgePipelineRagDatasetStatus(stage, lag, staleAfterSeconds)
 		items = append(items, query.KnowledgePipelineRagDatasetView{
-			DatasetID:     datasetID,
-			DisplayName:   knowledgePipelineDatasetDisplayName(checkpoint),
-			JobStage:      stage,
-			Checkpoint:    checkpoint,
-			CheckpointLag: lag,
-			Status:        status,
-			Reasons:       reasons,
+			DatasetID:       datasetID,
+			DisplayName:     knowledgePipelineDatasetDisplayName(checkpoint),
+			Configured:      configured[datasetID],
+			RuntimeObserved: runtimeObserved,
+			JobStage:        stage,
+			Checkpoint:      checkpoint,
+			CheckpointLag:   lag,
+			Status:          status,
+			Reasons:         reasons,
 		})
 	}
 	sort.SliceStable(items, func(i, j int) bool {
@@ -470,6 +497,33 @@ func knowledgePipelineRagDatasets(
 		return items[i].DatasetID < items[j].DatasetID
 	})
 	return items
+}
+
+func knowledgePipelineConfiguredDatasetIDs(target query.ObserveTargetView) []string {
+	if target.Metadata == nil {
+		return nil
+	}
+	return splitCommaSeparatedList(target.Metadata["ragflow_dataset_ids"])
+}
+
+func splitCommaSeparatedList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	result := make([]string, 0)
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		result = append(result, part)
+	}
+	return result
 }
 
 func latestKnowledgeCheckpointView(items []query.KnowledgeCheckpointView) *query.KnowledgeCheckpointView {
@@ -807,27 +861,29 @@ func mergeKnowledgePipelineStatus(current string, next string) string {
 
 func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeconds int) map[string]int {
 	totals := map[string]int{
-		"targets":               len(items),
-		"enabled":               0,
-		"ready":                 0,
-		"warning":               0,
-		"blocked":               0,
-		"muted":                 0,
-		"receiver_connected":    0,
-		"group_memory_pending":  0,
-		"rag_ingest_pending":    0,
-		"high_pressure":         0,
-		"memory_checkpoints":    0,
-		"rag_checkpoints":       0,
-		"rag_datasets":          0,
-		"rag_dataset_warning":   0,
-		"rag_dataset_blocked":   0,
-		"lagging":               0,
-		"stale_checkpoints":     0,
-		"expired_active_leases": 0,
-		"stale_active_leases":   0,
-		"stalled":               0,
-		"stagnant":              0,
+		"targets":                            len(items),
+		"enabled":                            0,
+		"ready":                              0,
+		"warning":                            0,
+		"blocked":                            0,
+		"muted":                              0,
+		"receiver_connected":                 0,
+		"group_memory_pending":               0,
+		"rag_ingest_pending":                 0,
+		"high_pressure":                      0,
+		"memory_checkpoints":                 0,
+		"rag_checkpoints":                    0,
+		"rag_datasets":                       0,
+		"configured_rag_datasets":            0,
+		"configured_rag_dataset_not_started": 0,
+		"rag_dataset_warning":                0,
+		"rag_dataset_blocked":                0,
+		"lagging":                            0,
+		"stale_checkpoints":                  0,
+		"expired_active_leases":              0,
+		"stale_active_leases":                0,
+		"stalled":                            0,
+		"stagnant":                           0,
 	}
 	for _, item := range items {
 		if item.Enabled {
@@ -867,6 +923,12 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		totals["rag_checkpoints"] += len(item.RagCheckpoints)
 		totals["rag_datasets"] += len(item.RagDatasets)
 		for _, dataset := range item.RagDatasets {
+			if dataset.Configured {
+				totals["configured_rag_datasets"]++
+			}
+			if knowledgePipelineContainsReason(dataset.Reasons, "configured_dataset_not_started") {
+				totals["configured_rag_dataset_not_started"]++
+			}
 			switch dataset.Status {
 			case "warn":
 				totals["rag_dataset_warning"]++

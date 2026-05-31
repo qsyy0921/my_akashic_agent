@@ -37,6 +37,7 @@ class AgentGatewayKnowledgeWorker:
         group_accounts: dict[str, str],
         ragflow_indexer: AsyncGroupIndexer | None = None,
         ragflow_dataset_ids: list[str] | None = None,
+        ragflow_dataset_ids_by_group: dict[str, list[str]] | None = None,
         lease_ttl_seconds: int = 300,
         poll_interval_seconds: float = 2.0,
         enqueue_interval_seconds: float = 60.0,
@@ -54,6 +55,11 @@ class AgentGatewayKnowledgeWorker:
         self._ragflow_dataset_ids = [
             str(value).strip() for value in (ragflow_dataset_ids or []) if str(value).strip()
         ]
+        self._ragflow_dataset_ids_by_group = {
+            str(group_id).strip(): _normalize_dataset_ids(dataset_ids)
+            for group_id, dataset_ids in (ragflow_dataset_ids_by_group or {}).items()
+            if str(group_id).strip()
+        }
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
         self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
@@ -79,7 +85,7 @@ class AgentGatewayKnowledgeWorker:
                 suppressed += 1
             created += 1
             if self._ragflow_indexer is not None:
-                for dataset_id in self._ragflow_dataset_ids:
+                for dataset_id in self._ragflow_dataset_ids_for_group(group_id):
                     if not await self._create_rag_ingest_job(
                         group_id,
                         account_id,
@@ -95,6 +101,11 @@ class AgentGatewayKnowledgeWorker:
             "suppressed_by_runtime_dedupe": suppressed,
             "groups": sorted(self._group_accounts),
         }
+
+    def _ragflow_dataset_ids_for_group(self, group_id: str) -> list[str]:
+        if group_id in self._ragflow_dataset_ids_by_group:
+            return list(self._ragflow_dataset_ids_by_group[group_id])
+        return list(self._ragflow_dataset_ids)
 
     async def process_once(self) -> dict[str, Any]:
         try:
@@ -392,3 +403,15 @@ def _bool_text(value: Any, fallback: bool) -> bool:
     if value is None or value == "":
         return fallback
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _normalize_dataset_ids(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    return normalized

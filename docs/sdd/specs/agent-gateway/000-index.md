@@ -158,4 +158,8 @@ execution.
 - `062-knowledge-pipeline-rag-dataset-state-diagnostics.md`: Go-owned
   knowledge pipeline diagnostics add per-dataset RAG state so dataset-specific
   `rag_ingest` lag and lease degradation can be inspected directly.
+- `063-knowledge-pipeline-configured-rag-dataset-bindings.md`: Python observe
+  target sync exposes configured per-group RAG dataset bindings so Go
+  diagnostics can show datasets that should exist before jobs/checkpoints have
+  started.
 - Agent architecture boundary specs live under `../agent-architecture/`.

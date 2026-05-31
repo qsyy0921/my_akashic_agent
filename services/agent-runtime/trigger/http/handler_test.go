@@ -57,19 +57,21 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, staticRuntimeOverviewViewer{
 		view: query.RuntimeOverviewView{
 			Summary: map[string]any{
-				"queue_backend_provider":                          "nats_jetstream",
-				"inbox_metric_events":                             9,
-				"agent_job_worker_coverage_job_types":             2,
-				"agent_job_worker_coverage_uncovered_job_types":   1,
-				"knowledge_pipeline_targets":                      2,
-				"knowledge_pipeline_lagging_targets":              1,
-				"knowledge_pipeline_stale_checkpoint_targets":     1,
-				"knowledge_pipeline_stagnant_targets":             1,
-				"knowledge_pipeline_expired_active_lease_targets": 1,
-				"knowledge_pipeline_stale_active_lease_targets":   1,
-				"knowledge_pipeline_rag_datasets":                 2,
-				"knowledge_pipeline_rag_dataset_warning":          1,
-				"knowledge_pipeline_rag_dataset_blocked":          1,
+				"queue_backend_provider":                                "nats_jetstream",
+				"inbox_metric_events":                                   9,
+				"agent_job_worker_coverage_job_types":                   2,
+				"agent_job_worker_coverage_uncovered_job_types":         1,
+				"knowledge_pipeline_targets":                            2,
+				"knowledge_pipeline_lagging_targets":                    1,
+				"knowledge_pipeline_stale_checkpoint_targets":           1,
+				"knowledge_pipeline_stagnant_targets":                   1,
+				"knowledge_pipeline_expired_active_lease_targets":       1,
+				"knowledge_pipeline_stale_active_lease_targets":         1,
+				"knowledge_pipeline_rag_datasets":                       2,
+				"knowledge_pipeline_configured_rag_datasets":            2,
+				"knowledge_pipeline_configured_rag_dataset_not_started": 1,
+				"knowledge_pipeline_rag_dataset_warning":                1,
+				"knowledge_pipeline_rag_dataset_blocked":                1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -121,6 +123,8 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_expired_active_lease_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stale_active_lease_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_datasets":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_configured_rag_datasets":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_configured_rag_dataset_not_started":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_warning":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_blocked":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"knowledge_pipelines"`)) {

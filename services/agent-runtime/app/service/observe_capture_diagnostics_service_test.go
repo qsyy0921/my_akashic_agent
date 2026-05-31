@@ -157,6 +157,10 @@ func TestObserveCaptureDiagnosticsServiceDoesNotInferReceiverFromStaleInboxActiv
 }
 
 func syncObserveTarget(t *testing.T, service *ObserveTargetService, groupID string) {
+	syncObserveTargetWithMetadata(t, service, groupID, nil)
+}
+
+func syncObserveTargetWithMetadata(t *testing.T, service *ObserveTargetService, groupID string, metadata map[string]string) {
 	t.Helper()
 	_, err := service.SyncObserveTargets(context.Background(), command.SyncObserveTargetsCommand{
 		Source: "test",
@@ -171,6 +175,7 @@ func syncObserveTarget(t *testing.T, service *ObserveTargetService, groupID stri
 			ObserveOnly: true,
 			Enabled:     true,
 			Source:      "test",
+			Metadata:    metadata,
 		}},
 	})
 	if err != nil {

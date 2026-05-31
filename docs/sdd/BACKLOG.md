@@ -29,6 +29,7 @@
 
 - 继续把 group memory / RAG ingestion 的生命周期交给 Go job，Python 只做 AI worker 和策略实验。
 - 当前 source-seq lag、checkpoint age/stagnant、per-group stage lease freshness 和 per-dataset RAG state 已落地；后续若要把群知识编排再往前推进，可继续增加更接近外部索引的 dataset/index state，但先保持只读控制面。
+- 当前配置期 dataset 绑定也已纳入 observe-target metadata；后续若继续推进，可再把更稳定的 dataset/index readiness、文档数、最近 ingest 时间等外部索引元数据接入 Go，但前提仍是只读 control-plane。
 - 当前 source-seq lag 已落地；后续若继续推进，可考虑把 lag 与更稳定的 dataset/index metadata 关联，但前提是这些状态先成为 Go-owned 控制面，而不是直接侵入 Python RAGFlow 实验逻辑。
 - 后续评估 RAGFlow 或其它 RAG 组件与 Go runtime 的边界：Go 管任务、资产、索引状态和审计；Python 管 chunking、embedding、rerank、answer synthesis 实验。
 

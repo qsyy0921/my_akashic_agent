@@ -34,6 +34,7 @@ class QQGroupConfig:
     allow_from: list[str] = field(default_factory=list)
     require_at: bool = True
     observe_only: bool = False
+    ragflow_dataset_ids: list[str] | None = None
 
 
 @dataclass

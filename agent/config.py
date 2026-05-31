@@ -298,6 +298,11 @@ def _load_qq_groups(groups_data: list[dict]) -> list[QQGroupConfig]:
         )
         if not group_id:
             continue
+        ragflow_dataset_ids = None
+        if "ragflow_dataset_ids" in g or "ragflowDatasetIds" in g:
+            ragflow_dataset_ids = _resolve_string_list(
+                g.get("ragflow_dataset_ids", g.get("ragflowDatasetIds", []))
+            )
         groups.append(
             QQGroupConfig(
                 group_id=group_id,
@@ -306,6 +311,7 @@ def _load_qq_groups(groups_data: list[dict]) -> list[QQGroupConfig]:
                 ),
                 require_at=g.get("require_at", g.get("requireAt", True)),
                 observe_only=bool(g.get("observe_only", g.get("observeOnly", False))),
+                ragflow_dataset_ids=ragflow_dataset_ids,
             )
         )
     return groups

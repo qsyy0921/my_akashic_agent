@@ -801,8 +801,10 @@ group pipeline is ready, warning, or blocked without inspecting multiple
 endpoints manually. It also compares inbox `metadata.seq` against checkpoint
 cursor and derives checkpoint `age_seconds`, so the runtime can expose
 per-group lagging, stagnant, stalled, and stale/expired stage lease pipelines.
-It does not upload to RAGFlow, execute Python workers, or change memory/RAG
-strategy.
+Configured per-group RAG dataset bindings synced from Python config also appear
+here before any runtime `rag_ingest` job or checkpoint exists, as
+`configured_dataset_not_started`. It does not upload to RAGFlow, execute Python
+workers, or change memory/RAG strategy.
 
 Inspect the Go-owned runtime overview aggregate:
 
@@ -822,8 +824,8 @@ distinguished between “worker exists and is healthy”, “worker stale/failed
 “no active worker available”. `Knowledge Pipelines` summarizes the same control
 plane one level closer to the user workflow: per observe-only QQ group target,
 combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
-lag, checkpoint-age diagnostics, stage lease freshness, and per-dataset RAG
-state.
+lag, checkpoint-age diagnostics, stage lease freshness, configured dataset
+bindings, and per-dataset RAG state.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

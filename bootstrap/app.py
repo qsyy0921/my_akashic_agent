@@ -370,6 +370,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
     ragflow = getattr(config, "ragflow", None)
     ragflow_indexer = None
     ragflow_dataset_ids: list[str] = []
+    ragflow_dataset_ids_by_group = _observe_only_qq_group_ragflow_dataset_ids(config)
     runtime_message_source = AgentRuntimeInboxGroupMessageSource(agent_runtime)
     if (
         ragflow is not None
@@ -389,7 +390,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
                 message_source=runtime_message_source,
             )
 
-    worker = AgentRuntimeKnowledgeWorker(
+        worker = AgentRuntimeKnowledgeWorker(
         client=AgentRuntimeClient(agent_runtime),
         group_memory=GroupMemoryService.from_workspace(
             workspace,
@@ -400,6 +401,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
         group_accounts=group_accounts,
         ragflow_indexer=ragflow_indexer,
         ragflow_dataset_ids=ragflow_dataset_ids,
+        ragflow_dataset_ids_by_group=ragflow_dataset_ids_by_group,
         lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
             getattr(agent_runtime, "poll_interval_seconds", 2.0)
@@ -537,6 +539,36 @@ def _observe_only_qq_group_accounts(config: Config) -> dict[str, str]:
     return result
 
 
+def _observe_only_qq_group_ragflow_dataset_ids(config: Config) -> dict[str, list[str]]:
+    channels = getattr(config, "channels", None)
+    if channels is None:
+        return {}
+    ragflow = getattr(config, "ragflow", None)
+    default_dataset_ids = _normalized_string_list(
+        getattr(ragflow, "default_dataset_ids", []) if ragflow is not None else []
+    )
+    accounts = []
+    qq = getattr(channels, "qq", None)
+    if qq is not None:
+        accounts.append(qq)
+    accounts.extend(getattr(channels, "qq_accounts", []) or [])
+
+    result: dict[str, list[str]] = {}
+    for account in accounts:
+        for group in getattr(account, "groups", []) or []:
+            if not bool(getattr(group, "observe_only", False)):
+                continue
+            group_id = str(getattr(group, "group_id", "")).strip()
+            if not group_id or group_id in result:
+                continue
+            group_dataset_ids = getattr(group, "ragflow_dataset_ids", None)
+            if group_dataset_ids is None:
+                result[group_id] = list(default_dataset_ids)
+            else:
+                result[group_id] = _normalized_string_list(group_dataset_ids)
+    return result
+
+
 async def _sync_agent_runtime_observe_targets(config: Config) -> None:
     agent_runtime = _get_agent_runtime_config(config)
     if agent_runtime is None or not bool(getattr(agent_runtime, "enabled", False)):
@@ -565,6 +597,7 @@ def _agent_runtime_observe_targets(config: Config) -> list[dict[str, object]]:
     if qq is not None:
         accounts.append(qq)
     accounts.extend(getattr(channels, "qq_accounts", []) or [])
+    ragflow_dataset_ids_by_group = _observe_only_qq_group_ragflow_dataset_ids(config)
 
     targets: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -583,6 +616,13 @@ def _agent_runtime_observe_targets(config: Config) -> list[dict[str, object]]:
             if target_id in seen:
                 continue
             seen.add(target_id)
+            metadata = {
+                "channel_name": channel_name,
+            }
+            dataset_ids = ragflow_dataset_ids_by_group.get(group_id, [])
+            if dataset_ids:
+                metadata["ragflow_dataset_ids"] = ",".join(dataset_ids)
+                metadata["ragflow_dataset_count"] = str(len(dataset_ids))
             targets.append(
                 {
                     "target_id": target_id,
@@ -598,13 +638,24 @@ def _agent_runtime_observe_targets(config: Config) -> list[dict[str, object]]:
                     "allow_from": list(getattr(group, "allow_from", []) or []),
                     "enabled": True,
                     "source": "python_config",
-                    "metadata": {
-                        "channel_name": channel_name,
-                    },
+                    "metadata": metadata,
                 }
             )
     targets.sort(key=lambda item: str(item.get("target_id", "")))
     return targets
+
+
+def _normalized_string_list(values: object) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    raw_values = values if isinstance(values, list) else [values]
+    for value in raw_values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
 
 
 def _outbox_channel_names_by_account(config: Config) -> dict[str, str]:

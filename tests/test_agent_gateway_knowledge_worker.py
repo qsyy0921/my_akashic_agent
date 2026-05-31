@@ -169,6 +169,42 @@ async def test_knowledge_worker_enqueues_group_memory_and_rag_jobs():
 
 
 @pytest.mark.asyncio
+async def test_knowledge_worker_uses_group_specific_dataset_bindings():
+    client = _FakeGatewayClient()
+    worker = AgentGatewayKnowledgeWorker(
+        client=client,  # type: ignore[arg-type]
+        group_memory=_FakeGroupMemory(),
+        worker_id="worker-a",
+        group_accounts={
+            "284331268": "2365524513",
+            "3219982": "1049511700",
+        },
+        ragflow_indexer=_FakeRagflowIndexer(),
+        ragflow_dataset_ids=["ds-default"],
+        ragflow_dataset_ids_by_group={
+            "284331268": ["ds-hardware", "ds-guides"],
+            "3219982": [],
+        },
+        lease_ttl_seconds=60,
+        poll_interval_seconds=0.5,
+        enqueue_interval_seconds=60,
+        now_fn=lambda: 120.0,
+    )
+
+    summary = await worker.enqueue_once()
+
+    assert summary["created_or_existing"] == 4
+    rag_jobs = [
+        job for job in client.created if job["job_type"] == "rag_ingest"
+    ]
+    assert [job["payload"]["dataset_id"] for job in rag_jobs] == [
+        "ds-hardware",
+        "ds-guides",
+    ]
+    assert all(job["route"]["conversation_id"] == "284331268" for job in rag_jobs)
+
+
+@pytest.mark.asyncio
 async def test_knowledge_worker_reports_runtime_dedupe_suppression():
     class _DedupeGateway(_FakeGatewayClient):
         async def create_job(self, **kwargs: Any) -> dict[str, Any]:

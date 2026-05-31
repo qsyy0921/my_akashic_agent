@@ -38,13 +38,15 @@ type KnowledgePipelineCheckpointLagView struct {
 }
 
 type KnowledgePipelineRagDatasetView struct {
-	DatasetID     string                              `json:"dataset_id"`
-	DisplayName   string                              `json:"display_name,omitempty"`
-	JobStage      KnowledgePipelineJobStageView       `json:"job_stage"`
-	Checkpoint    *KnowledgeCheckpointView            `json:"checkpoint,omitempty"`
-	CheckpointLag *KnowledgePipelineCheckpointLagView `json:"checkpoint_lag,omitempty"`
-	Status        string                              `json:"status"`
-	Reasons       []string                            `json:"reasons,omitempty"`
+	DatasetID       string                              `json:"dataset_id"`
+	DisplayName     string                              `json:"display_name,omitempty"`
+	Configured      bool                                `json:"configured"`
+	RuntimeObserved bool                                `json:"runtime_observed"`
+	JobStage        KnowledgePipelineJobStageView       `json:"job_stage"`
+	Checkpoint      *KnowledgeCheckpointView            `json:"checkpoint,omitempty"`
+	CheckpointLag   *KnowledgePipelineCheckpointLagView `json:"checkpoint_lag,omitempty"`
+	Status          string                              `json:"status"`
+	Reasons         []string                            `json:"reasons,omitempty"`
 }
 
 type KnowledgePipelineView struct {

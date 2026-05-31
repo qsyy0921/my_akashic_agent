@@ -122,6 +122,61 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	}
 }
 
+func TestKnowledgePipelineDiagnosticsServiceShowsConfiguredDatasetBeforeRuntimeObservation(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTargetWithMetadata(t, observeTargets, "27234224", map[string]string{
+		"ragflow_dataset_ids":   "ds-configured,ds-configured",
+		"ragflow_dataset_count": "1",
+	})
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-configured-text", "configured dataset only", nil, 12)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "idle",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, nil)
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["rag_datasets"] != 1 || view.Totals["configured_rag_datasets"] != 1 || view.Totals["configured_rag_dataset_not_started"] != 1 {
+		t.Fatalf("unexpected configured dataset totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if len(pipeline.RagDatasets) != 1 {
+		t.Fatalf("expected one configured dataset, got %#v", pipeline.RagDatasets)
+	}
+	dataset := pipeline.RagDatasets[0]
+	if dataset.DatasetID != "ds-configured" || !dataset.Configured || dataset.RuntimeObserved || dataset.Status != "muted" || !containsString(dataset.Reasons, "configured_dataset_not_started") {
+		t.Fatalf("unexpected configured dataset view: %#v", dataset)
+	}
+	if dataset.Checkpoint != nil || dataset.CheckpointLag != nil {
+		t.Fatalf("configured-only dataset should not have checkpoint state: %#v", dataset)
+	}
+	if dataset.JobStage.JobType != "rag_ingest" || dataset.JobStage.FreshnessStatus != "muted" {
+		t.Fatalf("unexpected configured-only dataset job stage: %#v", dataset.JobStage)
+	}
+}
+
 func TestKnowledgePipelineDiagnosticsServiceBlocksCaptureFailure(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()
