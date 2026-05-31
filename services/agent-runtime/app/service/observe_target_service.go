@@ -10,17 +10,43 @@ import (
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/assembler"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
 type ObserveTargetService struct {
-	mu      sync.RWMutex
-	targets map[string]model.ObserveTarget
+	mu         sync.RWMutex
+	targets    map[string]model.ObserveTarget
+	repository outport.ObserveTargetRepository
 }
 
 func NewObserveTargetService() *ObserveTargetService {
 	return &ObserveTargetService{targets: make(map[string]model.ObserveTarget)}
+}
+
+func NewObserveTargetServiceWithRepository(ctx context.Context, repository outport.ObserveTargetRepository) (*ObserveTargetService, error) {
+	if repository == nil {
+		return NewObserveTargetService(), nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	targets, err := repository.ListObserveTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	service := &ObserveTargetService{
+		targets:    make(map[string]model.ObserveTarget, len(targets)),
+		repository: repository,
+	}
+	for _, target := range targets {
+		if err := target.Validate(); err != nil {
+			continue
+		}
+		service.targets[target.TargetID] = target
+	}
+	return service, nil
 }
 
 func (s *ObserveTargetService) SyncObserveTargets(ctx context.Context, cmd command.SyncObserveTargetsCommand) (query.ObserveTargetsView, error) {
@@ -73,8 +99,14 @@ func (s *ObserveTargetService) SyncObserveTargets(ctx context.Context, cmd comma
 	for targetID, target := range incoming {
 		next[targetID] = target
 	}
+	items := observeTargetMapItems(next)
+	if s.repository != nil {
+		if err := s.repository.SaveObserveTargets(ctx, items); err != nil {
+			s.mu.Unlock()
+			return query.ObserveTargetsView{}, err
+		}
+	}
 	s.targets = next
-	items := s.snapshotLocked()
 	s.mu.Unlock()
 
 	view := observeTargetsView(items)
@@ -96,8 +128,12 @@ func (s *ObserveTargetService) ListObserveTargets(ctx context.Context) (query.Ob
 }
 
 func (s *ObserveTargetService) snapshotLocked() []model.ObserveTarget {
-	items := make([]model.ObserveTarget, 0, len(s.targets))
-	for _, target := range s.targets {
+	return observeTargetMapItems(s.targets)
+}
+
+func observeTargetMapItems(targets map[string]model.ObserveTarget) []model.ObserveTarget {
+	items := make([]model.ObserveTarget, 0, len(targets))
+	for _, target := range targets {
 		items = append(items, target)
 	}
 	sort.SliceStable(items, func(i, j int) bool {

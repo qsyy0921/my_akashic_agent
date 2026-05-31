@@ -21,6 +21,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
 	mediaassetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/mediaassetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
+	observetargetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/observetargetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
 	outboxeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxeventstore"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
@@ -36,6 +37,11 @@ func main() {
 		":8780",
 	)
 	botIDs := csvEnvOrDefault("AKASHIC_BOT_IDS", []string{"1049511700", "2365524513"})
+	if stateDir, ok := defaultRuntimeStateDir(); ok {
+		log.Printf("default runtime state dir enabled: %s", stateDir)
+	} else {
+		log.Printf("default runtime state dir disabled; unconfigured stores use memory")
+	}
 
 	store := memory.NewStore()
 	var auditLog outport.AuditLog = store
@@ -226,7 +232,10 @@ func main() {
 	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
 	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
-	observeTargets := appservice.NewObserveTargetService()
+	observeTargets, err := newObserveTargetService()
+	if err != nil {
+		log.Fatalf("init observe target service: %v", err)
+	}
 	receiverStatuses := appservice.NewReceiverStatusService()
 	observeCaptureDiagnostics := appservice.NewObserveCaptureDiagnosticsService(
 		observeTargets,
@@ -458,6 +467,9 @@ func newAgentJobRepository() (outport.AgentJobRepository, error) {
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOBS_PATH")); path != "" {
 		return agentjobstore.NewStore(path)
 	}
+	if path, ok := defaultRuntimeStatePath("agent-jobs.json"); ok {
+		return agentjobstore.NewStore(path)
+	}
 	return memory.NewStore(), nil
 }
 
@@ -470,6 +482,9 @@ func newAgentJobEventStore() (outport.AgentJobEventStore, error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_JOB_EVENTS_PATH")); path != "" {
+		return agentjobeventstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("agent-job-events.jsonl"); ok {
 		return agentjobeventstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
@@ -486,6 +501,9 @@ func newMediaAssetRepository() (outport.MediaAssetRepository, error) {
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_MEDIA_ASSETS_PATH")); path != "" {
 		return mediaassetstore.NewStore(path)
 	}
+	if path, ok := defaultRuntimeStatePath("media-assets.json"); ok {
+		return mediaassetstore.NewStore(path)
+	}
 	return memory.NewStore(), nil
 }
 
@@ -498,6 +516,9 @@ func newSendLedgerRepository() (outport.SendLedger, error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_SEND_LEDGER_PATH")); path != "" {
+		return sendledgerstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("send-ledger.json"); ok {
 		return sendledgerstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
@@ -523,6 +544,13 @@ func newOutboxStore() (outport.OutboxRepository, outport.OutboxQueue, error) {
 		}
 		return store, store, nil
 	}
+	if path, ok := defaultRuntimeStatePath("outbox.json"); ok {
+		store, err := outboxstore.NewStore(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		return store, store, nil
+	}
 	store := memory.NewStore()
 	return store, store, nil
 }
@@ -536,6 +564,9 @@ func newOutboxEventStore() (outport.OutboxDeliveryEventStore, error) {
 	}
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_EVENTS_PATH")); path != "" {
+		return outboxeventstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("outbox-events.jsonl"); ok {
 		return outboxeventstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
@@ -552,6 +583,9 @@ func newInboxEventRepository() (outport.InboxEventRepository, error) {
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_INBOX_PATH")); path != "" {
 		return inboxstore.NewStore(path)
 	}
+	if path, ok := defaultRuntimeStatePath("inbox.json"); ok {
+		return inboxstore.NewStore(path)
+	}
 	return memory.NewStore(), nil
 }
 
@@ -564,6 +598,9 @@ func newKnowledgeCheckpointRepository() (outport.KnowledgeCheckpointRepository, 
 	}
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_KNOWLEDGE_CHECKPOINTS_PATH")); path != "" {
+		return knowledgecheckpointstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("knowledge-checkpoints.json"); ok {
 		return knowledgecheckpointstore.NewStore(path)
 	}
 	return memory.NewStore(), nil
@@ -580,7 +617,39 @@ func newProactiveStateRepository() (outport.ProactiveStateRepository, error) {
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_PROACTIVE_STATE_PATH")); path != "" {
 		return proactivestate.NewStore(path)
 	}
+	if path, ok := defaultRuntimeStatePath("proactive-state.json"); ok {
+		return proactivestate.NewStore(path)
+	}
 	return memory.NewStore(), nil
+}
+
+func newObserveTargetService() (*appservice.ObserveTargetService, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_OBSERVE_TARGETS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return appservice.NewObserveTargetService(), nil
+		}
+		store, err := observetargetstore.NewStore(dsn)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewObserveTargetServiceWithRepository(context.Background(), store)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_OBSERVE_TARGETS_PATH")); path != "" {
+		store, err := observetargetstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewObserveTargetServiceWithRepository(context.Background(), store)
+	}
+	if path, ok := defaultRuntimeStatePath("observe-targets.json"); ok {
+		store, err := observetargetstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return appservice.NewObserveTargetServiceWithRepository(context.Background(), store)
+	}
+	return appservice.NewObserveTargetService(), nil
 }
 
 func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
@@ -590,6 +659,48 @@ func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
 		roots = defaultMediaAssetRoots()
 	}
 	return localmedia.NewReaderWithDiscoveredRoots(roots, !explicitRoots)
+}
+
+func defaultRuntimeStatePath(filename string) (string, bool) {
+	stateDir, ok := defaultRuntimeStateDir()
+	if !ok {
+		return "", false
+	}
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "", false
+	}
+	return filepath.Join(stateDir, filename), true
+}
+
+func defaultRuntimeStateDir() (string, bool) {
+	starts := make([]string, 0, 2)
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
+	}
+	if executable, err := os.Executable(); err == nil {
+		starts = append(starts, filepath.Dir(executable))
+	}
+	return defaultRuntimeStateDirFrom(starts)
+}
+
+func defaultRuntimeStateDirFrom(starts []string) (string, bool) {
+	if dir := strings.TrimSpace(os.Getenv("AKASHIC_RUNTIME_STATE_DIR")); dir != "" {
+		if strings.EqualFold(dir, "memory") {
+			return "", false
+		}
+		return filepath.Clean(dir), true
+	}
+
+	for _, start := range starts {
+		for _, repoRoot := range discoverAkashicRoots(start) {
+			return filepath.Join(repoRoot, ".akashic-workspace", "agent-runtime"), true
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return filepath.Join(cwd, ".akashic-workspace", "agent-runtime"), true
+	}
+	return "", false
 }
 
 func defaultMediaAssetRoots() []string {

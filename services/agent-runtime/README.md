@@ -27,8 +27,12 @@ types          -> none
 ```
 
 The implementation keeps message event fanout in-memory to keep startup simple,
-while durable control-plane state can be enabled independently for `AgentJob`,
-media asset, send ledger, inbox, and outbox delivery records.
+while deterministic control-plane state defaults to file-backed persistence under
+`.akashic-workspace/agent-runtime`. This covers observe targets, inbox, media
+assets, send ledger, outbox, generic jobs, knowledge checkpoints, and proactive
+state. Individual stores can still be overridden by their `AKASHIC_*_DSN` or
+`AKASHIC_*_PATH` variables, and `memory` remains the explicit opt-out for
+ephemeral development runs.
 
 ## Run Locally
 
@@ -63,57 +67,75 @@ $env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\run
 When this variable is set, `/v1/shadow/observed` reads recent events from the
 JSONL audit file instead of the in-memory development store.
 
-Persist agent jobs across runtime restarts:
+Default runtime state directory:
+
+```powershell
+$env:AKASHIC_RUNTIME_STATE_DIR = "E:\agent\akashic\.akashic-workspace\agent-runtime"
+```
+
+If this variable is omitted, `agent-runtime` discovers the Akashic repo root
+from the current working directory or executable path and uses the same default
+directory. Set it to `memory` to make every unconfigured state store ephemeral.
+Per-store `AKASHIC_*_DSN` or `AKASHIC_*_PATH` values still take precedence.
+
+Override observe target persistence:
+
+```powershell
+$env:AKASHIC_OBSERVE_TARGETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\observe-targets.json"
+```
+
+Observe targets synced from Python config are file-backed so runtime overview
+and observe capture diagnostics can recover after restarting only
+`agent-runtime`.
+
+Override agent job persistence:
 
 ```powershell
 $env:AKASHIC_AGENT_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\agent-jobs.json"
 ```
 
-With this environment variable set, `/v1/jobs` and related lifecycle endpoints use
-the file-backed `AgentJob` store so pending/running/failed work remains
-recoverable after restart.
+`/v1/jobs` and related lifecycle endpoints use the file-backed `AgentJob` store
+so pending/running/failed work remains recoverable after restart.
 
-Persist media asset metadata across runtime restarts:
+Override media asset metadata persistence:
 
 ```powershell
 $env:AKASHIC_MEDIA_ASSETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\media-assets.json"
 ```
 
-With this environment variable set, `/v1/media-assets` and automatic attachment
-registration use the file-backed media registry. Use `memory` only for
-development runs where restart recovery is not required.
+`/v1/media-assets` and automatic attachment registration use the file-backed
+media registry. Use `memory` only for development runs where restart recovery is
+not required.
 
-Persist outbound send ledger records across runtime restarts:
+Override outbound send ledger persistence:
 
 ```powershell
 $env:AKASHIC_SEND_LEDGER_DSN = "E:\agent\akashic\.akashic-workspace\runtime\send-ledger.json"
 ```
 
-With this environment variable set, outbound sends and inbound echo checks share
-the same file-backed ledger. Use `memory` only for development runs where recent
-echo detection does not need restart recovery.
+Outbound sends and inbound echo checks share the same file-backed ledger. Use
+`memory` only for development runs where recent echo detection does not need
+restart recovery.
 
-Persist raw inbound/observed message events across runtime restarts:
+Override raw inbound/observed message persistence:
 
 ```powershell
 $env:AKASHIC_INBOX_DSN = "E:\agent\akashic\.akashic-workspace\runtime\inbox.json"
 ```
 
-With this environment variable set, `/v1/inbound` and `/v1/shadow/inbound`
-record normalized `InboxEvent` rows in a file-backed raw message store. Use
-`memory` only for development runs where replay and group-memory source
-recovery are not required.
+`/v1/inbound` and `/v1/shadow/inbound` record normalized `InboxEvent` rows in a
+file-backed raw message store. Use `memory` only for development runs where
+replay and group-memory source recovery are not required.
 
-Persist knowledge/RAG ingestion checkpoints across runtime restarts:
+Override knowledge/RAG ingestion checkpoint persistence:
 
 ```powershell
 $env:AKASHIC_KNOWLEDGE_CHECKPOINTS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\knowledge-checkpoints.json"
 ```
 
-With this environment variable set, `/v1/knowledge-checkpoints/*` stores
-per-source/per-target cursor state in Go. Python RAG workers read this state
-before choosing `since_seq` and advance it only after successful non-empty
-ingestion.
+`/v1/knowledge-checkpoints/*` stores per-source/per-target cursor state in Go.
+Python RAG workers read this state before choosing `since_seq` and advance it
+only after successful non-empty ingestion.
 
 ## HTTP Contracts
 

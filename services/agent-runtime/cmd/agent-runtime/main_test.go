@@ -43,6 +43,151 @@ func TestDefaultMediaAssetRootsDiscoverRepoFromServiceOrBinDir(t *testing.T) {
 	}
 }
 
+func TestDefaultRuntimeStateDirDiscoversRepoFromServiceDir(t *testing.T) {
+	repoRoot := fakeAkashicRepo(t)
+	serviceDir := filepath.Join(repoRoot, "services", "agent-runtime")
+
+	dir, ok := defaultRuntimeStateDirFrom([]string{serviceDir})
+
+	if !ok {
+		t.Fatalf("expected runtime state dir")
+	}
+	if dir != filepath.Join(repoRoot, ".akashic-workspace", "agent-runtime") {
+		t.Fatalf("unexpected runtime state dir: %s", dir)
+	}
+}
+
+func TestDefaultRuntimeStateDirCanBeDisabled(t *testing.T) {
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", "memory")
+
+	dir, ok := defaultRuntimeStateDirFrom([]string{fakeAkashicRepo(t)})
+
+	if ok || dir != "" {
+		t.Fatalf("expected memory runtime state, got ok=%v dir=%q", ok, dir)
+	}
+}
+
+func TestDefaultRuntimeStatePathUsesExplicitDir(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "runtime-state")
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
+
+	path, ok := defaultRuntimeStatePath("inbox.json")
+
+	if !ok {
+		t.Fatalf("expected runtime state path")
+	}
+	if path != filepath.Join(stateDir, "inbox.json") {
+		t.Fatalf("unexpected runtime state path: %s", path)
+	}
+}
+
+func TestNewInboxEventRepositoryDefaultsToFileBackedRuntimeState(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "runtime-state")
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
+	t.Setenv("AKASHIC_INBOX_DSN", "")
+	t.Setenv("AKASHIC_INBOX_PATH", "")
+
+	repo, err := newInboxEventRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := newRuntimeStateInboxEvent(t)
+	if err := repo.SaveInboxEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := newInboxEventRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := reopened.ListInboxEvents(context.Background(), query.InboxEventFilter{
+		ConversationID: "27234224",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected default file-backed inbox persistence, got %d", len(items))
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "inbox.json")); err != nil {
+		t.Fatalf("expected inbox state file: %v", err)
+	}
+}
+
+func TestNewInboxEventRepositoryRespectsMemoryOverride(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "runtime-state")
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
+	t.Setenv("AKASHIC_INBOX_DSN", "memory")
+	t.Setenv("AKASHIC_INBOX_PATH", "")
+
+	repo, err := newInboxEventRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SaveInboxEvent(context.Background(), newRuntimeStateInboxEvent(t)); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := newInboxEventRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := reopened.ListInboxEvents(context.Background(), query.InboxEventFilter{
+		ConversationID: "27234224",
+		Limit:          10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected memory override to avoid persistence, got %d", len(items))
+	}
+}
+
+func TestNewObserveTargetServiceDefaultsToFileBackedRuntimeState(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "runtime-state")
+	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
+	t.Setenv("AKASHIC_OBSERVE_TARGETS_DSN", "")
+	t.Setenv("AKASHIC_OBSERVE_TARGETS_PATH", "")
+
+	service, err := newObserveTargetService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SyncObserveTargets(context.Background(), command.SyncObserveTargetsCommand{
+		Source:    "python_config",
+		Timestamp: time.Date(2026, 5, 31, 8, 0, 0, 0, time.UTC),
+		Targets: []command.ObserveTargetCommand{{
+			Channel: command.ChannelCommand{
+				Kind:             "qq",
+				AccountID:        "1049511700",
+				ConversationID:   "27234224",
+				ConversationType: "group",
+			},
+			ObserveOnly: true,
+			Enabled:     true,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := newObserveTargetService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := reopened.ListObserveTargets(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["targets"] != 1 || view.Targets[0].Channel.ConversationID != "27234224" {
+		t.Fatalf("expected default file-backed observe target persistence: %#v", view)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "observe-targets.json")); err != nil {
+		t.Fatalf("expected observe targets state file: %v", err)
+	}
+}
+
 func TestOneBotEndpointsFromEnvReadsMultiEndpointConfig(t *testing.T) {
 	t.Setenv("AKASHIC_ONEBOT_HTTP_BASE_URLS", "qq_1049511700=http://127.0.0.1:3001, qq_2365524513=http://127.0.0.1:3002")
 	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq_1049511700=token-a,qq_2365524513=token-b")
@@ -607,6 +752,30 @@ func fakeAkashicRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func newRuntimeStateInboxEvent(t *testing.T) model.InboxEvent {
+	t.Helper()
+	event, err := model.NewInboxEvent(model.MessageEnvelope{
+		EventID: "qq:1049511700:group:27234224:runtime-state-test",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Sender: model.SenderRef{
+			ID:   "2948770636",
+			Kind: model.SenderKindHuman,
+		},
+		Content:   "runtime state survives restart",
+		Timestamp: time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC),
+		Metadata:  map[string]string{"observe_only": "true"},
+	}, model.LoopDecision{Action: model.LoopActionAllow, Reason: "accepted"}, time.Date(2026, 5, 31, 0, 0, 1, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return event
 }
 
 func assertContainsPath(t *testing.T, paths []string, want string) {

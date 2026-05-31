@@ -34,6 +34,8 @@ The design uses:
   cutover rules, and review checklist for Go migration.
 - `010-python-ddd-suitability.md`: why Go uses tactical DDD while Python keeps
   ports/adapters and AI pipeline boundaries instead of full DDD.
+- `011-runtime-state-defaults.md`: file-backed default state directory for
+  deterministic Go runtime control-plane stores.
 
 Related spec family:
 
