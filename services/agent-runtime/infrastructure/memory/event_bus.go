@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,7 @@ type Store struct {
 	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
 	schedulerJobs          map[string]model.SchedulerJob
 	schedulerJobOrder      []string
+	schedulerLeases        map[string]model.SchedulerExecutionLease
 }
 
 type ObservedEvent struct {
@@ -75,6 +77,7 @@ func NewStore() *Store {
 		proactiveGlobalMarks:  make(map[string]model.ProactiveGlobalMark),
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
 		schedulerJobs:         make(map[string]model.SchedulerJob),
+		schedulerLeases:       make(map[string]model.SchedulerExecutionLease),
 	}
 }
 
@@ -1197,6 +1200,49 @@ func (s *Store) ListSchedulerJobs(_ context.Context) ([]model.SchedulerJob, erro
 		}
 	}
 	return items, nil
+}
+
+func (s *Store) SaveSchedulerExecutionLease(_ context.Context, lease model.SchedulerExecutionLease) error {
+	if s == nil {
+		return errors.New("memory store is nil")
+	}
+	if err := lease.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.schedulerLeases == nil {
+		s.schedulerLeases = make(map[string]model.SchedulerExecutionLease)
+	}
+	s.schedulerLeases[lease.JobID] = lease
+	return nil
+}
+
+func (s *Store) DeleteSchedulerExecutionLease(_ context.Context, jobID string) error {
+	if s == nil {
+		return errors.New("memory store is nil")
+	}
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return errors.New("scheduler execution lease delete requires job_id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.schedulerLeases, jobID)
+	return nil
+}
+
+func (s *Store) ListSchedulerExecutionLeases(_ context.Context) ([]model.SchedulerExecutionLease, error) {
+	if s == nil {
+		return nil, errors.New("memory store is nil")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	items := make([]model.SchedulerExecutionLease, 0, len(s.schedulerLeases))
+	for _, item := range s.schedulerLeases {
+		items = append(items, item)
+	}
+	return model.SortedSchedulerExecutionLeases(items), nil
 }
 
 func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {

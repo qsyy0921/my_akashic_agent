@@ -14,6 +14,7 @@ Scheduler: 定时任务核心模块
 """
 
 import asyncio
+from contextlib import suppress
 from importlib import import_module
 import json
 import logging
@@ -320,8 +321,9 @@ class JobStore:
                 logger.warning("[job_store] agent-runtime 加载失败，回退本地 JSON: %s", e)
         return local_jobs
 
-    def save(self, jobs: dict[str, ScheduledJob]) -> None:
+    def save(self, jobs: dict[str, ScheduledJob]) -> bool:
         data = [self._to_dict(j) for j in jobs.values()]
+        runtime_synced = True
         if self._runtime_enabled():
             try:
                 self._request_runtime(
@@ -331,7 +333,9 @@ class JobStore:
                 )
             except Exception as e:
                 logger.warning("[job_store] agent-runtime 保存失败，继续写本地 JSON: %s", e)
+                runtime_synced = False
         save_json(self.path, data, domain="job_store")
+        return runtime_synced
 
     # ── private ──
 
@@ -435,6 +439,20 @@ class SchedulerService:
         self._agent_loop_provider = agent_loop_provider
         self.tracker = tracker or LatencyTracker()
         self._now = _now_fn or (lambda: datetime.now(timezone.utc))
+        self._runtime_config = runtime_config
+        self._runtime_transport = runtime_transport
+        self._runtime_base_url = str(getattr(runtime_config, "base_url", "") or "").rstrip("/")
+        self._runtime_timeout = float(
+            getattr(runtime_config, "request_timeout_seconds", 5.0) or 5.0
+        )
+        worker_id = str(
+            getattr(runtime_config, "worker_id", "akashic-python-worker")
+            or "akashic-python-worker"
+        )
+        self._scheduler_holder_id = f"scheduler:{worker_id}:{uuid.uuid4().hex[:12]}"
+        self._scheduler_lease_ttl_seconds = int(
+            getattr(runtime_config, "lease_ttl_seconds", 300) or 300
+        )
         self._jobs: dict[str, ScheduledJob] = {}
         self._in_flight: set[str] = set()
         self._running = False
@@ -525,20 +543,39 @@ class SchedulerService:
                 continue
             actual_trigger = compute_actual_trigger(job.fire_at, job.tier, self.tracker)
             if actual_trigger <= now:
+                lease_token = await self._acquire_execution_lease(job)
+                if lease_token is None:
+                    continue
                 label = job.name or job.id[:8]
                 logger.info(
                     f"[scheduler] 触发任务 {label!r}  tier={job.tier}  channel={job.channel}:{job.chat_id}"
                 )
                 self._in_flight.add(job.id)
-                asyncio.create_task(self._execute_and_reschedule(job))
+                asyncio.create_task(
+                    self._execute_and_reschedule(job, lease_token=lease_token)
+                )
 
-    async def _execute_and_reschedule(self, job: ScheduledJob) -> None:
+    async def _execute_and_reschedule(
+        self,
+        job: ScheduledJob,
+        *,
+        lease_token: str | None = "",
+    ) -> None:
+        renew_task: asyncio.Task[None] | None = None
+        if lease_token:
+            renew_task = asyncio.create_task(
+                self._renew_execution_lease_loop(job.id, lease_token)
+            )
         try:
             await self._execute(job)
             job.run_count += 1
         except Exception as e:
             logger.error(f"Job {job.id[:8]} execution failed: {e}", exc_info=True)
         finally:
+            if renew_task is not None:
+                renew_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await renew_task
             self._in_flight.discard(job.id)
             now = self._now()
             if job.trigger == "every":
@@ -551,7 +588,14 @@ class SchedulerService:
                 self._jobs[job.id] = job
             else:
                 self._jobs.pop(job.id, None)
-            self.store.save(self._jobs)
+            runtime_snapshot_synced = self.store.save(self._jobs)
+            if lease_token and runtime_snapshot_synced:
+                await self._release_execution_lease(job.id, lease_token)
+            elif lease_token:
+                logger.warning(
+                    "[scheduler] runtime snapshot save failed; keeping execution lease until TTL expires job_id=%s",
+                    job.id,
+                )
 
     async def _execute(self, job: ScheduledJob) -> None:
         label = job.name or job.id[:8]
@@ -594,6 +638,127 @@ class SchedulerService:
         if loop is None:
             raise RuntimeError("scheduler soft job requires agent_loop")
         return loop
+
+    def _runtime_enabled(self) -> bool:
+        return bool(getattr(self._runtime_config, "enabled", False)) and bool(
+            self._runtime_base_url
+        )
+
+    async def _request_runtime(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+    ) -> Any:
+        async with httpx.AsyncClient(
+            timeout=self._runtime_timeout,
+            transport=self._runtime_transport,  # type: ignore[arg-type]
+            trust_env=True,
+        ) as client:
+            response = await client.request(
+                method.upper(),
+                self._runtime_base_url + path,
+                json=json_body,
+                headers={"Content-Type": "application/json"},
+            )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"agent-runtime HTTP {response.status_code}: {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            raise RuntimeError("agent-runtime scheduler response is not json")
+        if not isinstance(payload, dict):
+            return payload
+        code = payload.get("code")
+        if code not in (None, "OK", 0):
+            raise RuntimeError(str(payload.get("message") or payload))
+        return payload.get("data", payload)
+
+    async def _acquire_execution_lease(self, job: ScheduledJob) -> str | None:
+        if not self._runtime_enabled():
+            return ""
+        try:
+            data = await self._request_runtime(
+                "POST",
+                "/v1/scheduler/leases/acquire",
+                json_body={
+                    "job_id": job.id,
+                    "holder_id": self._scheduler_holder_id,
+                    "ttl_seconds": self._scheduler_lease_ttl_seconds,
+                    "metadata": {
+                        "source": "python_scheduler",
+                        "trigger": job.trigger,
+                        "tier": job.tier,
+                        "channel": job.channel,
+                        "chat_id": job.chat_id,
+                    },
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "[scheduler] agent-runtime execution lease acquire failed, using local fallback: %s",
+                e,
+            )
+            return ""
+        if isinstance(data, dict) and data.get("acquired") is False:
+            logger.info(
+                "[scheduler] job %s skipped because another scheduler holder owns lease: %s",
+                job.id,
+                data.get("denied_reason") or "active_lease_held",
+            )
+            return None
+        token = str(data.get("lease_token") or "") if isinstance(data, dict) else ""
+        if not token:
+            logger.warning(
+                "[scheduler] agent-runtime execution lease response missing token, using local fallback"
+            )
+            return ""
+        return token
+
+    async def _renew_execution_lease_loop(self, job_id: str, lease_token: str) -> None:
+        interval = max(5.0, min(float(self._scheduler_lease_ttl_seconds) / 3.0, 60.0))
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self._request_runtime(
+                    "POST",
+                    "/v1/scheduler/leases/renew",
+                    json_body={
+                        "job_id": job_id,
+                        "holder_id": self._scheduler_holder_id,
+                        "lease_token": lease_token,
+                        "ttl_seconds": self._scheduler_lease_ttl_seconds,
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "[scheduler] agent-runtime execution lease renew failed job_id=%s: %s",
+                    job_id,
+                    e,
+                )
+
+    async def _release_execution_lease(self, job_id: str, lease_token: str) -> None:
+        if not self._runtime_enabled():
+            return
+        try:
+            await self._request_runtime(
+                "POST",
+                "/v1/scheduler/leases/release",
+                json_body={
+                    "job_id": job_id,
+                    "holder_id": self._scheduler_holder_id,
+                    "lease_token": lease_token,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "[scheduler] agent-runtime execution lease release failed job_id=%s: %s",
+                job_id,
+                e,
+            )
 
     def _advance_every(self, job: ScheduledJob, after: datetime) -> datetime:
         """将 every job 的 fire_at 推进到 after 之后的下一个触发时间。"""

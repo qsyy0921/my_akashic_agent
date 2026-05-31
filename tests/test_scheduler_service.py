@@ -1,11 +1,14 @@
 """Tests for SchedulerService: tick, execution, misfire, rescheduling."""
 
 import asyncio
+import json
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, call
 
+import httpx
 import pytest
 
+from agent.config_models import AgentRuntimeIntegrationConfig
 from agent.scheduler import LatencyTracker, SchedulerService, ScheduledJob
 from tests.conftest import drain_tasks, make_job
 
@@ -20,6 +23,10 @@ def make_service(tmp_path, mock_push, mock_loop, now, tracker=None):
         tracker=tracker or LatencyTracker(default=25.0),
         _now_fn=lambda: now,
     )
+
+
+def json_request(request: httpx.Request) -> dict:
+    return json.loads(request.read().decode("utf-8"))
 
 
 # ── Execution: INSTANT ───────────────────────────────────────────
@@ -286,6 +293,200 @@ async def test_every_soft_cron_pretrigger_advances_past_current_boundary(
     await drain_tasks()
 
     assert mock_loop.process_direct.call_count == 1
+
+
+async def test_runtime_execution_lease_acquired_and_released(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/leases/acquire":
+            body = json_request(request)
+            assert body["job_id"] == "lease-job"
+            assert body["holder_id"].startswith("scheduler:python-worker:")
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": body["job_id"],
+                        "holder_id": body["holder_id"],
+                        "lease_token": "lease-token-1",
+                        "lease_token_present": True,
+                        "active": True,
+                        "acquired": True,
+                    },
+                },
+            )
+        if request.url.path == "/v1/scheduler/jobs/snapshot":
+            return httpx.Response(
+                202,
+                json={
+                    "code": "OK",
+                    "data": {"count": 0, "side_effect": "runtime_state_write"},
+                },
+            )
+        if request.url.path == "/v1/scheduler/leases/release":
+            body = json_request(request)
+            assert body["job_id"] == "lease-job"
+            assert body["lease_token"] == "lease-token-1"
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": body["job_id"],
+                        "lease_token_present": True,
+                        "active": False,
+                        "acquired": False,
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected runtime request: {request.url.path}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+            lease_ttl_seconds=300,
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+    job = make_job(
+        trigger="after",
+        tier="instant",
+        fire_at=fixed_now - timedelta(seconds=1),
+        message="runtime lease",
+    )
+    job.id = "lease-job"
+    svc._jobs[job.id] = job
+
+    await svc._tick()
+    await drain_tasks()
+
+    mock_push.execute.assert_called_once_with(
+        channel=job.channel, chat_id=job.chat_id, message="runtime lease"
+    )
+    assert [request.url.path for request in requests] == [
+        "/v1/scheduler/leases/acquire",
+        "/v1/scheduler/jobs/snapshot",
+        "/v1/scheduler/leases/release",
+    ]
+
+
+async def test_runtime_execution_lease_not_released_when_snapshot_sync_fails(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/leases/acquire":
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "snapshot-fails",
+                        "lease_token": "lease-token-2",
+                        "lease_token_present": True,
+                        "active": True,
+                        "acquired": True,
+                    },
+                },
+            )
+        if request.url.path == "/v1/scheduler/jobs/snapshot":
+            return httpx.Response(500, text="snapshot failed")
+        if request.url.path == "/v1/scheduler/leases/release":
+            raise AssertionError("lease must not be released after snapshot failure")
+        raise AssertionError(f"unexpected runtime request: {request.url.path}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+            lease_ttl_seconds=300,
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+    job = make_job(
+        trigger="after",
+        tier="instant",
+        fire_at=fixed_now - timedelta(seconds=1),
+        message="runtime lease",
+    )
+    job.id = "snapshot-fails"
+    svc._jobs[job.id] = job
+
+    await svc._tick()
+    await drain_tasks()
+
+    mock_push.execute.assert_called_once()
+    assert job.id not in svc._jobs
+    assert [request.url.path for request in requests] == [
+        "/v1/scheduler/leases/acquire",
+        "/v1/scheduler/jobs/snapshot",
+    ]
+
+
+async def test_runtime_execution_lease_denied_skips_job(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/leases/acquire":
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "lease-denied",
+                        "lease_token_present": True,
+                        "active": True,
+                        "acquired": False,
+                        "denied_reason": "active_lease_held",
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected runtime request: {request.url.path}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+    job = make_job(tier="instant", fire_at=fixed_now - timedelta(seconds=1))
+    job.id = "lease-denied"
+    svc._jobs[job.id] = job
+
+    await svc._tick()
+    await drain_tasks()
+
+    mock_push.execute.assert_not_called()
+    assert job.id in svc._jobs
+    assert svc._in_flight == set()
+    assert [request.url.path for request in requests] == ["/v1/scheduler/leases/acquire"]
 
 
 # ── Misfire handling ─────────────────────────────────────────────

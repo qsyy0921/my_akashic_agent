@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/assembler"
@@ -15,11 +18,40 @@ import (
 )
 
 type SchedulerJobService struct {
-	repository outport.SchedulerJobRepository
+	mu              sync.RWMutex
+	repository      outport.SchedulerJobRepository
+	leaseRepository outport.SchedulerExecutionLeaseRepository
+	leases          map[string]model.SchedulerExecutionLease
 }
 
 func NewSchedulerJobService(repository outport.SchedulerJobRepository) *SchedulerJobService {
-	return &SchedulerJobService{repository: repository}
+	return &SchedulerJobService{
+		repository: repository,
+		leases:     make(map[string]model.SchedulerExecutionLease),
+	}
+}
+
+func NewSchedulerJobServiceWithLeaseRepository(
+	ctx context.Context,
+	repository outport.SchedulerJobRepository,
+	leaseRepository outport.SchedulerExecutionLeaseRepository,
+) (*SchedulerJobService, error) {
+	service := NewSchedulerJobService(repository)
+	service.leaseRepository = leaseRepository
+	if leaseRepository == nil {
+		return service, nil
+	}
+	items, err := leaseRepository.ListSchedulerExecutionLeases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if err := item.Validate(); err != nil {
+			continue
+		}
+		service.leases[item.JobID] = item
+	}
+	return service, nil
 }
 
 func (s *SchedulerJobService) ReplaceSchedulerJobs(ctx context.Context, cmd command.ReplaceSchedulerJobsCommand) (query.SchedulerJobSnapshotView, error) {
@@ -80,6 +112,167 @@ func (s *SchedulerJobService) GetSchedulerJobDiagnostics(ctx context.Context, fi
 		return query.SchedulerJobDiagnosticsView{}, err
 	}
 	return schedulerJobDiagnostics(jobs, filter), nil
+}
+
+func (s *SchedulerJobService) AcquireSchedulerExecutionLease(ctx context.Context, cmd command.AcquireSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.SchedulerExecutionLeaseView{}, err
+	}
+	if s == nil {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler job service is nil")
+	}
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	jobID := strings.TrimSpace(cmd.JobID)
+	holderID := strings.TrimSpace(cmd.HolderID)
+	if jobID == "" {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease requires job_id")
+	}
+	if holderID == "" {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease requires holder_id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSchedulerLeaseMapLocked()
+	if current, ok := s.leases[jobID]; ok && current.ActiveAt(now) && current.HolderID != holderID {
+		view := assembler.ToSchedulerExecutionLeaseView(current, now, false)
+		view.Acquired = boolPtr(false)
+		view.DeniedReason = "active_lease_held"
+		view.SideEffect = "none"
+		return view, nil
+	}
+	token := ""
+	acquiredAt := now
+	if current, ok := s.leases[jobID]; ok && current.ActiveAt(now) && current.HolderID == holderID {
+		token = current.LeaseToken
+		acquiredAt = current.AcquiredAt
+	} else {
+		var err error
+		token, err = randomSchedulerExecutionLeaseToken()
+		if err != nil {
+			return query.SchedulerExecutionLeaseView{}, err
+		}
+	}
+	lease, err := model.NewSchedulerExecutionLease(model.SchedulerExecutionLeaseSpec{
+		JobID:      jobID,
+		HolderID:   holderID,
+		LeaseToken: token,
+		ExpiresAt:  now.Add(schedulerExecutionLeaseTTL(cmd.TTLSeconds)),
+		AcquiredAt: acquiredAt,
+		UpdatedAt:  now,
+		Metadata:   cmd.Metadata,
+	})
+	if err != nil {
+		return query.SchedulerExecutionLeaseView{}, err
+	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.SaveSchedulerExecutionLease(ctx, lease); err != nil {
+			return query.SchedulerExecutionLeaseView{}, err
+		}
+	}
+	s.leases[jobID] = lease
+	view := assembler.ToSchedulerExecutionLeaseView(lease, now, true)
+	view.Acquired = boolPtr(true)
+	return view, nil
+}
+
+func (s *SchedulerJobService) RenewSchedulerExecutionLease(ctx context.Context, cmd command.RenewSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.SchedulerExecutionLeaseView{}, err
+	}
+	if s == nil {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler job service is nil")
+	}
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	jobID := strings.TrimSpace(cmd.JobID)
+	if jobID == "" {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease renew requires job_id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSchedulerLeaseMapLocked()
+	current, ok := s.leases[jobID]
+	if !ok {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease not found")
+	}
+	if !current.ActiveAt(now) {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease expired")
+	}
+	if !current.Matches(cmd.HolderID, cmd.LeaseToken) {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease token mismatch")
+	}
+	renewed, err := current.Renew(now.Add(schedulerExecutionLeaseTTL(cmd.TTLSeconds)), now)
+	if err != nil {
+		return query.SchedulerExecutionLeaseView{}, err
+	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.SaveSchedulerExecutionLease(ctx, renewed); err != nil {
+			return query.SchedulerExecutionLeaseView{}, err
+		}
+	}
+	s.leases[jobID] = renewed
+	view := assembler.ToSchedulerExecutionLeaseView(renewed, now, true)
+	view.Acquired = boolPtr(true)
+	return view, nil
+}
+
+func (s *SchedulerJobService) ReleaseSchedulerExecutionLease(ctx context.Context, cmd command.ReleaseSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.SchedulerExecutionLeaseView{}, err
+	}
+	if s == nil {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler job service is nil")
+	}
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	jobID := strings.TrimSpace(cmd.JobID)
+	if jobID == "" {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease release requires job_id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSchedulerLeaseMapLocked()
+	current, ok := s.leases[jobID]
+	if !ok {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease not found")
+	}
+	if !current.Matches(cmd.HolderID, cmd.LeaseToken) {
+		return query.SchedulerExecutionLeaseView{}, errors.New("scheduler execution lease token mismatch")
+	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.DeleteSchedulerExecutionLease(ctx, jobID); err != nil {
+			return query.SchedulerExecutionLeaseView{}, err
+		}
+	}
+	delete(s.leases, jobID)
+	view := assembler.ToSchedulerExecutionLeaseView(current, now, false)
+	view.Active = false
+	view.Acquired = boolPtr(false)
+	return view, nil
+}
+
+func (s *SchedulerJobService) ListSchedulerExecutionLeases(ctx context.Context) (query.SchedulerExecutionLeasesView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.SchedulerExecutionLeasesView{}, err
+	}
+	if s == nil {
+		return query.SchedulerExecutionLeasesView{}, errors.New("scheduler job service is nil")
+	}
+	now := time.Now().UTC()
+	s.mu.RLock()
+	items := s.schedulerExecutionLeaseSnapshotLocked()
+	s.mu.RUnlock()
+	return schedulerExecutionLeasesView(items, now), nil
 }
 
 func createdAtOrNow(value time.Time) time.Time {
@@ -223,4 +416,64 @@ func minSchedulerJobDiagnosticLimit(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func (s *SchedulerJobService) ensureSchedulerLeaseMapLocked() {
+	if s.leases == nil {
+		s.leases = make(map[string]model.SchedulerExecutionLease)
+	}
+}
+
+func (s *SchedulerJobService) schedulerExecutionLeaseSnapshotLocked() []model.SchedulerExecutionLease {
+	items := make([]model.SchedulerExecutionLease, 0, len(s.leases))
+	for _, item := range s.leases {
+		items = append(items, item)
+	}
+	return model.SortedSchedulerExecutionLeases(items)
+}
+
+func schedulerExecutionLeasesView(items []model.SchedulerExecutionLease, now time.Time) query.SchedulerExecutionLeasesView {
+	totals := map[string]int{
+		"leases":  len(items),
+		"active":  0,
+		"expired": 0,
+	}
+	for _, item := range items {
+		if item.ActiveAt(now) {
+			totals["active"]++
+		} else {
+			totals["expired"]++
+		}
+	}
+	return query.SchedulerExecutionLeasesView{
+		Leases:     assembler.ToSchedulerExecutionLeaseViews(items, now),
+		Totals:     totals,
+		Notes:      []string{"side_effect=runtime_state_only"},
+		SideEffect: "runtime_state_only",
+	}
+}
+
+func schedulerExecutionLeaseTTL(ttlSeconds int) time.Duration {
+	if ttlSeconds <= 0 {
+		ttlSeconds = 300
+	}
+	if ttlSeconds < 30 {
+		ttlSeconds = 30
+	}
+	if ttlSeconds > 3600 {
+		ttlSeconds = 3600
+	}
+	return time.Duration(ttlSeconds) * time.Second
+}
+
+func randomSchedulerExecutionLeaseToken() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

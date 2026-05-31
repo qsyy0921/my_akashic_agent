@@ -31,6 +31,7 @@ import (
 	receiverleasestore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverleasestore"
 	receiverstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
 	schedulerjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/schedulerjobstore"
+	schedulerleasestore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/schedulerleasestore"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
 	httptrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/http"
@@ -105,6 +106,10 @@ func main() {
 	schedulerJobRepository, err := newSchedulerJobRepository()
 	if err != nil {
 		log.Fatalf("init scheduler job repository: %v", err)
+	}
+	schedulerLeaseRepository, err := newSchedulerExecutionLeaseRepository()
+	if err != nil {
+		log.Fatalf("init scheduler execution lease repository: %v", err)
 	}
 	queueBackendView, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -243,7 +248,10 @@ func main() {
 		ChannelByAccount: deliverySmokeChannelByAccount,
 	})
 	proactiveState := appservice.NewProactiveStateService(proactiveStateRepository)
-	schedulerJobs := appservice.NewSchedulerJobService(schedulerJobRepository)
+	schedulerJobs, err := appservice.NewSchedulerJobServiceWithLeaseRepository(context.Background(), schedulerJobRepository, schedulerLeaseRepository)
+	if err != nil {
+		log.Fatalf("init scheduler job service: %v", err)
+	}
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
@@ -667,6 +675,23 @@ func newSchedulerJobRepository() (outport.SchedulerJobRepository, error) {
 	}
 	if path, ok := defaultRuntimeStatePath("scheduler-jobs.json"); ok {
 		return schedulerjobstore.NewStore(path)
+	}
+	return memory.NewStore(), nil
+}
+
+func newSchedulerExecutionLeaseRepository() (outport.SchedulerExecutionLeaseRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_SCHEDULER_LEASES_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return memory.NewStore(), nil
+		}
+		return schedulerleasestore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_SCHEDULER_LEASES_PATH")); path != "" {
+		return schedulerleasestore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("scheduler-leases.json"); ok {
+		return schedulerleasestore.NewStore(path)
 	}
 	return memory.NewStore(), nil
 }

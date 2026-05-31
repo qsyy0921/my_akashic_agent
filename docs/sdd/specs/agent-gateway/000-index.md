@@ -92,4 +92,6 @@ execution.
   scheduler jobs, while Python keeps tick loop and AI execution.
 - `037-scheduler-job-diagnostics.md`: Go-owned read-only scheduler snapshot
   diagnostics and runtime overview card.
+- `038-scheduler-execution-lease.md`: Go-owned per-job scheduler execution
+  lease/fencing, while Python keeps tick loop and job execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

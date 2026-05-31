@@ -262,6 +262,10 @@ func RegisterSchedulerJobRoutes(
 ) {
 	mux.Handle("/v1/scheduler/jobs", SchedulerJobsHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/jobs/snapshot", SchedulerJobSnapshotHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/leases/acquire", SchedulerExecutionLeaseAcquireHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/leases/renew", SchedulerExecutionLeaseRenewHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/leases/release", SchedulerExecutionLeaseReleaseHandler(schedulerJobs))
+	mux.Handle("/v1/scheduler/leases", SchedulerExecutionLeasesHandler(schedulerJobs))
 	if diagnostics, ok := schedulerJobs.(inport.SchedulerJobDiagnosticsViewer); ok {
 		mux.Handle("/v1/scheduler/diagnostics", SchedulerJobDiagnosticsHandler(diagnostics))
 	}
@@ -556,6 +560,129 @@ func SchedulerJobDiagnosticsHandler(viewer inport.SchedulerJobDiagnosticsViewer)
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func SchedulerExecutionLeasesHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := schedulerJobs.ListSchedulerExecutionLeases(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerExecutionLeaseAcquireHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.AcquireSchedulerExecutionLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := schedulerJobs.AcquireSchedulerExecutionLease(r.Context(), command.AcquireSchedulerExecutionLeaseCommand{
+			JobID:      request.JobID,
+			HolderID:   request.HolderID,
+			TTLSeconds: request.TTLSeconds,
+			Metadata:   request.Metadata,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerExecutionLeaseRenewHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RenewSchedulerExecutionLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := schedulerJobs.RenewSchedulerExecutionLease(r.Context(), command.RenewSchedulerExecutionLeaseCommand{
+			JobID:      request.JobID,
+			HolderID:   request.HolderID,
+			LeaseToken: request.LeaseToken,
+			TTLSeconds: request.TTLSeconds,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerExecutionLeaseReleaseHandler(schedulerJobs inport.SchedulerJobManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if schedulerJobs == nil {
+			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.ReleaseSchedulerExecutionLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := schedulerJobs.ReleaseSchedulerExecutionLease(r.Context(), command.ReleaseSchedulerExecutionLeaseCommand{
+			JobID:      request.JobID,
+			HolderID:   request.HolderID,
+			LeaseToken: request.LeaseToken,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 

@@ -2194,6 +2194,73 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 			t.Fatalf("scheduler diagnostics missing %s: %s", expected, response.Body.String())
 		}
 	}
+
+	acquireBody := []byte(`{
+		"job_id":"job-1",
+		"holder_id":"scheduler:worker-a",
+		"ttl_seconds":120,
+		"timestamp":"2026-06-01T08:59:00Z",
+		"metadata":{"source":"python_scheduler"}
+	}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/leases/acquire", bytes.NewReader(acquireBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected scheduler lease acquire 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var acquirePayload struct {
+		Data query.SchedulerExecutionLeaseView `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &acquirePayload); err != nil {
+		t.Fatalf("decode acquire response: %v", err)
+	}
+	if acquirePayload.Data.Acquired == nil || !*acquirePayload.Data.Acquired || acquirePayload.Data.LeaseToken == "" {
+		t.Fatalf("expected acquired lease token: %s", response.Body.String())
+	}
+
+	denyBody := []byte(`{
+		"job_id":"job-1",
+		"holder_id":"scheduler:worker-b",
+		"ttl_seconds":120,
+		"timestamp":"2026-06-01T08:59:01Z"
+	}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/leases/acquire", bytes.NewReader(denyBody)))
+	if response.Code != http.StatusOK ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"acquired":false`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"denied_reason":"active_lease_held"`)) {
+		t.Fatalf("expected scheduler lease deny response, got %d: %s", response.Code, response.Body.String())
+	}
+
+	renewBody, _ := json.Marshal(map[string]any{
+		"job_id":      "job-1",
+		"holder_id":   "scheduler:worker-a",
+		"lease_token": acquirePayload.Data.LeaseToken,
+		"ttl_seconds": 300,
+		"timestamp":   "2026-06-01T08:59:30Z",
+	})
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/leases/renew", bytes.NewReader(renewBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected scheduler lease renew 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	releaseBody, _ := json.Marshal(map[string]any{
+		"job_id":      "job-1",
+		"holder_id":   "scheduler:worker-a",
+		"lease_token": acquirePayload.Data.LeaseToken,
+		"timestamp":   "2026-06-01T09:00:00Z",
+	})
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/leases/release", bytes.NewReader(releaseBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected scheduler lease release 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/leases", nil))
+	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"leases":0`)) {
+		t.Fatalf("expected empty scheduler lease list, got %d: %s", response.Code, response.Body.String())
+	}
 }
 
 func TestKnowledgeWorkerDiagnosticsEndpointSummarizesJobsAndCheckpoints(t *testing.T) {

@@ -673,16 +673,23 @@ and AI execution unchanged:
 
 ```powershell
 $env:AKASHIC_SCHEDULER_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\scheduler-jobs.json"
+$env:AKASHIC_SCHEDULER_LEASES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\scheduler-leases.json"
 ```
 
 When `integrations.agent_runtime.enabled=true`, Python `JobStore` writes the
 complete scheduler snapshot to Go and still keeps the local `schedules.json` as a
-fallback.
+fallback. Python `SchedulerService` also acquires a Go-owned execution lease
+before running a due job, renews it during long execution, and releases it after
+the scheduler snapshot has been saved.
 
 ```text
 GET  /v1/scheduler/jobs
 POST /v1/scheduler/jobs/snapshot
 GET  /v1/scheduler/diagnostics?limit=50&due_soon_seconds=300
+POST /v1/scheduler/leases/acquire
+POST /v1/scheduler/leases/renew
+POST /v1/scheduler/leases/release
+GET  /v1/scheduler/leases
 ```
 
 `/v1/scheduler/diagnostics` is read-only (`side_effect=none`) and summarizes
@@ -690,6 +697,8 @@ overdue, due-soon, disabled, trigger, tier, and channel counts. It is also
 included in `/v1/runtime-overview` as the `Scheduler Jobs` card. The Python
 runtime overview dashboard consumes that Go aggregate first and only calls this
 diagnostics endpoint as a read-only fallback when the aggregate is unavailable.
+Scheduler lease list responses never expose raw lease tokens; acquire/renew/
+release only return a token to the current holder.
 
 Read and advance knowledge/RAG checkpoints:
 

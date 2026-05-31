@@ -10,4 +10,8 @@ import (
 type SchedulerJobManager interface {
 	ReplaceSchedulerJobs(ctx context.Context, cmd command.ReplaceSchedulerJobsCommand) (query.SchedulerJobSnapshotView, error)
 	ListSchedulerJobs(ctx context.Context) ([]query.SchedulerJobView, error)
+	AcquireSchedulerExecutionLease(ctx context.Context, cmd command.AcquireSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error)
+	RenewSchedulerExecutionLease(ctx context.Context, cmd command.RenewSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error)
+	ReleaseSchedulerExecutionLease(ctx context.Context, cmd command.ReleaseSchedulerExecutionLeaseCommand) (query.SchedulerExecutionLeaseView, error)
+	ListSchedulerExecutionLeases(ctx context.Context) (query.SchedulerExecutionLeasesView, error)
 }

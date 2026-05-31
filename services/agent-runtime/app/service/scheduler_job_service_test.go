@@ -135,3 +135,69 @@ func TestSchedulerJobServiceDiagnosticsSummarizesTiming(t *testing.T) {
 		t.Fatalf("diagnostics must be read-only: %+v", view)
 	}
 }
+
+func TestSchedulerJobServiceExecutionLeaseAcquireDenyRenewRelease(t *testing.T) {
+	ctx := context.Background()
+	service := appservice.NewSchedulerJobService(memory.NewStore())
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+
+	acquired, err := service.AcquireSchedulerExecutionLease(ctx, command.AcquireSchedulerExecutionLeaseCommand{
+		JobID:      "schedule:lease-1",
+		HolderID:   "scheduler:worker-a",
+		TTLSeconds: 120,
+		Timestamp:  now,
+	})
+	if err != nil {
+		t.Fatalf("acquire lease: %v", err)
+	}
+	if acquired.Acquired == nil || !*acquired.Acquired || acquired.LeaseToken == "" {
+		t.Fatalf("expected acquired lease with token: %+v", acquired)
+	}
+
+	denied, err := service.AcquireSchedulerExecutionLease(ctx, command.AcquireSchedulerExecutionLeaseCommand{
+		JobID:     "schedule:lease-1",
+		HolderID:  "scheduler:worker-b",
+		Timestamp: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("deny lease: %v", err)
+	}
+	if denied.Acquired == nil || *denied.Acquired || denied.DeniedReason != "active_lease_held" || denied.LeaseToken != "" {
+		t.Fatalf("expected denied lease without token: %+v", denied)
+	}
+
+	renewed, err := service.RenewSchedulerExecutionLease(ctx, command.RenewSchedulerExecutionLeaseCommand{
+		JobID:      "schedule:lease-1",
+		HolderID:   "scheduler:worker-a",
+		LeaseToken: acquired.LeaseToken,
+		TTLSeconds: 300,
+		Timestamp:  now.Add(30 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("renew lease: %v", err)
+	}
+	if !renewed.Active || renewed.Acquired == nil || !*renewed.Acquired || renewed.LeaseToken != acquired.LeaseToken {
+		t.Fatalf("expected active renewed lease: %+v", renewed)
+	}
+
+	released, err := service.ReleaseSchedulerExecutionLease(ctx, command.ReleaseSchedulerExecutionLeaseCommand{
+		JobID:      "schedule:lease-1",
+		HolderID:   "scheduler:worker-a",
+		LeaseToken: acquired.LeaseToken,
+		Timestamp:  now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("release lease: %v", err)
+	}
+	if released.Active {
+		t.Fatalf("expected released lease inactive: %+v", released)
+	}
+
+	listed, err := service.ListSchedulerExecutionLeases(ctx)
+	if err != nil {
+		t.Fatalf("list leases: %v", err)
+	}
+	if listed.Totals["leases"] != 0 || listed.SideEffect != "runtime_state_only" {
+		t.Fatalf("unexpected lease list: %+v", listed)
+	}
+}
