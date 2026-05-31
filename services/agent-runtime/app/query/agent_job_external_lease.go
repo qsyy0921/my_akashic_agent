@@ -20,3 +20,30 @@ type AgentJobExternalLeaseReadinessView struct {
 	Notes                   []string                     `json:"notes,omitempty"`
 	SideEffect              string                       `json:"side_effect"`
 }
+
+type AgentJobExternalLeasePlanView struct {
+	Ready                     bool                               `json:"ready"`
+	Decision                  string                             `json:"decision"`
+	DesiredExecutionOwner     string                             `json:"desired_execution_owner"`
+	RecommendedExecutionOwner string                             `json:"recommended_execution_owner"`
+	CurrentExecutionOwner     string                             `json:"current_execution_owner"`
+	Readiness                 AgentJobExternalLeaseReadinessView `json:"readiness"`
+	RequiredChecks            []AgentJobExternalLeasePlanStep    `json:"required_checks,omitempty"`
+	EnableSteps               []AgentJobExternalLeasePlanStep    `json:"enable_steps,omitempty"`
+	VerificationSteps         []AgentJobExternalLeasePlanStep    `json:"verification_steps,omitempty"`
+	RollbackSteps             []AgentJobExternalLeasePlanStep    `json:"rollback_steps,omitempty"`
+	Blockers                  []string                           `json:"blockers,omitempty"`
+	Attributes                map[string]string                  `json:"attributes,omitempty"`
+	Notes                     []string                           `json:"notes,omitempty"`
+	SideEffect                string                             `json:"side_effect"`
+}
+
+type AgentJobExternalLeasePlanStep struct {
+	StepIndex int               `json:"step_index"`
+	Phase     string            `json:"phase"`
+	Action    string            `json:"action"`
+	Detail    string            `json:"detail,omitempty"`
+	Method    string            `json:"method,omitempty"`
+	Endpoint  string            `json:"endpoint,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+}

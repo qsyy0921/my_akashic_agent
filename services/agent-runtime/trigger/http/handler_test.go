@@ -1795,7 +1795,7 @@ func TestAgentJobExternalLeaseReadinessEndpointReturnsReadOnlyGate(t *testing.T)
 			Blockers:                []string{"agent_job_not_allowed_in_external_lease"},
 			SideEffect:              "none",
 		},
-	})
+	}, nil)
 
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/readiness?stale_after_seconds=60", nil))
@@ -1813,6 +1813,55 @@ func TestAgentJobExternalLeaseReadinessEndpointReturnsReadOnlyGate(t *testing.T)
 	} {
 		if !strings.Contains(bodyText, expected) {
 			t.Fatalf("agent job external lease readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
+func TestAgentJobExternalLeasePlanEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, nil, staticAgentJobExternalLeasePlanner{
+		view: query.AgentJobExternalLeasePlanView{
+			Ready:                     false,
+			Decision:                  "ready_to_enable_result_ack",
+			DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+			RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+			CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+			Readiness: query.AgentJobExternalLeaseReadinessView{
+				Ready:      true,
+				Reason:     "agent_job_external_lease_ready",
+				SideEffect: "none",
+			},
+			EnableSteps: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "enable",
+				Action:    "configure_agent_job_nats_result_ack",
+				Env:       map[string]string{"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "true"},
+			}},
+			RollbackSteps: []query.AgentJobExternalLeasePlanStep{{
+				StepIndex: 1,
+				Phase:     "rollback",
+				Action:    "disable_agent_job_result_ack_scope",
+				Env:       map[string]string{"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "false"},
+			}},
+			SideEffect: "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/plan?desired_execution_owner=nats_result_ack", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job external lease plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"decision":"ready_to_enable_result_ack"`,
+		`"desired_execution_owner":"python_ai_worker_with_nats_result_ack"`,
+		`"current_execution_owner":"python_ai_worker_state_store_lease"`,
+		`"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED":"true"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job external lease plan response missing %s: %s", expected, bodyText)
 		}
 	}
 }
@@ -3346,6 +3395,14 @@ type staticAgentJobExternalLeaseReadinessChecker struct {
 }
 
 func (s staticAgentJobExternalLeaseReadinessChecker) CheckAgentJobExternalLeaseReadiness(context.Context, command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobExternalLeasePlanner struct {
+	view query.AgentJobExternalLeasePlanView
+}
+
+func (s staticAgentJobExternalLeasePlanner) PlanAgentJobExternalLease(context.Context, command.PlanAgentJobExternalLeaseCommand) (query.AgentJobExternalLeasePlanView, error) {
 	return s.view, nil
 }
 

@@ -692,6 +692,18 @@ enabled, and high-pressure job types do not have danger-level Python worker
 coverage. It does not lease jobs, acknowledge NATS messages, start Python
 workers, or execute model/RAG/memory work.
 
+Plan `agent_job` result-ack cutover without changing runtime state:
+
+```text
+GET /v1/agent-job-external-lease/plan?desired_execution_owner=nats_result_ack
+```
+
+The plan returns required checks, env hints, verification endpoints and rollback
+steps for moving only generic `agent_job` queue acknowledgement into NATS
+external lease. Python keeps executing AI jobs; Go only controls AgentJob
+lifecycle, result-ack mapping and read-only diagnostics. Rollback removes the
+`agent_job` result-ack scope without disabling the outbox external lease path.
+
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple

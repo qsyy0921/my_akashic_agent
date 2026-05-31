@@ -107,8 +107,10 @@ func RegisterAgentJobMetricsRoutes(
 func RegisterAgentJobExternalLeaseRoutes(
 	mux *http.ServeMux,
 	checker inport.AgentJobExternalLeaseReadinessChecker,
+	planner inport.AgentJobExternalLeasePlanner,
 ) {
 	mux.Handle("/v1/agent-job-external-lease/readiness", AgentJobExternalLeaseReadinessHandler(checker))
+	mux.Handle("/v1/agent-job-external-lease/plan", AgentJobExternalLeasePlanHandler(planner))
 }
 
 func RegisterInboxMetricsRoutes(
@@ -2172,6 +2174,32 @@ func AgentJobExternalLeaseReadinessHandler(checker inport.AgentJobExternalLeaseR
 			JobLimit:          parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
 			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
 			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func AgentJobExternalLeasePlanHandler(planner inport.AgentJobExternalLeasePlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "agent job external lease plan disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := planner.PlanAgentJobExternalLease(r.Context(), command.PlanAgentJobExternalLeaseCommand{
+			Readiness: command.CheckAgentJobExternalLeaseReadinessCommand{
+				JobLimit:          parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
+				EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
+				StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+			},
+			DesiredExecutionOwner: r.URL.Query().Get("desired_execution_owner"),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

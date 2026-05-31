@@ -5,3 +5,8 @@ type CheckAgentJobExternalLeaseReadinessCommand struct {
 	EventLimit        int
 	StaleAfterSeconds int
 }
+
+type PlanAgentJobExternalLeaseCommand struct {
+	Readiness             CheckAgentJobExternalLeaseReadinessCommand
+	DesiredExecutionOwner string
+}
