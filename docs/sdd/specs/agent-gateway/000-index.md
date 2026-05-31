@@ -64,4 +64,6 @@ execution.
 - `024-receiver-status-diagnostics.md`: Go-owned runtime diagnostics for
   Python platform receiver lifecycle states, including QQ connected status and
   Telegram polling conflict suspension.
+- `025-receiver-lease-control.md`: Go-owned receiver lease control for
+  single-instance long-running platform polling loops.
 - Agent architecture boundary specs live under `../agent-architecture/`.

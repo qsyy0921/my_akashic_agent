@@ -158,6 +158,10 @@ func RegisterReceiverStatusRoutes(
 ) {
 	mux.Handle("/v1/receiver-statuses/report", ReceiverStatusReportHandler(manager))
 	mux.Handle("/v1/receiver-statuses", ReceiverStatusesHandler(manager))
+	mux.Handle("/v1/receiver-leases/acquire", ReceiverLeaseAcquireHandler(manager))
+	mux.Handle("/v1/receiver-leases/renew", ReceiverLeaseRenewHandler(manager))
+	mux.Handle("/v1/receiver-leases/release", ReceiverLeaseReleaseHandler(manager))
+	mux.Handle("/v1/receiver-leases", ReceiverLeasesHandler(manager))
 }
 
 func RegisterRuntimeOverviewRoutes(
@@ -1030,6 +1034,132 @@ func ReceiverStatusReportHandler(manager inport.ReceiverStatusManager) http.Hand
 				Code:    types.ErrorCodeInvalidArgument,
 				Message: err.Error(),
 			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverLeasesHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver lease manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := manager.ListReceiverLeases(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverLeaseAcquireHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver lease manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.AcquireReceiverLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.AcquireReceiverLease(r.Context(), command.AcquireReceiverLeaseCommand{
+			ReceiverID:  request.ReceiverID,
+			Kind:        request.Kind,
+			ChannelName: request.ChannelName,
+			AccountID:   request.AccountID,
+			HolderID:    request.HolderID,
+			TTLSeconds:  request.TTLSeconds,
+			Metadata:    request.Metadata,
+			Timestamp:   timestamp,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverLeaseRenewHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver lease manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RenewReceiverLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.RenewReceiverLease(r.Context(), command.RenewReceiverLeaseCommand{
+			ReceiverID: request.ReceiverID,
+			HolderID:   request.HolderID,
+			LeaseToken: request.LeaseToken,
+			TTLSeconds: request.TTLSeconds,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverLeaseReleaseHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver lease manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.ReleaseReceiverLeaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.ReleaseReceiverLease(r.Context(), command.ReleaseReceiverLeaseCommand{
+			ReceiverID: request.ReceiverID,
+			HolderID:   request.HolderID,
+			LeaseToken: request.LeaseToken,
+			Timestamp:  timestamp,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})

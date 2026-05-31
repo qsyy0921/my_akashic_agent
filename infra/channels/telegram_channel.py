@@ -8,6 +8,8 @@ import logging
 import asyncio
 import html
 import json
+import os
+import socket
 from contextlib import suppress
 from collections.abc import Coroutine
 from dataclasses import dataclass
@@ -115,6 +117,13 @@ class TelegramChannel:
             event_bus.on(ToolCallCompleted, self._on_tool_call_completed)
         self.user_map = self._identity_index.mapping
         self._polling_conflict_task: asyncio.Task[None] | None = None
+        self._receiver_lease_task: asyncio.Task[None] | None = None
+        self._receiver_lease_receiver_id = ""
+        self._receiver_lease_token = ""
+        self._receiver_lease_ttl_seconds = 120
+        self._receiver_holder_id = (
+            f"telegram:{self._channel}:{socket.gethostname()}:{os.getpid()}"
+        )
         self._telegram_outbound_limiter = TelegramOutboundLimiter()
         self._active_streams: dict[str, TelegramStreamMessage] = {}
         self._live_edit_queue = TelegramLiveEditQueue(limiter=self._telegram_outbound_limiter)
@@ -201,10 +210,27 @@ class TelegramChannel:
         updater = self._app.updater
         if updater is None:
             raise RuntimeError("Telegram updater 未初始化")
+        lease = await self._acquire_receiver_lease()
+        if lease is not None and not bool(lease.get("acquired")):
+            await self._report_receiver_status(
+                "suspended",
+                reason="receiver_lease_held",
+                metadata={
+                    "holder_id": str(lease.get("holder_id") or ""),
+                    "expires_at": str(lease.get("expires_at") or ""),
+                },
+            )
+            logger.warning(
+                "[telegram] receiver lease denied; polling not started holder=%s expires_at=%s",
+                lease.get("holder_id"),
+                lease.get("expires_at"),
+            )
+            return
         await updater.start_polling(
             allowed_updates=Update.ALL_TYPES,
             error_callback=self._on_polling_error,
         )
+        self._start_receiver_lease_renewal()
         await self._report_receiver_status(
             "connected",
             reason="polling_started",
@@ -241,11 +267,13 @@ class TelegramChannel:
     async def stop(self) -> None:
         if self._polling_conflict_task and not self._polling_conflict_task.done():
             await self._polling_conflict_task
+        await self._stop_receiver_lease_renewal()
         if self._live_tasks:
             _ = await asyncio.gather(*self._live_tasks, return_exceptions=True)
         updater = self._app.updater
         if updater and updater.running:
             await updater.stop()
+        await self._release_receiver_lease()
         await self._app.stop()
         await self._app.shutdown()
         logger.info("TelegramChannel 已停止")
@@ -932,6 +960,8 @@ class TelegramChannel:
             return
         try:
             await updater.stop()
+            await self._stop_receiver_lease_renewal()
+            await self._release_receiver_lease()
             await self._report_receiver_status(
                 "suspended",
                 reason="getupdates_conflict",
@@ -942,6 +972,79 @@ class TelegramChannel:
             )
         except Exception as e:
             logger.warning("[telegram] 停止 polling 失败: %s", e)
+
+    async def _acquire_receiver_lease(self) -> dict[str, Any] | None:
+        client = self._receiver_status_client
+        if client is None:
+            return None
+        try:
+            lease = await client.acquire_receiver_lease(
+                kind="telegram",
+                channel_name=self._channel,
+                account_id=self._runtime_bot_id(),
+                holder_id=self._receiver_holder_id,
+                ttl_seconds=self._receiver_lease_ttl_seconds,
+                metadata={"polling": "telegram_getupdates"},
+            )
+        except Exception as exc:
+            logger.debug("[telegram] receiver lease 获取失败，继续兼容启动: %s", exc)
+            return None
+        if bool(lease.get("acquired")):
+            self._receiver_lease_receiver_id = str(lease.get("receiver_id") or "")
+            self._receiver_lease_token = str(lease.get("lease_token") or "")
+        return lease
+
+    def _start_receiver_lease_renewal(self) -> None:
+        if not self._receiver_lease_receiver_id or not self._receiver_lease_token:
+            return
+        if self._receiver_lease_task and not self._receiver_lease_task.done():
+            return
+        self._receiver_lease_task = asyncio.create_task(
+            self._receiver_lease_renewal_loop()
+        )
+
+    async def _stop_receiver_lease_renewal(self) -> None:
+        task = self._receiver_lease_task
+        self._receiver_lease_task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    async def _receiver_lease_renewal_loop(self) -> None:
+        interval = max(15.0, self._receiver_lease_ttl_seconds / 2)
+        while True:
+            await asyncio.sleep(interval)
+            client = self._receiver_status_client
+            if client is None or not self._receiver_lease_receiver_id:
+                return
+            try:
+                await client.renew_receiver_lease(
+                    receiver_id=self._receiver_lease_receiver_id,
+                    holder_id=self._receiver_holder_id,
+                    lease_token=self._receiver_lease_token,
+                    ttl_seconds=self._receiver_lease_ttl_seconds,
+                )
+            except Exception as exc:
+                logger.warning("[telegram] receiver lease 续租失败: %s", exc)
+
+    async def _release_receiver_lease(self) -> None:
+        client = self._receiver_status_client
+        receiver_id = self._receiver_lease_receiver_id
+        lease_token = self._receiver_lease_token
+        self._receiver_lease_receiver_id = ""
+        self._receiver_lease_token = ""
+        if client is None or not receiver_id or not lease_token:
+            return
+        try:
+            await client.release_receiver_lease(
+                receiver_id=receiver_id,
+                holder_id=self._receiver_holder_id,
+                lease_token=lease_token,
+            )
+        except Exception as exc:
+            logger.debug("[telegram] receiver lease 释放失败: %s", exc)
 
     async def _report_receiver_status(
         self,

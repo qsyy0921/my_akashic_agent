@@ -289,6 +289,79 @@ func TestReceiverStatusEndpointReportsAndListsReceivers(t *testing.T) {
 	}
 }
 
+func TestReceiverLeaseEndpointAcquireDenyRenewRelease(t *testing.T) {
+	manager := appservice.NewReceiverStatusService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterReceiverStatusRoutes(mux, manager)
+
+	acquireBody := []byte(`{
+		"kind": "telegram",
+		"channel_name": "telegram",
+		"account_id": "7689386159",
+		"holder_id": "python:1",
+		"ttl_seconds": 60
+	}`)
+	acquireResponse := httptest.NewRecorder()
+	mux.ServeHTTP(acquireResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/acquire", bytes.NewReader(acquireBody)))
+	if acquireResponse.Code != http.StatusOK {
+		t.Fatalf("expected acquire 200, got %d: %s", acquireResponse.Code, acquireResponse.Body.String())
+	}
+	var acquirePayload struct {
+		Data query.ReceiverLeaseView `json:"data"`
+	}
+	if err := json.Unmarshal(acquireResponse.Body.Bytes(), &acquirePayload); err != nil {
+		t.Fatalf("decode acquire: %v", err)
+	}
+	if acquirePayload.Data.Acquired == nil || !*acquirePayload.Data.Acquired || acquirePayload.Data.LeaseToken == "" {
+		t.Fatalf("unexpected acquire payload: %s", acquireResponse.Body.String())
+	}
+
+	denyBody := []byte(`{
+		"kind": "telegram",
+		"channel_name": "telegram",
+		"account_id": "7689386159",
+		"holder_id": "python:2",
+		"ttl_seconds": 60
+	}`)
+	denyResponse := httptest.NewRecorder()
+	mux.ServeHTTP(denyResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/acquire", bytes.NewReader(denyBody)))
+	if denyResponse.Code != http.StatusOK {
+		t.Fatalf("expected deny 200, got %d: %s", denyResponse.Code, denyResponse.Body.String())
+	}
+	if !bytes.Contains(denyResponse.Body.Bytes(), []byte(`"acquired":false`)) ||
+		!bytes.Contains(denyResponse.Body.Bytes(), []byte(`"denied_reason":"active_lease_held"`)) {
+		t.Fatalf("deny response missing active lease state: %s", denyResponse.Body.String())
+	}
+
+	renewBody, _ := json.Marshal(map[string]any{
+		"receiver_id": acquirePayload.Data.ReceiverID,
+		"holder_id":   "python:1",
+		"lease_token": acquirePayload.Data.LeaseToken,
+		"ttl_seconds": 120,
+	})
+	renewResponse := httptest.NewRecorder()
+	mux.ServeHTTP(renewResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/renew", bytes.NewReader(renewBody)))
+	if renewResponse.Code != http.StatusOK {
+		t.Fatalf("expected renew 200, got %d: %s", renewResponse.Code, renewResponse.Body.String())
+	}
+
+	releaseBody, _ := json.Marshal(map[string]any{
+		"receiver_id": acquirePayload.Data.ReceiverID,
+		"holder_id":   "python:1",
+		"lease_token": acquirePayload.Data.LeaseToken,
+	})
+	releaseResponse := httptest.NewRecorder()
+	mux.ServeHTTP(releaseResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/release", bytes.NewReader(releaseBody)))
+	if releaseResponse.Code != http.StatusOK {
+		t.Fatalf("expected release 200, got %d: %s", releaseResponse.Code, releaseResponse.Body.String())
+	}
+	listResponse := httptest.NewRecorder()
+	mux.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/v1/receiver-leases", nil))
+	if !bytes.Contains(listResponse.Body.Bytes(), []byte(`"leases":0`)) {
+		t.Fatalf("list response should show no leases: %s", listResponse.Body.String())
+	}
+}
+
 func TestDeliveryAdapterHealthEndpointReturnsReadOnlyProbeResults(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterHealthService(staticHTTPDeliveryHealthProbe{
 		items: []query.DeliveryAdapterHealthView{{

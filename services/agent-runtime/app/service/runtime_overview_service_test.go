@@ -105,6 +105,19 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"receivers": 2, "connected": 1, "suspended": 1, "failed": 0, "qq": 1, "telegram": 1},
 			SideEffect: "none",
 		}},
+		ReceiverLeases: staticReceiverLeases{view: query.ReceiverLeasesView{
+			Leases: []query.ReceiverLeaseView{{
+				ReceiverID:        "telegram:7689386159:telegram",
+				Kind:              "telegram",
+				ChannelName:       "telegram",
+				AccountID:         "7689386159",
+				HolderID:          "python:1",
+				LeaseTokenPresent: true,
+				Active:            true,
+			}},
+			Totals:     map[string]int{"leases": 1, "active": 1, "expired": 0, "telegram": 1},
+			SideEffect: "runtime_state_only",
+		}},
 	})
 
 	view, err := service.Get(context.Background(), query.RuntimeOverviewFilter{
@@ -142,12 +155,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
+	if view.Summary["receiver_leases"] != 1 || view.Summary["receiver_leases_active"] != 1 {
+		t.Fatalf("unexpected receiver lease summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
@@ -251,5 +268,13 @@ type staticReceiverStatuses struct {
 }
 
 func (s staticReceiverStatuses) ListReceiverStatuses(context.Context) (query.ReceiverStatusesView, error) {
+	return s.view, nil
+}
+
+type staticReceiverLeases struct {
+	view query.ReceiverLeasesView
+}
+
+func (s staticReceiverLeases) ListReceiverLeases(context.Context) (query.ReceiverLeasesView, error) {
 	return s.view, nil
 }

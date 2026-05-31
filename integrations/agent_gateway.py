@@ -575,6 +575,99 @@ class AgentGatewayClient:
             )
         return data
 
+    async def acquire_receiver_lease(
+        self,
+        *,
+        kind: str,
+        channel_name: str,
+        holder_id: str,
+        account_id: str = "",
+        receiver_id: str = "",
+        ttl_seconds: int = 120,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/receiver-leases/acquire",
+            json_body={
+                "receiver_id": str(receiver_id or ""),
+                "kind": str(kind or ""),
+                "channel_name": str(channel_name or ""),
+                "account_id": str(account_id or ""),
+                "holder_id": str(holder_id or ""),
+                "ttl_seconds": int(ttl_seconds or 120),
+                "metadata": metadata or {},
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver lease acquire response is not an object"
+            )
+        if "acquired" not in data:
+            raise AgentGatewayError(
+                "agent runtime receiver lease acquire response has no acquired field"
+            )
+        return data
+
+    async def renew_receiver_lease(
+        self,
+        *,
+        receiver_id: str,
+        holder_id: str,
+        lease_token: str,
+        ttl_seconds: int = 120,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/receiver-leases/renew",
+            json_body={
+                "receiver_id": str(receiver_id or ""),
+                "holder_id": str(holder_id or ""),
+                "lease_token": str(lease_token or ""),
+                "ttl_seconds": int(ttl_seconds or 120),
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver lease renew response is not an object"
+            )
+        return data
+
+    async def release_receiver_lease(
+        self,
+        *,
+        receiver_id: str,
+        holder_id: str,
+        lease_token: str,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/receiver-leases/release",
+            json_body={
+                "receiver_id": str(receiver_id or ""),
+                "holder_id": str(holder_id or ""),
+                "lease_token": str(lease_token or ""),
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver lease release response is not an object"
+            )
+        return data
+
+    async def list_receiver_leases(self) -> dict[str, Any]:
+        data = await self._request("GET", "/v1/receiver-leases")
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime receiver leases response is not an object"
+            )
+        leases = data.get("leases")
+        if not isinstance(leases, list):
+            raise AgentGatewayError(
+                "agent runtime receiver leases response has no leases"
+            )
+        return data
+
     async def get_queue_backend(self) -> dict[str, Any]:
         data = await self._request("GET", "/v1/queue-backend")
         if not isinstance(data, dict):

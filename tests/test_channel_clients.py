@@ -963,6 +963,7 @@ async def test_telegram_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert channel._active_streams.get("456") is None
     await asyncio.sleep(0)
     assert channel._live_messages.get("telegram:456") is not None
+
     channel._thinking_live_next_at["telegram:456"] = 0.0
     await event_bus.observe(
         StreamDeltaReady(
@@ -1141,6 +1142,107 @@ async def test_telegram_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path:
         SimpleNamespace(text="", caption="", photo=[1], from_user=None, message_id=11),
     )
     assert "[图片]" in merged
+
+
+@pytest.mark.asyncio
+async def test_telegram_channel_acquires_receiver_lease(monkeypatch: pytest.MonkeyPatch):
+    mod = _import_telegram_channel(monkeypatch)
+
+    class _ReceiverRuntime:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, Any]]] = []
+
+        async def acquire_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("acquire", kwargs))
+            return {
+                "receiver_id": "telegram:telegram:telegram",
+                "acquired": True,
+                "lease_token": "tok-1",
+            }
+
+        async def renew_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("renew", kwargs))
+            return {"acquired": True}
+
+        async def release_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("release", kwargs))
+            return {"active": False}
+
+        async def report_receiver_status(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("status", kwargs))
+            return {"receivers": []}
+
+    runtime = _ReceiverRuntime()
+    channel = mod.TelegramChannel(
+        "token",
+        _Bus(),
+        _SessionManager(),
+        receiver_status_client=runtime,
+    )
+
+    await channel.start()
+    assert channel._app.updater.running is True
+    assert runtime.calls[0][0] == "acquire"
+    assert runtime.calls[0][1]["holder_id"].startswith("telegram:telegram:")
+    assert (
+        "status",
+        {
+            "kind": "telegram",
+            "channel_name": "telegram",
+            "account_id": "telegram",
+            "status": "connected",
+            "reason": "polling_started",
+            "last_error": "",
+            "source": "python_channel",
+            "metadata": {"polling": "running"},
+        },
+    ) in runtime.calls
+
+    await channel.stop()
+    assert any(call[0] == "release" for call in runtime.calls)
+
+
+@pytest.mark.asyncio
+async def test_telegram_channel_skips_polling_when_receiver_lease_is_held(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_telegram_channel(monkeypatch)
+
+    class _ReceiverRuntime:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, Any]]] = []
+
+        async def acquire_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("acquire", kwargs))
+            return {
+                "receiver_id": "telegram:telegram:telegram",
+                "acquired": False,
+                "holder_id": "other-python",
+                "expires_at": "2026-05-31T00:00:00Z",
+            }
+
+        async def report_receiver_status(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("status", kwargs))
+            return {"receivers": []}
+
+    runtime = _ReceiverRuntime()
+    channel = mod.TelegramChannel(
+        "token",
+        _Bus(),
+        _SessionManager(),
+        receiver_status_client=runtime,
+    )
+
+    await channel.start()
+    assert channel._app.updater.running is False
+    assert any(
+        call[0] == "status"
+        and call[1]["status"] == "suspended"
+        and call[1]["reason"] == "receiver_lease_held"
+        for call in runtime.calls
+    )
+
+    await channel.stop()
 
 
 @pytest.mark.asyncio

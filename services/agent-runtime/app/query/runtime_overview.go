@@ -35,6 +35,7 @@ type RuntimeOverviewView struct {
 	RuntimeWorkers    RuntimeWorkerDiagnosticsView     `json:"runtime_workers"`
 	ObserveTargets    ObserveTargetsView               `json:"observe_targets"`
 	ReceiverStatuses  ReceiverStatusesView             `json:"receiver_statuses"`
+	ReceiverLeases    ReceiverLeasesView               `json:"receiver_leases"`
 	SendLedgerMetrics SendLedgerMetricsView            `json:"send_ledger_metrics"`
 	InboxMetrics      InboxMetricsView                 `json:"inbox_metrics"`
 	AgentJobMetrics   AgentJobMetricsView              `json:"agent_job_metrics"`

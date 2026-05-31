@@ -574,6 +574,71 @@ async def test_agent_gateway_client_reports_and_lists_receiver_statuses():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_manages_receiver_leases():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        if request.url.path == "/v1/receiver-leases/acquire":
+            assert body["holder_id"] == "python:1"
+            return _ok(
+                {
+                    "receiver_id": "telegram:7689386159:telegram",
+                    "acquired": True,
+                    "lease_token": "tok-1",
+                    "lease_token_present": True,
+                    "active": True,
+                }
+            )
+        if request.url.path == "/v1/receiver-leases/renew":
+            assert body["lease_token"] == "tok-1"
+            return _ok({"receiver_id": body["receiver_id"], "acquired": True})
+        if request.url.path == "/v1/receiver-leases/release":
+            assert body["lease_token"] == "tok-1"
+            return _ok({"receiver_id": body["receiver_id"], "active": False})
+        if request.url.path == "/v1/receiver-leases":
+            return _ok(
+                {
+                    "leases": [{"receiver_id": "telegram:7689386159:telegram"}],
+                    "totals": {"leases": 1, "active": 1},
+                    "side_effect": "runtime_state_only",
+                }
+            )
+        return httpx.Response(404, text="not found")
+
+    client = _client(handler)
+    acquired = await client.acquire_receiver_lease(
+        kind="telegram",
+        channel_name="telegram",
+        account_id="7689386159",
+        holder_id="python:1",
+    )
+    renewed = await client.renew_receiver_lease(
+        receiver_id=acquired["receiver_id"],
+        holder_id="python:1",
+        lease_token=acquired["lease_token"],
+    )
+    released = await client.release_receiver_lease(
+        receiver_id=acquired["receiver_id"],
+        holder_id="python:1",
+        lease_token=acquired["lease_token"],
+    )
+    listed = await client.list_receiver_leases()
+
+    assert acquired["acquired"] is True
+    assert renewed["acquired"] is True
+    assert released["active"] is False
+    assert listed["totals"]["active"] == 1
+    assert [call[1] for call in calls] == [
+        "/v1/receiver-leases/acquire",
+        "/v1/receiver-leases/renew",
+        "/v1/receiver-leases/release",
+        "/v1/receiver-leases",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

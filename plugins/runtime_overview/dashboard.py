@@ -324,6 +324,7 @@ class RuntimeOverviewDashboardReader:
             "queue_backend": queue_backend,
             "observe_targets": _normalize_observe_targets({}),
             "receiver_statuses": _normalize_receiver_statuses({}),
+            "receiver_leases": _normalize_receiver_leases({}),
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -978,6 +979,9 @@ def _normalize_go_runtime_overview(
     receiver_statuses = _normalize_receiver_statuses(
         _mapping_or_empty(item.get("receiver_statuses"))
     )
+    receiver_leases = _normalize_receiver_leases(
+        _mapping_or_empty(item.get("receiver_leases"))
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1024,6 +1028,7 @@ def _normalize_go_runtime_overview(
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "receiver_statuses": receiver_statuses,
+        "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -1077,6 +1082,9 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "receiver_status_failed": 0,
         "receiver_status_qq": 0,
         "receiver_status_telegram": 0,
+        "receiver_leases": 0,
+        "receiver_leases_active": 0,
+        "receiver_leases_expired": 0,
         "send_ledger_records": 0,
         "send_ledger_repeated_hashes": 0,
         "inbox_metric_events": 0,
@@ -1242,6 +1250,58 @@ def _normalize_receiver_status(item: Mapping[str, Any]) -> dict[str, Any]:
         "source": _text(item.get("source")),
         "metadata": dict(_mapping_or_empty(item.get("metadata"))),
         "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_receiver_leases(item: Mapping[str, Any]) -> dict[str, Any]:
+    leases_raw = item.get("leases")
+    if not isinstance(leases_raw, list):
+        leases_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    leases = [
+        _normalize_receiver_lease(value)
+        for value in leases_raw
+        if isinstance(value, Mapping)
+    ]
+    return {
+        "leases": leases,
+        "totals": {
+            "leases": _int_value(totals.get("leases"), fallback=len(leases)),
+            "active": _int_value(
+                totals.get("active"),
+                fallback=sum(1 for value in leases if value["active"]),
+            ),
+            "expired": _int_value(totals.get("expired"), fallback=0),
+            "qq": _int_value(
+                totals.get("qq"),
+                fallback=sum(1 for value in leases if value["kind"] == "qq"),
+            ),
+            "telegram": _int_value(
+                totals.get("telegram"),
+                fallback=sum(1 for value in leases if value["kind"] == "telegram"),
+            ),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "runtime_state_only"),
+    }
+
+
+def _normalize_receiver_lease(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "receiver_id": _text(item.get("receiver_id")),
+        "kind": _text(item.get("kind")),
+        "channel_name": _text(item.get("channel_name")),
+        "account_id": _text(item.get("account_id")),
+        "holder_id": _text(item.get("holder_id")),
+        "lease_token_present": bool(item.get("lease_token_present")),
+        "active": bool(item.get("active")),
+        "expires_at": _text(item.get("expires_at")),
+        "acquired_at": _text(item.get("acquired_at")),
+        "updated_at": _text(item.get("updated_at")),
+        "metadata": dict(_mapping_or_empty(item.get("metadata"))),
     }
 
 

@@ -485,6 +485,27 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "side_effect": "none",
     }
+    receiver_leases = {
+        "leases": [
+            {
+                "receiver_id": "telegram:7689386159:telegram",
+                "kind": "telegram",
+                "channel_name": "telegram",
+                "account_id": "7689386159",
+                "holder_id": "telegram:telegram:host:123",
+                "lease_token_present": True,
+                "active": True,
+                "expires_at": "2026-05-31T00:10:00Z",
+            }
+        ],
+        "totals": {
+            "leases": 1,
+            "active": 1,
+            "expired": 0,
+            "telegram": 1,
+        },
+        "side_effect": "runtime_state_only",
+    }
     go_overview = {
         "summary": {
             "jobs_total": 3,
@@ -521,6 +542,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "receiver_status_failed": 0,
             "receiver_status_qq": 1,
             "receiver_status_telegram": 1,
+            "receiver_leases": 1,
+            "receiver_leases_active": 1,
+            "receiver_leases_expired": 0,
             "send_ledger_records": 4,
             "send_ledger_repeated_hashes": 1,
             "inbox_metric_events": 9,
@@ -542,6 +566,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
+            {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
@@ -552,6 +577,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "receiver_statuses": receiver_statuses,
+        "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "agent_job_metrics": agent_job_metrics,
@@ -656,6 +682,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["observe_target_groups"] == 1
     assert payload["summary"]["receiver_statuses"] == 2
     assert payload["summary"]["receiver_status_suspended"] == 1
+    assert payload["summary"]["receiver_leases"] == 1
+    assert payload["summary"]["receiver_leases_active"] == 1
     assert payload["summary"]["send_ledger_records"] == 4
     assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
@@ -688,6 +716,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert receiver_card["status"] == "warn"
     assert payload["receiver_statuses"]["receivers"][1]["reason"] == "getupdates_conflict"
     assert payload["receiver_statuses"]["totals"]["telegram"] == 1
+    lease_card = next(item for item in payload["cards"] if item["id"] == "receiver_leases")
+    assert lease_card["status"] == "ok"
+    assert payload["receiver_leases"]["leases"][0]["lease_token_present"] is True
+    assert payload["receiver_leases"]["side_effect"] == "runtime_state_only"
     send_ledger_card = next(
         item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
     )

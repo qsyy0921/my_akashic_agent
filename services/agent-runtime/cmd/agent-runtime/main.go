@@ -248,6 +248,7 @@ func main() {
 		RuntimeWorkers:       runtimeWorkers,
 		ObserveTargets:       observeTargets,
 		ReceiverStatuses:     receiverStatuses,
+		ReceiverLeases:       receiverStatuses,
 	})
 
 	mux := http.NewServeMux()

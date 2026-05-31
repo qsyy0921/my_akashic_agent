@@ -27,6 +27,7 @@ type RuntimeOverviewDeps struct {
 	RuntimeWorkers       runtimeWorkerDiagnosticsGetter
 	ObserveTargets       runtimeObserveTargetsGetter
 	ReceiverStatuses     runtimeReceiverStatusesGetter
+	ReceiverLeases       runtimeReceiverLeasesGetter
 }
 
 type runtimeQueueBackendGetter interface {
@@ -73,6 +74,10 @@ type runtimeReceiverStatusesGetter interface {
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
 }
 
+type runtimeReceiverLeasesGetter interface {
+	ListReceiverLeases(ctx context.Context) (query.ReceiverLeasesView, error)
+}
+
 type RuntimeOverviewService struct {
 	deps RuntimeOverviewDeps
 }
@@ -108,6 +113,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeWorkers   query.RuntimeWorkerDiagnosticsView
 		observeTargets   query.ObserveTargetsView
 		receiverStatuses query.ReceiverStatusesView
+		receiverLeases   query.ReceiverLeasesView
 	)
 
 	if s == nil {
@@ -204,6 +210,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		} else {
 			receiverStatuses = item
 		}
+
+		if deps.ReceiverLeases == nil {
+			errors = append(errors, runtimeOverviewError("receiver-leases", fmt.Errorf("receiver lease diagnostics disabled")))
+		} else if item, err := deps.ReceiverLeases.ListReceiverLeases(ctx); err != nil {
+			errors = append(errors, runtimeOverviewError("receiver-leases", err))
+		} else {
+			receiverLeases = item
+		}
 	}
 
 	summary := runtimeOverviewSummary(
@@ -218,6 +232,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeWorkers,
 		observeTargets,
 		receiverStatuses,
+		receiverLeases,
 	)
 	cards := runtimeOverviewCards(
 		summary,
@@ -232,6 +247,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeWorkers,
 		observeTargets,
 		receiverStatuses,
+		receiverLeases,
 		errors,
 	)
 
@@ -244,6 +260,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		RuntimeWorkers:    runtimeWorkers,
 		ObserveTargets:    observeTargets,
 		ReceiverStatuses:  receiverStatuses,
+		ReceiverLeases:    receiverLeases,
 		SendLedgerMetrics: sendLedger,
 		InboxMetrics:      inboxMetrics,
 		AgentJobMetrics:   agentJobMetrics,
@@ -270,6 +287,7 @@ func runtimeOverviewSummary(
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 	observeTargets query.ObserveTargetsView,
 	receiverStatuses query.ReceiverStatusesView,
+	receiverLeases query.ReceiverLeasesView,
 ) map[string]any {
 	enabledAdapters := 0
 	for _, item := range deliveryAdapters {
@@ -322,6 +340,9 @@ func runtimeOverviewSummary(
 		"receiver_status_failed":        intFromMap(receiverStatuses.Totals, "failed"),
 		"receiver_status_qq":            intFromMap(receiverStatuses.Totals, "qq"),
 		"receiver_status_telegram":      intFromMap(receiverStatuses.Totals, "telegram"),
+		"receiver_leases":               intFromMap(receiverLeases.Totals, "leases"),
+		"receiver_leases_active":        intFromMap(receiverLeases.Totals, "active"),
+		"receiver_leases_expired":       intFromMap(receiverLeases.Totals, "expired"),
 		"send_ledger_records":           sendLedger.SampledRecords,
 		"send_ledger_repeated_hashes":   sendLedger.RepeatedContentHashes,
 		"inbox_metric_events":           inboxMetrics.SampledEvents,
@@ -347,6 +368,7 @@ func runtimeOverviewCards(
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 	observeTargets query.ObserveTargetsView,
 	receiverStatuses query.ReceiverStatusesView,
+	receiverLeases query.ReceiverLeasesView,
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
 	queueValue := fmt.Sprintf("%s/%s", emptyAsUnknown(queueBackend.Provider), emptyAsUnknown(queueBackend.Mode))
@@ -366,6 +388,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
+		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
 	}
@@ -495,6 +518,19 @@ func receiverStatusStatus(view query.ReceiverStatusesView) string {
 		return "warn"
 	}
 	if intFromMap(view.Totals, "connected") == 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func receiverLeaseStatus(view query.ReceiverLeasesView) string {
+	if intFromMap(view.Totals, "leases") == 0 {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "expired") > 0 {
+		return "warn"
+	}
+	if intFromMap(view.Totals, "active") == 0 {
 		return "warn"
 	}
 	return "ok"
