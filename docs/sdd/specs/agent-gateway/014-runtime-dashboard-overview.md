@@ -7,7 +7,8 @@ aggregate, runtime config diagnostics, delivery adapter, queue backend,
 Go-owned send ledger metrics diagnostics, Go-owned inbox metrics diagnostics,
 Go-owned agent job metrics diagnostics, Go-owned outbox metrics diagnostics,
 Go-owned runtime worker diagnostics, Go-owned observe target diagnostics, and
-Go-owned receiver status diagnostics, and Go-owned receiver lease diagnostics.
+Go-owned observe capture diagnostics, Go-owned receiver status diagnostics, and
+Go-owned receiver lease diagnostics.
 
 ## Context
 
@@ -73,6 +74,7 @@ GET /v1/job-metrics
 GET /v1/outbox-metrics
 GET /v1/runtime-workers
 GET /v1/observe-targets
+GET /v1/observe-capture-diagnostics
 GET /v1/receiver-statuses
 GET /v1/receiver-leases
 ```
@@ -121,6 +123,9 @@ It summarizes:
   external lease cutover.
 - Go-owned observe target totals and target metadata for configured
   observe-only QQ groups synced from Python config.
+- Go-owned observe capture coverage for QQ observe-only groups, including
+  receiver connectivity, text/image/file evidence, and safe media content
+  readiness.
 - Go-owned receiver lifecycle totals for Python platform receivers, including
   connected QQ channels and suspended Telegram polling.
 - Go-owned receiver lease totals for single-instance polling control, including
@@ -150,6 +155,8 @@ Go owns:
   queue worker configuration.
 - observe target diagnostics semantics, including source-bound sync, target
   validation, reply-disabled observe-only rules, and `side_effect=none`.
+- observe capture diagnostics semantics, including target-level text/image/file
+  coverage and bounded safe media content probing with `side_effect=none`.
 - receiver status diagnostics semantics, including latest status by receiver,
   connected/suspended/failed counters, and `side_effect=none`.
 - receiver lease diagnostics semantics, including active/expired counters,
@@ -176,6 +183,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
 - `GET /v1/runtime-overview` returns the Go-owned aggregate summary and cards.
 - `GET /v1/receiver-leases` returns Go-owned single-instance receiver lease
   diagnostics with token values redacted from list responses.
+- `GET /v1/observe-capture-diagnostics` returns Go-owned capture coverage for
+  observe-only QQ groups without platform sends or model calls.
 - `GET /v1/runtime-config` returns sanitized runtime configuration with
   `side_effect=none`, no secret leakage, and OneBot alias readiness blockers.
 - The panel is discoverable via `/api/dashboard/plugins`.
@@ -186,8 +195,8 @@ remain in the specific job/outbox plugins where mutation is explicit.
   visibility, queue backend visibility, Go-owned send ledger metrics,
   Go-owned inbox metrics, Go-owned `agent_job` metrics, and Go-owned outbox
   metrics, Go-owned runtime worker diagnostics, Go-owned observe target
-  diagnostics, Go-owned receiver status diagnostics, and Go-owned receiver
-  lease diagnostics.
+  diagnostics, Go-owned observe capture diagnostics, Go-owned receiver status
+  diagnostics, and Go-owned receiver lease diagnostics.
 - Tests cover Python fallback to the old multi-endpoint path when the Go
   aggregate is unavailable.
 - Tests cover the manual adapter health proxy and confirm normal overview

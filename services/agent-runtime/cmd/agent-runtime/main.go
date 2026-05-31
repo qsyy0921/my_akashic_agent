@@ -228,6 +228,13 @@ func main() {
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
 	observeTargets := appservice.NewObserveTargetService()
 	receiverStatuses := appservice.NewReceiverStatusService()
+	observeCaptureDiagnostics := appservice.NewObserveCaptureDiagnosticsService(
+		observeTargets,
+		receiverStatuses,
+		inboxEventRepository,
+		mediaAssetRepository,
+		mediaContentReader,
+	)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -247,6 +254,7 @@ func main() {
 		KnowledgeDiagnostics: knowledgeDiagnostics,
 		RuntimeWorkers:       runtimeWorkers,
 		ObserveTargets:       observeTargets,
+		ObserveCapture:       observeCaptureDiagnostics,
 		ReceiverStatuses:     receiverStatuses,
 		ReceiverLeases:       receiverStatuses,
 	})
@@ -268,6 +276,7 @@ func main() {
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
 	httptrigger.RegisterObserveTargetRoutes(mux, observeTargets)
+	httptrigger.RegisterObserveCaptureDiagnosticsRoutes(mux, observeCaptureDiagnostics)
 	httptrigger.RegisterReceiverStatusRoutes(mux, receiverStatuses)
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)

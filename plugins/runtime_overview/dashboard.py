@@ -191,6 +191,37 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        observe_targets_raw, error = self._read_mapping("/v1/observe-targets")
+        if error:
+            errors.append({"endpoint": "observe-targets", "error": error})
+            observe_targets_raw = {}
+        else:
+            successful_reads += 1
+
+        observe_capture_raw, error = self._read_mapping(
+            "/v1/observe-capture-diagnostics",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "observe-capture-diagnostics", "error": error})
+            observe_capture_raw = {}
+        else:
+            successful_reads += 1
+
+        receiver_statuses_raw, error = self._read_mapping("/v1/receiver-statuses")
+        if error:
+            errors.append({"endpoint": "receiver-statuses", "error": error})
+            receiver_statuses_raw = {}
+        else:
+            successful_reads += 1
+
+        receiver_leases_raw, error = self._read_mapping("/v1/receiver-leases")
+        if error:
+            errors.append({"endpoint": "receiver-leases", "error": error})
+            receiver_leases_raw = {}
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -218,6 +249,10 @@ class RuntimeOverviewDashboardReader:
         inbox_metrics = _normalize_inbox_metrics(inbox_metrics_raw)
         agent_job_metrics = _normalize_agent_job_metrics(agent_job_metrics_raw)
         outbox_metrics = _normalize_outbox_metrics(outbox_metrics_raw)
+        observe_targets = _normalize_observe_targets(observe_targets_raw)
+        observe_capture = _normalize_observe_capture(observe_capture_raw)
+        receiver_statuses = _normalize_receiver_statuses(receiver_statuses_raw)
+        receiver_leases = _normalize_receiver_leases(receiver_leases_raw)
 
         job_leases = [item for item in jobs if _has_active_lease(item)]
         outbox_leases = [item for item in outbox if _has_active_lease(item)]
@@ -267,6 +302,28 @@ class RuntimeOverviewDashboardReader:
             "queue_consumer_concurrency": queue_backend["consumer_concurrency"],
             "queue_max_in_flight": queue_backend["max_in_flight"],
             "queue_external_lease_ready": queue_backend["external_lease_ready"],
+            "observe_targets": observe_targets["totals"]["targets"],
+            "observe_targets_enabled": observe_targets["totals"]["enabled"],
+            "observe_targets_observe_only": observe_targets["totals"]["observe_only"],
+            "observe_targets_reply_allowed": observe_targets["totals"]["reply_allowed"],
+            "observe_target_groups": observe_targets["totals"]["groups"],
+            "observe_capture_targets": observe_capture["totals"]["targets"],
+            "observe_capture_ready": observe_capture["totals"]["ready"],
+            "observe_capture_warning": observe_capture["totals"]["warning"],
+            "observe_capture_blocked": observe_capture["totals"]["blocked"],
+            "observe_capture_text": observe_capture["totals"]["text_covered"],
+            "observe_capture_image": observe_capture["totals"]["image_covered"],
+            "observe_capture_file": observe_capture["totals"]["file_covered"],
+            "observe_capture_content_ready": observe_capture["totals"]["content_ready_assets"],
+            "receiver_statuses": receiver_statuses["totals"]["receivers"],
+            "receiver_status_connected": receiver_statuses["totals"]["connected"],
+            "receiver_status_suspended": receiver_statuses["totals"]["suspended"],
+            "receiver_status_failed": receiver_statuses["totals"]["failed"],
+            "receiver_status_qq": receiver_statuses["totals"]["qq"],
+            "receiver_status_telegram": receiver_statuses["totals"]["telegram"],
+            "receiver_leases": receiver_leases["totals"]["leases"],
+            "receiver_leases_active": receiver_leases["totals"]["active"],
+            "receiver_leases_expired": receiver_leases["totals"]["expired"],
             "send_ledger_records": send_ledger_metrics["sampled_records"],
             "send_ledger_repeated_hashes": send_ledger_metrics["repeated_content_hashes"],
             "inbox_metric_events": inbox_metrics["sampled_events"],
@@ -295,6 +352,10 @@ class RuntimeOverviewDashboardReader:
             delivery_adapters=delivery_adapters,
             disabled_adapters=disabled_adapters,
             queue_backend=queue_backend,
+            observe_targets=observe_targets,
+            observe_capture=observe_capture,
+            receiver_statuses=receiver_statuses,
+            receiver_leases=receiver_leases,
             send_ledger_metrics=send_ledger_metrics,
             inbox_metrics=inbox_metrics,
             agent_job_metrics=agent_job_metrics,
@@ -322,9 +383,10 @@ class RuntimeOverviewDashboardReader:
             "diagnostics": diagnostics,
             "delivery_adapters": delivery_adapters,
             "queue_backend": queue_backend,
-            "observe_targets": _normalize_observe_targets({}),
-            "receiver_statuses": _normalize_receiver_statuses({}),
-            "receiver_leases": _normalize_receiver_leases({}),
+            "observe_targets": observe_targets,
+            "observe_capture": observe_capture,
+            "receiver_statuses": receiver_statuses,
+            "receiver_leases": receiver_leases,
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -976,6 +1038,9 @@ def _normalize_go_runtime_overview(
     observe_targets = _normalize_observe_targets(
         _mapping_or_empty(item.get("observe_targets"))
     )
+    observe_capture = _normalize_observe_capture(
+        _mapping_or_empty(item.get("observe_capture"))
+    )
     receiver_statuses = _normalize_receiver_statuses(
         _mapping_or_empty(item.get("receiver_statuses"))
     )
@@ -1027,6 +1092,7 @@ def _normalize_go_runtime_overview(
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
+        "observe_capture": observe_capture,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
@@ -1076,6 +1142,14 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "observe_targets_observe_only": 0,
         "observe_targets_reply_allowed": 0,
         "observe_target_groups": 0,
+        "observe_capture_targets": 0,
+        "observe_capture_ready": 0,
+        "observe_capture_warning": 0,
+        "observe_capture_blocked": 0,
+        "observe_capture_text": 0,
+        "observe_capture_image": 0,
+        "observe_capture_file": 0,
+        "observe_capture_content_ready": 0,
         "receiver_statuses": 0,
         "receiver_status_connected": 0,
         "receiver_status_suspended": 0,
@@ -1187,6 +1261,101 @@ def _normalize_observe_target(item: Mapping[str, Any]) -> dict[str, Any]:
         "source": _text(item.get("source")),
         "metadata": _mapping_or_empty(item.get("metadata")),
         "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_observe_capture(item: Mapping[str, Any]) -> dict[str, Any]:
+    targets_raw = item.get("targets")
+    if not isinstance(targets_raw, list):
+        targets_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    targets = [
+        _normalize_observe_capture_target(value)
+        for value in targets_raw
+        if isinstance(value, Mapping)
+    ]
+    return {
+        "targets": targets,
+        "totals": {
+            "targets": _int_value(totals.get("targets"), fallback=len(targets)),
+            "enabled": _int_value(
+                totals.get("enabled"),
+                fallback=sum(1 for value in targets if value["enabled"]),
+            ),
+            "ready": _int_value(
+                totals.get("ready"),
+                fallback=sum(1 for value in targets if value["status"] == "ok"),
+            ),
+            "warning": _int_value(
+                totals.get("warning"),
+                fallback=sum(1 for value in targets if value["status"] == "warn"),
+            ),
+            "blocked": _int_value(
+                totals.get("blocked"),
+                fallback=sum(1 for value in targets if value["status"] == "danger"),
+            ),
+            "receiver_connected": _int_value(totals.get("receiver_connected"), fallback=0),
+            "text_covered": _int_value(totals.get("text_covered"), fallback=0),
+            "attachment_covered": _int_value(totals.get("attachment_covered"), fallback=0),
+            "image_covered": _int_value(totals.get("image_covered"), fallback=0),
+            "file_covered": _int_value(totals.get("file_covered"), fallback=0),
+            "media_assets": _int_value(totals.get("media_assets"), fallback=0),
+            "image_assets": _int_value(totals.get("image_assets"), fallback=0),
+            "file_assets": _int_value(totals.get("file_assets"), fallback=0),
+            "content_ready_assets": _int_value(totals.get("content_ready_assets"), fallback=0),
+            "content_unavailable_assets": _int_value(totals.get("content_unavailable_assets"), fallback=0),
+            "content_forbidden_assets": _int_value(totals.get("content_forbidden_assets"), fallback=0),
+            "content_disabled_assets": _int_value(totals.get("content_disabled_assets"), fallback=0),
+        },
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_observe_capture_target(item: Mapping[str, Any]) -> dict[str, Any]:
+    channel = _mapping_or_empty(item.get("channel"))
+    coverage = _mapping_or_empty(item.get("coverage"))
+    blockers = item.get("blockers")
+    if not isinstance(blockers, list):
+        blockers = []
+    return {
+        "target_id": _text(item.get("target_id")),
+        "channel": {
+            "kind": _text(channel.get("kind")),
+            "account_id": _text(channel.get("account_id")),
+            "conversation_id": _text(channel.get("conversation_id")),
+            "conversation_type": _text(channel.get("conversation_type")),
+        },
+        "enabled": bool(item.get("enabled")),
+        "observe_only": bool(item.get("observe_only")),
+        "receiver_connected": bool(item.get("receiver_connected")),
+        "receiver_id": _text(item.get("receiver_id")),
+        "receiver_status": _text(item.get("receiver_status")),
+        "status": _text(item.get("status")),
+        "blockers": [str(value) for value in blockers],
+        "inbox_events": _int_value(item.get("inbox_events"), fallback=0),
+        "text_events": _int_value(item.get("text_events"), fallback=0),
+        "attachment_events": _int_value(item.get("attachment_events"), fallback=0),
+        "attachment_count": _int_value(item.get("attachment_count"), fallback=0),
+        "media_assets": _int_value(item.get("media_assets"), fallback=0),
+        "image_assets": _int_value(item.get("image_assets"), fallback=0),
+        "file_assets": _int_value(item.get("file_assets"), fallback=0),
+        "content_ready_assets": _int_value(item.get("content_ready_assets"), fallback=0),
+        "content_unavailable_assets": _int_value(item.get("content_unavailable_assets"), fallback=0),
+        "content_forbidden_assets": _int_value(item.get("content_forbidden_assets"), fallback=0),
+        "content_disabled_assets": _int_value(item.get("content_disabled_assets"), fallback=0),
+        "latest_received_at": _text(item.get("latest_received_at")),
+        "latest_asset_at": _text(item.get("latest_asset_at")),
+        "coverage": {
+            "text_seen": bool(coverage.get("text_seen")),
+            "attachment_seen": bool(coverage.get("attachment_seen")),
+            "image_seen": bool(coverage.get("image_seen")),
+            "file_seen": bool(coverage.get("file_seen")),
+            "media_content_ready": bool(coverage.get("media_content_ready")),
+        },
     }
 
 
@@ -1352,6 +1521,10 @@ def _overview_cards(
     delivery_adapters: list[dict[str, Any]],
     disabled_adapters: list[dict[str, Any]],
     queue_backend: dict[str, Any],
+    observe_targets: dict[str, Any],
+    observe_capture: dict[str, Any],
+    receiver_statuses: dict[str, Any],
+    receiver_leases: dict[str, Any],
     send_ledger_metrics: dict[str, Any],
     inbox_metrics: dict[str, Any],
     agent_job_metrics: dict[str, Any],
@@ -1451,6 +1624,34 @@ def _overview_cards(
             {"queue_backend": queue_backend},
         ),
         _card(
+            "observe_targets",
+            "Observe Targets",
+            summary.get("observe_targets_enabled", 0),
+            "ok" if summary.get("observe_targets_enabled") else "muted",
+            {"observe_targets": observe_targets},
+        ),
+        _card(
+            "observe_capture",
+            "Observe Capture",
+            f"{summary.get('observe_capture_ready', 0)}/{summary.get('observe_capture_targets', 0)}",
+            _observe_capture_status(summary),
+            {"observe_capture": observe_capture},
+        ),
+        _card(
+            "receiver_statuses",
+            "Receiver Statuses",
+            summary.get("receiver_status_connected", 0),
+            _receiver_status_status(summary),
+            {"receiver_statuses": receiver_statuses},
+        ),
+        _card(
+            "receiver_leases",
+            "Receiver Leases",
+            summary.get("receiver_leases_active", 0),
+            _receiver_lease_status(summary),
+            {"receiver_leases": receiver_leases},
+        ),
+        _card(
             "send_ledger_metrics",
             "Send Ledger Metrics",
             summary.get("send_ledger_records", 0),
@@ -1499,6 +1700,44 @@ def _queue_backend_status(queue_backend: Mapping[str, Any]) -> str:
     if bool(queue_backend.get("external_queue_configured")):
         return "ok"
     return "warn"
+
+
+def _observe_capture_status(summary: Mapping[str, Any]) -> str:
+    targets = _int_value(summary.get("observe_capture_targets"), fallback=0)
+    if targets <= 0:
+        return "muted"
+    if _int_value(summary.get("observe_capture_blocked"), fallback=0) > 0:
+        return "danger"
+    if _int_value(summary.get("observe_capture_ready"), fallback=0) < _int_value(
+        summary.get("observe_capture_targets"),
+        fallback=0,
+    ):
+        return "warn"
+    return "ok"
+
+
+def _receiver_status_status(summary: Mapping[str, Any]) -> str:
+    receivers = _int_value(summary.get("receiver_statuses"), fallback=0)
+    if receivers <= 0:
+        return "muted"
+    if _int_value(summary.get("receiver_status_failed"), fallback=0) > 0:
+        return "danger"
+    if _int_value(summary.get("receiver_status_suspended"), fallback=0) > 0:
+        return "warn"
+    if _int_value(summary.get("receiver_status_connected"), fallback=0) <= 0:
+        return "warn"
+    return "ok"
+
+
+def _receiver_lease_status(summary: Mapping[str, Any]) -> str:
+    leases = _int_value(summary.get("receiver_leases"), fallback=0)
+    if leases <= 0:
+        return "muted"
+    if _int_value(summary.get("receiver_leases_expired"), fallback=0) > 0:
+        return "warn"
+    if _int_value(summary.get("receiver_leases_active"), fallback=0) <= 0:
+        return "warn"
+    return "ok"
 
 
 def _has_active_lease(item: Mapping[str, Any]) -> bool:

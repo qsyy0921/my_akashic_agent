@@ -34,6 +34,7 @@ type RuntimeOverviewView struct {
 	RuntimeConfig     RuntimeConfigView                `json:"runtime_config,omitempty"`
 	RuntimeWorkers    RuntimeWorkerDiagnosticsView     `json:"runtime_workers"`
 	ObserveTargets    ObserveTargetsView               `json:"observe_targets"`
+	ObserveCapture    ObserveCaptureDiagnosticsView    `json:"observe_capture"`
 	ReceiverStatuses  ReceiverStatusesView             `json:"receiver_statuses"`
 	ReceiverLeases    ReceiverLeasesView               `json:"receiver_leases"`
 	SendLedgerMetrics SendLedgerMetricsView            `json:"send_ledger_metrics"`

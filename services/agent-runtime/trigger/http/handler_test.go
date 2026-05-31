@@ -248,6 +248,49 @@ func TestObserveTargetsEndpointSyncsAndListsConfiguredTargets(t *testing.T) {
 	}
 }
 
+func TestObserveCaptureDiagnosticsEndpointReturnsReadOnlyCoverage(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterObserveCaptureDiagnosticsRoutes(mux, staticObserveCaptureDiagnostics{
+		view: query.ObserveCaptureDiagnosticsView{
+			Targets: []query.ObserveCaptureTargetDiagnosticsView{{
+				TargetID: "qq:1049511700:group:27234224",
+				Channel: query.ObserveTargetChannelView{
+					Kind:             "qq",
+					AccountID:        "1049511700",
+					ConversationID:   "27234224",
+					ConversationType: "group",
+				},
+				Enabled:           true,
+				ObserveOnly:       true,
+				ReceiverConnected: true,
+				Status:            "ok",
+				TextEvents:        1,
+				ImageAssets:       1,
+				FileAssets:        1,
+			}},
+			Totals:     map[string]int{"targets": 1, "ready": 1, "text_covered": 1, "image_covered": 1, "file_covered": 1},
+			SideEffect: "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/observe-capture-diagnostics?limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected diagnostics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"side_effect":"none"`,
+		`"target_id":"qq:1049511700:group:27234224"`,
+		`"text_covered":1`,
+		`"image_covered":1`,
+		`"file_covered":1`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("observe capture response missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestReceiverStatusEndpointReportsAndListsReceivers(t *testing.T) {
 	manager := appservice.NewReceiverStatusService()
 	mux := http.NewServeMux()
@@ -2245,6 +2288,14 @@ type staticRuntimeOverviewViewer struct {
 }
 
 func (s staticRuntimeOverviewViewer) Get(context.Context, query.RuntimeOverviewFilter) (query.RuntimeOverviewView, error) {
+	return s.view, nil
+}
+
+type staticObserveCaptureDiagnostics struct {
+	view query.ObserveCaptureDiagnosticsView
+}
+
+func (s staticObserveCaptureDiagnostics) GetObserveCaptureDiagnostics(context.Context, query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error) {
 	return s.view, nil
 }
 

@@ -66,4 +66,6 @@ execution.
   Telegram polling conflict suspension.
 - `025-receiver-lease-control.md`: Go-owned receiver lease control for
   single-instance long-running platform polling loops.
+- `026-observe-capture-diagnostics.md`: Go-owned read-only diagnostics for
+  observe-only QQ group text/image/file capture and safe media content coverage.
 - Agent architecture boundary specs live under `../agent-architecture/`.

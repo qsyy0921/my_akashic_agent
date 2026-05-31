@@ -639,6 +639,31 @@ async def test_agent_gateway_client_manages_receiver_leases():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_gets_observe_capture_diagnostics():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/observe-capture-diagnostics"
+        assert request.url.params["limit"] == "20"
+        return _ok(
+            {
+                "targets": [
+                    {
+                        "target_id": "qq:1049511700:group:27234224",
+                        "status": "warn",
+                    }
+                ],
+                "totals": {"targets": 1, "warning": 1},
+                "side_effect": "none",
+            }
+        )
+
+    diagnostics = await _client(handler).get_observe_capture_diagnostics(limit=20)
+
+    assert diagnostics["targets"][0]["target_id"] == "qq:1049511700:group:27234224"
+    assert diagnostics["totals"]["warning"] == 1
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_gets_queue_backend():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

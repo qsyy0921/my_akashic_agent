@@ -97,6 +97,19 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"targets": 1, "enabled": 1, "observe_only": 1, "reply_allowed": 0, "groups": 1},
 			SideEffect: "none",
 		}},
+		ObserveCapture: staticObserveCaptureDiagnostics{view: query.ObserveCaptureDiagnosticsView{
+			Targets: []query.ObserveCaptureTargetDiagnosticsView{{
+				TargetID:          "qq:1049511700:group:27234224",
+				Enabled:           true,
+				ObserveOnly:       true,
+				ReceiverConnected: true,
+				Status:            "warn",
+				TextEvents:        1,
+				ImageAssets:       1,
+			}},
+			Totals:     map[string]int{"targets": 1, "enabled": 1, "ready": 0, "warning": 1, "blocked": 0, "text_covered": 1, "image_covered": 1, "file_covered": 0},
+			SideEffect: "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -152,6 +165,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["observe_targets"] != 1 || view.Summary["observe_target_groups"] != 1 {
 		t.Fatalf("unexpected observe target summary: %#v", view.Summary)
 	}
+	if view.Summary["observe_capture_targets"] != 1 || view.Summary["observe_capture_warning"] != 1 || view.Summary["observe_capture_file"] != 0 {
+		t.Fatalf("unexpected observe capture summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -163,6 +179,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
@@ -260,6 +277,14 @@ type staticObserveTargets struct {
 }
 
 func (s staticObserveTargets) ListObserveTargets(context.Context) (query.ObserveTargetsView, error) {
+	return s.view, nil
+}
+
+type staticObserveCaptureDiagnostics struct {
+	view query.ObserveCaptureDiagnosticsView
+}
+
+func (s staticObserveCaptureDiagnostics) GetObserveCaptureDiagnostics(context.Context, query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error) {
 	return s.view, nil
 }
 

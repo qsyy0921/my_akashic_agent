@@ -521,6 +521,23 @@ class AgentGatewayClient:
             )
         return data
 
+    async def get_observe_capture_diagnostics(self, *, limit: int = 200) -> dict[str, Any]:
+        data = await self._request(
+            "GET",
+            "/v1/observe-capture-diagnostics",
+            params={"limit": int(limit)},
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime observe capture diagnostics response is not an object"
+            )
+        targets = data.get("targets")
+        if not isinstance(targets, list):
+            raise AgentGatewayError(
+                "agent runtime observe capture diagnostics response has no targets"
+            )
+        return data
+
     async def report_receiver_status(
         self,
         *,

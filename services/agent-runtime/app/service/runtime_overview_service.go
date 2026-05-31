@@ -26,6 +26,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgeDiagnostics runtimeKnowledgeDiagnosticsGetter
 	RuntimeWorkers       runtimeWorkerDiagnosticsGetter
 	ObserveTargets       runtimeObserveTargetsGetter
+	ObserveCapture       runtimeObserveCaptureGetter
 	ReceiverStatuses     runtimeReceiverStatusesGetter
 	ReceiverLeases       runtimeReceiverLeasesGetter
 }
@@ -70,6 +71,10 @@ type runtimeObserveTargetsGetter interface {
 	ListObserveTargets(ctx context.Context) (query.ObserveTargetsView, error)
 }
 
+type runtimeObserveCaptureGetter interface {
+	GetObserveCaptureDiagnostics(ctx context.Context, filter query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error)
+}
+
 type runtimeReceiverStatusesGetter interface {
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
 }
@@ -112,6 +117,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		diagnostics      query.KnowledgeWorkerDiagnosticsView
 		runtimeWorkers   query.RuntimeWorkerDiagnosticsView
 		observeTargets   query.ObserveTargetsView
+		observeCapture   query.ObserveCaptureDiagnosticsView
 		receiverStatuses query.ReceiverStatusesView
 		receiverLeases   query.ReceiverLeasesView
 	)
@@ -203,6 +209,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			observeTargets = item
 		}
 
+		if deps.ObserveCapture == nil {
+			errors = append(errors, runtimeOverviewError("observe-capture-diagnostics", fmt.Errorf("observe capture diagnostics disabled")))
+		} else if item, err := deps.ObserveCapture.GetObserveCaptureDiagnostics(ctx, query.ObserveCaptureDiagnosticsFilter{Limit: limit}); err != nil {
+			errors = append(errors, runtimeOverviewError("observe-capture-diagnostics", err))
+		} else {
+			observeCapture = item
+		}
+
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
 		} else if item, err := deps.ReceiverStatuses.ListReceiverStatuses(ctx); err != nil {
@@ -231,6 +245,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		diagnostics,
 		runtimeWorkers,
 		observeTargets,
+		observeCapture,
 		receiverStatuses,
 		receiverLeases,
 	)
@@ -246,6 +261,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		diagnostics,
 		runtimeWorkers,
 		observeTargets,
+		observeCapture,
 		receiverStatuses,
 		receiverLeases,
 		errors,
@@ -259,6 +275,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		RuntimeConfig:     runtimeConfig,
 		RuntimeWorkers:    runtimeWorkers,
 		ObserveTargets:    observeTargets,
+		ObserveCapture:    observeCapture,
 		ReceiverStatuses:  receiverStatuses,
 		ReceiverLeases:    receiverLeases,
 		SendLedgerMetrics: sendLedger,
@@ -286,6 +303,7 @@ func runtimeOverviewSummary(
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 	observeTargets query.ObserveTargetsView,
+	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 ) map[string]any {
@@ -334,6 +352,14 @@ func runtimeOverviewSummary(
 		"observe_targets_observe_only":  intFromMap(observeTargets.Totals, "observe_only"),
 		"observe_targets_reply_allowed": intFromMap(observeTargets.Totals, "reply_allowed"),
 		"observe_target_groups":         intFromMap(observeTargets.Totals, "groups"),
+		"observe_capture_targets":       intFromMap(observeCapture.Totals, "targets"),
+		"observe_capture_ready":         intFromMap(observeCapture.Totals, "ready"),
+		"observe_capture_warning":       intFromMap(observeCapture.Totals, "warning"),
+		"observe_capture_blocked":       intFromMap(observeCapture.Totals, "blocked"),
+		"observe_capture_text":          intFromMap(observeCapture.Totals, "text_covered"),
+		"observe_capture_image":         intFromMap(observeCapture.Totals, "image_covered"),
+		"observe_capture_file":          intFromMap(observeCapture.Totals, "file_covered"),
+		"observe_capture_content_ready": intFromMap(observeCapture.Totals, "content_ready_assets"),
 		"receiver_statuses":             intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":     intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":     intFromMap(receiverStatuses.Totals, "suspended"),
@@ -367,6 +393,7 @@ func runtimeOverviewCards(
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
 	observeTargets query.ObserveTargetsView,
+	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	errors []query.RuntimeOverviewErrorView,
@@ -387,6 +414,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
+		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
@@ -505,6 +533,23 @@ func observeTargetStatus(view query.ObserveTargetsView) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+func observeCaptureStatus(view query.ObserveCaptureDiagnosticsView) string {
+	if intFromMap(view.Totals, "targets") == 0 {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "blocked") > 0 {
+		return "danger"
+	}
+	if intFromMap(view.Totals, "ready") < intFromMap(view.Totals, "enabled") {
+		return "warn"
+	}
+	return "ok"
+}
+
+func observeCaptureValue(view query.ObserveCaptureDiagnosticsView) string {
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "enabled"))
 }
 
 func receiverStatusStatus(view query.ReceiverStatusesView) string {

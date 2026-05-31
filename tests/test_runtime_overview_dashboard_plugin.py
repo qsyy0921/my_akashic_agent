@@ -450,6 +450,58 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "side_effect": "none",
     }
+    observe_capture = {
+        "targets": [
+            {
+                "target_id": "qq:1049511700:group:27234224",
+                "channel": {
+                    "kind": "qq",
+                    "account_id": "1049511700",
+                    "conversation_id": "27234224",
+                    "conversation_type": "group",
+                },
+                "enabled": True,
+                "observe_only": True,
+                "receiver_connected": True,
+                "receiver_id": "qq:1049511700:qq",
+                "receiver_status": "connected",
+                "status": "warn",
+                "blockers": ["file_not_seen"],
+                "inbox_events": 3,
+                "text_events": 3,
+                "attachment_events": 1,
+                "attachment_count": 1,
+                "media_assets": 1,
+                "image_assets": 1,
+                "file_assets": 0,
+                "content_ready_assets": 1,
+                "coverage": {
+                    "text_seen": True,
+                    "attachment_seen": True,
+                    "image_seen": True,
+                    "file_seen": False,
+                    "media_content_ready": True,
+                },
+            }
+        ],
+        "totals": {
+            "targets": 1,
+            "enabled": 1,
+            "ready": 0,
+            "warning": 1,
+            "blocked": 0,
+            "receiver_connected": 1,
+            "text_covered": 1,
+            "attachment_covered": 1,
+            "image_covered": 1,
+            "file_covered": 0,
+            "media_assets": 1,
+            "image_assets": 1,
+            "file_assets": 0,
+            "content_ready_assets": 1,
+        },
+        "side_effect": "none",
+    }
     receiver_statuses = {
         "receivers": [
             {
@@ -536,6 +588,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "observe_targets_observe_only": 1,
             "observe_targets_reply_allowed": 0,
             "observe_target_groups": 1,
+            "observe_capture_targets": 1,
+            "observe_capture_ready": 0,
+            "observe_capture_warning": 1,
+            "observe_capture_blocked": 0,
+            "observe_capture_text": 1,
+            "observe_capture_image": 1,
+            "observe_capture_file": 0,
+            "observe_capture_content_ready": 1,
             "receiver_statuses": 2,
             "receiver_status_connected": 1,
             "receiver_status_suspended": 1,
@@ -565,6 +625,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             },
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
+            {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
             {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
@@ -576,6 +637,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "queue_backend": queue_backend,
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
+        "observe_capture": observe_capture,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
@@ -680,6 +742,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["observe_targets"] == 1
     assert payload["summary"]["observe_targets_observe_only"] == 1
     assert payload["summary"]["observe_target_groups"] == 1
+    assert payload["summary"]["observe_capture_targets"] == 1
+    assert payload["summary"]["observe_capture_warning"] == 1
+    assert payload["summary"]["observe_capture_file"] == 0
     assert payload["summary"]["receiver_statuses"] == 2
     assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["receiver_leases"] == 1
@@ -712,6 +777,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert observe_card["status"] == "ok"
     assert payload["observe_targets"]["targets"][0]["channel"]["conversation_id"] == "27234224"
     assert payload["observe_targets"]["side_effect"] == "none"
+    observe_capture_card = next(item for item in payload["cards"] if item["id"] == "observe_capture")
+    assert observe_capture_card["status"] == "warn"
+    assert payload["observe_capture"]["targets"][0]["blockers"] == ["file_not_seen"]
+    assert payload["observe_capture"]["totals"]["image_covered"] == 1
     receiver_card = next(item for item in payload["cards"] if item["id"] == "receiver_statuses")
     assert receiver_card["status"] == "warn"
     assert payload["receiver_statuses"]["receivers"][1]["reason"] == "getupdates_conflict"
@@ -907,6 +976,10 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
                     "/v1/inbox-metrics",
                     "/v1/job-metrics",
                     "/v1/outbox-metrics",
+                    "/v1/observe-targets",
+                    "/v1/observe-capture-diagnostics",
+                    "/v1/receiver-statuses",
+                    "/v1/receiver-leases",
                 }
                 else []
             )

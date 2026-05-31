@@ -152,6 +152,13 @@ func RegisterObserveTargetRoutes(
 	mux.Handle("/v1/observe-targets", ObserveTargetsHandler(manager))
 }
 
+func RegisterObserveCaptureDiagnosticsRoutes(
+	mux *http.ServeMux,
+	viewer inport.ObserveCaptureDiagnosticsViewer,
+) {
+	mux.Handle("/v1/observe-capture-diagnostics", ObserveCaptureDiagnosticsHandler(viewer))
+}
+
 func RegisterReceiverStatusRoutes(
 	mux *http.ServeMux,
 	manager inport.ReceiverStatusManager,
@@ -162,6 +169,30 @@ func RegisterReceiverStatusRoutes(
 	mux.Handle("/v1/receiver-leases/renew", ReceiverLeaseRenewHandler(manager))
 	mux.Handle("/v1/receiver-leases/release", ReceiverLeaseReleaseHandler(manager))
 	mux.Handle("/v1/receiver-leases", ReceiverLeasesHandler(manager))
+}
+
+func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if viewer == nil {
+			http.Error(w, "observe capture diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := viewer.GetObserveCaptureDiagnostics(r.Context(), query.ObserveCaptureDiagnosticsFilter{
+			Limit: parsePositiveInt(r.URL.Query().Get("limit"), 200, 1000),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: view,
+		})
+	})
 }
 
 func RegisterRuntimeOverviewRoutes(
