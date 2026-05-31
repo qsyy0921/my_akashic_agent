@@ -49,6 +49,15 @@ type ProactiveMarkItemsView struct {
 	SideEffect string `json:"side_effect"`
 }
 
+type ProactiveCleanupView struct {
+	RemovedDeliveries         int    `json:"removed_deliveries"`
+	RemovedSeenItems          int    `json:"removed_seen_items"`
+	RemovedContextOnly        int    `json:"removed_context_only"`
+	RemovedRejectionCooldowns int    `json:"removed_rejection_cooldowns"`
+	Timestamp                 string `json:"timestamp"`
+	SideEffect                string `json:"side_effect"`
+}
+
 type ProactiveTimestampView struct {
 	SessionKey string `json:"session_key"`
 	Key        string `json:"key"`

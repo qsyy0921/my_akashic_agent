@@ -292,6 +292,23 @@ class AgentRuntimeProactiveStateStore:
         semantic_ttl_hours: int,
         rejection_cooldown_ttl_hours: int = 0,
     ) -> None:
+        timestamp = _utcnow()
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/cleanup",
+                json_body={
+                    "seen_ttl_hours": int(seen_ttl_hours),
+                    "delivery_ttl_hours": int(delivery_ttl_hours),
+                    "context_only_ttl_hours": 24,
+                    "rejection_cooldown_ttl_hours": int(
+                        rejection_cooldown_ttl_hours
+                    ),
+                    "timestamp": timestamp.isoformat(),
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("cleanup", exc)
         self._fallback.cleanup(
             seen_ttl_hours,
             delivery_ttl_hours,

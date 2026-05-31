@@ -303,6 +303,26 @@ func (s *ProactiveStateService) RecordAnyAction(ctx context.Context, cmd command
 	return assembler.ToProactiveAnyActionQuotaView(updated, true, "runtime_state_write"), nil
 }
 
+func (s *ProactiveStateService) Cleanup(ctx context.Context, cmd command.CleanupProactiveStateCommand) (query.ProactiveCleanupView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveCleanupView{}, errors.New("proactive state service requires repository")
+	}
+	timestamp := timestampOrNow(cmd.Timestamp)
+	cutoffs := model.ProactiveStateRetentionCutoffs{
+		DeliveriesBefore:  timestamp.Add(-time.Duration(positiveHoursOrDefault(cmd.DeliveryTTLHours, 24)) * time.Hour),
+		SeenItemsBefore:   timestamp.Add(-time.Duration(positiveHoursOrDefault(cmd.SeenTTLHours, 24)) * time.Hour),
+		ContextOnlyBefore: timestamp.Add(-time.Duration(positiveHoursOrDefault(cmd.ContextOnlyTTLHours, 24)) * time.Hour),
+	}
+	if cmd.RejectionCooldownTTLHours > 0 {
+		cutoffs.RejectionCooldownsBefore = timestamp.Add(-time.Duration(cmd.RejectionCooldownTTLHours) * time.Hour)
+	}
+	result, err := s.repository.CleanupProactiveState(ctx, cutoffs)
+	if err != nil {
+		return query.ProactiveCleanupView{}, err
+	}
+	return assembler.ToProactiveCleanupView(result, timestamp, "runtime_state_cleanup"), nil
+}
+
 func (s *ProactiveStateService) lastSessionMark(ctx context.Context, sessionKey string, key string) (query.ProactiveTimestampView, error) {
 	if s == nil || s.repository == nil {
 		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")

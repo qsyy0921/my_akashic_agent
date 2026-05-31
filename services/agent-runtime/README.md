@@ -663,6 +663,7 @@ POST /v1/proactive/drift-runs
 GET  /v1/proactive/drift-runs/last?session_key=telegram:100
 GET  /v1/proactive/anyaction/quota?quota_key=default&reset_hour=12&timezone=Asia%2FShanghai
 POST /v1/proactive/anyaction/actions
+POST /v1/proactive/cleanup
 ```
 
 Read and advance knowledge/RAG checkpoints:

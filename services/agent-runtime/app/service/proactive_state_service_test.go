@@ -114,6 +114,74 @@ func TestProactiveStateServiceRecordsSeenAndRejectionCooldown(t *testing.T) {
 	}
 }
 
+func TestProactiveStateServiceCleanupPrunesExpiredRuntimeState(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	svc := service.NewProactiveStateService(memory.NewStore())
+
+	if _, err := svc.RecordDelivery(ctx, command.RecordProactiveDeliveryCommand{
+		SessionKey:  "telegram:1",
+		DeliveryKey: "old-delivery",
+		Timestamp:   now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RecordDelivery(ctx, command.RecordProactiveDeliveryCommand{
+		SessionKey:  "telegram:1",
+		DeliveryKey: "fresh-delivery",
+		Timestamp:   now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.MarkItemsSeen(ctx, command.MarkProactiveItemsSeenCommand{
+		Entries:   []command.ProactiveSourceItemEntry{{SourceKey: "mcp:news:feed", ItemID: "old-item"}},
+		Timestamp: now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RecordContextOnly(ctx, command.RecordProactiveContextOnlyCommand{
+		SessionKey: "telegram:1",
+		Timestamp:  now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.MarkRejectionCooldown(ctx, command.MarkProactiveRejectionCooldownCommand{
+		Entries:   []command.ProactiveSourceItemEntry{{SourceKey: "qq:group:1", ItemID: "old-rejection"}},
+		Hours:     2,
+		Timestamp: now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := svc.Cleanup(ctx, command.CleanupProactiveStateCommand{
+		SeenTTLHours:              1,
+		DeliveryTTLHours:          1,
+		ContextOnlyTTLHours:       1,
+		RejectionCooldownTTLHours: 1,
+		Timestamp:                 now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemovedDeliveries != 1 ||
+		result.RemovedSeenItems != 1 ||
+		result.RemovedContextOnly != 1 ||
+		result.RemovedRejectionCooldowns != 1 {
+		t.Fatalf("unexpected cleanup result: %+v", result)
+	}
+	count, err := svc.CountDeliveries(ctx, command.CountProactiveDeliveriesCommand{
+		SessionKey:  "telegram:1",
+		WindowHours: 24,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count.Count != 1 {
+		t.Fatalf("expected fresh delivery to remain, got %d", count.Count)
+	}
+}
+
 func TestProactiveStateServiceRecordsContextAndDriftMarks(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)

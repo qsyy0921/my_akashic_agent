@@ -28,4 +28,6 @@ type ProactiveStateRepository interface {
 
 	SaveProactiveAnyActionQuota(ctx context.Context, quota model.ProactiveAnyActionQuota) error
 	FindProactiveAnyActionQuota(ctx context.Context, quotaKey string) (model.ProactiveAnyActionQuota, bool, error)
+
+	CleanupProactiveState(ctx context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error)
 }

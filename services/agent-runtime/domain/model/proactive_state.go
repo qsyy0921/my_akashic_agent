@@ -143,6 +143,20 @@ func (r ProactiveRejectionCooldownRecord) WithinWindow(now time.Time, window tim
 	return !r.RejectedAt.Before(now.Add(-window))
 }
 
+type ProactiveStateRetentionCutoffs struct {
+	DeliveriesBefore         time.Time
+	SeenItemsBefore          time.Time
+	ContextOnlyBefore        time.Time
+	RejectionCooldownsBefore time.Time
+}
+
+type ProactiveStateCleanupResult struct {
+	RemovedDeliveries         int
+	RemovedSeenItems          int
+	RemovedContextOnly        int
+	RemovedRejectionCooldowns int
+}
+
 type ProactiveContextOnlyRecord struct {
 	SessionKey string
 	SentAt     time.Time

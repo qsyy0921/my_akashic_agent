@@ -80,3 +80,11 @@ type RecordProactiveAnyActionCommand struct {
 	Timezone  string
 	Timestamp time.Time
 }
+
+type CleanupProactiveStateCommand struct {
+	SeenTTLHours              int
+	DeliveryTTLHours          int
+	ContextOnlyTTLHours       int
+	RejectionCooldownTTLHours int
+	Timestamp                 time.Time
+}

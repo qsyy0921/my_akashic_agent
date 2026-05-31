@@ -1086,6 +1086,57 @@ func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) 
 	return quota, ok, nil
 }
 
+func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := model.ProactiveStateCleanupResult{}
+	if !cutoffs.DeliveriesBefore.IsZero() {
+		nextOrder := make([]string, 0, len(s.proactiveDeliveryOrder))
+		for _, key := range s.proactiveDeliveryOrder {
+			record, ok := s.proactiveDeliveries[key]
+			if !ok {
+				continue
+			}
+			if record.SentAt.Before(cutoffs.DeliveriesBefore) {
+				delete(s.proactiveDeliveries, key)
+				result.RemovedDeliveries++
+				continue
+			}
+			nextOrder = append(nextOrder, key)
+		}
+		s.proactiveDeliveryOrder = nextOrder
+	}
+	if !cutoffs.SeenItemsBefore.IsZero() {
+		for key, record := range s.proactiveSeenItems {
+			if record.SeenAt.Before(cutoffs.SeenItemsBefore) {
+				delete(s.proactiveSeenItems, key)
+				result.RemovedSeenItems++
+			}
+		}
+	}
+	if !cutoffs.ContextOnlyBefore.IsZero() {
+		next := make([]model.ProactiveContextOnlyRecord, 0, len(s.proactiveContextOnly))
+		for _, record := range s.proactiveContextOnly {
+			if record.SentAt.Before(cutoffs.ContextOnlyBefore) {
+				result.RemovedContextOnly++
+				continue
+			}
+			next = append(next, record)
+		}
+		s.proactiveContextOnly = next
+	}
+	if !cutoffs.RejectionCooldownsBefore.IsZero() {
+		for key, record := range s.proactiveRejections {
+			if record.RejectedAt.Before(cutoffs.RejectionCooldownsBefore) {
+				delete(s.proactiveRejections, key)
+				result.RemovedRejectionCooldowns++
+			}
+		}
+	}
+	return result, nil
+}
+
 func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(deliveryKey)
 }

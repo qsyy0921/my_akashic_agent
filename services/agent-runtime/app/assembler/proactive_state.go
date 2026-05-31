@@ -53,6 +53,17 @@ func ToProactiveMarkItemsView(count int, timestamp time.Time, sideEffect string)
 	}
 }
 
+func ToProactiveCleanupView(result model.ProactiveStateCleanupResult, timestamp time.Time, sideEffect string) query.ProactiveCleanupView {
+	return query.ProactiveCleanupView{
+		RemovedDeliveries:         result.RemovedDeliveries,
+		RemovedSeenItems:          result.RemovedSeenItems,
+		RemovedContextOnly:        result.RemovedContextOnly,
+		RemovedRejectionCooldowns: result.RemovedRejectionCooldowns,
+		Timestamp:                 formatProactiveTime(timestamp),
+		SideEffect:                sideEffect,
+	}
+}
+
 func ToProactiveTimestampView(sessionKey string, key string, timestamp time.Time, found bool) query.ProactiveTimestampView {
 	return query.ProactiveTimestampView{
 		SessionKey: sessionKey,

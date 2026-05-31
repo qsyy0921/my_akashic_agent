@@ -28,4 +28,6 @@ type ProactiveStateManager interface {
 
 	SnapshotAnyActionQuota(ctx context.Context, cmd command.SnapshotProactiveAnyActionQuotaCommand) (query.ProactiveAnyActionQuotaView, error)
 	RecordAnyAction(ctx context.Context, cmd command.RecordProactiveAnyActionCommand) (query.ProactiveAnyActionQuotaView, error)
+
+	Cleanup(ctx context.Context, cmd command.CleanupProactiveStateCommand) (query.ProactiveCleanupView, error)
 }

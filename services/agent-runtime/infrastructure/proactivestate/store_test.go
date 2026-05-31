@@ -123,4 +123,27 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if !ok || foundQuota.Used != 2 {
 		t.Fatalf("expected persisted quota, got ok=%v quota=%+v", ok, foundQuota)
 	}
+
+	result, err := reloaded.CleanupProactiveState(ctx, model.ProactiveStateRetentionCutoffs{
+		DeliveriesBefore:         now.Add(time.Hour),
+		SeenItemsBefore:          now.Add(time.Hour),
+		ContextOnlyBefore:        now.Add(time.Hour),
+		RejectionCooldownsBefore: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemovedDeliveries != 1 ||
+		result.RemovedSeenItems != 1 ||
+		result.RemovedContextOnly != 1 ||
+		result.RemovedRejectionCooldowns != 1 {
+		t.Fatalf("unexpected cleanup result: %+v", result)
+	}
+	cleaned, err := proactivestate.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := cleaned.FindProactiveSeenItem(ctx, "mcp:news", "item-a"); err != nil || ok {
+		t.Fatalf("expected seen item cleanup, ok=%v err=%v", ok, err)
+	}
 }

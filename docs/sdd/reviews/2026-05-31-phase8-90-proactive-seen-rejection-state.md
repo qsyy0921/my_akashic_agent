@@ -15,7 +15,7 @@
 
 ## 风险
 
-- cleanup 仍只清理 SQLite；Go JSON store 会保留过期 seen/rejection 记录。当前判断时按 TTL 过滤，不影响行为；后续可单独增加 Go-owned retention cleanup。
+- cleanup 在后续 `Phase 8.91` 已迁入 Go-owned retention cleanup；本切片实现时的过期记录增长风险已收敛。
 - semantic items 仍留 Python/SQLite，因为它是 AI 候选缓存，后续如要迁移需要和 RAG/memory 评估一起设计。
 
 ## 验收门

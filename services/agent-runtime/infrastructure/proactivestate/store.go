@@ -226,6 +226,63 @@ func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) 
 	return quota, ok, nil
 }
 
+func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := model.ProactiveStateCleanupResult{}
+	if !cutoffs.DeliveriesBefore.IsZero() {
+		nextOrder := make([]string, 0, len(s.deliveryOrder))
+		for _, key := range s.deliveryOrder {
+			record, ok := s.deliveries[key]
+			if !ok {
+				continue
+			}
+			if record.SentAt.Before(cutoffs.DeliveriesBefore) {
+				delete(s.deliveries, key)
+				result.RemovedDeliveries++
+				continue
+			}
+			nextOrder = append(nextOrder, key)
+		}
+		s.deliveryOrder = nextOrder
+	}
+	if !cutoffs.SeenItemsBefore.IsZero() {
+		for key, record := range s.seenItems {
+			if record.SeenAt.Before(cutoffs.SeenItemsBefore) {
+				delete(s.seenItems, key)
+				result.RemovedSeenItems++
+			}
+		}
+	}
+	if !cutoffs.ContextOnlyBefore.IsZero() {
+		next := make([]model.ProactiveContextOnlyRecord, 0, len(s.contextOnly))
+		for _, record := range s.contextOnly {
+			if record.SentAt.Before(cutoffs.ContextOnlyBefore) {
+				result.RemovedContextOnly++
+				continue
+			}
+			next = append(next, record)
+		}
+		s.contextOnly = next
+	}
+	if !cutoffs.RejectionCooldownsBefore.IsZero() {
+		for key, record := range s.rejections {
+			if record.RejectedAt.Before(cutoffs.RejectionCooldownsBefore) {
+				delete(s.rejections, key)
+				result.RemovedRejectionCooldowns++
+			}
+		}
+	}
+	if result.RemovedDeliveries == 0 &&
+		result.RemovedSeenItems == 0 &&
+		result.RemovedContextOnly == 0 &&
+		result.RemovedRejectionCooldowns == 0 {
+		return result, nil
+	}
+	return result, s.flush()
+}
+
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {

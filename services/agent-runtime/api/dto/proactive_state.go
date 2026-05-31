@@ -33,3 +33,11 @@ type MarkProactiveRejectionCooldownRequest struct {
 	Hours     int                        `json:"hours"`
 	Timestamp string                     `json:"timestamp,omitempty"`
 }
+
+type CleanupProactiveStateRequest struct {
+	SeenTTLHours              int    `json:"seen_ttl_hours"`
+	DeliveryTTLHours          int    `json:"delivery_ttl_hours"`
+	ContextOnlyTTLHours       int    `json:"context_only_ttl_hours,omitempty"`
+	RejectionCooldownTTLHours int    `json:"rejection_cooldown_ttl_hours,omitempty"`
+	Timestamp                 string `json:"timestamp,omitempty"`
+}

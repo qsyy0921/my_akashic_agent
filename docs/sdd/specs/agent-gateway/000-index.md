@@ -84,4 +84,6 @@ execution.
 - `033-proactive-seen-and-rejection-state.md`: Go-owned proactive source item
   seen dedupe and rejection cooldown state, with Python retaining semantic
   candidate extraction and tick logs.
+- `034-proactive-retention-cleanup.md`: Go-owned TTL cleanup for proactive
+  deterministic runtime state, while Python keeps SQLite fallback cleanup.
 - Agent architecture boundary specs live under `../agent-architecture/`.

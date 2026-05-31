@@ -2399,6 +2399,16 @@ func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/cleanup", bytes.NewReader([]byte(`{"seen_ttl_hours":1,"delivery_ttl_hours":1,"context_only_ttl_hours":1,"rejection_cooldown_ttl_hours":1,"timestamp":"2026-05-30T12:30:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected cleanup 202, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"removed_seen_items":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"removed_rejection_cooldowns":1`)) {
+		t.Fatalf("cleanup response missing removed counts: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/context-only", bytes.NewReader([]byte(`{"session_key":"telegram:1","timestamp":"2026-05-30T11:30:00Z"}`))))
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("expected context-only 202, got %d: %s", response.Code, response.Body.String())

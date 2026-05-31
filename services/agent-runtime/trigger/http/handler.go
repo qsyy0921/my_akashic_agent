@@ -251,6 +251,7 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/drift-runs/last", ProactiveDriftRunLastHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/quota", ProactiveAnyActionQuotaHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/actions", ProactiveAnyActionRecordHandler(proactiveState))
+	mux.Handle("/v1/proactive/cleanup", ProactiveCleanupHandler(proactiveState))
 }
 
 func HealthHandler() http.Handler {
@@ -2342,6 +2343,41 @@ func ProactiveAnyActionRecordHandler(proactiveState inport.ProactiveStateManager
 			return
 		}
 		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
+	})
+}
+
+func ProactiveCleanupHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.CleanupProactiveStateRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := proactiveState.Cleanup(r.Context(), command.CleanupProactiveStateCommand{
+			SeenTTLHours:              request.SeenTTLHours,
+			DeliveryTTLHours:          request.DeliveryTTLHours,
+			ContextOnlyTTLHours:       request.ContextOnlyTTLHours,
+			RejectionCooldownTTLHours: request.RejectionCooldownTTLHours,
+			Timestamp:                 timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: result})
 	})
 }
 
