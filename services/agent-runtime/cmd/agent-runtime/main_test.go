@@ -477,6 +477,9 @@ func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 	if !view.StateStoreAuthoritative {
 		t.Fatalf("state store must remain authoritative")
 	}
+	if view.OutboxExecutionOwner != "go_state_store_api" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
+		t.Fatalf("unexpected default execution owners: %#v", view)
+	}
 	if view.SelectedProviderCapability == nil || view.SelectedProviderCapability.Provider != "local" {
 		t.Fatalf("expected selected local provider capability: %#v", view.SelectedProviderCapability)
 	}
@@ -520,6 +523,9 @@ func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
 	}
 	if view.ExternalQueueActive {
 		t.Fatalf("external queue adapter should not be active yet: %#v", view)
+	}
+	if view.OutboxExecutionOwner != "go_state_store_api" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
+		t.Fatalf("unexpected nats shadow execution owners: %#v", view)
 	}
 	if view.DSNRedacted == "" || view.DSNRedacted == "nats://token@127.0.0.1:4222" {
 		t.Fatalf("expected redacted dsn, got %q", view.DSNRedacted)
@@ -627,6 +633,9 @@ func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing
 	if view.AgentJobQueueSource != "agent_job_state_store" {
 		t.Fatalf("agent jobs must remain on state-store lease: %#v", view)
 	}
+	if view.OutboxExecutionOwner != "nats_external_lease" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
+		t.Fatalf("unexpected external lease execution owners: %#v", view)
+	}
 	if len(view.ExternalLease.Blockers) != 0 {
 		t.Fatalf("unexpected blockers: %#v", view.ExternalLease.Blockers)
 	}
@@ -655,6 +664,9 @@ func TestQueueBackendViewFromEnvBlocksExternalLeaseWhenLocalOutboxWorkerEnabled(
 	assertContainsString(t, view.ExternalLease.Blockers, "local_outbox_worker_disabled")
 	assertExternalLeaseCheck(t, view.ExternalLease.RequiredChecks, "local_outbox_worker_disabled", "blocked")
 	assertBlockedWorkKind(t, view.ExternalLease.BlockedWorkKinds, "agent_job")
+	if view.OutboxExecutionOwner != "go_local_outbox_worker" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
+		t.Fatalf("local worker should retain execution owner while external lease is blocked: %#v", view)
+	}
 }
 
 func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *testing.T) {
@@ -687,6 +699,10 @@ func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *tes
 	}
 	if view.AgentJobQueueSource != "agent_job_state_store_with_nats_result_ack" {
 		t.Fatalf("unexpected agent job queue source: %#v", view)
+	}
+	if view.OutboxExecutionOwner != "nats_external_lease" ||
+		view.AgentJobExecutionOwner != "python_ai_worker_with_nats_result_ack" {
+		t.Fatalf("unexpected agent job result-ack execution owners: %#v", view)
 	}
 }
 

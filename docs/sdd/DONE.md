@@ -37,8 +37,10 @@
 - external_lease cutover gate 已增加 local outbox worker 冲突检查：`AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 时 gate 保持 blocked，防止 state-store worker 与 NATS external lease 同时执行真实发送。
 - 已实现 agent_job external lease result-ack 映射和 subject 扩容门禁，当前仍需显式 smoke/cutover flag。
 - `/v1/queue-backend` 已增加 MQ provider capability matrix：明确 NATS JetStream 是当前推荐第一外部 MQ，暴露 shadow/dual-read/external-lease/agent_job result-ack、多 goroutine consumer 和 delayed nack 能力，并把 Redis Streams / RabbitMQ 标记为后续可替换 adapter 边界。
+- `/v1/queue-backend` 已增加 execution owner 诊断：outbox delivery 可明确区分 `go_state_store_api`、`go_local_outbox_worker`、`nats_external_lease`；agent_job 可明确区分 Python 通过 state-store lease 执行，或 Python 执行后经 NATS result-ack 回确认。
 - external_lease 已增加 Go-owned 执行诊断：`/v1/queue-backend` 可查看 ack/nack/term disposition、reason、work_kind 统计和 bounded recent executions；只读诊断不执行 Python AI job。
 - runtime overview 已聚合 external_lease 执行诊断：summary/card 可直接查看执行总数、错误数、ack/nack/term 分布，原始 queue backend detail 仍保留。
+- runtime overview summary 已聚合 queue execution owner 字段：`queue_outbox_execution_owner` 和 `queue_agent_job_execution_owner` 能直接说明当前执行边界，避免把 NATS result-ack 误解为 Go 执行 AI job。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。
@@ -73,4 +75,4 @@
 ## SDD / 迭代治理
 
 - 已补充 Python AI runtime 职责边界：模型/provider、prompt/context、工具执行、Memory/RAG 算法、chunking、retrieval、Embedding/Rerank/OCR/VLM、图片生成执行、群知识沉淀、评估和快速实验继续归 Python；确定性控制面状态归 Go。
-- 已沉淀 `docs/sdd/ITERATION_PROMPT.md`，明确每轮迭代必须完成 `TODO.md` 中所有未完成项，不能只提交一个未闭环切片。
+- 已沉淀 `docs/sdd/ITERATION_PROMPT.md`，明确每轮迭代必须完成 `TODO.md` 中所有未完成项，不能只提交一个未闭环切片；用户在迭代中追加的本轮要求也必须先写入 TODO 并一起闭环。

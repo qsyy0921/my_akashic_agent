@@ -15,6 +15,8 @@ type QueueBackendView struct {
 	MaxInFlight                int                            `json:"max_in_flight"`
 	OutboxQueueSource          string                         `json:"outbox_queue_source"`
 	AgentJobQueueSource        string                         `json:"agent_job_queue_source"`
+	OutboxExecutionOwner       string                         `json:"outbox_execution_owner"`
+	AgentJobExecutionOwner     string                         `json:"agent_job_execution_owner"`
 	DSNConfigured              bool                           `json:"dsn_configured"`
 	DSNRedacted                string                         `json:"dsn_redacted,omitempty"`
 	RecommendedFirstBackend    string                         `json:"recommended_first_backend"`

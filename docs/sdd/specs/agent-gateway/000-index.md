@@ -135,4 +135,6 @@ execution.
   fields for selected queue provider capability and NATS-first MQ visibility.
 - `054-external-lease-local-worker-conflict-gate.md`: External lease cutover
   gate blocks when the local outbox delivery worker is still enabled.
+- `055-queue-execution-owner-diagnostics.md`: Queue backend and runtime
+  overview expose current outbox and agent_job execution owners.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -52,6 +52,8 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 	if externalLeaseAllowsAgentJobs(externalLease) {
 		agentJobQueueSource = "agent_job_state_store_with_nats_result_ack"
 	}
+	outboxOwner := queueOutboxExecutionOwner(externalLease)
+	agentJobOwner := queueAgentJobExecutionOwner(externalLease)
 	providerCapabilities := queueProviderCapabilities(provider)
 
 	return query.QueueBackendView{
@@ -69,6 +71,8 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		MaxInFlight:                maxInFlight,
 		OutboxQueueSource:          "outbox_state_store",
 		AgentJobQueueSource:        agentJobQueueSource,
+		OutboxExecutionOwner:       outboxOwner,
+		AgentJobExecutionOwner:     agentJobOwner,
 		DSNConfigured:              dsnConfigured,
 		DSNRedacted:                redactQueueDSN(dsn),
 		RecommendedFirstBackend:    "nats_jetstream",
@@ -78,6 +82,23 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		Notes:                      notes,
 		ExternalLease:              externalLease,
 	}, nil
+}
+
+func queueOutboxExecutionOwner(externalLease *query.QueueExternalLeaseGate) string {
+	if externalLease != nil && externalLease.AllowExecution {
+		return "nats_external_lease"
+	}
+	if boolEnv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED") {
+		return "go_local_outbox_worker"
+	}
+	return "go_state_store_api"
+}
+
+func queueAgentJobExecutionOwner(externalLease *query.QueueExternalLeaseGate) string {
+	if externalLeaseAllowsAgentJobs(externalLease) {
+		return "python_ai_worker_with_nats_result_ack"
+	}
+	return "python_ai_worker_state_store_lease"
 }
 
 func queueProviderCapabilities(selectedProvider string) []query.QueueProviderCapabilityView {

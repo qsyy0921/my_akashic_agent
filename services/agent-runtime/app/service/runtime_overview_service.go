@@ -427,6 +427,8 @@ func runtimeOverviewSummary(
 		"delivery_adapters_disabled":                   len(deliveryAdapters) - enabledAdapters,
 		"queue_backend_provider":                       queueBackend.Provider,
 		"queue_backend_mode":                           queueBackend.Mode,
+		"queue_outbox_execution_owner":                 queueBackend.OutboxExecutionOwner,
+		"queue_agent_job_execution_owner":              queueBackend.AgentJobExecutionOwner,
 		"queue_provider_status":                        queueProviderStatus,
 		"queue_provider_recommended":                   queueProviderRecommended,
 		"queue_provider_recommended_phase":             queueProviderRecommendedPhase,

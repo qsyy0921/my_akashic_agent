@@ -20,6 +20,7 @@
 - 生产 cutover 前继续做真实 NATS external lease preflight：确认 local outbox worker 已关闭、dual-read smoke 已通过、outbox external lease smoke 已通过，再启用真实平台发送范围。
 - MQ 方案下一步只做有证据的 adapter 扩展：NATS JetStream 已是当前推荐外部 MQ 且 provider capability matrix 已可见；Redis Streams / RabbitMQ 仅在出现明确部署需求时再实现 infrastructure adapter，并继续保持 domain/provider-neutral。
 - 若前端需要更强队列可视化，再把 provider capability 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
+- 若前端需要更强执行边界可视化，再把 execution owner、provider capability、external lease diagnostics 合并成独立 queue topology 面板；当前 `/v1/queue-backend` 和 runtime overview summary 已提供只读诊断，避免本轮扩大 UI 改造范围。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ result-ack live smoke 和切换门禁。
 
 ## Knowledge / Memory / RAG

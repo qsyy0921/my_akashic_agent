@@ -15,6 +15,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			ExternalQueueConfigured: true,
 			ConsumerConcurrency:     8,
 			MaxInFlight:             64,
+			OutboxExecutionOwner:    "nats_external_lease",
+			AgentJobExecutionOwner:  "python_ai_worker_with_nats_result_ack",
 			SelectedProviderCapability: &query.QueueProviderCapabilityView{
 				Provider:                    "nats_jetstream",
 				Status:                      "selected",
@@ -220,6 +222,10 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.Summary["queue_backend_provider"] != "nats_jetstream" {
 		t.Fatalf("unexpected queue backend: %#v", view.Summary)
+	}
+	if view.Summary["queue_outbox_execution_owner"] != "nats_external_lease" ||
+		view.Summary["queue_agent_job_execution_owner"] != "python_ai_worker_with_nats_result_ack" {
+		t.Fatalf("unexpected queue execution owners: %#v", view.Summary)
 	}
 	if view.Summary["queue_provider_status"] != "selected" ||
 		view.Summary["queue_provider_recommended"] != true ||
