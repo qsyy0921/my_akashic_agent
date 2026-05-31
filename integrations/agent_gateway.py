@@ -788,6 +788,14 @@ class AgentGatewayClient:
             )
         return data
 
+    async def get_runtime_config(self) -> dict[str, Any]:
+        data = await self._request("GET", "/v1/runtime-config")
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime config response is not an object"
+            )
+        return data
+
     async def retry_job(self, job_id: str) -> dict[str, Any]:
         return await self._request("POST", f"/v1/jobs/{job_id}/retry", json_body={})
 

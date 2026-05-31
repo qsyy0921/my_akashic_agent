@@ -165,4 +165,7 @@ execution.
 - `064-knowledge-pipeline-rag-ingest-snapshot-diagnostics.md`: Python writes a
   bounded successful `rag_ingest` snapshot into checkpoint metadata and Go
   surfaces it as structured per-dataset diagnostics.
+- `065-go-owned-knowledge-job-planner.md`: Go runtime owns recurring
+  observe-only knowledge job admission while Python knowledge workers retain
+  lease-based execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

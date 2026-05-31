@@ -27,7 +27,7 @@
 
 ## Knowledge / Memory / RAG
 
-- 继续把 group memory / RAG ingestion 的生命周期交给 Go job，Python 只做 AI worker 和策略实验。
+- group memory / RAG ingestion 的 AgentJob 生命周期与定期 admission 已交给 Go；后续只在出现明确需求时再推进优先级、并发控制、dataset/index readiness 或外部 MQ result-ack 的 live cutover，Python 继续做 AI worker 和策略实验。
 - 当前 source-seq lag、checkpoint age/stagnant、per-group stage lease freshness 和 per-dataset RAG state 已落地；后续若要把群知识编排再往前推进，可继续增加更接近外部索引的 dataset/index state，但先保持只读控制面。
 - 当前配置期 dataset 绑定也已纳入 observe-target metadata；后续若继续推进，可再把更稳定的 dataset/index readiness、文档数、最近 ingest 时间等外部索引元数据接入 Go，但前提仍是只读 control-plane。
 - 当前成功 `rag_ingest` 的快照元数据已结构化暴露；后续若继续推进，可继续补 dataset/index readiness、最近 parse 状态或文档总量，但仍应避免把 provider-specific 原始 payload 直接耦合进 Go。

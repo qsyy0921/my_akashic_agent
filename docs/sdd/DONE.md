@@ -50,6 +50,7 @@
 - `Knowledge Pipeline Diagnostics` 已新增 per-dataset RAG state：Go 现在能按群输出每个 `dataset_id` 的 `rag_ingest` stage、checkpoint、lag 和 degraded 状态，避免只看到群级 `rag_checkpoint_lag_max` 却不知道是哪一个 dataset 出问题。
 - observe-only QQ 群现已支持配置期 RAG dataset 绑定：Python `QQGroupConfig.ragflow_dataset_ids` 和全局 `ragflow.default_dataset_ids` 会同步到 Go `observe_target.metadata`，`Knowledge Pipeline Diagnostics` 可在 job/checkpoint 尚未生成前先显示“已配置但未启动”的 dataset。
 - `rag_ingest` 成功后的稳定快照元数据现已沉到 Go checkpoint metadata，并由 `Knowledge Pipeline Diagnostics` 以结构化 `ingest_snapshot` 暴露：包括 message/document 数、seq 范围、parse 请求标记和 display name，前端不再需要自己解析原始 metadata。
+- observe-only knowledge job 定期入队已迁到 Go runtime：新增 `knowledge_job_planner` worker，基于 Go observe targets 创建 `group_memory_extract` / `rag_ingest` AgentJob，并复用现有 dedupe/backpressure；Python knowledge worker 检测到 Go planner 启用后只做 lease 执行。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。
@@ -57,6 +58,7 @@
 ## Knowledge / Group Memory / RAG
 
 - observe-only 群记忆抽取生命周期已迁到 Go generic jobs，Python 作为抽取 worker。
+- observe-only 群知识任务 admission 已迁到 Go `knowledge_job_planner`，Python knowledge worker 保留兼容 fallback，但在 Go runtime 声明 planner 启用时不再自行入队。
 - group-memory 和 RAGFlow 源消息回放已接入 Go inbox API。
 - RAGFlow ingest 游标已接入 Go knowledge checkpoints。
 - RAG evaluation jobs 已做成 Go-owned 生命周期记录，Python 作为 opt-in eval worker 执行离线 fixture 并回写指标。

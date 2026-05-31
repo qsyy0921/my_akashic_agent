@@ -390,7 +390,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
                 message_source=runtime_message_source,
             )
 
-        worker = AgentRuntimeKnowledgeWorker(
+    worker = AgentRuntimeKnowledgeWorker(
         client=AgentRuntimeClient(agent_runtime),
         group_memory=GroupMemoryService.from_workspace(
             workspace,

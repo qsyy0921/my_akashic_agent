@@ -221,6 +221,41 @@ async def test_knowledge_worker_reports_runtime_dedupe_suppression():
 
 
 @pytest.mark.asyncio
+async def test_knowledge_worker_skips_legacy_enqueue_when_go_planner_enabled():
+    class _RuntimePlannerGateway(_FakeGatewayClient):
+        async def get_runtime_config(self) -> dict[str, Any]:
+            return {"workers": {"knowledge_job_planner_enabled": True}}
+
+    client = _RuntimePlannerGateway()
+    worker = _worker(client, ragflow_indexer=_FakeRagflowIndexer())
+
+    summary = await worker.enqueue_if_due_once()
+
+    assert summary["enqueued"] is False
+    assert summary["reason"] == "go_runtime_knowledge_job_planner_enabled"
+    assert client.created == []
+
+
+@pytest.mark.asyncio
+async def test_knowledge_worker_keeps_enqueue_fallback_without_go_planner_flag():
+    class _RuntimePlannerGateway(_FakeGatewayClient):
+        async def get_runtime_config(self) -> dict[str, Any]:
+            return {"workers": {"knowledge_job_planner_enabled": False}}
+
+    client = _RuntimePlannerGateway()
+    worker = _worker(client, ragflow_indexer=_FakeRagflowIndexer())
+
+    summary = await worker.enqueue_if_due_once()
+
+    assert summary["enqueued"] is True
+    assert summary["created_or_existing"] == 2
+    assert [item["job_type"] for item in client.created] == [
+        "group_memory_extract",
+        "rag_ingest",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_knowledge_worker_processes_group_memory_job():
     client = _FakeGatewayClient(
         jobs=[

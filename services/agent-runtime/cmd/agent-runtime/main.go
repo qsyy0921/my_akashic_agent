@@ -270,6 +270,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("init observe target service: %v", err)
 	}
+	stopKnowledgeJobPlanner, err := startKnowledgeJobPlanner(agentJobs, observeTargets)
+	if err != nil {
+		log.Fatalf("init knowledge job planner: %v", err)
+	}
+	if stopKnowledgeJobPlanner != nil {
+		defer stopKnowledgeJobPlanner()
+	}
 	receiverStatuses, err := newReceiverStatusService()
 	if err != nil {
 		log.Fatalf("init receiver status service: %v", err)

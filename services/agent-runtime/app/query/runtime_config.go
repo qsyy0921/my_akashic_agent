@@ -42,6 +42,7 @@ type RuntimeOneBotEndpointConfigView struct {
 type RuntimeWorkerConfigView struct {
 	AgentJobRecoveryEnabled          bool `json:"agent_job_recovery_enabled"`
 	OutboxDeliveryWorkerEnabled      bool `json:"outbox_delivery_worker_enabled"`
+	KnowledgeJobPlannerEnabled       bool `json:"knowledge_job_planner_enabled"`
 	AgentJobStrictLeaseToken         bool `json:"agent_job_strict_lease_token"`
 	QueueExternalLeaseAgentJobEnable bool `json:"queue_external_lease_agent_job_enabled"`
 }

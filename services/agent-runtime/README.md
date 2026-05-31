@@ -424,6 +424,28 @@ The runner is disabled by default. When enabled, it only calls the Go
 `RecoverExpiredLeases` application use case; it does not execute Python workers
 or acknowledge NATS messages directly.
 
+Optionally let Go own recurring observe-only knowledge job admission:
+
+```powershell
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED = "true"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS = "60"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID = "agent-runtime-knowledge-job-planner"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID = "akashic-python-worker"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_MAX_ATTEMPTS = "2"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES = "1000"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE = "true"
+$env:AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START = "true"
+```
+
+The planner is disabled by default. When enabled, it lists Go-owned observe
+targets, creates `group_memory_extract` jobs for enabled observe-only QQ group
+targets, and creates `rag_ingest` jobs for configured
+`ragflow_dataset_ids`. Existing AgentJob `dedupe_key` admission remains the
+backpressure guard, so repeated planning rounds do not create duplicate active
+work. Python knowledge workers still lease and execute the jobs; when they see
+`/v1/runtime-config.workers.knowledge_job_planner_enabled=true`, they skip
+their legacy enqueue loop and act as execution workers only.
+
 Persist generic job lifecycle events as a JSONL stream:
 
 ```powershell
@@ -514,11 +536,12 @@ GET /v1/runtime-workers
 ```
 
 This read-only endpoint reports whether `agent_job_recovery`,
-`outbox_delivery_worker`, `nats_shadow_publisher`, `nats_dual_read_compare`,
-and `nats_external_lease` are enabled and running, plus their worker id,
-interval, lease TTL, batch size, queue concurrency, max-in-flight, execution
-scope, and channel/account attributes. It is intended for dashboard/live-smoke
-readiness checks and does not start workers or send platform messages.
+`outbox_delivery_worker`, `knowledge_job_planner`, `nats_shadow_publisher`,
+`nats_dual_read_compare`, and `nats_external_lease` are enabled and running,
+plus their worker id, interval, lease TTL, batch size, queue concurrency,
+max-in-flight, execution scope, and channel/account attributes. It is intended
+for dashboard/live-smoke readiness checks and does not start workers or send
+platform messages.
 
 Inspect Python AI worker liveness reported into Go:
 

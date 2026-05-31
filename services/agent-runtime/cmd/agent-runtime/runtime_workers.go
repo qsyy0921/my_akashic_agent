@@ -18,6 +18,10 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 	if err != nil {
 		return query.RuntimeWorkerDiagnosticsView{}, err
 	}
+	knowledgePlanner, knowledgePlannerEnabled, err := knowledgeJobPlannerConfigFromEnv()
+	if err != nil {
+		return query.RuntimeWorkerDiagnosticsView{}, err
+	}
 	accountRateLimit, err := outboxAccountRateLimitConfigFromEnv()
 	if err != nil {
 		return query.RuntimeWorkerDiagnosticsView{}, err
@@ -48,6 +52,18 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 			Attributes:      outboxDeliveryWorkerAttributes(outboxDelivery),
 			Notes:           []string{"leases the Go outbox state store and dispatches through Go delivery adapters"},
 		},
+		{
+			Name:            "knowledge_job_planner",
+			Kind:            "knowledge_job_planner",
+			Enabled:         knowledgePlannerEnabled,
+			Running:         knowledgePlannerEnabled,
+			WorkerID:        knowledgePlanner.WorkerID,
+			IntervalSeconds: durationSeconds(knowledgePlanner.Interval),
+			BatchSize:       1,
+			RunOnStart:      knowledgePlanner.RunOnStart,
+			Attributes:      knowledgeJobPlannerAttributes(knowledgePlanner),
+			Notes:           []string{"creates observe-only group_memory_extract and rag_ingest agent jobs; Python workers execute the jobs"},
+		},
 	}
 	workers = append(workers, queueRuntimeWorkerViews(queueBackend, accountRateLimit)...)
 
@@ -55,6 +71,24 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 		Workers: workers,
 		Notes:   []string{"read-only runtime diagnostics; use endpoint status plus logs for live failure details"},
 	}, nil
+}
+
+func knowledgeJobPlannerAttributes(config jobtrigger.KnowledgeJobPlannerWorkerConfig) map[string]string {
+	attributes := make(map[string]string)
+	if config.AgentID != "" {
+		attributes["agent_id"] = config.AgentID
+	}
+	if config.MaxAttempts > 0 {
+		attributes["max_attempts"] = fmt.Sprintf("%d", config.MaxAttempts)
+	}
+	if config.RagMaxMessages > 0 {
+		attributes["rag_max_messages"] = fmt.Sprintf("%d", config.RagMaxMessages)
+		attributes["rag_parse"] = fmt.Sprintf("%t", config.RagParse)
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
 }
 
 func outboxDeliveryWorkerAttributes(config jobtrigger.OutboxDeliveryWorkerConfig) map[string]string {

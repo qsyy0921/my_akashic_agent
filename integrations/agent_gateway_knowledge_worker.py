@@ -102,6 +102,26 @@ class AgentGatewayKnowledgeWorker:
             "groups": sorted(self._group_accounts),
         }
 
+    async def enqueue_if_due_once(self) -> dict[str, Any]:
+        bucket = int(float(self._now_fn()) // self._enqueue_interval)
+        if bucket == self._last_enqueue_bucket:
+            return {
+                "enqueued": False,
+                "bucket": bucket,
+                "reason": "bucket_already_seen",
+            }
+        if await self._runtime_owns_knowledge_job_planning():
+            self._last_enqueue_bucket = bucket
+            return {
+                "enqueued": False,
+                "bucket": bucket,
+                "reason": "go_runtime_knowledge_job_planner_enabled",
+                "groups": sorted(self._group_accounts),
+            }
+        summary = await self.enqueue_once()
+        summary["enqueued"] = True
+        return summary
+
     def _ragflow_dataset_ids_for_group(self, group_id: str) -> list[str]:
         if group_id in self._ragflow_dataset_ids_by_group:
             return list(self._ragflow_dataset_ids_by_group[group_id])
@@ -185,9 +205,8 @@ class AgentGatewayKnowledgeWorker:
         try:
             while not self._stopped.is_set():
                 try:
-                    bucket = int(float(self._now_fn()) // self._enqueue_interval)
-                    if bucket != self._last_enqueue_bucket:
-                        summary = await self.enqueue_once()
+                    summary = await self.enqueue_if_due_once()
+                    if summary.get("enqueued"):
                         logger.info("[agent_runtime_knowledge_worker] enqueued %s", summary)
                     result = await self.process_once()
                     if result.get("processed") and not result.get("failed"):
@@ -222,6 +241,31 @@ class AgentGatewayKnowledgeWorker:
             except AgentGatewayNoJob as exc:
                 last_no_job = exc
         raise last_no_job or AgentGatewayNoJob("no knowledge jobs")
+
+    async def _runtime_owns_knowledge_job_planning(self) -> bool:
+        getter = getattr(self._client, "get_runtime_config", None)
+        if getter is None:
+            return False
+        try:
+            data = await getter()
+        except AgentGatewayError as exc:
+            logger.debug(
+                "[agent_runtime_knowledge_worker] runtime config unavailable, keep legacy enqueue fallback: %s",
+                exc,
+            )
+            return False
+        except Exception as exc:
+            logger.debug(
+                "[agent_runtime_knowledge_worker] runtime config probe failed, keep legacy enqueue fallback: %s",
+                exc,
+            )
+            return False
+        if not isinstance(data, dict):
+            return False
+        workers = data.get("workers")
+        if not isinstance(workers, dict):
+            return False
+        return bool(workers.get("knowledge_job_planner_enabled"))
 
     async def _create_group_memory_job(
         self,

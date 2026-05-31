@@ -41,6 +41,7 @@ func runtimeConfigFromEnv(addr string, addrSource string, botIDs []string) query
 		Workers: query.RuntimeWorkerConfigView{
 			AgentJobRecoveryEnabled:          boolEnv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED"),
 			OutboxDeliveryWorkerEnabled:      boolEnv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED"),
+			KnowledgeJobPlannerEnabled:       boolEnv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED"),
 			AgentJobStrictLeaseToken:         boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN"),
 			QueueExternalLeaseAgentJobEnable: boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED"),
 		},
@@ -154,6 +155,14 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 		"AKASHIC_QUEUE_MAX_IN_FLIGHT",
 		"AKASHIC_AGENT_JOB_RECOVERY_ENABLED",
 		"AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_MAX_ATTEMPTS",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE",
+		"AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START",
 		"AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN",
 		"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED",
 	}
@@ -176,7 +185,10 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 }
 
 func runtimeConfigSecretEnv(key string) bool {
-	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" {
+	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START" {
 		return false
 	}
 	upper := strings.ToUpper(key)
@@ -184,7 +196,10 @@ func runtimeConfigSecretEnv(key string) bool {
 }
 
 func runtimeConfigRedactedEnvValue(key string, value string) string {
-	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" {
+	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE" ||
+		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START" {
 		return value
 	}
 	upper := strings.ToUpper(key)

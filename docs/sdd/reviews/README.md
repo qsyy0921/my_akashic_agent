@@ -168,3 +168,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-119-knowledge-pipeline-rag-dataset-state-diagnostics.md`
 - `2026-05-31-phase8-120-knowledge-pipeline-configured-rag-dataset-bindings.md`
 - `2026-05-31-phase8-121-knowledge-pipeline-rag-ingest-snapshot-diagnostics.md`
+- `2026-05-31-phase8-122-go-owned-knowledge-job-planner.md`

@@ -376,6 +376,7 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	t.Setenv("AKASHIC_TELEGRAM_BOT_TOKEN", "telegram-token")
 	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token-fallback")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
 
 	view := runtimeConfigFromEnv(":8780", "AKASHIC_RUNTIME_ADDR", []string{"1049511700", "2365524513"})
@@ -392,7 +393,7 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	if len(view.Delivery.OneBotMissingChannels) != 0 || len(view.Readiness.Blockers) != 0 {
 		t.Fatalf("unexpected blockers: %#v %#v", view.Delivery.OneBotMissingChannels, view.Readiness.Blockers)
 	}
-	if !view.Workers.OutboxDeliveryWorkerEnabled || !view.Workers.AgentJobStrictLeaseToken {
+	if !view.Workers.OutboxDeliveryWorkerEnabled || !view.Workers.KnowledgeJobPlannerEnabled || !view.Workers.AgentJobStrictLeaseToken {
 		t.Fatalf("unexpected worker config flags: %#v", view.Workers)
 	}
 	tokenEnv := findRuntimeEnvVar(t, view.Environment, "AKASHIC_ONEBOT_ACCESS_TOKENS")
@@ -408,6 +409,10 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	strictTokenFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN")
 	if strictTokenFlag.Secret || strictTokenFlag.ValueRedacted != "true" {
 		t.Fatalf("strict lease token flag is a boolean config, not a secret: %#v", strictTokenFlag)
+	}
+	plannerFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED")
+	if plannerFlag.Secret || plannerFlag.ValueRedacted != "true" {
+		t.Fatalf("knowledge planner flag is a boolean config, not a secret: %#v", plannerFlag)
 	}
 	telegramToken := findRuntimeEnvVar(t, view.Environment, "TELEGRAM_BOT_TOKEN")
 	if telegramToken.ValueRedacted != "redacted" {
@@ -832,6 +837,42 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestKnowledgeJobPlannerConfigFromEnv(t *testing.T) {
+	_, enabled, err := knowledgeJobPlannerConfigFromEnv()
+	if err != nil {
+		t.Fatalf("knowledge planner default config: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected knowledge job planner disabled by default")
+	}
+
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED", "true")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS", "90")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID", "planner-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID", "python-knowledge-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_MAX_ATTEMPTS", "3")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES", "700")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE", "false")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START", "false")
+
+	config, enabled, err := knowledgeJobPlannerConfigFromEnv()
+	if err != nil {
+		t.Fatalf("knowledge planner config: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected knowledge job planner enabled")
+	}
+	if config.Interval != 90*time.Second ||
+		config.WorkerID != "planner-a" ||
+		config.AgentID != "python-knowledge-a" ||
+		config.MaxAttempts != 3 ||
+		config.RagMaxMessages != 700 ||
+		config.RagParse ||
+		config.RunOnStart {
+		t.Fatalf("unexpected knowledge planner config: %+v", config)
+	}
+}
+
 func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) {
 	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS", "120")
@@ -846,6 +887,11 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", "60")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", "5")
 	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED", "true")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS", "90")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID", "planner-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID", "python-knowledge-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES", "700")
 
 	view, err := runtimeWorkerDiagnosticsFromEnv(query.QueueBackendView{
 		Provider:                "nats_jetstream",
@@ -877,6 +923,15 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 		outbox.Attributes["account_window_seconds"] != "60" ||
 		outbox.Attributes["account_max_dispatches_in_window"] != "5" {
 		t.Fatalf("unexpected outbox rate-limit attributes: %#v", outbox.Attributes)
+	}
+	planner := findRuntimeWorker(t, view.Workers, "knowledge_job_planner")
+	if !planner.Enabled || !planner.Running || planner.WorkerID != "planner-a" || planner.IntervalSeconds != 90 {
+		t.Fatalf("unexpected knowledge planner worker: %#v", planner)
+	}
+	if planner.Attributes["agent_id"] != "python-knowledge-a" ||
+		planner.Attributes["rag_max_messages"] != "700" ||
+		planner.Attributes["rag_parse"] != "true" {
+		t.Fatalf("unexpected knowledge planner attributes: %#v", planner.Attributes)
 	}
 	compare := findRuntimeWorker(t, view.Workers, "nats_dual_read_compare")
 	if !compare.Enabled || !compare.Running || compare.ConsumerConcurrency != 4 || compare.MaxInFlight != 16 {
