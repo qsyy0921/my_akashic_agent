@@ -177,3 +177,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-128-outbound-cutover-readiness.md`
 - `2026-05-31-phase8-129-outbound-cutover-plan.md`
 - `2026-05-31-phase8-130-runtime-overview-outbound-cutover-plan.md`
+- `2026-05-31-phase8-131-agent-job-external-lease-readiness.md`

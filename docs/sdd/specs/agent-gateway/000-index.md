@@ -192,4 +192,7 @@ execution.
 - `073-runtime-overview-outbound-cutover-plan.md`: Runtime overview aggregates
   the outbound cutover plan into summary/card/detail fields for dashboard and
   operator entrypoints without mutating delivery state.
+- `074-agent-job-external-lease-readiness.md`: Go exposes a read-only
+  `agent_job` external lease result-ack readiness gate combining queue gate,
+  strict lease tokens, runtime config and Python worker coverage.
 - Agent architecture boundary specs live under `../agent-architecture/`.

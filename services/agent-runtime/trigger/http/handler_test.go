@@ -1777,6 +1777,46 @@ func TestOutboundCutoverPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
 	}
 }
 
+func TestAgentJobExternalLeaseReadinessEndpointReturnsReadOnlyGate(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, staticAgentJobExternalLeaseReadinessChecker{
+		view: query.AgentJobExternalLeaseReadinessView{
+			Ready:                   false,
+			Reason:                  "agent_job_external_lease_not_ready",
+			ExternalLeaseReady:      true,
+			AgentJobResultAckReady:  false,
+			StrictLeaseTokenEnabled: true,
+			AgentJobWorkerReady:     true,
+			ExecutionOwner:          "python_ai_worker_state_store_lease",
+			QueueProvider:           "nats_jetstream",
+			QueueMode:               "external_lease",
+			ExecutionScope:          "outbox_delivery_only",
+			AllowedWorkKinds:        []string{"outbox_delivery"},
+			Blockers:                []string{"agent_job_not_allowed_in_external_lease"},
+			SideEffect:              "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/readiness?stale_after_seconds=60", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job external lease readiness 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"agent_job_external_lease_not_ready"`,
+		`"external_lease_ready":true`,
+		`"agent_job_result_ack_ready":false`,
+		`"execution_owner":"python_ai_worker_state_store_lease"`,
+		`"agent_job_not_allowed_in_external_lease"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job external lease readiness response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -3298,6 +3338,14 @@ type staticOutboundCutoverPlanner struct {
 }
 
 func (s staticOutboundCutoverPlanner) PlanOutboundCutover(context.Context, command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobExternalLeaseReadinessChecker struct {
+	view query.AgentJobExternalLeaseReadinessView
+}
+
+func (s staticAgentJobExternalLeaseReadinessChecker) CheckAgentJobExternalLeaseReadiness(context.Context, command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error) {
 	return s.view, nil
 }
 

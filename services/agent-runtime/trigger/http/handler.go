@@ -104,6 +104,13 @@ func RegisterAgentJobMetricsRoutes(
 	mux.Handle("/v1/job-metrics", AgentJobMetricsHandler(metrics))
 }
 
+func RegisterAgentJobExternalLeaseRoutes(
+	mux *http.ServeMux,
+	checker inport.AgentJobExternalLeaseReadinessChecker,
+) {
+	mux.Handle("/v1/agent-job-external-lease/readiness", AgentJobExternalLeaseReadinessHandler(checker))
+}
+
 func RegisterInboxMetricsRoutes(
 	mux *http.ServeMux,
 	metrics inport.InboxMetricsViewer,
@@ -2148,6 +2155,29 @@ func AgentJobMetricsHandler(metrics inport.AgentJobMetricsViewer) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func AgentJobExternalLeaseReadinessHandler(checker inport.AgentJobExternalLeaseReadinessChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checker == nil {
+			http.Error(w, "agent job external lease readiness disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := checker.CheckAgentJobExternalLeaseReadiness(r.Context(), command.CheckAgentJobExternalLeaseReadinessCommand{
+			JobLimit:          parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
+			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 

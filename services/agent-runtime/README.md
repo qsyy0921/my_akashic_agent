@@ -677,6 +677,21 @@ executes the actual model/RAG/memory jobs; Go only acknowledges terminal queue
 notifications and delayed-`nack`s work still waiting for Python result
 writeback.
 
+Check whether `agent_job` result-ack is ready for external lease:
+
+```text
+GET /v1/agent-job-external-lease/readiness?stale_after_seconds=900
+```
+
+This read-only gate combines `/v1/queue-backend`, strict AgentJob lease-token
+runtime config, `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED`, AgentJob
+pressure, and Python worker heartbeat coverage. It is ready only when
+`agent_job` is included in the external lease allowed work kinds, execution
+owner is `python_ai_worker_with_nats_result_ack`, strict lease tokens are
+enabled, and high-pressure job types do not have danger-level Python worker
+coverage. It does not lease jobs, acknowledge NATS messages, start Python
+workers, or execute model/RAG/memory work.
+
 NATS JetStream is the preferred first MQ because its subject routing fits
 platform/account/job boundaries and its pull consumers can be consumed by a
 bounded Go goroutine worker pool. Redis Streams remains a local/simple
