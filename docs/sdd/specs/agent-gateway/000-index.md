@@ -180,4 +180,7 @@ execution.
 - `069-runtime-overview-knowledge-planner-readiness.md`: Runtime overview
   aggregates knowledge planner readiness so dashboard/operator entrypoints can
   see admission blockers without mutating jobs or config.
+- `070-knowledge-pipeline-rag-index-state-diagnostics.md`: Go derives
+  per-dataset RAG index readiness from checkpoint metadata without calling
+  RAGFlow or changing Python RAG execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

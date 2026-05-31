@@ -405,7 +405,7 @@ func buildKnowledgePipelineView(
 		knowledgePipelinePressure(groupMemory),
 		knowledgePipelinePressure(ragIngest),
 	}, workers)
-	status, reasons := knowledgePipelineStatus(target, capture, source, groupMemory, ragIngest, memoryLag, ragLagMax, coverage, staleAfterSeconds)
+	status, reasons := knowledgePipelineStatus(target, capture, source, groupMemory, ragIngest, ragDatasets, memoryLag, ragLagMax, coverage, staleAfterSeconds)
 	return query.KnowledgePipelineView{
 		TargetID:            target.TargetID,
 		Channel:             target.Channel,
@@ -465,11 +465,13 @@ func knowledgePipelineRagDatasets(
 	for datasetID := range keys {
 		runtimeObserved := len(jobsByDataset[datasetID]) > 0 || len(checkpointsByDataset[datasetID]) > 0
 		if !runtimeObserved && configured[datasetID] {
+			indexState := knowledgePipelineRagIndexState(nil, source, now)
 			items = append(items, query.KnowledgePipelineRagDatasetView{
 				DatasetID:       datasetID,
 				Configured:      true,
 				RuntimeObserved: false,
 				JobStage:        knowledgePipelineJobStage(string(model.AgentJobRagIngest), nil, now, staleAfterSeconds),
+				RagIndexState:   indexState,
 				Status:          "muted",
 				Reasons:         []string{"configured_dataset_not_started"},
 			})
@@ -478,7 +480,9 @@ func knowledgePipelineRagDatasets(
 		stage := knowledgePipelineJobStage(string(model.AgentJobRagIngest), jobsByDataset[datasetID], now, staleAfterSeconds)
 		checkpoint := latestKnowledgeCheckpointView(checkpointsByDataset[datasetID])
 		lag := knowledgePipelineCheckpointLag(checkpoint, source, now)
-		status, reasons := knowledgePipelineRagDatasetStatus(stage, lag, staleAfterSeconds)
+		snapshot := knowledgePipelineRagIngestSnapshot(checkpoint)
+		indexState := knowledgePipelineRagIndexState(snapshot, source, now)
+		status, reasons := knowledgePipelineRagDatasetStatus(stage, lag, indexState, staleAfterSeconds)
 		items = append(items, query.KnowledgePipelineRagDatasetView{
 			DatasetID:       datasetID,
 			DisplayName:     knowledgePipelineDatasetDisplayName(checkpoint),
@@ -487,7 +491,8 @@ func knowledgePipelineRagDatasets(
 			JobStage:        stage,
 			Checkpoint:      checkpoint,
 			CheckpointLag:   lag,
-			IngestSnapshot:  knowledgePipelineRagIngestSnapshot(checkpoint),
+			IngestSnapshot:  snapshot,
+			RagIndexState:   indexState,
 			Status:          status,
 			Reasons:         reasons,
 		})
@@ -566,6 +571,59 @@ func knowledgePipelineRagIngestSnapshot(
 		UpdatedAt:      checkpoint.UpdatedAt,
 		DisplayName:    knowledgePipelineDatasetDisplayName(checkpoint),
 	}
+}
+
+func knowledgePipelineRagIndexState(
+	snapshot *query.KnowledgePipelineRagIngestSnapshotView,
+	source knowledgePipelineSourceState,
+	now time.Time,
+) query.KnowledgePipelineRagIndexStateView {
+	if snapshot == nil {
+		return query.KnowledgePipelineRagIndexStateView{
+			Ready:  false,
+			Status: "muted",
+			Reason: "no_ingest_snapshot",
+		}
+	}
+	view := query.KnowledgePipelineRagIndexStateView{
+		MessageCount:   snapshot.MessageCount,
+		DocumentCount:  snapshot.DocumentCount,
+		StartSeq:       snapshot.StartSeq,
+		EndSeq:         snapshot.EndSeq,
+		ParseRequested: snapshot.ParseRequested,
+		LastIngestAt:   snapshot.UpdatedAt,
+		DisplayName:    snapshot.DisplayName,
+	}
+	if updatedAt, ok := parseKnowledgePipelineCheckpointTime(snapshot.UpdatedAt); ok && !now.IsZero() && !updatedAt.IsZero() {
+		age := int(now.Sub(updatedAt).Seconds())
+		if age < 0 {
+			age = 0
+		}
+		view.AgeSeconds = age
+	}
+	if source.Known {
+		view.LatestSourceSeq = source.LatestSeq
+		sourceLag := source.LatestSeq - snapshot.EndSeq
+		if sourceLag < 0 {
+			sourceLag = 0
+		}
+		view.SourceLag = sourceLag
+	}
+	switch {
+	case snapshot.DocumentCount <= 0:
+		view.Ready = false
+		view.Status = "warn"
+		view.Reason = "no_index_documents"
+	case source.Known && view.SourceLag > 0:
+		view.Ready = false
+		view.Status = "warn"
+		view.Reason = "index_lagging_source_seq"
+	default:
+		view.Ready = true
+		view.Status = "ok"
+		view.Reason = "index_ready"
+	}
+	return view
 }
 
 func parseKnowledgePipelineMetadataInt(value string) (int, bool) {
@@ -762,6 +820,7 @@ func knowledgePipelineStatus(
 	source knowledgePipelineSourceState,
 	groupMemory query.KnowledgePipelineJobStageView,
 	ragIngest query.KnowledgePipelineJobStageView,
+	ragDatasets []query.KnowledgePipelineRagDatasetView,
 	memoryLag *query.KnowledgePipelineCheckpointLagView,
 	ragLagMax *query.KnowledgePipelineCheckpointLagView,
 	coverage []query.AgentJobWorkerCoverageView,
@@ -823,6 +882,16 @@ func knowledgePipelineStatus(
 		reasons = append(reasons, stageReason)
 		status = mergeKnowledgePipelineStatus(status, nextStatus)
 	}
+	for _, dataset := range ragDatasets {
+		switch dataset.RagIndexState.Reason {
+		case "no_index_documents":
+			reasons = append(reasons, "rag_dataset_no_index_documents")
+			status = mergeKnowledgePipelineStatus(status, "warn")
+		case "index_lagging_source_seq":
+			reasons = append(reasons, "rag_dataset_index_lagging_source_seq")
+			status = mergeKnowledgePipelineStatus(status, "warn")
+		}
+	}
 	if len(reasons) == 0 {
 		reasons = append(reasons, "pipeline_ready")
 	}
@@ -845,6 +914,7 @@ func knowledgePipelineStageReason(prefix string, stage query.KnowledgePipelineJo
 func knowledgePipelineRagDatasetStatus(
 	stage query.KnowledgePipelineJobStageView,
 	lag *query.KnowledgePipelineCheckpointLagView,
+	indexState query.KnowledgePipelineRagIndexStateView,
 	staleAfterSeconds int,
 ) (string, []string) {
 	status := "ok"
@@ -856,6 +926,14 @@ func knowledgePipelineRagDatasetStatus(
 	if lagReason, nextStatus := knowledgePipelineLagReason("rag", lag, stage, staleAfterSeconds); lagReason != "" {
 		reasons = append(reasons, lagReason)
 		status = mergeKnowledgePipelineStatus(status, nextStatus)
+	}
+	switch indexState.Reason {
+	case "no_index_documents":
+		reasons = append(reasons, "rag_index_empty")
+		status = mergeKnowledgePipelineStatus(status, "warn")
+	case "index_lagging_source_seq":
+		reasons = append(reasons, "rag_index_lagging_source_seq")
+		status = mergeKnowledgePipelineStatus(status, "warn")
 	}
 	if status == "ok" && (stage.Pending > 0 || stage.Active > 0) {
 		status = "warn"
@@ -926,6 +1004,10 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		"rag_checkpoints":                    0,
 		"rag_datasets":                       0,
 		"rag_dataset_ingest_snapshots":       0,
+		"rag_dataset_index_ready":            0,
+		"rag_dataset_index_missing_snapshot": 0,
+		"rag_dataset_index_empty":            0,
+		"rag_dataset_index_lagging":          0,
 		"configured_rag_datasets":            0,
 		"configured_rag_dataset_not_started": 0,
 		"rag_dataset_warning":                0,
@@ -977,6 +1059,17 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		for _, dataset := range item.RagDatasets {
 			if dataset.IngestSnapshot != nil {
 				totals["rag_dataset_ingest_snapshots"]++
+			}
+			if dataset.RagIndexState.Ready {
+				totals["rag_dataset_index_ready"]++
+			}
+			switch dataset.RagIndexState.Reason {
+			case "no_ingest_snapshot":
+				totals["rag_dataset_index_missing_snapshot"]++
+			case "no_index_documents":
+				totals["rag_dataset_index_empty"]++
+			case "index_lagging_source_seq":
+				totals["rag_dataset_index_lagging"]++
 			}
 			if dataset.Configured {
 				totals["configured_rag_datasets"]++

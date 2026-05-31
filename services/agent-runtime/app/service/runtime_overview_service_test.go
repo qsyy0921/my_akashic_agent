@@ -260,6 +260,10 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"rag_checkpoints":                    2,
 				"rag_datasets":                       2,
 				"rag_dataset_ingest_snapshots":       1,
+				"rag_dataset_index_ready":            1,
+				"rag_dataset_index_missing_snapshot": 1,
+				"rag_dataset_index_empty":            1,
+				"rag_dataset_index_lagging":          1,
 				"rag_dataset_warning":                1,
 				"rag_dataset_blocked":                1,
 				"lagging":                            1,
@@ -447,6 +451,10 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_stale_active_lease_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_rag_datasets"] != 2 ||
 		view.Summary["knowledge_pipeline_rag_dataset_ingest_snapshots"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_dataset_index_ready"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_dataset_index_missing_snapshot"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_dataset_index_empty"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_dataset_index_lagging"] != 1 ||
 		view.Summary["knowledge_pipeline_configured_rag_datasets"] != 2 ||
 		view.Summary["knowledge_pipeline_configured_rag_dataset_not_started"] != 1 ||
 		view.Summary["knowledge_pipeline_rag_dataset_warning"] != 1 ||

@@ -89,7 +89,12 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["ready"] != 1 || view.Totals["blocked"] != 0 {
+	if view.Totals["targets"] != 1 ||
+		view.Totals["ready"] != 1 ||
+		view.Totals["blocked"] != 0 ||
+		view.Totals["rag_dataset_index_ready"] != 1 ||
+		view.Totals["rag_dataset_index_empty"] != 0 ||
+		view.Totals["rag_dataset_index_lagging"] != 0 {
 		t.Fatalf("unexpected totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
@@ -112,6 +117,15 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 		pipeline.RagDatasets[0].IngestSnapshot.EndSeq != 64 ||
 		!pipeline.RagDatasets[0].IngestSnapshot.ParseRequested {
 		t.Fatalf("unexpected rag ingest snapshot: %#v", pipeline.RagDatasets[0].IngestSnapshot)
+	}
+	if !pipeline.RagDatasets[0].RagIndexState.Ready ||
+		pipeline.RagDatasets[0].RagIndexState.Status != "ok" ||
+		pipeline.RagDatasets[0].RagIndexState.Reason != "index_ready" ||
+		pipeline.RagDatasets[0].RagIndexState.DocumentCount != 1 ||
+		pipeline.RagDatasets[0].RagIndexState.MessageCount != 3 ||
+		pipeline.RagDatasets[0].RagIndexState.SourceLag != 0 ||
+		pipeline.RagDatasets[0].RagIndexState.AgeSeconds != 120 {
+		t.Fatalf("unexpected rag index state: %#v", pipeline.RagDatasets[0].RagIndexState)
 	}
 	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
@@ -175,7 +189,11 @@ func TestKnowledgePipelineDiagnosticsServiceShowsConfiguredDatasetBeforeRuntimeO
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["rag_datasets"] != 1 || view.Totals["configured_rag_datasets"] != 1 || view.Totals["configured_rag_dataset_not_started"] != 1 {
+	if view.Totals["targets"] != 1 ||
+		view.Totals["rag_datasets"] != 1 ||
+		view.Totals["configured_rag_datasets"] != 1 ||
+		view.Totals["configured_rag_dataset_not_started"] != 1 ||
+		view.Totals["rag_dataset_index_missing_snapshot"] != 1 {
 		t.Fatalf("unexpected configured dataset totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
@@ -189,8 +207,102 @@ func TestKnowledgePipelineDiagnosticsServiceShowsConfiguredDatasetBeforeRuntimeO
 	if dataset.Checkpoint != nil || dataset.CheckpointLag != nil {
 		t.Fatalf("configured-only dataset should not have checkpoint state: %#v", dataset)
 	}
+	if dataset.RagIndexState.Status != "muted" ||
+		dataset.RagIndexState.Reason != "no_ingest_snapshot" ||
+		dataset.RagIndexState.Ready {
+		t.Fatalf("unexpected configured-only dataset index state: %#v", dataset.RagIndexState)
+	}
 	if dataset.JobStage.JobType != "rag_ingest" || dataset.JobStage.FreshnessStatus != "muted" {
 		t.Fatalf("unexpected configured-only dataset job stage: %#v", dataset.JobStage)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceWarnsOnEmptyRagIndex(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "27234224")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-empty-index", "empty index", nil, 77)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "idle",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	checkpoints := NewKnowledgeCheckpointService(store)
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "memory:qq:27234224",
+		Cursor:       77,
+		Metadata:     map[string]string{"group_id": "27234224"},
+		Timestamp:    now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert memory checkpoint: %v", err)
+	}
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "ragflow:qq:27234224:ds-empty",
+		Cursor:       77,
+		Metadata: map[string]string{
+			"group_id":             "27234224",
+			"dataset_id":           "ds-empty",
+			"display_name":         "qq_group_27234224_empty.txt",
+			"last_message_count":   "1",
+			"last_document_count":  "0",
+			"last_start_seq":       "77",
+			"last_end_seq":         "77",
+			"last_parse_requested": "true",
+		},
+		Timestamp: now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert empty rag checkpoint: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, nil)
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 ||
+		view.Totals["warning"] != 1 ||
+		view.Totals["rag_dataset_warning"] != 1 ||
+		view.Totals["rag_dataset_index_empty"] != 1 ||
+		view.Totals["rag_dataset_index_ready"] != 0 {
+		t.Fatalf("unexpected empty index totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "warn" || !containsString(pipeline.Reasons, "rag_dataset_no_index_documents") {
+		t.Fatalf("unexpected empty index pipeline: %#v", pipeline)
+	}
+	if len(pipeline.RagDatasets) != 1 {
+		t.Fatalf("expected one rag dataset: %#v", pipeline.RagDatasets)
+	}
+	dataset := pipeline.RagDatasets[0]
+	if dataset.Status != "warn" || !containsString(dataset.Reasons, "rag_index_empty") {
+		t.Fatalf("unexpected empty index dataset: %#v", dataset)
+	}
+	if dataset.RagIndexState.Ready ||
+		dataset.RagIndexState.Status != "warn" ||
+		dataset.RagIndexState.Reason != "no_index_documents" ||
+		dataset.RagIndexState.DocumentCount != 0 ||
+		dataset.RagIndexState.MessageCount != 1 ||
+		dataset.RagIndexState.SourceLag != 0 ||
+		dataset.RagIndexState.AgeSeconds != 120 {
+		t.Fatalf("unexpected empty index state: %#v", dataset.RagIndexState)
 	}
 }
 
@@ -571,8 +683,16 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
 		CheckpointID: "ragflow:qq:3219982:ds-stalled",
 		Cursor:       0,
-		Metadata:     map[string]string{"group_id": "3219982", "dataset_id": "ds-stalled"},
-		Timestamp:    now.Add(-5 * time.Minute),
+		Metadata: map[string]string{
+			"group_id":             "3219982",
+			"dataset_id":           "ds-stalled",
+			"last_message_count":   "3",
+			"last_document_count":  "1",
+			"last_start_seq":       "1",
+			"last_end_seq":         "20",
+			"last_parse_requested": "true",
+		},
+		Timestamp: now.Add(-5 * time.Minute),
 	}); err != nil {
 		t.Fatalf("upsert stalled rag checkpoint: %v", err)
 	}
@@ -589,7 +709,16 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stale_checkpoints"] != 1 || view.Totals["stalled"] != 1 || view.Totals["stagnant"] != 0 || view.Totals["rag_datasets"] != 1 || view.Totals["rag_dataset_blocked"] != 1 {
+	if view.Totals["targets"] != 1 ||
+		view.Totals["blocked"] != 1 ||
+		view.Totals["high_pressure"] != 1 ||
+		view.Totals["lagging"] != 1 ||
+		view.Totals["stale_checkpoints"] != 1 ||
+		view.Totals["stalled"] != 1 ||
+		view.Totals["stagnant"] != 0 ||
+		view.Totals["rag_datasets"] != 1 ||
+		view.Totals["rag_dataset_blocked"] != 1 ||
+		view.Totals["rag_dataset_index_lagging"] != 1 {
 		t.Fatalf("unexpected high-pressure totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
@@ -607,6 +736,11 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	}
 	if len(pipeline.RagDatasets) != 1 || pipeline.RagDatasets[0].DatasetID != "ds-stalled" || pipeline.RagDatasets[0].Status != "blocked" || !containsString(pipeline.RagDatasets[0].Reasons, "rag_checkpoint_stalled_under_pressure") {
 		t.Fatalf("unexpected blocked rag dataset: %#v", pipeline.RagDatasets)
+	}
+	if pipeline.RagDatasets[0].RagIndexState.Status != "warn" ||
+		pipeline.RagDatasets[0].RagIndexState.Reason != "index_lagging_source_seq" ||
+		pipeline.RagDatasets[0].RagIndexState.SourceLag != 100 {
+		t.Fatalf("unexpected lagging rag index state: %#v", pipeline.RagDatasets[0].RagIndexState)
 	}
 	if !containsString(pipeline.Reasons, "rag_checkpoint_stalled_under_pressure") {
 		t.Fatalf("expected rag_checkpoint_stalled_under_pressure reason: %#v", pipeline.Reasons)

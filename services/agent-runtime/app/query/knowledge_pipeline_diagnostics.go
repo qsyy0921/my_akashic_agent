@@ -47,6 +47,22 @@ type KnowledgePipelineRagIngestSnapshotView struct {
 	DisplayName    string `json:"display_name,omitempty"`
 }
 
+type KnowledgePipelineRagIndexStateView struct {
+	Ready           bool   `json:"ready"`
+	Status          string `json:"status"`
+	Reason          string `json:"reason,omitempty"`
+	MessageCount    int    `json:"message_count,omitempty"`
+	DocumentCount   int    `json:"document_count"`
+	StartSeq        int    `json:"start_seq,omitempty"`
+	EndSeq          int    `json:"end_seq,omitempty"`
+	LatestSourceSeq int    `json:"latest_source_seq,omitempty"`
+	SourceLag       int    `json:"source_lag,omitempty"`
+	ParseRequested  bool   `json:"parse_requested"`
+	LastIngestAt    string `json:"last_ingest_at,omitempty"`
+	AgeSeconds      int    `json:"age_seconds,omitempty"`
+	DisplayName     string `json:"display_name,omitempty"`
+}
+
 type KnowledgePipelineRagDatasetView struct {
 	DatasetID       string                                  `json:"dataset_id"`
 	DisplayName     string                                  `json:"display_name,omitempty"`
@@ -56,6 +72,7 @@ type KnowledgePipelineRagDatasetView struct {
 	Checkpoint      *KnowledgeCheckpointView                `json:"checkpoint,omitempty"`
 	CheckpointLag   *KnowledgePipelineCheckpointLagView     `json:"checkpoint_lag,omitempty"`
 	IngestSnapshot  *KnowledgePipelineRagIngestSnapshotView `json:"ingest_snapshot,omitempty"`
+	RagIndexState   KnowledgePipelineRagIndexStateView      `json:"rag_index_state"`
 	Status          string                                  `json:"status"`
 	Reasons         []string                                `json:"reasons,omitempty"`
 }

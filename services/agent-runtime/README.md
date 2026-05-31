@@ -843,8 +843,11 @@ cursor and derives checkpoint `age_seconds`, so the runtime can expose
 per-group lagging, stagnant, stalled, and stale/expired stage lease pipelines.
 Configured per-group RAG dataset bindings synced from Python config also appear
 here before any runtime `rag_ingest` job or checkpoint exists, as
-`configured_dataset_not_started`. It does not upload to RAGFlow, execute Python
-workers, or change memory/RAG strategy.
+`configured_dataset_not_started`. Each dataset also includes a Go-derived
+`rag_index_state` based on checkpoint snapshot metadata, so empty indexes,
+missing snapshots, source-lagging indexes, and ready indexes can be inspected
+without calling RAGFlow. It does not upload to RAGFlow, execute Python workers,
+or change memory/RAG strategy.
 
 Inspect the Go-owned runtime overview aggregate:
 
@@ -866,7 +869,7 @@ plane one level closer to the user workflow: per observe-only QQ group target,
 combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
 lag, checkpoint-age diagnostics, stage lease freshness, configured dataset
 bindings, per-dataset RAG state, and the last successful `rag_ingest`
-snapshot.
+snapshot plus derived RAG index readiness.
 `Knowledge Planner` summarizes the read-only planner preview from
 `/v1/knowledge-job-planner/preview`, including planned observe-only QQ targets,
 groups, `group_memory_extract` jobs, and `rag_ingest` jobs before real planner
