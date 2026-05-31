@@ -477,6 +477,17 @@ func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 	if !view.StateStoreAuthoritative {
 		t.Fatalf("state store must remain authoritative")
 	}
+	if view.SelectedProviderCapability == nil || view.SelectedProviderCapability.Provider != "local" {
+		t.Fatalf("expected selected local provider capability: %#v", view.SelectedProviderCapability)
+	}
+	local := findQueueProviderCapability(t, view.ProviderCapabilities, "local")
+	if local.Status != "selected" || !local.Implemented || !local.SupportsStateStoreLease || local.SupportsExternalLease {
+		t.Fatalf("unexpected local provider capability: %#v", local)
+	}
+	nats := findQueueProviderCapability(t, view.ProviderCapabilities, "nats_jetstream")
+	if !nats.Recommended || nats.RecommendedPhase != "first_external_mq" || !nats.SupportsConcurrentConsumers {
+		t.Fatalf("unexpected nats recommendation capability: %#v", nats)
+	}
 }
 
 func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
@@ -512,6 +523,29 @@ func TestQueueBackendViewFromEnvNormalizesNATSJetStream(t *testing.T) {
 	}
 	if view.DSNRedacted == "" || view.DSNRedacted == "nats://token@127.0.0.1:4222" {
 		t.Fatalf("expected redacted dsn, got %q", view.DSNRedacted)
+	}
+	if view.SelectedProviderCapability == nil || view.SelectedProviderCapability.Provider != "nats_jetstream" {
+		t.Fatalf("expected selected nats provider capability: %#v", view.SelectedProviderCapability)
+	}
+	nats := findQueueProviderCapability(t, view.ProviderCapabilities, "nats_jetstream")
+	if nats.Status != "selected" ||
+		!nats.Implemented ||
+		!nats.SupportsShadowPublish ||
+		!nats.SupportsDualReadCompare ||
+		!nats.SupportsExternalLease ||
+		!nats.SupportsAgentJobResultAck ||
+		!nats.SupportsConcurrentConsumers ||
+		!nats.SupportsDelayedNack ||
+		nats.ConsumerModel != "goroutine_worker_pool" {
+		t.Fatalf("unexpected nats capability: %#v", nats)
+	}
+	redis := findQueueProviderCapability(t, view.ProviderCapabilities, "redis_streams")
+	if redis.Status != "planned" || redis.Implemented || redis.SupportsExternalLease || len(redis.Blockers) == 0 {
+		t.Fatalf("redis streams should remain a future adapter boundary: %#v", redis)
+	}
+	rabbit := findQueueProviderCapability(t, view.ProviderCapabilities, "rabbitmq")
+	if rabbit.Status != "planned" || rabbit.Implemented || rabbit.SupportsExternalLease || len(rabbit.Blockers) == 0 {
+		t.Fatalf("rabbitmq should remain a future adapter boundary: %#v", rabbit)
 	}
 }
 
@@ -937,6 +971,17 @@ func findRuntimeWorker(t *testing.T, items []query.RuntimeWorkerView, name strin
 	}
 	t.Fatalf("missing runtime worker %q in %#v", name, items)
 	return query.RuntimeWorkerView{}
+}
+
+func findQueueProviderCapability(t *testing.T, items []query.QueueProviderCapabilityView, provider string) query.QueueProviderCapabilityView {
+	t.Helper()
+	for _, item := range items {
+		if item.Provider == provider {
+			return item
+		}
+	}
+	t.Fatalf("missing queue provider capability %q in %#v", provider, items)
+	return query.QueueProviderCapabilityView{}
 }
 
 func findRuntimeEnvVar(t *testing.T, items []query.RuntimeEnvVarView, key string) query.RuntimeEnvVarView {

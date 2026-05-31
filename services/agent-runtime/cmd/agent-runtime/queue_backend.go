@@ -52,29 +52,106 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 	if externalLeaseAllowsAgentJobs(externalLease) {
 		agentJobQueueSource = "agent_job_state_store_with_nats_result_ack"
 	}
+	providerCapabilities := queueProviderCapabilities(provider)
 
 	return query.QueueBackendView{
-		Provider:                provider,
-		Mode:                    mode,
-		MigrationPhase:          queueMigrationPhase(provider, mode),
-		Stream:                  stream,
-		SubjectPrefix:           subjectPrefix,
-		ExternalQueueConfigured: externalConfigured,
-		ExternalQueueActive:     false,
-		StateStoreAuthoritative: true,
-		LeaseOwner:              "go_state_store",
-		ConsumerModel:           "goroutine_worker_pool",
-		ConsumerConcurrency:     consumerConcurrency,
-		MaxInFlight:             maxInFlight,
-		OutboxQueueSource:       "outbox_state_store",
-		AgentJobQueueSource:     agentJobQueueSource,
-		DSNConfigured:           dsnConfigured,
-		DSNRedacted:             redactQueueDSN(dsn),
-		RecommendedFirstBackend: "nats_jetstream",
-		SupportedProviders:      []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
-		Notes:                   notes,
-		ExternalLease:           externalLease,
+		Provider:                   provider,
+		Mode:                       mode,
+		MigrationPhase:             queueMigrationPhase(provider, mode),
+		Stream:                     stream,
+		SubjectPrefix:              subjectPrefix,
+		ExternalQueueConfigured:    externalConfigured,
+		ExternalQueueActive:        false,
+		StateStoreAuthoritative:    true,
+		LeaseOwner:                 "go_state_store",
+		ConsumerModel:              "goroutine_worker_pool",
+		ConsumerConcurrency:        consumerConcurrency,
+		MaxInFlight:                maxInFlight,
+		OutboxQueueSource:          "outbox_state_store",
+		AgentJobQueueSource:        agentJobQueueSource,
+		DSNConfigured:              dsnConfigured,
+		DSNRedacted:                redactQueueDSN(dsn),
+		RecommendedFirstBackend:    "nats_jetstream",
+		SupportedProviders:         []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
+		ProviderCapabilities:       providerCapabilities,
+		SelectedProviderCapability: selectedQueueProviderCapability(provider, providerCapabilities),
+		Notes:                      notes,
+		ExternalLease:              externalLease,
 	}, nil
+}
+
+func queueProviderCapabilities(selectedProvider string) []query.QueueProviderCapabilityView {
+	items := []query.QueueProviderCapabilityView{
+		{
+			Provider:                "local",
+			Label:                   "Local Go state store",
+			Status:                  "available",
+			Implemented:             true,
+			SupportsStateStoreLease: true,
+			ConsumerModel:           "state_store_lease",
+			AdapterBoundary:         "in_process_state_store",
+			Notes:                   []string{"default safe mode; no external MQ dependency", "state store remains authoritative during every migration phase"},
+		},
+		{
+			Provider:                    "nats_jetstream",
+			Label:                       "NATS JetStream",
+			Status:                      "available",
+			Recommended:                 true,
+			RecommendedPhase:            "first_external_mq",
+			Implemented:                 true,
+			SupportsExternalQueue:       true,
+			SupportsShadowPublish:       true,
+			SupportsDualReadCompare:     true,
+			SupportsExternalLease:       true,
+			SupportsAgentJobResultAck:   true,
+			SupportsConcurrentConsumers: true,
+			SupportsDelayedNack:         true,
+			ConsumerModel:               "goroutine_worker_pool",
+			AdapterBoundary:             "infrastructure/natsqueue",
+			Notes:                       []string{"current recommended external MQ for staged cutover", "external lease remains gate-protected by runtime readiness checks"},
+		},
+		{
+			Provider:                    "redis_streams",
+			Label:                       "Redis Streams",
+			Status:                      "planned",
+			RecommendedPhase:            "future_adapter",
+			SupportsExternalQueue:       true,
+			SupportsConcurrentConsumers: true,
+			ConsumerModel:               "consumer_group",
+			AdapterBoundary:             "future infrastructure adapter behind WorkQueue ports",
+			Notes:                       []string{"kept as a replaceable provider boundary", "not implemented for external lease in this runtime yet"},
+			Blockers:                    []string{"adapter_not_implemented", "external_lease_smoke_missing"},
+		},
+		{
+			Provider:                    "rabbitmq",
+			Label:                       "RabbitMQ",
+			Status:                      "planned",
+			RecommendedPhase:            "future_adapter",
+			SupportsExternalQueue:       true,
+			SupportsConcurrentConsumers: true,
+			SupportsDelayedNack:         true,
+			ConsumerModel:               "competing_consumers",
+			AdapterBoundary:             "future infrastructure adapter behind WorkQueue ports",
+			Notes:                       []string{"kept as a replaceable provider boundary", "not implemented for external lease in this runtime yet"},
+			Blockers:                    []string{"adapter_not_implemented", "external_lease_smoke_missing"},
+		},
+	}
+	for index := range items {
+		if items[index].Provider == selectedProvider {
+			items[index].Status = "selected"
+		}
+	}
+	return items
+}
+
+func selectedQueueProviderCapability(provider string, items []query.QueueProviderCapabilityView) *query.QueueProviderCapabilityView {
+	for _, item := range items {
+		if item.Provider == provider {
+			selected := item
+			return &selected
+		}
+	}
+	return nil
 }
 
 func normalizeQueueProvider(raw string) (string, error) {

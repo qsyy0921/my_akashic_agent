@@ -128,4 +128,7 @@ execution.
   account-level send throttling with lease-time blocked-account skip.
 - `051-external-lease-outbox-account-rate-limit.md`: NATS external lease outbox
   executor uses the same Go account throttling policy before leasing/sending.
+- `052-queue-provider-capability-diagnostics.md`: Queue backend provider
+  capability matrix for NATS-first MQ selection, concurrent consumers, and
+  future Redis/RabbitMQ adapter boundaries.
 - Agent architecture boundary specs live under `../agent-architecture/`.
