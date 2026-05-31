@@ -223,4 +223,8 @@ execution.
 - `083-dashboard-runtime-overview-new-fields.md`: Python dashboard normalizes
   the latest Go-owned runtime overview delivery-smoke and media-asset-content
   fields without taking ownership of runtime state or AI processing.
+- `084-knowledge-job-planner-cutover-plan.md`: Go exposes a read-only
+  knowledge job planner cutover plan and runtime overview aggregate so
+  observe-only memory/RAG admission can be enabled or rolled back deliberately
+  without creating jobs or executing AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.

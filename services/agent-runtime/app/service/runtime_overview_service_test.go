@@ -384,6 +384,46 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Preview:                query.KnowledgeJobPlannerPreviewView{TotalJobs: 3, Targets: 1, SideEffect: "none"},
 			SideEffect:             "none",
 		}},
+		KnowledgePlannerCutover: staticRuntimeKnowledgeJobPlannerCutover{view: query.KnowledgeJobPlannerCutoverPlanView{
+			Ready:                     false,
+			Decision:                  "blocked",
+			DesiredAdmissionOwner:     "go_runtime_knowledge_job_planner",
+			RecommendedAdmissionOwner: "go_runtime_knowledge_job_planner",
+			CurrentAdmissionOwner:     "python_legacy_knowledge_enqueue",
+			Readiness: query.KnowledgeJobPlannerReadinessView{
+				Ready:      false,
+				Reason:     "knowledge_job_planner_not_ready",
+				SideEffect: "none",
+			},
+			RequiredChecks: []query.KnowledgeJobPlannerCutoverStep{{
+				StepIndex: 1,
+				Phase:     "precheck",
+				Action:    "check_knowledge_job_planner_readiness",
+				Method:    "GET",
+				Endpoint:  "/v1/knowledge-job-planner/readiness",
+			}},
+			EnableSteps: []query.KnowledgeJobPlannerCutoverStep{{
+				StepIndex: 1,
+				Phase:     "enable",
+				Action:    "enable_go_knowledge_job_planner",
+				Env:       map[string]string{"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "true"},
+			}},
+			VerificationSteps: []query.KnowledgeJobPlannerCutoverStep{{
+				StepIndex: 1,
+				Phase:     "verify",
+				Action:    "read_runtime_workers",
+				Method:    "GET",
+				Endpoint:  "/v1/runtime-workers",
+			}},
+			RollbackSteps: []query.KnowledgeJobPlannerCutoverStep{{
+				StepIndex: 1,
+				Phase:     "rollback",
+				Action:    "disable_go_knowledge_job_planner",
+				Env:       map[string]string{"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "false"},
+			}},
+			Blockers:   []string{"knowledge_job_planner_readiness_not_ready", "knowledge_worker_unavailable"},
+			SideEffect: "none",
+		}},
 		AgentJobCapacityPlan: staticRuntimeAgentJobCapacityPlan{view: query.AgentJobCapacityPlanView{
 			Ready:  false,
 			Reason: "agent_job_capacity_attention_required",
@@ -673,6 +713,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_job_planner_readiness_worker_stopped"] != 1 {
 		t.Fatalf("unexpected knowledge planner readiness summary: %#v", view.Summary)
 	}
+	if view.Summary["knowledge_job_planner_cutover_plan_ready"] != false ||
+		view.Summary["knowledge_job_planner_cutover_plan_decision"] != "blocked" ||
+		view.Summary["knowledge_job_planner_cutover_plan_blockers"] != 2 ||
+		view.Summary["knowledge_job_planner_cutover_plan_current_owner"] != "python_legacy_knowledge_enqueue" ||
+		view.Summary["knowledge_job_planner_cutover_plan_desired_owner"] != "go_runtime_knowledge_job_planner" ||
+		view.Summary["knowledge_job_planner_cutover_plan_recommended_owner"] != "go_runtime_knowledge_job_planner" {
+		t.Fatalf("unexpected knowledge planner cutover summary: %#v", view.Summary)
+	}
 	if view.Summary["agent_job_capacity_ready"] != false ||
 		view.Summary["agent_job_capacity_reason"] != "agent_job_capacity_attention_required" ||
 		view.Summary["agent_job_capacity_blockers"] != 3 ||
@@ -763,6 +811,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_preview", "3/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_readiness", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_readiness", "blocked:2")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_cutover_plan", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_cutover_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_external_lease_readiness", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_external_lease_readiness", "agent_job_external_lease_not_ready:3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_external_lease_plan", "warn")
@@ -814,6 +864,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.KnowledgePlannerReady.Ready || len(view.KnowledgePlannerReady.Blockers) != 2 {
 		t.Fatalf("unexpected knowledge planner readiness detail: %+v", view.KnowledgePlannerReady)
+	}
+	if view.KnowledgePlannerCutover.Decision != "blocked" ||
+		view.KnowledgePlannerCutover.DesiredAdmissionOwner != "go_runtime_knowledge_job_planner" ||
+		len(view.KnowledgePlannerCutover.RollbackSteps) == 0 {
+		t.Fatalf("unexpected knowledge planner cutover detail: %+v", view.KnowledgePlannerCutover)
 	}
 	if view.AgentJobCapacityPlan.Ready ||
 		view.AgentJobCapacityPlan.Summary.CapacityBlockedJobTypes != 1 ||
@@ -1002,6 +1057,14 @@ type staticKnowledgeJobPlannerReadiness struct {
 }
 
 func (s staticKnowledgeJobPlannerReadiness) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeKnowledgeJobPlannerCutover struct {
+	view query.KnowledgeJobPlannerCutoverPlanView
+}
+
+func (s staticRuntimeKnowledgeJobPlannerCutover) PlanKnowledgeJobPlannerCutover(context.Context, command.PlanKnowledgeJobPlannerCutoverCommand) (query.KnowledgeJobPlannerCutoverPlanView, error) {
 	return s.view, nil
 }
 

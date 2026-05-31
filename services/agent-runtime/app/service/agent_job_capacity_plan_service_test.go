@@ -21,7 +21,7 @@ func TestAgentJobCapacityPlanRecommendsRecoveryAndConcurrencyTuning(t *testing.T
 		AgentJobs:    metrics,
 		AgentWorkers: workers,
 	})
-	now := time.Date(2026, 5, 31, 15, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-30 * time.Second)
 
 	for index := 0; index < 10; index++ {
 		cmd := sampleKnowledgeJobCommand(

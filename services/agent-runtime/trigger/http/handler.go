@@ -85,10 +85,12 @@ func RegisterKnowledgeJobPlannerRoutes(
 	mux *http.ServeMux,
 	previewer inport.KnowledgeJobPlannerPreviewer,
 	readiness inport.KnowledgeJobPlannerReadinessChecker,
+	cutoverPlanner inport.KnowledgeJobPlannerCutoverPlanner,
 	defaults command.PlanKnowledgeJobsCommand,
 ) {
 	mux.Handle("/v1/knowledge-job-planner/preview", KnowledgeJobPlannerPreviewHandler(previewer, defaults))
 	mux.Handle("/v1/knowledge-job-planner/readiness", KnowledgeJobPlannerReadinessHandler(readiness, defaults))
+	mux.Handle("/v1/knowledge-job-planner/cutover-plan", KnowledgeJobPlannerCutoverPlanHandler(cutoverPlanner, defaults))
 }
 
 func RegisterAgentJobEventRoutes(
@@ -329,6 +331,42 @@ func KnowledgeJobPlannerReadinessHandler(
 		view, err := checker.CheckKnowledgeJobPlannerReadiness(r.Context(), command.CheckKnowledgeJobPlannerReadinessCommand{
 			Plan:              plan,
 			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: view,
+		})
+	})
+}
+
+func KnowledgeJobPlannerCutoverPlanHandler(
+	planner inport.KnowledgeJobPlannerCutoverPlanner,
+	defaults command.PlanKnowledgeJobsCommand,
+) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if planner == nil {
+			http.Error(w, "knowledge job planner cutover plan disabled", http.StatusNotImplemented)
+			return
+		}
+		plan, err := knowledgeJobPlannerPreviewCommandFromRequest(r, defaults)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := planner.PlanKnowledgeJobPlannerCutover(r.Context(), command.PlanKnowledgeJobPlannerCutoverCommand{
+			Readiness: command.CheckKnowledgeJobPlannerReadinessCommand{
+				Plan:              plan,
+				StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+			},
+			DesiredAdmissionOwner: r.URL.Query().Get("desired_admission_owner"),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

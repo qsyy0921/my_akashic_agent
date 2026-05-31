@@ -279,6 +279,9 @@ func main() {
 		AgentWorkers:   agentWorkerStatuses,
 		DefaultPlan:    knowledgeJobPlannerPreviewDefaults,
 	})
+	knowledgeJobPlannerCutoverPlan := appservice.NewKnowledgeJobPlannerCutoverPlanService(appservice.KnowledgeJobPlannerCutoverPlanDeps{
+		Readiness: knowledgeJobPlannerReadiness,
+	})
 	stopKnowledgeJobPlanner, err := startKnowledgeJobPlanner(agentJobs, observeTargets)
 	if err != nil {
 		log.Fatalf("init knowledge job planner: %v", err)
@@ -356,6 +359,7 @@ func main() {
 		KnowledgePipelines:         knowledgePipelines,
 		KnowledgeJobPlanner:        knowledgeJobPlannerPreview,
 		KnowledgePlannerReady:      knowledgeJobPlannerReadiness,
+		KnowledgePlannerCutover:    knowledgeJobPlannerCutoverPlan,
 		KnowledgePlannerPlan:       knowledgeJobPlannerPreviewDefaults,
 		AgentJobCapacityPlan:       agentJobCapacityPlan,
 		AgentJobExternalLeaseReady: agentJobExternalLeaseReadiness,
@@ -371,7 +375,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterKnowledgePipelineDiagnosticsRoutes(mux, knowledgePipelines)
-	httptrigger.RegisterKnowledgeJobPlannerRoutes(mux, knowledgeJobPlannerPreview, knowledgeJobPlannerReadiness, knowledgeJobPlannerPreviewDefaults)
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(mux, knowledgeJobPlannerPreview, knowledgeJobPlannerReadiness, knowledgeJobPlannerCutoverPlan, knowledgeJobPlannerPreviewDefaults)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)

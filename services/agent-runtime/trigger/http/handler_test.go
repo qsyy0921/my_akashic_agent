@@ -336,6 +336,7 @@ func TestKnowledgeJobPlannerPreviewEndpointReturnsReadOnlyPlan(t *testing.T) {
 			},
 		},
 		nil,
+		nil,
 		command.PlanKnowledgeJobsCommand{
 			PlannerID:       "planner-default",
 			AgentID:         "python-knowledge-a",
@@ -389,6 +390,7 @@ func TestKnowledgeJobPlannerReadinessEndpointReturnsBlockers(t *testing.T) {
 				SideEffect:            "none",
 			},
 		},
+		nil,
 		command.PlanKnowledgeJobsCommand{IntervalSeconds: 60, MaxAttempts: 2, RagMaxMessages: 500},
 	)
 
@@ -412,6 +414,61 @@ func TestKnowledgeJobPlannerReadinessEndpointReturnsBlockers(t *testing.T) {
 
 	methodNotAllowed := httptest.NewRecorder()
 	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/knowledge-job-planner/readiness", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
+	}
+}
+
+func TestKnowledgeJobPlannerCutoverPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(
+		mux,
+		nil,
+		nil,
+		staticKnowledgeJobPlannerCutoverPlanner{
+			view: query.KnowledgeJobPlannerCutoverPlanView{
+				Ready:                     false,
+				Decision:                  "ready_to_enable_go_planner",
+				DesiredAdmissionOwner:     "go_runtime_knowledge_job_planner",
+				RecommendedAdmissionOwner: "go_runtime_knowledge_job_planner",
+				CurrentAdmissionOwner:     "python_legacy_knowledge_enqueue",
+				Readiness: query.KnowledgeJobPlannerReadinessView{
+					Ready:      true,
+					Reason:     "knowledge_job_planner_ready",
+					SideEffect: "none",
+				},
+				EnableSteps: []query.KnowledgeJobPlannerCutoverStep{{
+					StepIndex: 1,
+					Phase:     "enable",
+					Action:    "enable_go_knowledge_job_planner",
+					Env:       map[string]string{"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "true"},
+				}},
+				SideEffect: "none",
+			},
+		},
+		command.PlanKnowledgeJobsCommand{IntervalSeconds: 60, MaxAttempts: 2, RagMaxMessages: 500},
+	)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/knowledge-job-planner/cutover-plan?desired_admission_owner=go", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"decision":"ready_to_enable_go_planner"`,
+		`"desired_admission_owner":"go_runtime_knowledge_job_planner"`,
+		`"current_admission_owner":"python_legacy_knowledge_enqueue"`,
+		`"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED":"true"`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/knowledge-job-planner/cutover-plan", nil))
 	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
 	}
@@ -3496,6 +3553,14 @@ type staticKnowledgeJobPlannerReadinessChecker struct {
 }
 
 func (s staticKnowledgeJobPlannerReadinessChecker) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgeJobPlannerCutoverPlanner struct {
+	view query.KnowledgeJobPlannerCutoverPlanView
+}
+
+func (s staticKnowledgeJobPlannerCutoverPlanner) PlanKnowledgeJobPlannerCutover(context.Context, command.PlanKnowledgeJobPlannerCutoverCommand) (query.KnowledgeJobPlannerCutoverPlanView, error) {
 	return s.view, nil
 }
 

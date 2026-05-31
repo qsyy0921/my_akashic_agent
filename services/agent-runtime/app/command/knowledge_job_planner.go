@@ -16,3 +16,8 @@ type CheckKnowledgeJobPlannerReadinessCommand struct {
 	Plan              PlanKnowledgeJobsCommand
 	StaleAfterSeconds int
 }
+
+type PlanKnowledgeJobPlannerCutoverCommand struct {
+	Readiness             CheckKnowledgeJobPlannerReadinessCommand
+	DesiredAdmissionOwner string
+}

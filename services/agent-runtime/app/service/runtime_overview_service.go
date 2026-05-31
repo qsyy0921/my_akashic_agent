@@ -35,6 +35,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgePipelines         runtimeKnowledgePipelineDiagnosticsGetter
 	KnowledgeJobPlanner        runtimeKnowledgeJobPlannerPreviewer
 	KnowledgePlannerReady      runtimeKnowledgeJobPlannerReadinessChecker
+	KnowledgePlannerCutover    runtimeKnowledgeJobPlannerCutoverPlanner
 	KnowledgePlannerPlan       command.PlanKnowledgeJobsCommand
 	AgentJobCapacityPlan       runtimeAgentJobCapacityPlanner
 	AgentJobExternalLeaseReady runtimeAgentJobExternalLeaseReadinessChecker
@@ -117,6 +118,10 @@ type runtimeKnowledgeJobPlannerReadinessChecker interface {
 	CheckKnowledgeJobPlannerReadiness(ctx context.Context, cmd command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error)
 }
 
+type runtimeKnowledgeJobPlannerCutoverPlanner interface {
+	PlanKnowledgeJobPlannerCutover(ctx context.Context, cmd command.PlanKnowledgeJobPlannerCutoverCommand) (query.KnowledgeJobPlannerCutoverPlanView, error)
+}
+
 type runtimeAgentJobCapacityPlanner interface {
 	PlanAgentJobCapacity(ctx context.Context, cmd command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error)
 }
@@ -187,6 +192,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines    query.KnowledgePipelineDiagnosticsView
 		knowledgePlanner      query.KnowledgeJobPlannerPreviewView
 		knowledgeReady        query.KnowledgeJobPlannerReadinessView
+		knowledgeCutover      query.KnowledgeJobPlannerCutoverPlanView
 		agentJobCapacity      query.AgentJobCapacityPlanView
 		agentJobExternalLease query.AgentJobExternalLeaseReadinessView
 		agentJobExternalPlan  query.AgentJobExternalLeasePlanView
@@ -355,6 +361,19 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.KnowledgePlannerCutover != nil {
+			if item, err := deps.KnowledgePlannerCutover.PlanKnowledgeJobPlannerCutover(ctx, command.PlanKnowledgeJobPlannerCutoverCommand{
+				Readiness: command.CheckKnowledgeJobPlannerReadinessCommand{
+					Plan:              deps.KnowledgePlannerPlan,
+					StaleAfterSeconds: staleAfterSeconds,
+				},
+			}); err != nil {
+				errors = append(errors, runtimeOverviewError("knowledge-job-planner-cutover-plan", err))
+			} else {
+				knowledgeCutover = item
+			}
+		}
+
 		if deps.AgentJobCapacityPlan != nil {
 			if item, err := deps.AgentJobCapacityPlan.PlanAgentJobCapacity(ctx, command.PlanAgentJobCapacityCommand{
 				JobLimit:          limit,
@@ -446,6 +465,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		knowledgeCutover,
 		agentJobCapacity,
 		agentJobExternalLease,
 		agentJobExternalPlan,
@@ -475,6 +495,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		knowledgeCutover,
 		agentJobCapacity,
 		agentJobExternalLease,
 		agentJobExternalPlan,
@@ -487,34 +508,35 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	)
 
 	return query.RuntimeOverviewView{
-		Summary:                summary,
-		Cards:                  cards,
-		DeliveryAdapters:       deliveryAdapters,
-		DeliverySmokeReadiness: deliverySmoke,
-		QueueBackend:           queueBackend,
-		RuntimeConfig:          runtimeConfig,
-		RuntimeWorkers:         runtimeWorkers,
-		AgentWorkers:           agentWorkers,
-		ObserveTargets:         observeTargets,
-		ObserveCapture:         observeCapture,
-		MediaAssetContent:      mediaAssetContent,
-		KnowledgePipelines:     knowledgePipelines,
-		KnowledgeJobPlanner:    knowledgePlanner,
-		KnowledgePlannerReady:  knowledgeReady,
-		AgentJobCapacityPlan:   agentJobCapacity,
-		AgentJobExternalLease:  agentJobExternalLease,
-		AgentJobExternalPlan:   agentJobExternalPlan,
-		OutboundCutoverPlan:    outboundCutover,
-		ReceiverStatuses:       receiverStatuses,
-		ReceiverLeases:         receiverLeases,
-		SchedulerJobs:          schedulerJobs,
-		SendLedgerMetrics:      sendLedger,
-		InboxMetrics:           inboxMetrics,
-		InboundDedupe:          inboundDedupe,
-		AgentJobMetrics:        agentJobMetrics,
-		AgentJobWorkerCoverage: agentJobWorkerCoverage,
-		OutboxMetrics:          outboxMetrics,
-		Diagnostics:            diagnostics,
+		Summary:                 summary,
+		Cards:                   cards,
+		DeliveryAdapters:        deliveryAdapters,
+		DeliverySmokeReadiness:  deliverySmoke,
+		QueueBackend:            queueBackend,
+		RuntimeConfig:           runtimeConfig,
+		RuntimeWorkers:          runtimeWorkers,
+		AgentWorkers:            agentWorkers,
+		ObserveTargets:          observeTargets,
+		ObserveCapture:          observeCapture,
+		MediaAssetContent:       mediaAssetContent,
+		KnowledgePipelines:      knowledgePipelines,
+		KnowledgeJobPlanner:     knowledgePlanner,
+		KnowledgePlannerReady:   knowledgeReady,
+		KnowledgePlannerCutover: knowledgeCutover,
+		AgentJobCapacityPlan:    agentJobCapacity,
+		AgentJobExternalLease:   agentJobExternalLease,
+		AgentJobExternalPlan:    agentJobExternalPlan,
+		OutboundCutoverPlan:     outboundCutover,
+		ReceiverStatuses:        receiverStatuses,
+		ReceiverLeases:          receiverLeases,
+		SchedulerJobs:           schedulerJobs,
+		SendLedgerMetrics:       sendLedger,
+		InboxMetrics:            inboxMetrics,
+		InboundDedupe:           inboundDedupe,
+		AgentJobMetrics:         agentJobMetrics,
+		AgentJobWorkerCoverage:  agentJobWorkerCoverage,
+		OutboxMetrics:           outboxMetrics,
+		Diagnostics:             diagnostics,
 		Status: query.RuntimeOverviewStatusView{
 			RuntimeAvailable: true,
 			HealthAvailable:  true,
@@ -543,6 +565,7 @@ func runtimeOverviewSummary(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	knowledgeCutover query.KnowledgeJobPlannerCutoverPlanView,
 	agentJobCapacity query.AgentJobCapacityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
@@ -707,6 +730,12 @@ func runtimeOverviewSummary(
 		"knowledge_job_planner_readiness_worker_stale":          knowledgeReady.KnowledgeWorkerStale,
 		"knowledge_job_planner_readiness_worker_failed":         knowledgeReady.KnowledgeWorkerFailed,
 		"knowledge_job_planner_readiness_worker_stopped":        knowledgeReady.KnowledgeWorkerStopped,
+		"knowledge_job_planner_cutover_plan_ready":              knowledgeCutover.Ready,
+		"knowledge_job_planner_cutover_plan_decision":           knowledgeCutover.Decision,
+		"knowledge_job_planner_cutover_plan_blockers":           len(knowledgeCutover.Blockers),
+		"knowledge_job_planner_cutover_plan_current_owner":      knowledgeCutover.CurrentAdmissionOwner,
+		"knowledge_job_planner_cutover_plan_desired_owner":      knowledgeCutover.DesiredAdmissionOwner,
+		"knowledge_job_planner_cutover_plan_recommended_owner":  knowledgeCutover.RecommendedAdmissionOwner,
 		"agent_job_capacity_ready":                              agentJobCapacity.Ready,
 		"agent_job_capacity_reason":                             agentJobCapacity.Reason,
 		"agent_job_capacity_blockers":                           len(agentJobCapacity.Blockers),
@@ -815,6 +844,7 @@ func runtimeOverviewCards(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	knowledgeCutover query.KnowledgeJobPlannerCutoverPlanView,
 	agentJobCapacity query.AgentJobCapacityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
@@ -855,6 +885,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
+		runtimeOverviewCard("knowledge_job_planner_cutover_plan", "Knowledge Planner Cutover", knowledgePlannerCutoverPlanValue(knowledgeCutover), knowledgePlannerCutoverPlanStatus(knowledgeCutover), map[string]any{"knowledge_job_planner_cutover_plan": knowledgeCutover}),
 		runtimeOverviewCard("outbound_cutover_plan", "Outbound Cutover", outboundCutoverPlanValue(outboundCutover), outboundCutoverPlanStatus(outboundCutover), map[string]any{"outbound_cutover_plan": outboundCutover}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
@@ -1210,6 +1241,29 @@ func knowledgePlannerReadinessValue(view query.KnowledgeJobPlannerReadinessView)
 	}
 	if view.Ready {
 		return "ready"
+	}
+	return fmt.Sprintf("blocked:%d", len(view.Blockers))
+}
+
+func knowledgePlannerCutoverPlanStatus(view query.KnowledgeJobPlannerCutoverPlanView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if view.Ready || view.Decision == "ready_to_enable_go_planner" || view.Decision == "ready_to_rollback_to_python_legacy" {
+		return "ok"
+	}
+	if len(view.Blockers) > 0 {
+		return "warn"
+	}
+	return "muted"
+}
+
+func knowledgePlannerCutoverPlanValue(view query.KnowledgeJobPlannerCutoverPlanView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	if view.Decision != "" {
+		return fmt.Sprintf("%s:%d", view.Decision, len(view.Blockers))
 	}
 	return fmt.Sprintf("blocked:%d", len(view.Blockers))
 }

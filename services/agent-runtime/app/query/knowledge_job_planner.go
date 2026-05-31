@@ -69,3 +69,30 @@ type KnowledgeJobPlannerReadinessView struct {
 	Notes                  []string                       `json:"notes,omitempty"`
 	SideEffect             string                         `json:"side_effect"`
 }
+
+type KnowledgeJobPlannerCutoverPlanView struct {
+	Ready                     bool                             `json:"ready"`
+	Decision                  string                           `json:"decision"`
+	DesiredAdmissionOwner     string                           `json:"desired_admission_owner"`
+	RecommendedAdmissionOwner string                           `json:"recommended_admission_owner"`
+	CurrentAdmissionOwner     string                           `json:"current_admission_owner"`
+	Readiness                 KnowledgeJobPlannerReadinessView `json:"readiness"`
+	RequiredChecks            []KnowledgeJobPlannerCutoverStep `json:"required_checks,omitempty"`
+	EnableSteps               []KnowledgeJobPlannerCutoverStep `json:"enable_steps,omitempty"`
+	VerificationSteps         []KnowledgeJobPlannerCutoverStep `json:"verification_steps,omitempty"`
+	RollbackSteps             []KnowledgeJobPlannerCutoverStep `json:"rollback_steps,omitempty"`
+	Blockers                  []string                         `json:"blockers,omitempty"`
+	Attributes                map[string]string                `json:"attributes,omitempty"`
+	Notes                     []string                         `json:"notes,omitempty"`
+	SideEffect                string                           `json:"side_effect"`
+}
+
+type KnowledgeJobPlannerCutoverStep struct {
+	StepIndex int               `json:"step_index"`
+	Phase     string            `json:"phase"`
+	Action    string            `json:"action"`
+	Detail    string            `json:"detail,omitempty"`
+	Method    string            `json:"method,omitempty"`
+	Endpoint  string            `json:"endpoint,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+}
