@@ -325,6 +325,28 @@ class TelegramChannel:
         if username:
             await self._identity_index.remember(username, chat_id)
 
+    async def _inbound_message_seen(self, msg_key: str, message_kind: str) -> bool:
+        if self._message_deduper.seen(msg_key):
+            return True
+        client = self._send_ledger_client
+        if client is None or not hasattr(client, "check_inbound_dedupe"):
+            return False
+        try:
+            result = await client.check_inbound_dedupe(
+                scope=f"telegram:{self._channel}",
+                message_key=msg_key,
+                ttl_seconds=24 * 60 * 60,
+                metadata={"message_kind": str(message_kind or "")},
+            )
+        except Exception as exc:
+            logger.debug(
+                "[telegram] agent runtime inbound dedupe check failed msg_key=%s err=%s",
+                msg_key,
+                exc,
+            )
+            return False
+        return bool(result.get("duplicate"))
+
     async def _on_message(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -343,7 +365,7 @@ class TelegramChannel:
 
         # 去重：同一 (chat_id, message_id) 只处理一次，防止 Telegram 重投
         msg_key = f"{chat.id}:{msg.message_id}"
-        if self._message_deduper.seen(msg_key):
+        if await self._inbound_message_seen(msg_key, "text"):
             logger.warning(
                 f"[telegram] 重复消息已忽略  chat_id={chat.id}  message_id={msg.message_id}"
             )
@@ -489,7 +511,7 @@ class TelegramChannel:
             return
 
         msg_key = f"{chat.id}:{msg.message_id}"
-        if self._message_deduper.seen(msg_key):
+        if await self._inbound_message_seen(msg_key, "photo"):
             logger.warning(
                 f"[telegram] 重复图片消息已忽略  chat_id={chat.id}  message_id={msg.message_id}"
             )

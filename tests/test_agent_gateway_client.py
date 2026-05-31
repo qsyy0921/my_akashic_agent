@@ -363,6 +363,42 @@ async def test_agent_gateway_client_checks_private_echo():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_checks_inbound_dedupe():
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        calls.append((request.method, request.url.path, body))
+        assert request.method == "POST"
+        assert request.url.path == "/v1/inbound-dedupe/check"
+        assert body == {
+            "scope": "telegram:telegram",
+            "message_key": "123:456",
+            "ttl_seconds": 60,
+            "metadata": {"message_kind": "text"},
+        }
+        return _ok(
+            {
+                "duplicate": True,
+                "scope": body["scope"],
+                "message_key": body["message_key"],
+                "side_effect": "runtime_state_only",
+            }
+        )
+
+    dedupe = await _client(handler).check_inbound_dedupe(
+        scope="telegram:telegram",
+        message_key="123:456",
+        ttl_seconds=60,
+        metadata={"message_kind": "text"},
+    )
+
+    assert dedupe["duplicate"] is True
+    assert dedupe["side_effect"] == "runtime_state_only"
+    assert [call[1] for call in calls] == ["/v1/inbound-dedupe/check"]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_lists_delivery_adapters():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

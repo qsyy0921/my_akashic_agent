@@ -35,6 +35,7 @@ type Store struct {
 	agentJobs              map[string]model.AgentJob
 	agentJobOrder          []string
 	jobEvents              []model.AgentJobEvent
+	inboundDedupeRecords   map[string]model.InboundDedupeRecord
 	proactiveDeliveries    map[string]model.ProactiveDeliveryRecord
 	proactiveDeliveryOrder []string
 	proactiveContextOnly   []model.ProactiveContextOnlyRecord
@@ -60,6 +61,7 @@ func NewStore() *Store {
 		inboxEvents:           make(map[string]model.InboxEvent),
 		checkpoints:           make(map[string]model.KnowledgeCheckpoint),
 		agentJobs:             make(map[string]model.AgentJob),
+		inboundDedupeRecords:  make(map[string]model.InboundDedupeRecord),
 		proactiveDeliveries:   make(map[string]model.ProactiveDeliveryRecord),
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
 	}
@@ -613,6 +615,67 @@ func (s *Store) ListOutboxDeliveryEvents(_ context.Context, filter query.OutboxD
 	return items, nil
 }
 
+func (s *Store) FindInboundDedupeRecord(_ context.Context, scope string, messageKey string) (model.InboundDedupeRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.inboundDedupeRecords[inboundDedupeRecordKey(scope, messageKey)]
+	return record, ok, nil
+}
+
+func (s *Store) SaveInboundDedupeRecord(_ context.Context, record model.InboundDedupeRecord) error {
+	if err := record.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.inboundDedupeRecords[inboundDedupeRecordKey(record.Scope, record.MessageKey)] = record
+	return nil
+}
+
+func (s *Store) DeleteExpiredInboundDedupeRecords(_ context.Context, now time.Time) (int, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deleted := 0
+	for key, record := range s.inboundDedupeRecords {
+		if !record.ActiveAt(now) {
+			delete(s.inboundDedupeRecords, key)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+func (s *Store) ListInboundDedupeRecords(_ context.Context, filter query.InboundDedupeFilter) ([]model.InboundDedupeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	scope := strings.TrimSpace(filter.Scope)
+	items := make([]model.InboundDedupeRecord, 0, len(s.inboundDedupeRecords))
+	for _, record := range s.inboundDedupeRecords {
+		if scope != "" && record.Scope != scope {
+			continue
+		}
+		items = append(items, record)
+	}
+	items = model.SortedInboundDedupeRecords(items)
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
 func (s *Store) RecentlySent(botID string, conversationID string, contentHash string, window time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -931,4 +994,8 @@ func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {
 
 func proactiveSessionMarkKey(sessionKey string, key string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(key)
+}
+
+func inboundDedupeRecordKey(scope string, messageKey string) string {
+	return strings.TrimSpace(scope) + "\x00" + strings.TrimSpace(messageKey)
 }

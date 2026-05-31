@@ -701,6 +701,49 @@ func TestInboxMetricsEndpointReturnsObserveOnlyCollectionSummary(t *testing.T) {
 	}
 }
 
+func TestInboundDedupeEndpointChecksAndListsRecords(t *testing.T) {
+	store := memory.NewStore()
+	dedupe := appservice.NewInboundDedupeService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterInboundDedupeRoutes(mux, dedupe)
+
+	body := []byte(`{
+		"scope": "telegram:telegram",
+		"message_key": "123:456",
+		"ttl_seconds": 60,
+		"timestamp": "2026-05-31T11:00:00Z",
+		"metadata": {"message_kind": "text"}
+	}`)
+	first := httptest.NewRecorder()
+	mux.ServeHTTP(first, httptest.NewRequest(http.MethodPost, "/v1/inbound-dedupe/check", bytes.NewReader(body)))
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first check 200, got %d: %s", first.Code, first.Body.String())
+	}
+	if !bytes.Contains(first.Body.Bytes(), []byte(`"duplicate":false`)) {
+		t.Fatalf("first check should not be duplicate: %s", first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	mux.ServeHTTP(second, httptest.NewRequest(http.MethodPost, "/v1/inbound-dedupe/check", bytes.NewReader(body)))
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected second check 200, got %d: %s", second.Code, second.Body.String())
+	}
+	if !bytes.Contains(second.Body.Bytes(), []byte(`"duplicate":true`)) ||
+		!bytes.Contains(second.Body.Bytes(), []byte(`"seen_count":2`)) {
+		t.Fatalf("second check should be duplicate: %s", second.Body.String())
+	}
+
+	records := httptest.NewRecorder()
+	mux.ServeHTTP(records, httptest.NewRequest(http.MethodGet, "/v1/inbound-dedupe/records?scope=telegram:telegram&limit=10", nil))
+	if records.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", records.Code, records.Body.String())
+	}
+	if !bytes.Contains(records.Body.Bytes(), []byte(`"records":1`)) ||
+		!bytes.Contains(records.Body.Bytes(), []byte(`"side_effect":"runtime_state_only"`)) {
+		t.Fatalf("records response missing summary: %s", records.Body.String())
+	}
+}
+
 func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

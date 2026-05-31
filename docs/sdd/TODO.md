@@ -89,12 +89,14 @@
 - [x] 补 receiver status 的重启恢复策略：Go 增加默认文件态 `receiver-statuses.json`、`AKASHIC_RECEIVER_STATUS_STALE_SECONDS` stale TTL 和 read-time stale 降级；Python QQ/NapCat 与 Telegram receiver 增加定时 `connected` heartbeat，正常停止上报 `stopped`，Telegram `getUpdates` 冲突仍保持 `suspended`，避免只重启 Go 后 observe capture 长时间误报 receiver 不在线。
 - [x] 补 receiver lease 的重启恢复策略：Go 增加默认文件态 `receiver-leases.json`、`AKASHIC_RECEIVER_LEASES_DSN/PATH` 覆盖和 renew 过期拒绝；Telegram Python receiver 在续租遇到 lease missing/expired/token mismatch 时先尝试 reacquire，若被其他 holder 占用则停止 polling 并上报 `suspended`，避免只重启 Go 后租约控制面丢失。
 - [x] 增强 Go observe capture 诊断的接收链路判断：当 receiver heartbeat 暂时缺失但同一 QQ 观察群存在 15 分钟内新 inbox 事件时，Go 以 `recent_inbox_activity` 推断 `receiver_connected=true`，同时保留 `receiver_status_connected` / `receiver_activity_recent` 细分字段，避免观察群正在收消息却被误报 `receiver_not_connected`。
+- [x] 增加 Go-owned 入站消息去重状态：Go 提供 `/v1/inbound-dedupe/check` 和 `/v1/inbound-dedupe/records`，默认文件态保存到 `inbound-dedupe.json`，`AKASHIC_RUNTIME_STATE_DIR=memory` 时仍提供内存态；Telegram 接收端本地去重 miss 后调用 Go，重复消息在 typing、下载附件和发布到 bus 前被丢弃。
 
 ## 下一步
 
 - [ ] 继续验证 QQ 群实时采集质量：当前 Go `/v1/observe-capture-diagnostics` 已显示 6 个观察群都有文本和图片覆盖、media content ready；4 个群因 15 分钟内有新 inbox 活动可推断 receiver connected，2 个群因近期无消息仍保留 receiver blocker。后续让任一观察群产生一个文件后，再确认 file coverage 从 0 变为 covered，且 observe-only 不回复。
 - [ ] 若 Telegram `getUpdates` conflict 再次出现，先看 Go `/v1/receiver-statuses` 是否显示 `status=suspended`、`reason=getupdates_conflict`，并确认 `/v1/receiver-leases` 是否没有重复 Akashic receiver；如果仍冲突，说明外部非 Akashic polling 进程占用 token，需要停止外部进程或改成 webhook。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
+- [ ] 评估 QQ/NapCat 是否也应接入 Go inbound dedupe：先确认 OneBot/NapCat `message_id` 在重投、重连、双账号场景下是否稳定，再决定是否把 QQ 私聊/群聊重复事件过滤也迁移到 `/v1/inbound-dedupe/check`。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

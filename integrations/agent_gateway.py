@@ -425,6 +425,38 @@ class AgentGatewayClient:
             )
         return data
 
+    async def check_inbound_dedupe(
+        self,
+        *,
+        scope: str,
+        message_key: str,
+        ttl_seconds: int = 24 * 60 * 60,
+        timestamp: str = "",
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "scope": str(scope),
+            "message_key": str(message_key),
+            "ttl_seconds": max(1, int(ttl_seconds)),
+            "metadata": metadata or {},
+        }
+        if timestamp:
+            body["timestamp"] = str(timestamp)
+        data = await self._request(
+            "POST",
+            "/v1/inbound-dedupe/check",
+            json_body=body,
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime inbound dedupe response is not an object"
+            )
+        if "duplicate" not in data:
+            raise AgentGatewayError(
+                "agent runtime inbound dedupe response has no duplicate flag"
+            )
+        return data
+
     async def list_delivery_adapters(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/v1/delivery-adapters")
         if not isinstance(data, list):

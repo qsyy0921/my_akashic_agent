@@ -16,6 +16,7 @@ import (
 	agentjobeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobeventstore"
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inbounddedupestore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
 	knowledgecheckpointstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/knowledgecheckpointstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/localmedia"
@@ -217,6 +218,14 @@ func main() {
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
 	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
+	inboundDedupeRepository, err := newInboundDedupeRepository()
+	if err != nil {
+		log.Fatalf("init inbound dedupe repository: %v", err)
+	}
+	if inboundDedupeRepository == nil {
+		inboundDedupeRepository = store
+	}
+	inboundDedupe := appservice.NewInboundDedupeService(inboundDedupeRepository)
 	inboxEvents := appservice.NewInboxEventService(inboxEventRepository)
 	knowledgeCheckpoints := appservice.NewKnowledgeCheckpointService(knowledgeCheckpointRepository)
 	knowledgeDiagnostics := appservice.NewKnowledgeWorkerDiagnosticsService(agentJobRepository, knowledgeCheckpointRepository)
@@ -279,6 +288,7 @@ func main() {
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
+	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)
 	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)
@@ -674,6 +684,23 @@ func newReceiverStatusService() (*appservice.ReceiverStatusService, error) {
 		return appservice.NewReceiverStatusService(), nil
 	}
 	return appservice.NewReceiverStatusServiceWithRepositories(context.Background(), statusRepository, leaseRepository, staleAfter)
+}
+
+func newInboundDedupeRepository() (outport.InboundDedupeRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_INBOUND_DEDUPE_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return nil, nil
+		}
+		return inbounddedupestore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_INBOUND_DEDUPE_PATH")); path != "" {
+		return inbounddedupestore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("inbound-dedupe.json"); ok {
+		return inbounddedupestore.NewStore(path)
+	}
+	return nil, nil
 }
 
 func newReceiverStatusRepository() (outport.ReceiverStatusRepository, error) {

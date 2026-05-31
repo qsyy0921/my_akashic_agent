@@ -75,4 +75,6 @@ execution.
   Telegram reacquire behavior after `agent-runtime` restarts.
 - `029-observe-capture-activity-inference.md`: Go observe-capture diagnostics
   infer effective receiver connectivity from recent observe-only inbox events.
+- `030-inbound-dedupe-runtime.md`: Go-owned TTL/persistent duplicate detection
+  for inbound platform message ids, starting with Telegram receive paths.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -93,6 +93,14 @@ func RegisterInboxMetricsRoutes(
 	mux.Handle("/v1/inbox-metrics", InboxMetricsHandler(metrics))
 }
 
+func RegisterInboundDedupeRoutes(
+	mux *http.ServeMux,
+	manager inport.InboundDedupeManager,
+) {
+	mux.Handle("/v1/inbound-dedupe/check", InboundDedupeCheckHandler(manager))
+	mux.Handle("/v1/inbound-dedupe/records", InboundDedupeRecordsHandler(manager))
+}
+
 func RegisterOutboxEventRoutes(
 	mux *http.ServeMux,
 	outboxEvents inport.OutboxDeliveryEventViewer,
@@ -1654,6 +1662,63 @@ func InboxMetricsHandler(metrics inport.InboxMetricsViewer) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func InboundDedupeCheckHandler(manager inport.InboundDedupeManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "inbound dedupe disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.CheckInboundDedupeRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := manager.Check(r.Context(), command.CheckInboundDedupeCommand{
+			Scope:      request.Scope,
+			MessageKey: request.MessageKey,
+			TTLSeconds: request.TTLSeconds,
+			Timestamp:  timestamp,
+			Metadata:   request.Metadata,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func InboundDedupeRecordsHandler(manager inport.InboundDedupeManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "inbound dedupe disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		items, err := manager.List(r.Context(), query.InboundDedupeFilter{
+			Limit: parsePositiveInt(r.URL.Query().Get("limit"), 100, 1000),
+			Scope: r.URL.Query().Get("scope"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
 	})
 }
 

@@ -29,10 +29,10 @@ types          -> none
 The implementation keeps message event fanout in-memory to keep startup simple,
 while deterministic control-plane state defaults to file-backed persistence under
 `.akashic-workspace/agent-runtime`. This covers observe targets, receiver
-statuses, inbox, media assets, send ledger, outbox, generic jobs, knowledge
-checkpoints, and proactive state. Individual stores can still be overridden by
-their `AKASHIC_*_DSN` or `AKASHIC_*_PATH` variables, and `memory` remains the
-explicit opt-out for ephemeral development runs.
+statuses, inbound dedupe, inbox, media assets, send ledger, outbox, generic
+jobs, knowledge checkpoints, and proactive state. Individual stores can still
+be overridden by their `AKASHIC_*_DSN` or `AKASHIC_*_PATH` variables, and
+`memory` remains the explicit opt-out for ephemeral development runs.
 
 ## Run Locally
 
@@ -132,6 +132,16 @@ $env:AKASHIC_SEND_LEDGER_DSN = "E:\agent\akashic\.akashic-workspace\runtime\send
 Outbound sends and inbound echo checks share the same file-backed ledger. Use
 `memory` only for development runs where recent echo detection does not need
 restart recovery.
+
+Override inbound platform message dedupe persistence:
+
+```powershell
+$env:AKASHIC_INBOUND_DEDUPE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\inbound-dedupe.json"
+```
+
+`/v1/inbound-dedupe/check` stores scoped platform message ids with TTL so
+Telegram duplicate deliveries can be dropped across receiver restarts. Python
+still keeps a local process dedupe guard and falls back to it if Go is down.
 
 Override raw inbound/observed message persistence:
 
@@ -692,6 +702,19 @@ are checked with the shared markers `[图片]`, `[文件]`, and `[转发消息]`
 `/v1/send-ledger/metrics` is read-only and summarizes bounded send ledger
 coverage by bot, conversation, content hash, and repeated hash risk for loop
 guard audits.
+
+Check inbound platform message duplicates:
+
+```text
+POST /v1/inbound-dedupe/check
+GET  /v1/inbound-dedupe/records?scope=telegram:telegram&limit=100
+```
+
+`POST /v1/inbound-dedupe/check` accepts `scope`, `message_key`,
+`ttl_seconds`, optional `timestamp`, and non-secret `metadata`. It returns
+`duplicate`, `seen_count`, expiry timestamps, and
+`side_effect=runtime_state_only`. The endpoint only mutates dedupe state; it
+does not publish inbound work or send platform messages.
 
 Persist outbound delivery state across runtime restarts:
 

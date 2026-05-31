@@ -72,10 +72,12 @@ class _SessionManager:
 
 
 class _FakeSendLedger:
-    def __init__(self, *, recent: bool = False) -> None:
+    def __init__(self, *, recent: bool = False, inbound_duplicate: bool = False) -> None:
         self.recent = recent
+        self.inbound_duplicate = inbound_duplicate
         self.records: list[dict[str, Any]] = []
         self.recent_queries: list[dict[str, Any]] = []
+        self.inbound_queries: list[dict[str, Any]] = []
 
     async def record_send(self, **kwargs) -> dict[str, Any]:
         self.records.append(dict(kwargs))
@@ -84,6 +86,10 @@ class _FakeSendLedger:
     async def recently_sent(self, **kwargs) -> bool:
         self.recent_queries.append(dict(kwargs))
         return self.recent
+
+    async def check_inbound_dedupe(self, **kwargs) -> dict[str, Any]:
+        self.inbound_queries.append(dict(kwargs))
+        return {"duplicate": self.inbound_duplicate}
 
 
 class _FakePrivateEchoLedger:
@@ -1142,6 +1148,47 @@ async def test_telegram_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path:
         SimpleNamespace(text="", caption="", photo=[1], from_user=None, message_id=11),
     )
     assert "[图片]" in merged
+
+
+@pytest.mark.asyncio
+async def test_telegram_channel_uses_runtime_inbound_dedupe(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_telegram_channel(monkeypatch)
+    bus = _Bus()
+    ledger = _FakeSendLedger(inbound_duplicate=True)
+    channel = mod.TelegramChannel(
+        "token",
+        bus,
+        _SessionManager(),
+        allow_from=["1"],
+        send_ledger_client=ledger,
+    )
+    update = SimpleNamespace(
+        effective_message=SimpleNamespace(
+            text="重复消息",
+            message_id=42,
+            reply_to_message=None,
+            photo=None,
+            document=None,
+        ),
+        effective_chat=SimpleNamespace(id=123),
+        effective_user=SimpleNamespace(id=1, username="Alice"),
+    )
+    context = SimpleNamespace(bot=SimpleNamespace(send_chat_action=AsyncMock()))
+
+    await channel._on_message(update, context)
+
+    assert bus.inbound == []
+    assert ledger.inbound_queries == [
+        {
+            "scope": "telegram:telegram",
+            "message_key": "123:42",
+            "ttl_seconds": 24 * 60 * 60,
+            "metadata": {"message_kind": "text"},
+        }
+    ]
+    context.bot.send_chat_action.assert_not_called()
 
 
 @pytest.mark.asyncio
