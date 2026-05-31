@@ -272,6 +272,7 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	cutoverRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER")
 	dualReadSmokePassed := boolEnv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED")
 	stateLeaseWorkersDisabled := boolEnv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED")
+	localOutboxWorkerDisabled := !boolEnv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED")
 	agentJobRequested := boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED")
 	agentJobDuplicateSmokePassed := boolEnv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED")
 	agentJobFlowSmokePassed := boolEnv("AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED")
@@ -297,6 +298,7 @@ func queueExternalLeaseGate(provider string, mode string, dsnConfigured bool) *q
 	addExternalLeaseCheck(gate, "explicit_cutover", cutoverRequested, "set AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER=true after smoke tests")
 	addExternalLeaseCheck(gate, "dual_read_smoke_passed", dualReadSmokePassed, "set AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED=true after local NATS smoke")
 	addExternalLeaseCheck(gate, "state_lease_workers_disabled", stateLeaseWorkersDisabled, "set AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED=true after stopping legacy state-store lease workers")
+	addExternalLeaseCheck(gate, "local_outbox_worker_disabled", localOutboxWorkerDisabled, "unset AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED or set it false before external lease cutover")
 	addExternalLeaseCheck(gate, "executor_implemented", executorImplemented, "outbox delivery external lease executor is implemented in agent-runtime")
 	if len(gate.Blockers) == 0 {
 		gate.AllowExecution = true

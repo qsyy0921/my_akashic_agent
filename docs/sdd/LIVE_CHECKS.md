@@ -24,6 +24,7 @@
 - [ ] 压测或人为堆积 outbox 后观察 `/v1/outbox-metrics` 与 `/v1/runtime-overview`：`outbox_pressure_high_accounts`、`max_active`、`max_queued` 应随账号积压增长；该诊断只读，不应阻断真实发送。
 - [ ] 启用 Go local outbox worker 账号节流后做 dry/live smoke：短时间连续发送同一账号 delivery 时，第二条应保持 queued 且不增加 attempts；其它账号 delivery 仍可被租约执行。
 - [ ] 启用 NATS `external_lease` outbox smoke 并配置账号节流后，连续触发同一 `channel_kind:account_id` 的 outbox work：第一条可执行，第二条应在租约前返回 `nack/delivery_rate_limited`，Go outbox delivery 不应增加 attempts 或进入 dispatching。
+- [ ] 做 external lease cutover preflight 时确认：若 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true`，`/v1/queue-backend.external_lease.blockers` 应包含 `local_outbox_worker_disabled`，且 `allow_execution=false`；关闭 local worker 后再看其它 smoke gate。
 
 ## Proactive
 

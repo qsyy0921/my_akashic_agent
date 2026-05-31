@@ -632,6 +632,31 @@ func TestQueueBackendViewFromEnvAllowsExternalLeaseAfterExplicitGates(t *testing
 	}
 }
 
+func TestQueueBackendViewFromEnvBlocksExternalLeaseWhenLocalOutboxWorkerEnabled(t *testing.T) {
+	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
+	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
+	t.Setenv("AKASHIC_QUEUE_DSN", "nats://127.0.0.1:4222")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
+	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+
+	if view.ExternalLease == nil {
+		t.Fatalf("expected external lease gate: %#v", view)
+	}
+	if view.ExternalLease.AllowExecution || view.ExternalLease.GateState != "blocked" || view.ExternalLease.ExecutionScope != "none" {
+		t.Fatalf("external lease should be blocked while local outbox worker is enabled: %#v", view.ExternalLease)
+	}
+	assertContainsString(t, view.ExternalLease.Blockers, "local_outbox_worker_disabled")
+	assertExternalLeaseCheck(t, view.ExternalLease.RequiredChecks, "local_outbox_worker_disabled", "blocked")
+	assertBlockedWorkKind(t, view.ExternalLease.BlockedWorkKinds, "agent_job")
+}
+
 func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *testing.T) {
 	t.Setenv("AKASHIC_QUEUE_BACKEND", "nats")
 	t.Setenv("AKASHIC_QUEUE_MODE", "external_lease")
@@ -939,6 +964,19 @@ func assertContainsString(t *testing.T, items []string, want string) {
 		}
 	}
 	t.Fatalf("expected %q in %#v", want, items)
+}
+
+func assertExternalLeaseCheck(t *testing.T, items []query.QueueExternalLeaseCheck, name string, status string) {
+	t.Helper()
+	for _, item := range items {
+		if item.Name == name {
+			if item.Status != status {
+				t.Fatalf("external lease check %q status = %q, want %q", name, item.Status, status)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected external lease check %q in %#v", name, items)
 }
 
 func assertSmokeCase(t *testing.T, items []command.DeliverySmokeCaseCommand, want string) {

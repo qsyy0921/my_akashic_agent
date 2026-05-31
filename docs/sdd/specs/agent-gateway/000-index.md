@@ -133,4 +133,6 @@ execution.
   future Redis/RabbitMQ adapter boundaries.
 - `053-runtime-overview-queue-provider-capability.md`: Runtime overview summary
   fields for selected queue provider capability and NATS-first MQ visibility.
+- `054-external-lease-local-worker-conflict-gate.md`: External lease cutover
+  gate blocks when the local outbox delivery worker is still enabled.
 - Agent architecture boundary specs live under `../agent-architecture/`.

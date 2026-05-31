@@ -34,6 +34,7 @@
 - 已实现 Go generic AgentJob 生命周期、文件态持久化、dedupe_key、event stream、metrics、dashboard 恢复入口。
 - 已实现 AgentJob lease token、heartbeat/renew、strict token 模式、recover-expired、queue work id 精确租约入口。
 - 已完成 NATS JetStream shadow_publish、dual_read_compare、external_lease 诊断门禁和 outbox external lease smoke。
+- external_lease cutover gate 已增加 local outbox worker 冲突检查：`AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 时 gate 保持 blocked，防止 state-store worker 与 NATS external lease 同时执行真实发送。
 - 已实现 agent_job external lease result-ack 映射和 subject 扩容门禁，当前仍需显式 smoke/cutover flag。
 - `/v1/queue-backend` 已增加 MQ provider capability matrix：明确 NATS JetStream 是当前推荐第一外部 MQ，暴露 shadow/dual-read/external-lease/agent_job result-ack、多 goroutine consumer 和 delayed nack 能力，并把 Redis Streams / RabbitMQ 标记为后续可替换 adapter 边界。
 - external_lease 已增加 Go-owned 执行诊断：`/v1/queue-backend` 可查看 ack/nack/term disposition、reason、work_kind 统计和 bounded recent executions；只读诊断不执行 Python AI job。
