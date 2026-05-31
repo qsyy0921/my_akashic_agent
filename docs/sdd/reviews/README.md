@@ -125,3 +125,11 @@ Current architecture review sequence:
 - `2026-05-31-phase8-76-runtime-config-live-preflight.md`
 - `2026-05-31-phase8-77-delivery-smoke-readiness.md`
 - `2026-05-31-phase8-78-runtime-overview-delivery-smoke.md`
+- `2026-05-31-phase8-79-runtime-state-defaults.md`
+- `2026-05-31-phase8-80-receiver-status-heartbeat.md`
+- `2026-05-31-phase8-81-receiver-lease-persistence.md`
+- `2026-05-31-phase8-82-observe-capture-activity-inference.md`
+- `2026-05-31-phase8-83-inbound-dedupe-runtime.md`
+- `2026-05-31-phase8-84-qq-inbound-dedupe-runtime.md`
+- `2026-05-31-phase8-85-qq-file-notice-dedupe.md`
+- `2026-05-31-phase8-86-inbound-dedupe-metrics.md`

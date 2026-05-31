@@ -322,6 +322,37 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             }
         ],
     }
+    inbound_dedupe_metrics = {
+        "sampled_records": 2,
+        "active_records": 2,
+        "expired_records": 0,
+        "duplicate_records": 1,
+        "seen_total": 3,
+        "duplicate_seen_total": 1,
+        "scopes": [
+            {
+                "scope": "qq:qq_2365524513:2365524513",
+                "records": 1,
+                "active_records": 1,
+                "expired_records": 0,
+                "duplicate_records": 1,
+                "seen_total": 2,
+                "duplicate_seen_total": 1,
+                "latest_seen_at": "2026-05-31T11:00:01Z",
+            }
+        ],
+        "totals": {
+            "records": 2,
+            "active_records": 2,
+            "expired_records": 0,
+            "duplicate_records": 1,
+            "seen_total": 3,
+            "duplicate_seen_total": 1,
+            "scopes": 2,
+        },
+        "notes": ["side_effect=none"],
+        "side_effect": "none",
+    }
     agent_job_metrics = {
         "sampled_jobs": 3,
         "sampled_events": 12,
@@ -610,6 +641,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "inbox_metric_events": 9,
             "inbox_metric_observe_only": 7,
             "inbox_metric_with_attachments": 3,
+            "inbound_dedupe_records": 2,
+            "inbound_dedupe_active_records": 2,
+            "inbound_dedupe_duplicate_records": 1,
+            "inbound_dedupe_seen_total": 3,
+            "inbound_dedupe_duplicate_seen_total": 1,
+            "inbound_dedupe_scopes": 2,
             "agent_job_metric_events": 12,
             "agent_job_metric_dead_letters": 1,
             "outbox_metric_events": 7,
@@ -630,6 +667,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
+            {"id": "inbound_dedupe_metrics", "label": "Inbound Dedupe", "value": 1, "status": "warn"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
             {"id": "outbox_metrics", "label": "Outbox Metrics", "value": 7, "status": "danger"},
         ],
@@ -642,6 +680,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
+        "inbound_dedupe_metrics": inbound_dedupe_metrics,
         "agent_job_metrics": agent_job_metrics,
         "outbox_metrics": outbox_metrics,
         "diagnostics": diagnostics,
@@ -754,6 +793,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["inbox_metric_events"] == 9
     assert payload["summary"]["inbox_metric_observe_only"] == 7
     assert payload["summary"]["inbox_metric_with_attachments"] == 3
+    assert payload["summary"]["inbound_dedupe_records"] == 2
+    assert payload["summary"]["inbound_dedupe_duplicate_seen_total"] == 1
     assert payload["summary"]["agent_job_metric_events"] == 12
     assert payload["summary"]["agent_job_metric_dead_letters"] == 1
     assert payload["summary"]["outbox_metric_events"] == 7
@@ -801,6 +842,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["inbox_metrics"]["events_by_conversation"][
         "qq/1049511700/group/27234224"
     ]["latest_seq"] == 119
+    dedupe_card = next(
+        item for item in payload["cards"] if item["id"] == "inbound_dedupe_metrics"
+    )
+    assert dedupe_card["status"] == "warn"
+    assert payload["inbound_dedupe_metrics"]["duplicate_seen_total"] == 1
+    assert payload["inbound_dedupe_metrics"]["scopes"][0]["scope"] == (
+        "qq:qq_2365524513:2365524513"
+    )
     metrics_card = next(item for item in payload["cards"] if item["id"] == "agent_job_metrics")
     assert metrics_card["status"] == "danger"
     assert payload["agent_job_metrics"]["throughput"]["succeeded"] == 1

@@ -708,6 +708,7 @@ Check inbound platform message duplicates:
 ```text
 POST /v1/inbound-dedupe/check
 GET  /v1/inbound-dedupe/records?scope=telegram:telegram&limit=100
+GET  /v1/inbound-dedupe/metrics?scope=telegram:telegram&limit=100
 ```
 
 `POST /v1/inbound-dedupe/check` accepts `scope`, `message_key`,
@@ -715,6 +716,9 @@ GET  /v1/inbound-dedupe/records?scope=telegram:telegram&limit=100
 `duplicate`, `seen_count`, expiry timestamps, and
 `side_effect=runtime_state_only`. The endpoint only mutates dedupe state; it
 does not publish inbound work or send platform messages.
+`GET /v1/inbound-dedupe/metrics` is read-only, reports
+`side_effect=none`, and summarizes duplicate suppression by scope for runtime
+overview diagnostics.
 
 Persist outbound delivery state across runtime restarts:
 

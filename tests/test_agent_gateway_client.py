@@ -399,6 +399,34 @@ async def test_agent_gateway_client_checks_inbound_dedupe():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_gets_inbound_dedupe_metrics():
+    calls: list[tuple[str, str, dict[str, str]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        calls.append((request.method, request.url.path, params))
+        assert request.method == "GET"
+        assert request.url.path == "/v1/inbound-dedupe/metrics"
+        assert params == {"limit": "50", "scope": "telegram:telegram"}
+        return _ok(
+            {
+                "sampled_records": 1,
+                "duplicate_seen_total": 1,
+                "side_effect": "none",
+            }
+        )
+
+    metrics = await _client(handler).get_inbound_dedupe_metrics(
+        scope="telegram:telegram",
+        limit=50,
+    )
+
+    assert metrics["duplicate_seen_total"] == 1
+    assert metrics["side_effect"] == "none"
+    assert [call[1] for call in calls] == ["/v1/inbound-dedupe/metrics"]
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_lists_delivery_adapters():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"

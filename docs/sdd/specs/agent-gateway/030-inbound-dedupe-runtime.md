@@ -24,6 +24,7 @@ continues to own platform SDK handling and message-to-agent conversion.
 ```text
 POST /v1/inbound-dedupe/check
 GET  /v1/inbound-dedupe/records?scope=telegram:telegram&limit=100
+GET  /v1/inbound-dedupe/metrics?scope=telegram:telegram&limit=100
 ```
 
 The check command accepts:
@@ -38,6 +39,11 @@ The check command accepts:
 
 The response returns `duplicate`, first/last seen timestamps, expiry, seen
 count, metadata, and `side_effect=runtime_state_only`.
+
+The metrics endpoint is read-only and returns sampled record counts, active vs
+expired counts, duplicate record counts, total seen count, duplicate suppressed
+seen count, per-scope summaries, and `side_effect=none`. It does not clean up
+TTL records; cleanup remains part of the mutating check path.
 
 ## Storage
 
@@ -97,6 +103,8 @@ local dedupe decision. That preserves current receive behavior when Go is down.
   downloads, and final `InboundMessage` construction.
 - No platform send, model call, memory extraction, RAG ingest, or dashboard
   mutation is triggered by this endpoint.
+- Runtime overview may aggregate inbound dedupe metrics as a read model, but it
+  must preserve the same no-send/no-model/no-cleanup boundary.
 
 ## Acceptance
 
@@ -114,3 +122,5 @@ local dedupe decision. That preserves current receive behavior when Go is down.
 - QQ group upload duplicate runtime responses stop observe-only file session
   writes, file URL lookups, downloads, and previews when a stable file-event
   key is available.
+- `GET /v1/inbound-dedupe/metrics` summarizes duplicate suppression by scope
+  and is included in `GET /v1/runtime-overview` without mutating dedupe state.

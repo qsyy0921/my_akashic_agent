@@ -272,6 +272,7 @@ func main() {
 		DeliveryAdapters:     deliveryAdapterDiagnostics,
 		SendLedger:           sendLedger,
 		InboxMetrics:         inboxMetrics,
+		InboundDedupe:        inboundDedupe,
 		AgentJobMetrics:      agentJobMetrics,
 		OutboxMetrics:        outboxMetrics,
 		KnowledgeDiagnostics: knowledgeDiagnostics,

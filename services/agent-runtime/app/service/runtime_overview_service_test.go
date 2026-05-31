@@ -42,6 +42,22 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			ObserveOnlyTotal: 7,
 			WithAttachments:  3,
 		}},
+		InboundDedupe: staticRuntimeInboundDedupeMetrics{view: query.InboundDedupeMetricsView{
+			SampledRecords:     2,
+			ActiveRecords:      2,
+			DuplicateRecords:   1,
+			SeenTotal:          3,
+			DuplicateSeenTotal: 1,
+			Scopes: []query.InboundDedupeScopeMetricsView{{
+				Scope:              "qq:qq_2365524513:2365524513",
+				Records:            1,
+				ActiveRecords:      1,
+				DuplicateRecords:   1,
+				SeenTotal:          2,
+				DuplicateSeenTotal: 1,
+			}},
+			SideEffect: "none",
+		}},
 		AgentJobMetrics: staticRuntimeAgentJobMetrics{view: query.AgentJobMetricsView{
 			SampledJobs:   3,
 			SampledEvents: 12,
@@ -174,6 +190,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["receiver_leases"] != 1 || view.Summary["receiver_leases_active"] != 1 {
 		t.Fatalf("unexpected receiver lease summary: %#v", view.Summary)
 	}
+	if view.Summary["inbound_dedupe_records"] != 2 || view.Summary["inbound_dedupe_duplicate_seen_total"] != 1 {
+		t.Fatalf("unexpected inbound dedupe summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
@@ -183,6 +202,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 }
@@ -237,6 +257,14 @@ type staticRuntimeInboxMetrics struct {
 }
 
 func (s staticRuntimeInboxMetrics) Get(context.Context, query.InboxMetricsFilter) (query.InboxMetricsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeInboundDedupeMetrics struct {
+	view query.InboundDedupeMetricsView
+}
+
+func (s staticRuntimeInboundDedupeMetrics) Metrics(context.Context, query.InboundDedupeMetricsFilter) (query.InboundDedupeMetricsView, error) {
 	return s.view, nil
 }
 

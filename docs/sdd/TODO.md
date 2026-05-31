@@ -92,6 +92,7 @@
 - [x] 增加 Go-owned 入站消息去重状态：Go 提供 `/v1/inbound-dedupe/check` 和 `/v1/inbound-dedupe/records`，默认文件态保存到 `inbound-dedupe.json`，`AKASHIC_RUNTIME_STATE_DIR=memory` 时仍提供内存态；Telegram 接收端本地去重 miss 后调用 Go，重复消息在 typing、下载附件和发布到 bus 前被丢弃。
 - [x] 将 QQ/NapCat 私聊、普通群聊、observe-only 群聊和 `/stop` 入站事件接入 Go inbound dedupe：使用 `qq:{channel}:{bot_uin}` scope 和 `private|group:{conversation_id}:{message_id}` key，重复事件会在 bus publish、观察群 session 写入、附件下载或中断回复前被丢弃；无稳定 `message_id` 的群文件上传 notice 暂不纳入。
 - [x] 将 QQ/NapCat observe-only 群文件上传 notice 接入 Go inbound dedupe：单独使用 `group_file_message` / `group_file_id` / `group_file_fingerprint` 文件事件 key，重复 notice 会在 session 写入、文件 URL 获取、下载和预览前被丢弃；无法推导稳定 key 时保留旧行为。
+- [x] 增加 Go-owned inbound dedupe metrics：Go 提供只读 `GET /v1/inbound-dedupe/metrics`，按 scope 汇总采样记录、active/expired、重复记录和 duplicate seen 次数，并接入 runtime overview/dashboard；该路径 `side_effect=none`，不清理 TTL、不触发平台发送。
 
 ## 下一步
 

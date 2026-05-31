@@ -99,6 +99,7 @@ func RegisterInboundDedupeRoutes(
 ) {
 	mux.Handle("/v1/inbound-dedupe/check", InboundDedupeCheckHandler(manager))
 	mux.Handle("/v1/inbound-dedupe/records", InboundDedupeRecordsHandler(manager))
+	mux.Handle("/v1/inbound-dedupe/metrics", InboundDedupeMetricsHandler(manager))
 }
 
 func RegisterOutboxEventRoutes(
@@ -1719,6 +1720,28 @@ func InboundDedupeRecordsHandler(manager inport.InboundDedupeManager) http.Handl
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: items})
+	})
+}
+
+func InboundDedupeMetricsHandler(manager inport.InboundDedupeManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "inbound dedupe disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := manager.Metrics(r.Context(), query.InboundDedupeMetricsFilter{
+			Limit: parsePositiveInt(r.URL.Query().Get("limit"), 100, 1000),
+			Scope: r.URL.Query().Get("scope"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

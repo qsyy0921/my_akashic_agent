@@ -21,6 +21,7 @@ type RuntimeOverviewDeps struct {
 	DeliveryAdapters     runtimeDeliveryAdapterLister
 	SendLedger           runtimeSendLedgerMetricsGetter
 	InboxMetrics         runtimeInboxMetricsGetter
+	InboundDedupe        runtimeInboundDedupeMetricsGetter
 	AgentJobMetrics      runtimeAgentJobMetricsGetter
 	OutboxMetrics        runtimeOutboxMetricsGetter
 	KnowledgeDiagnostics runtimeKnowledgeDiagnosticsGetter
@@ -49,6 +50,10 @@ type runtimeSendLedgerMetricsGetter interface {
 
 type runtimeInboxMetricsGetter interface {
 	Get(ctx context.Context, filter query.InboxMetricsFilter) (query.InboxMetricsView, error)
+}
+
+type runtimeInboundDedupeMetricsGetter interface {
+	Metrics(ctx context.Context, filter query.InboundDedupeMetricsFilter) (query.InboundDedupeMetricsView, error)
 }
 
 type runtimeAgentJobMetricsGetter interface {
@@ -112,6 +117,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeConfig    query.RuntimeConfigView
 		sendLedger       query.SendLedgerMetricsView
 		inboxMetrics     query.InboxMetricsView
+		inboundDedupe    query.InboundDedupeMetricsView
 		agentJobMetrics  query.AgentJobMetricsView
 		outboxMetrics    query.OutboxMetricsView
 		diagnostics      query.KnowledgeWorkerDiagnosticsView
@@ -164,6 +170,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			errors = append(errors, runtimeOverviewError("inbox-metrics", err))
 		} else {
 			inboxMetrics = item
+		}
+
+		if deps.InboundDedupe == nil {
+			errors = append(errors, runtimeOverviewError("inbound-dedupe-metrics", fmt.Errorf("inbound dedupe metrics disabled")))
+		} else if item, err := deps.InboundDedupe.Metrics(ctx, query.InboundDedupeMetricsFilter{Limit: limit}); err != nil {
+			errors = append(errors, runtimeOverviewError("inbound-dedupe-metrics", err))
+		} else {
+			inboundDedupe = item
 		}
 
 		if deps.AgentJobMetrics == nil {
@@ -240,6 +254,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
+		inboundDedupe,
 		agentJobMetrics,
 		outboxMetrics,
 		diagnostics,
@@ -256,6 +271,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
+		inboundDedupe,
 		agentJobMetrics,
 		outboxMetrics,
 		diagnostics,
@@ -280,6 +296,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		ReceiverLeases:    receiverLeases,
 		SendLedgerMetrics: sendLedger,
 		InboxMetrics:      inboxMetrics,
+		InboundDedupe:     inboundDedupe,
 		AgentJobMetrics:   agentJobMetrics,
 		OutboxMetrics:     outboxMetrics,
 		Diagnostics:       diagnostics,
@@ -298,6 +315,7 @@ func runtimeOverviewSummary(
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
+	inboundDedupe query.InboundDedupeMetricsView,
 	agentJobMetrics query.AgentJobMetricsView,
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
@@ -377,6 +395,12 @@ func runtimeOverviewSummary(
 		"inbox_metric_events":                       inboxMetrics.SampledEvents,
 		"inbox_metric_observe_only":                 inboxMetrics.ObserveOnlyTotal,
 		"inbox_metric_with_attachments":             inboxMetrics.WithAttachments,
+		"inbound_dedupe_records":                    inboundDedupe.SampledRecords,
+		"inbound_dedupe_active_records":             inboundDedupe.ActiveRecords,
+		"inbound_dedupe_duplicate_records":          inboundDedupe.DuplicateRecords,
+		"inbound_dedupe_seen_total":                 inboundDedupe.SeenTotal,
+		"inbound_dedupe_duplicate_seen_total":       inboundDedupe.DuplicateSeenTotal,
+		"inbound_dedupe_scopes":                     len(inboundDedupe.Scopes),
 		"agent_job_metric_events":                   agentJobMetrics.SampledEvents,
 		"agent_job_metric_dead_letters":             agentJobMetrics.DeadLetters.CurrentTotal,
 		"outbox_metric_events":                      outboxMetrics.SampledEvents,
@@ -391,6 +415,7 @@ func runtimeOverviewCards(
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
+	inboundDedupe query.InboundDedupeMetricsView,
 	agentJobMetrics query.AgentJobMetricsView,
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
@@ -422,6 +447,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
+		runtimeOverviewCard("inbound_dedupe_metrics", "Inbound Dedupe", intSummary(summary, "inbound_dedupe_duplicate_seen_total"), statusIfPositive(intSummary(summary, "inbound_dedupe_duplicate_seen_total"), "warn", statusIfPositive(intSummary(summary, "inbound_dedupe_records"), "ok", "muted")), map[string]any{"inbound_dedupe_metrics": inboundDedupe}),
 	}
 	if runtimeConfig.SideEffect != "" {
 		cards = append(cards, runtimeOverviewCard("runtime_config", "Runtime Config", runtimeConfigCardValue(runtimeConfig), runtimeConfigStatus(runtimeConfig), map[string]any{"runtime_config": runtimeConfig}))

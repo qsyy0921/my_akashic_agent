@@ -457,6 +457,26 @@ class AgentGatewayClient:
             )
         return data
 
+    async def get_inbound_dedupe_metrics(
+        self,
+        *,
+        scope: str = "",
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": max(1, int(limit))}
+        if scope:
+            params["scope"] = str(scope)
+        data = await self._request(
+            "GET",
+            "/v1/inbound-dedupe/metrics",
+            params=params,
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError(
+                "agent runtime inbound dedupe metrics response is not an object"
+            )
+        return data
+
     async def list_delivery_adapters(self) -> list[dict[str, Any]]:
         data = await self._request("GET", "/v1/delivery-adapters")
         if not isinstance(data, list):

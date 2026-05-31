@@ -742,6 +742,17 @@ func TestInboundDedupeEndpointChecksAndListsRecords(t *testing.T) {
 		!bytes.Contains(records.Body.Bytes(), []byte(`"side_effect":"runtime_state_only"`)) {
 		t.Fatalf("records response missing summary: %s", records.Body.String())
 	}
+
+	metrics := httptest.NewRecorder()
+	mux.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/v1/inbound-dedupe/metrics?scope=telegram:telegram&limit=10", nil))
+	if metrics.Code != http.StatusOK {
+		t.Fatalf("expected metrics 200, got %d: %s", metrics.Code, metrics.Body.String())
+	}
+	if !bytes.Contains(metrics.Body.Bytes(), []byte(`"duplicate_seen_total":1`)) ||
+		!bytes.Contains(metrics.Body.Bytes(), []byte(`"side_effect":"none"`)) ||
+		!bytes.Contains(metrics.Body.Bytes(), []byte(`"scope":"telegram:telegram"`)) {
+		t.Fatalf("metrics response missing summary: %s", metrics.Body.String())
+	}
 }
 
 func TestOutboxEndpointTracksDeliveryFailureAndRetry(t *testing.T) {

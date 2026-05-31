@@ -39,6 +39,7 @@ type RuntimeOverviewView struct {
 	ReceiverLeases    ReceiverLeasesView               `json:"receiver_leases"`
 	SendLedgerMetrics SendLedgerMetricsView            `json:"send_ledger_metrics"`
 	InboxMetrics      InboxMetricsView                 `json:"inbox_metrics"`
+	InboundDedupe     InboundDedupeMetricsView         `json:"inbound_dedupe_metrics"`
 	AgentJobMetrics   AgentJobMetricsView              `json:"agent_job_metrics"`
 	OutboxMetrics     OutboxMetricsView                `json:"outbox_metrics"`
 	Diagnostics       KnowledgeWorkerDiagnosticsView   `json:"diagnostics"`

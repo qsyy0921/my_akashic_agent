@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -108,6 +109,81 @@ func (s *InboundDedupeService) List(ctx context.Context, filter query.InboundDed
 	}, nil
 }
 
+func (s *InboundDedupeService) Metrics(ctx context.Context, filter query.InboundDedupeMetricsFilter) (query.InboundDedupeMetricsView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.InboundDedupeMetricsView{}, err
+	}
+	if s == nil || s.repository == nil {
+		return query.InboundDedupeMetricsView{}, errors.New("inbound dedupe service requires repository")
+	}
+	items, err := s.repository.ListInboundDedupeRecords(ctx, query.InboundDedupeFilter{
+		Limit: boundedInboundDedupeLimit(filter.Limit),
+		Scope: filter.Scope,
+	})
+	if err != nil {
+		return query.InboundDedupeMetricsView{}, err
+	}
+
+	now := time.Now().UTC()
+	scopes := make(map[string]*query.InboundDedupeScopeMetricsView)
+	view := query.InboundDedupeMetricsView{
+		SampledRecords: len(items),
+		SideEffect:     "none",
+		Notes:          []string{"side_effect=none"},
+	}
+	for _, item := range items {
+		scope := scopes[item.Scope]
+		if scope == nil {
+			scope = &query.InboundDedupeScopeMetricsView{Scope: item.Scope}
+			scopes[item.Scope] = scope
+		}
+		scope.Records++
+		view.SeenTotal += item.SeenCount
+		scope.SeenTotal += item.SeenCount
+		if item.ActiveAt(now) {
+			view.ActiveRecords++
+			scope.ActiveRecords++
+		} else {
+			view.ExpiredRecords++
+			scope.ExpiredRecords++
+		}
+		if item.SeenCount > 1 {
+			view.DuplicateRecords++
+			scope.DuplicateRecords++
+			view.DuplicateSeenTotal += item.SeenCount - 1
+			scope.DuplicateSeenTotal += item.SeenCount - 1
+		}
+		if item.LastSeen.After(parseInboundDedupeMetricTime(scope.LatestSeenAt)) {
+			scope.LatestSeenAt = item.LastSeen.UTC().Format(time.RFC3339Nano)
+		}
+	}
+
+	scopeItems := make([]query.InboundDedupeScopeMetricsView, 0, len(scopes))
+	for _, item := range scopes {
+		scopeItems = append(scopeItems, *item)
+	}
+	sort.SliceStable(scopeItems, func(i, j int) bool {
+		if scopeItems[i].DuplicateSeenTotal != scopeItems[j].DuplicateSeenTotal {
+			return scopeItems[i].DuplicateSeenTotal > scopeItems[j].DuplicateSeenTotal
+		}
+		if scopeItems[i].Records != scopeItems[j].Records {
+			return scopeItems[i].Records > scopeItems[j].Records
+		}
+		return scopeItems[i].Scope < scopeItems[j].Scope
+	})
+	view.Scopes = scopeItems
+	view.Totals = map[string]int{
+		"records":              view.SampledRecords,
+		"active_records":       view.ActiveRecords,
+		"expired_records":      view.ExpiredRecords,
+		"duplicate_records":    view.DuplicateRecords,
+		"seen_total":           view.SeenTotal,
+		"duplicate_seen_total": view.DuplicateSeenTotal,
+		"scopes":               len(view.Scopes),
+	}
+	return view, nil
+}
+
 func inboundDedupeView(record model.InboundDedupeRecord, duplicate bool, ttl time.Duration) query.InboundDedupeView {
 	return query.InboundDedupeView{
 		Duplicate:   duplicate,
@@ -121,6 +197,17 @@ func inboundDedupeView(record model.InboundDedupeRecord, duplicate bool, ttl tim
 		Metadata:    record.Metadata,
 		SideEffect:  "runtime_state_only",
 	}
+}
+
+func parseInboundDedupeMetricTime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
 }
 
 func inboundDedupeTTL(value int) time.Duration {

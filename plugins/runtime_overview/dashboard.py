@@ -944,6 +944,31 @@ def _normalize_inbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_inbound_dedupe_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
+    scopes = item.get("scopes")
+    if not isinstance(scopes, list):
+        scopes = []
+    notes = item.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+    totals = _mapping_or_empty(item.get("totals"))
+    return {
+        "sampled_records": _int_value(item.get("sampled_records"), fallback=0),
+        "active_records": _int_value(item.get("active_records"), fallback=0),
+        "expired_records": _int_value(item.get("expired_records"), fallback=0),
+        "duplicate_records": _int_value(item.get("duplicate_records"), fallback=0),
+        "seen_total": _int_value(item.get("seen_total"), fallback=0),
+        "duplicate_seen_total": _int_value(
+            item.get("duplicate_seen_total"),
+            fallback=0,
+        ),
+        "scopes": [dict(value) for value in scopes if isinstance(value, Mapping)],
+        "totals": dict(totals),
+        "notes": [str(value) for value in notes],
+        "side_effect": _text(item.get("side_effect")),
+    }
+
+
 def _normalize_agent_job_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     throughput = _mapping_or_empty(item.get("throughput"))
     dead_letters = _mapping_or_empty(item.get("dead_letters"))
@@ -1037,6 +1062,9 @@ def _normalize_go_runtime_overview(
         _mapping_or_empty(item.get("send_ledger_metrics"))
     )
     inbox_metrics = _normalize_inbox_metrics(_mapping_or_empty(item.get("inbox_metrics")))
+    inbound_dedupe_metrics = _normalize_inbound_dedupe_metrics(
+        _mapping_or_empty(item.get("inbound_dedupe_metrics"))
+    )
     agent_job_metrics = _normalize_agent_job_metrics(
         _mapping_or_empty(item.get("agent_job_metrics"))
     )
@@ -1106,6 +1134,7 @@ def _normalize_go_runtime_overview(
         "receiver_leases": receiver_leases,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
+        "inbound_dedupe_metrics": inbound_dedupe_metrics,
         "agent_job_metrics": agent_job_metrics,
         "outbox_metrics": outbox_metrics,
         "status": {
@@ -1176,6 +1205,12 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "inbox_metric_events": 0,
         "inbox_metric_observe_only": 0,
         "inbox_metric_with_attachments": 0,
+        "inbound_dedupe_records": 0,
+        "inbound_dedupe_active_records": 0,
+        "inbound_dedupe_duplicate_records": 0,
+        "inbound_dedupe_seen_total": 0,
+        "inbound_dedupe_duplicate_seen_total": 0,
+        "inbound_dedupe_scopes": 0,
         "agent_job_metric_events": 0,
         "agent_job_metric_dead_letters": 0,
         "outbox_metric_events": 0,
