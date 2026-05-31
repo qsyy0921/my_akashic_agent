@@ -225,6 +225,73 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 	}
 }
 
+func TestKnowledgeJobPlannerPreviewEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(
+		mux,
+		staticKnowledgeJobPlannerPreviewer{
+			view: query.KnowledgeJobPlannerPreviewView{
+				Timestamp:       "2026-05-31T08:02:00Z",
+				Bucket:          29670242,
+				IntervalSeconds: 60,
+				Targets:         1,
+				TotalJobs:       2,
+				GroupMemoryJobs: 1,
+				RagIngestJobs:   1,
+				Plans: []query.KnowledgeJobPlannerTargetPlanView{{
+					TargetID: "qq:1049511700:group:27234224",
+					Channel: query.ObserveTargetChannelView{
+						Kind:             "qq",
+						AccountID:        "1049511700",
+						ConversationID:   "27234224",
+						ConversationType: "group",
+					},
+					Datasets: []string{"ds-main"},
+					Jobs: []query.KnowledgeJobPlannerJobPlanView{{
+						JobID:       "group_memory_extract:qq:27234224:29670242",
+						JobType:     "group_memory_extract",
+						AgentID:     "python-knowledge-a",
+						DedupeKey:   "knowledge:group_memory_extract:qq:1049511700:27234224",
+						MaxAttempts: 2,
+					}},
+				}},
+				SideEffect: "none",
+			},
+		},
+		command.PlanKnowledgeJobsCommand{
+			PlannerID:       "planner-default",
+			AgentID:         "python-knowledge-a",
+			IntervalSeconds: 60,
+			MaxAttempts:     2,
+			RagMaxMessages:  500,
+			RagParse:        true,
+		},
+	)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/knowledge-job-planner/preview?timestamp=2026-05-31T08:02:00Z", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"side_effect":"none"`,
+		`"target_id":"qq:1049511700:group:27234224"`,
+		`"job_id":"group_memory_extract:qq:27234224:29670242"`,
+		`"dedupe_key":"knowledge:group_memory_extract:qq:1049511700:27234224"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/knowledge-job-planner/preview", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
+	}
+}
+
 func TestRuntimeWorkerDiagnosticsEndpointReturnsReadOnlyWorkers(t *testing.T) {
 	viewer := appservice.NewRuntimeWorkerDiagnosticsService(query.RuntimeWorkerDiagnosticsView{
 		Workers: []query.RuntimeWorkerView{{
@@ -3028,6 +3095,14 @@ type staticKnowledgePipelineViewer struct {
 }
 
 func (s staticKnowledgePipelineViewer) GetKnowledgePipelineDiagnostics(context.Context, query.KnowledgePipelineDiagnosticsFilter) (query.KnowledgePipelineDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgeJobPlannerPreviewer struct {
+	view query.KnowledgeJobPlannerPreviewView
+}
+
+func (s staticKnowledgeJobPlannerPreviewer) PreviewKnowledgeJobs(context.Context, command.PlanKnowledgeJobsCommand) (query.KnowledgeJobPlannerPreviewView, error) {
 	return s.view, nil
 }
 

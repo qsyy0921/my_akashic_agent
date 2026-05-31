@@ -45,165 +45,178 @@ func (s *KnowledgeJobPlannerService) PlanKnowledgeJobs(
 	if err := ctx.Err(); err != nil {
 		return query.KnowledgeJobPlannerRunView{}, err
 	}
-	if s == nil || s.observeTargets == nil || s.agentJobs == nil {
+	if s == nil || s.agentJobs == nil {
 		return query.KnowledgeJobPlannerRunView{}, errors.New("knowledge job planner requires observe targets and agent jobs")
 	}
-	now := cmd.Timestamp
-	if now.IsZero() {
-		now = s.now()
-	}
-	now = now.UTC()
-	intervalSeconds := cmd.IntervalSeconds
-	if intervalSeconds <= 0 {
-		intervalSeconds = 60
-	}
-	bucket := now.Unix() / int64(intervalSeconds)
-	agentID := strings.TrimSpace(cmd.AgentID)
-	if agentID == "" {
-		agentID = "akashic-python-worker"
-	}
-	plannerID := strings.TrimSpace(cmd.PlannerID)
-	if plannerID == "" {
-		plannerID = "agent-runtime-knowledge-job-planner"
-	}
-	maxAttempts := cmd.MaxAttempts
-	if maxAttempts <= 0 {
-		maxAttempts = 2
-	}
-	ragMaxMessages := cmd.RagMaxMessages
-	if ragMaxMessages <= 0 {
-		ragMaxMessages = 1000
-	}
-
-	targets, err := s.observeTargets.ListObserveTargets(ctx)
+	preview, err := s.PreviewKnowledgeJobs(ctx, cmd)
 	if err != nil {
 		return query.KnowledgeJobPlannerRunView{}, err
 	}
 	view := query.KnowledgeJobPlannerRunView{
-		Timestamp:  now.Format(time.RFC3339Nano),
-		Bucket:     bucket,
-		SideEffect: "agent_job_create",
+		Timestamp:       preview.Timestamp,
+		Bucket:          preview.Bucket,
+		Targets:         preview.Targets,
+		GroupMemoryJobs: preview.GroupMemoryJobs,
+		RagIngestJobs:   preview.RagIngestJobs,
+		SkippedTargets:  preview.SkippedTargets,
+		Groups:          append([]string(nil), preview.Groups...),
+		SideEffect:      "agent_job_create",
 	}
-	groups := make(map[string]struct{})
-	for _, target := range targets.Targets {
-		if !knowledgeJobPlannerTargetEligible(target) {
-			view.SkippedTargets++
-			continue
-		}
-		view.Targets++
-		groupID := strings.TrimSpace(target.Channel.ConversationID)
-		groups[groupID] = struct{}{}
-		if suppressed, err := s.createGroupMemoryJob(ctx, target, agentID, plannerID, maxAttempts, bucket, now); err != nil {
-			return query.KnowledgeJobPlannerRunView{}, err
-		} else {
+	timestamp, err := time.Parse(time.RFC3339Nano, preview.Timestamp)
+	if err != nil {
+		return query.KnowledgeJobPlannerRunView{}, err
+	}
+	for _, targetPlan := range preview.Plans {
+		for _, jobPlan := range targetPlan.Jobs {
+			job, err := s.agentJobs.Create(ctx, command.CreateAgentJobCommand{
+				JobID:       jobPlan.JobID,
+				JobType:     jobPlan.JobType,
+				AgentID:     jobPlan.AgentID,
+				Route:       knowledgeJobPlannerCommandRoute(jobPlan.Route),
+				Payload:     copyKnowledgePlannerStringMap(jobPlan.Payload),
+				DedupeKey:   jobPlan.DedupeKey,
+				MaxAttempts: jobPlan.MaxAttempts,
+				Timestamp:   timestamp,
+				Metadata:    copyKnowledgePlannerStringMap(jobPlan.Metadata),
+			})
+			if err != nil {
+				return query.KnowledgeJobPlannerRunView{}, err
+			}
 			view.CreatedOrExisting++
-			view.GroupMemoryJobs++
-			if suppressed {
+			if strings.TrimSpace(job.JobID) != jobPlan.JobID {
 				view.SuppressedByDedupe++
 			}
 		}
-		for _, datasetID := range splitCommaSeparatedList(target.Metadata["ragflow_dataset_ids"]) {
-			if suppressed, err := s.createRagIngestJob(ctx, target, agentID, plannerID, maxAttempts, ragMaxMessages, cmd.RagParse, bucket, now, datasetID); err != nil {
-				return query.KnowledgeJobPlannerRunView{}, err
-			} else {
-				view.CreatedOrExisting++
-				view.RagIngestJobs++
-				if suppressed {
-					view.SuppressedByDedupe++
-				}
-			}
+	}
+	return view, nil
+}
+
+func (s *KnowledgeJobPlannerService) PreviewKnowledgeJobs(
+	ctx context.Context,
+	cmd command.PlanKnowledgeJobsCommand,
+) (query.KnowledgeJobPlannerPreviewView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.KnowledgeJobPlannerPreviewView{}, err
+	}
+	if s == nil || s.observeTargets == nil {
+		return query.KnowledgeJobPlannerPreviewView{}, errors.New("knowledge job planner requires observe targets")
+	}
+	resolved := s.resolvePlanCommand(cmd)
+	targets, err := s.observeTargets.ListObserveTargets(ctx)
+	if err != nil {
+		return query.KnowledgeJobPlannerPreviewView{}, err
+	}
+	view := query.KnowledgeJobPlannerPreviewView{
+		Timestamp:       resolved.timestamp.Format(time.RFC3339Nano),
+		Bucket:          resolved.bucket,
+		IntervalSeconds: resolved.intervalSeconds,
+		Plans:           []query.KnowledgeJobPlannerTargetPlanView{},
+		SideEffect:      "none",
+	}
+	groups := make(map[string]struct{})
+	for _, target := range targets.Targets {
+		if reason := knowledgeJobPlannerTargetSkipReason(target); reason != "" {
+			view.SkippedTargets++
+			view.Skipped = append(view.Skipped, query.KnowledgeJobPlannerSkippedView{
+				TargetID: strings.TrimSpace(target.TargetID),
+				Channel:  target.Channel,
+				Reason:   reason,
+			})
+			continue
 		}
+		groupID := strings.TrimSpace(target.Channel.ConversationID)
+		accountID := strings.TrimSpace(target.Channel.AccountID)
+		groups[groupID] = struct{}{}
+		datasets := splitCommaSeparatedList(target.Metadata["ragflow_dataset_ids"])
+		plan := query.KnowledgeJobPlannerTargetPlanView{
+			TargetID: strings.TrimSpace(target.TargetID),
+			Channel:  target.Channel,
+			Datasets: append([]string(nil), datasets...),
+			Jobs:     []query.KnowledgeJobPlannerJobPlanView{},
+			Metadata: copyKnowledgePlannerStringMap(target.Metadata),
+		}
+		groupMemoryDedupeKey := fmt.Sprintf("knowledge:group_memory_extract:qq:%s:%s", accountID, groupID)
+		plan.Jobs = append(plan.Jobs, query.KnowledgeJobPlannerJobPlanView{
+			JobID:       fmt.Sprintf("group_memory_extract:qq:%s:%d", groupID, resolved.bucket),
+			JobType:     string(model.AgentJobGroupMemoryExtract),
+			AgentID:     resolved.agentID,
+			Route:       knowledgeJobPlannerRouteView(target),
+			Payload:     knowledgeJobPlannerGroupMemoryPayload(groupID),
+			DedupeKey:   groupMemoryDedupeKey,
+			MaxAttempts: resolved.maxAttempts,
+			Metadata: map[string]string{
+				"dedupe_key": groupMemoryDedupeKey,
+				"scheduler":  resolved.plannerID,
+			},
+		})
+		view.GroupMemoryJobs++
+		for _, datasetID := range datasets {
+			ragDedupeKey := fmt.Sprintf("knowledge:rag_ingest:qq:%s:%s:%s", accountID, groupID, datasetID)
+			plan.Jobs = append(plan.Jobs, query.KnowledgeJobPlannerJobPlanView{
+				JobID:       fmt.Sprintf("rag_ingest:qq:%s:%s:%d", groupID, datasetID, resolved.bucket),
+				JobType:     string(model.AgentJobRagIngest),
+				AgentID:     resolved.agentID,
+				Route:       knowledgeJobPlannerRouteView(target),
+				Payload:     knowledgeJobPlannerRagPayload(groupID, datasetID, resolved.ragMaxMessages, cmd.RagParse),
+				DedupeKey:   ragDedupeKey,
+				MaxAttempts: resolved.maxAttempts,
+				Metadata: map[string]string{
+					"dedupe_key": ragDedupeKey,
+					"dataset_id": datasetID,
+					"scheduler":  resolved.plannerID,
+				},
+			})
+			view.RagIngestJobs++
+		}
+		view.Targets++
+		view.TotalJobs += len(plan.Jobs)
+		view.Plans = append(view.Plans, plan)
 	}
 	view.Groups = sortedKnowledgePlannerGroups(groups)
 	return view, nil
 }
 
-func (s *KnowledgeJobPlannerService) createGroupMemoryJob(
-	ctx context.Context,
-	target query.ObserveTargetView,
-	agentID string,
-	plannerID string,
-	maxAttempts int,
-	bucket int64,
-	now time.Time,
-) (bool, error) {
-	accountID := strings.TrimSpace(target.Channel.AccountID)
-	groupID := strings.TrimSpace(target.Channel.ConversationID)
-	jobID := fmt.Sprintf("group_memory_extract:qq:%s:%d", groupID, bucket)
-	dedupeKey := fmt.Sprintf("knowledge:group_memory_extract:qq:%s:%s", accountID, groupID)
-	job, err := s.agentJobs.Create(ctx, command.CreateAgentJobCommand{
-		JobID:       jobID,
-		JobType:     string(model.AgentJobGroupMemoryExtract),
-		AgentID:     agentID,
-		Route:       knowledgeJobPlannerRoute(target),
-		Payload:     knowledgeJobPlannerGroupMemoryPayload(groupID),
-		DedupeKey:   dedupeKey,
-		MaxAttempts: maxAttempts,
-		Timestamp:   now,
-		Metadata: map[string]string{
-			"dedupe_key": dedupeKey,
-			"scheduler":  plannerID,
-		},
-	})
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(job.JobID) != jobID, nil
-}
-
-func (s *KnowledgeJobPlannerService) createRagIngestJob(
-	ctx context.Context,
-	target query.ObserveTargetView,
-	agentID string,
-	plannerID string,
-	maxAttempts int,
-	maxMessages int,
-	parse bool,
-	bucket int64,
-	now time.Time,
-	datasetID string,
-) (bool, error) {
-	accountID := strings.TrimSpace(target.Channel.AccountID)
-	groupID := strings.TrimSpace(target.Channel.ConversationID)
-	datasetID = strings.TrimSpace(datasetID)
-	jobID := fmt.Sprintf("rag_ingest:qq:%s:%s:%d", groupID, datasetID, bucket)
-	dedupeKey := fmt.Sprintf("knowledge:rag_ingest:qq:%s:%s:%s", accountID, groupID, datasetID)
-	job, err := s.agentJobs.Create(ctx, command.CreateAgentJobCommand{
-		JobID:       jobID,
-		JobType:     string(model.AgentJobRagIngest),
-		AgentID:     agentID,
-		Route:       knowledgeJobPlannerRoute(target),
-		Payload:     knowledgeJobPlannerRagPayload(groupID, datasetID, maxMessages, parse),
-		DedupeKey:   dedupeKey,
-		MaxAttempts: maxAttempts,
-		Timestamp:   now,
-		Metadata: map[string]string{
-			"dedupe_key": dedupeKey,
-			"dataset_id": datasetID,
-			"scheduler":  plannerID,
-		},
-	})
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(job.JobID) != jobID, nil
-}
-
 func knowledgeJobPlannerTargetEligible(target query.ObserveTargetView) bool {
-	return target.Enabled &&
-		target.ObserveOnly &&
-		strings.TrimSpace(target.Channel.Kind) == string(model.ChannelKindQQ) &&
-		strings.TrimSpace(target.Channel.ConversationType) == string(model.ConversationTypeGroup) &&
-		strings.TrimSpace(target.Channel.AccountID) != "" &&
-		strings.TrimSpace(target.Channel.ConversationID) != ""
+	return knowledgeJobPlannerTargetSkipReason(target) == ""
 }
 
-func knowledgeJobPlannerRoute(target query.ObserveTargetView) command.ChannelCommand {
-	return command.ChannelCommand{
+func knowledgeJobPlannerTargetSkipReason(target query.ObserveTargetView) string {
+	if !target.Enabled {
+		return "disabled"
+	}
+	if !target.ObserveOnly {
+		return "not_observe_only"
+	}
+	if strings.TrimSpace(target.Channel.Kind) != string(model.ChannelKindQQ) {
+		return "non_qq_channel"
+	}
+	if strings.TrimSpace(target.Channel.ConversationType) != string(model.ConversationTypeGroup) {
+		return "non_group_conversation"
+	}
+	if strings.TrimSpace(target.Channel.AccountID) == "" {
+		return "missing_account_id"
+	}
+	if strings.TrimSpace(target.Channel.ConversationID) == "" {
+		return "missing_conversation_id"
+	}
+	return ""
+}
+
+func knowledgeJobPlannerRouteView(target query.ObserveTargetView) query.AgentJobRouteView {
+	return query.AgentJobRouteView{
 		Kind:             strings.TrimSpace(target.Channel.Kind),
 		AccountID:        strings.TrimSpace(target.Channel.AccountID),
 		ConversationID:   strings.TrimSpace(target.Channel.ConversationID),
 		ConversationType: strings.TrimSpace(target.Channel.ConversationType),
+	}
+}
+
+func knowledgeJobPlannerCommandRoute(route query.AgentJobRouteView) command.ChannelCommand {
+	return command.ChannelCommand{
+		Kind:             strings.TrimSpace(route.Kind),
+		AccountID:        strings.TrimSpace(route.AccountID),
+		ConversationID:   strings.TrimSpace(route.ConversationID),
+		ConversationType: strings.TrimSpace(route.ConversationType),
 	}
 }
 
@@ -240,6 +253,53 @@ func (s *KnowledgeJobPlannerService) now() time.Time {
 	return time.Now().UTC()
 }
 
+type resolvedKnowledgeJobPlanCommand struct {
+	timestamp       time.Time
+	intervalSeconds int
+	bucket          int64
+	agentID         string
+	plannerID       string
+	maxAttempts     int
+	ragMaxMessages  int
+}
+
+func (s *KnowledgeJobPlannerService) resolvePlanCommand(cmd command.PlanKnowledgeJobsCommand) resolvedKnowledgeJobPlanCommand {
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = s.now()
+	}
+	now = now.UTC()
+	intervalSeconds := cmd.IntervalSeconds
+	if intervalSeconds <= 0 {
+		intervalSeconds = 60
+	}
+	agentID := strings.TrimSpace(cmd.AgentID)
+	if agentID == "" {
+		agentID = "akashic-python-worker"
+	}
+	plannerID := strings.TrimSpace(cmd.PlannerID)
+	if plannerID == "" {
+		plannerID = "agent-runtime-knowledge-job-planner"
+	}
+	maxAttempts := cmd.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 2
+	}
+	ragMaxMessages := cmd.RagMaxMessages
+	if ragMaxMessages <= 0 {
+		ragMaxMessages = 1000
+	}
+	return resolvedKnowledgeJobPlanCommand{
+		timestamp:       now,
+		intervalSeconds: intervalSeconds,
+		bucket:          now.Unix() / int64(intervalSeconds),
+		agentID:         agentID,
+		plannerID:       plannerID,
+		maxAttempts:     maxAttempts,
+		ragMaxMessages:  ragMaxMessages,
+	}
+}
+
 func sortedKnowledgePlannerGroups(groups map[string]struct{}) []string {
 	if len(groups) == 0 {
 		return nil
@@ -250,4 +310,15 @@ func sortedKnowledgePlannerGroups(groups map[string]struct{}) []string {
 	}
 	sort.Strings(items)
 	return items
+}
+
+func copyKnowledgePlannerStringMap(value map[string]string) map[string]string {
+	if len(value) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(value))
+	for key, item := range value {
+		result[key] = item
+	}
+	return result
 }

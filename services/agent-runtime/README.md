@@ -446,6 +446,18 @@ work. Python knowledge workers still lease and execute the jobs; when they see
 `/v1/runtime-config.workers.knowledge_job_planner_enabled=true`, they skip
 their legacy enqueue loop and act as execution workers only.
 
+Preview the exact planner output before enabling real admission:
+
+```text
+GET /v1/knowledge-job-planner/preview
+GET /v1/knowledge-job-planner/preview?timestamp=2026-05-31T08:02:00Z&interval_seconds=60
+```
+
+The preview is read-only (`side_effect="none"`). It returns eligible
+observe-only QQ groups, skipped targets with reasons, planned
+`group_memory_extract` / `rag_ingest` job ids, routes, payloads, dedupe keys,
+and dataset bindings. It does not create AgentJob records.
+
 Persist generic job lifecycle events as a JSONL stream:
 
 ```powershell

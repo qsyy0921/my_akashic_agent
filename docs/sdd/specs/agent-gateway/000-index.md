@@ -168,4 +168,7 @@ execution.
 - `065-go-owned-knowledge-job-planner.md`: Go runtime owns recurring
   observe-only knowledge job admission while Python knowledge workers retain
   lease-based execution.
+- `066-knowledge-job-planner-preview-diagnostics.md`: Go exposes a read-only
+  planner preview so observe-only knowledge job admission can be preflighted
+  without creating AgentJob records.
 - Agent architecture boundary specs live under `../agent-architecture/`.

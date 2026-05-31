@@ -270,6 +270,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("init observe target service: %v", err)
 	}
+	knowledgeJobPlannerPreview := appservice.NewKnowledgeJobPlannerService(observeTargets, agentJobs)
+	knowledgeJobPlannerPreviewDefaults := knowledgeJobPlannerPreviewCommandFromEnv()
 	stopKnowledgeJobPlanner, err := startKnowledgeJobPlanner(agentJobs, observeTargets)
 	if err != nil {
 		log.Fatalf("init knowledge job planner: %v", err)
@@ -330,6 +332,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterKnowledgePipelineDiagnosticsRoutes(mux, knowledgePipelines)
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(mux, knowledgeJobPlannerPreview, knowledgeJobPlannerPreviewDefaults)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)

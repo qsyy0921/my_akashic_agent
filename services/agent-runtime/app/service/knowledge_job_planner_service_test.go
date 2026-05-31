@@ -65,6 +65,57 @@ func TestKnowledgeJobPlannerCreatesObserveOnlyGroupJobs(t *testing.T) {
 	}
 }
 
+func TestKnowledgeJobPlannerPreviewIsReadOnly(t *testing.T) {
+	ctx := context.Background()
+	observeTargets := NewObserveTargetService()
+	syncObserveTargetsForPlanner(t, observeTargets)
+	agentJobs := NewAgentJobService(memory.NewStore())
+	planner := NewKnowledgeJobPlannerService(observeTargets, agentJobs)
+	now := time.Date(2026, 5, 31, 8, 2, 0, 0, time.UTC)
+
+	view, err := planner.PreviewKnowledgeJobs(ctx, command.PlanKnowledgeJobsCommand{
+		PlannerID:       "planner-a",
+		AgentID:         "knowledge-worker",
+		IntervalSeconds: 60,
+		MaxAttempts:     2,
+		RagMaxMessages:  500,
+		RagParse:        true,
+		Timestamp:       now,
+	})
+	if err != nil {
+		t.Fatalf("preview knowledge jobs: %v", err)
+	}
+
+	if view.SideEffect != "none" || view.IntervalSeconds != 60 || view.TotalJobs != 3 {
+		t.Fatalf("unexpected preview summary: %#v", view)
+	}
+	if view.Targets != 1 || view.SkippedTargets != 3 || view.GroupMemoryJobs != 1 || view.RagIngestJobs != 2 {
+		t.Fatalf("unexpected target/job counts: %#v", view)
+	}
+	if len(view.Plans) != 1 || len(view.Plans[0].Jobs) != 3 {
+		t.Fatalf("unexpected target plans: %#v", view.Plans)
+	}
+	firstJob := view.Plans[0].Jobs[0]
+	if firstJob.JobID != "group_memory_extract:qq:27234224:29670242" ||
+		firstJob.JobType != "group_memory_extract" ||
+		firstJob.DedupeKey != "knowledge:group_memory_extract:qq:1049511700:27234224" ||
+		firstJob.Payload["observe_only"] != "true" ||
+		firstJob.Metadata["scheduler"] != "planner-a" {
+		t.Fatalf("unexpected group memory job plan: %#v", firstJob)
+	}
+	if len(view.Skipped) != 3 || view.Skipped[0].Reason == "" {
+		t.Fatalf("expected skipped target reasons, got %#v", view.Skipped)
+	}
+
+	jobs, err := agentJobs.List(ctx, query.AgentJobFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("preview must not create jobs, got %#v", jobs)
+	}
+}
+
 func TestKnowledgeJobPlannerReportsDedupeSuppressionAcrossBuckets(t *testing.T) {
 	ctx := context.Background()
 	observeTargets := NewObserveTargetService()

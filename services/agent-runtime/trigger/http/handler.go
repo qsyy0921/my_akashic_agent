@@ -80,6 +80,14 @@ func RegisterKnowledgePipelineDiagnosticsRoutes(
 	mux.Handle("/v1/knowledge-pipeline-diagnostics", KnowledgePipelineDiagnosticsHandler(diagnostics))
 }
 
+func RegisterKnowledgeJobPlannerRoutes(
+	mux *http.ServeMux,
+	previewer inport.KnowledgeJobPlannerPreviewer,
+	defaults command.PlanKnowledgeJobsCommand,
+) {
+	mux.Handle("/v1/knowledge-job-planner/preview", KnowledgeJobPlannerPreviewHandler(previewer, defaults))
+}
+
 func RegisterAgentJobEventRoutes(
 	mux *http.ServeMux,
 	jobEvents inport.AgentJobEventViewer,
@@ -226,6 +234,36 @@ func KnowledgePipelineDiagnosticsHandler(viewer inport.KnowledgePipelineDiagnost
 			Limit:             parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
 			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
 		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: view,
+		})
+	})
+}
+
+func KnowledgeJobPlannerPreviewHandler(
+	previewer inport.KnowledgeJobPlannerPreviewer,
+	defaults command.PlanKnowledgeJobsCommand,
+) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if previewer == nil {
+			http.Error(w, "knowledge job planner preview disabled", http.StatusNotImplemented)
+			return
+		}
+		cmd, err := knowledgeJobPlannerPreviewCommandFromRequest(r, defaults)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := previewer.PreviewKnowledgeJobs(r.Context(), cmd)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -3549,6 +3587,34 @@ func parseRequiredTimestamp(value string, field string) (time.Time, error) {
 		return time.Time{}, errors.New(field + " is required")
 	}
 	return time.Parse(time.RFC3339Nano, value)
+}
+
+func knowledgeJobPlannerPreviewCommandFromRequest(
+	r *http.Request,
+	defaults command.PlanKnowledgeJobsCommand,
+) (command.PlanKnowledgeJobsCommand, error) {
+	query := r.URL.Query()
+	cmd := defaults
+	if value := strings.TrimSpace(query.Get("planner_id")); value != "" {
+		cmd.PlannerID = value
+	}
+	if value := strings.TrimSpace(query.Get("agent_id")); value != "" {
+		cmd.AgentID = value
+	}
+	cmd.IntervalSeconds = parsePositiveInt(query.Get("interval_seconds"), cmd.IntervalSeconds, 86400)
+	cmd.MaxAttempts = parsePositiveInt(query.Get("max_attempts"), cmd.MaxAttempts, 10)
+	cmd.RagMaxMessages = parsePositiveInt(query.Get("rag_max_messages"), cmd.RagMaxMessages, 100000)
+	if _, ok := query["rag_parse"]; ok {
+		cmd.RagParse = parseBoolQuery(query.Get("rag_parse"))
+	}
+	if value := strings.TrimSpace(query.Get("timestamp")); value != "" {
+		timestamp, err := parseOptionalTimestamp(value)
+		if err != nil {
+			return command.PlanKnowledgeJobsCommand{}, err
+		}
+		cmd.Timestamp = timestamp
+	}
+	return cmd, nil
 }
 
 func toAttachmentCommands(items []dto.AttachmentDTO) []command.AttachmentCommand {

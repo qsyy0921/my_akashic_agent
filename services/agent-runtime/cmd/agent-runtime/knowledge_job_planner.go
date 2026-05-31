@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	jobtrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/job"
 )
@@ -70,4 +71,18 @@ func knowledgeJobPlannerConfigFromEnv() (jobtrigger.KnowledgeJobPlannerWorkerCon
 		RagParse:       boolEnvDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE", true),
 		RunOnStart:     boolEnvDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START", true),
 	}, true, nil
+}
+
+func knowledgeJobPlannerPreviewCommandFromEnv() command.PlanKnowledgeJobsCommand {
+	intervalSeconds := positiveIntEnvOrDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS", 60, 86400)
+	maxAttempts := positiveIntEnvOrDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_MAX_ATTEMPTS", 2, 10)
+	ragMaxMessages := positiveIntEnvOrDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES", 1000, 100000)
+	return command.PlanKnowledgeJobsCommand{
+		PlannerID:       envOrDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID", "agent-runtime-knowledge-job-planner"),
+		AgentID:         envOrDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID", "akashic-python-worker"),
+		IntervalSeconds: intervalSeconds,
+		MaxAttempts:     maxAttempts,
+		RagMaxMessages:  ragMaxMessages,
+		RagParse:        boolEnvDefault("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE", true),
+	}
 }

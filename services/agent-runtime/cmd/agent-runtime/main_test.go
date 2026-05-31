@@ -873,6 +873,25 @@ func TestKnowledgeJobPlannerConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestKnowledgeJobPlannerPreviewCommandFromEnv(t *testing.T) {
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS", "90")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID", "planner-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_AGENT_ID", "python-knowledge-a")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_MAX_ATTEMPTS", "3")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_MAX_MESSAGES", "700")
+	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE", "false")
+
+	cmd := knowledgeJobPlannerPreviewCommandFromEnv()
+	if cmd.IntervalSeconds != 90 ||
+		cmd.PlannerID != "planner-a" ||
+		cmd.AgentID != "python-knowledge-a" ||
+		cmd.MaxAttempts != 3 ||
+		cmd.RagMaxMessages != 700 ||
+		cmd.RagParse {
+		t.Fatalf("unexpected knowledge planner preview command: %+v", cmd)
+	}
+}
+
 func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) {
 	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_RECOVERY_INTERVAL_SECONDS", "120")
