@@ -120,6 +120,88 @@ func (s *SchedulerJobService) DeleteSchedulerJob(ctx context.Context, cmd comman
 	}, nil
 }
 
+func (s *SchedulerJobService) CompleteSchedulerJob(ctx context.Context, cmd command.CompleteSchedulerJobCommand) (query.SchedulerJobCompletionView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.SchedulerJobCompletionView{}, err
+	}
+	if s == nil || s.repository == nil {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler job service requires repository")
+	}
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	jobID := strings.TrimSpace(cmd.ID)
+	holderID := strings.TrimSpace(cmd.HolderID)
+	leaseToken := strings.TrimSpace(cmd.LeaseToken)
+	action := strings.TrimSpace(cmd.Action)
+	if jobID == "" {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler job complete requires id")
+	}
+	if holderID == "" {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler job complete requires holder_id")
+	}
+	if leaseToken == "" {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler job complete requires lease_token")
+	}
+	if action != "reschedule" && action != "delete" {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler job complete action must be reschedule or delete")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSchedulerLeaseMapLocked()
+	current, ok := s.leases[jobID]
+	if !ok {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler execution lease not found")
+	}
+	if !current.ActiveAt(now) {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler execution lease expired")
+	}
+	if !current.Matches(holderID, leaseToken) {
+		return query.SchedulerJobCompletionView{}, errors.New("scheduler execution lease token mismatch")
+	}
+
+	var jobView *query.SchedulerJobView
+	deleted := false
+	switch action {
+	case "reschedule":
+		job, err := schedulerJobFromCommand(cmd.Job)
+		if err != nil {
+			return query.SchedulerJobCompletionView{}, err
+		}
+		if job.ID != jobID {
+			return query.SchedulerJobCompletionView{}, errors.New("scheduler job complete path id does not match job id")
+		}
+		if _, err := s.repository.UpsertSchedulerJob(ctx, job); err != nil {
+			return query.SchedulerJobCompletionView{}, err
+		}
+		view := assembler.ToSchedulerJobView(job)
+		jobView = &view
+	case "delete":
+		if _, err := s.repository.DeleteSchedulerJob(ctx, jobID); err != nil {
+			return query.SchedulerJobCompletionView{}, err
+		}
+		deleted = true
+	}
+
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.DeleteSchedulerExecutionLease(ctx, jobID); err != nil {
+			return query.SchedulerJobCompletionView{}, err
+		}
+	}
+	delete(s.leases, jobID)
+	return query.SchedulerJobCompletionView{
+		Job:           jobView,
+		JobID:         jobID,
+		Source:        strings.TrimSpace(cmd.Source),
+		Action:        action,
+		Deleted:       deleted,
+		LeaseReleased: true,
+		SideEffect:    "runtime_state_write",
+	}, nil
+}
+
 func (s *SchedulerJobService) ListSchedulerJobs(ctx context.Context) ([]query.SchedulerJobView, error) {
 	if s == nil || s.repository == nil {
 		return nil, errors.New("scheduler job service requires repository")

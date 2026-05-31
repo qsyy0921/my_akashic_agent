@@ -27,3 +27,12 @@ type SchedulerJobUpsertRequest struct {
 	Job    SchedulerJobDTO `json:"job"`
 	Source string          `json:"source,omitempty"`
 }
+
+type SchedulerJobCompleteRequest struct {
+	Source     string          `json:"source,omitempty"`
+	HolderID   string          `json:"holder_id"`
+	LeaseToken string          `json:"lease_token"`
+	Action     string          `json:"action"`
+	Job        SchedulerJobDTO `json:"job,omitempty"`
+	Timestamp  string          `json:"timestamp,omitempty"`
+}

@@ -682,13 +682,16 @@ fallback. Python `SchedulerService` also acquires a Go-owned execution lease
 before running a due job, renews it during long execution, and releases it after
 the scheduler snapshot has been saved. Tool-driven add/cancel paths use single
 job upsert/delete so one Python process does not have to replace the whole
-snapshot when registering or cancelling a reminder.
+snapshot when registering or cancelling a reminder. Execution completion uses a
+lease-fenced complete mutation so the holder that ran the job is the only one
+allowed to reschedule or delete it.
 
 ```text
 GET  /v1/scheduler/jobs
 POST /v1/scheduler/jobs/snapshot
 POST /v1/scheduler/jobs/upsert
 DELETE /v1/scheduler/jobs/{job_id}
+POST /v1/scheduler/jobs/{job_id}/complete
 GET  /v1/scheduler/diagnostics?limit=50&due_soon_seconds=300
 POST /v1/scheduler/leases/acquire
 POST /v1/scheduler/leases/renew
@@ -705,6 +708,9 @@ Scheduler lease list responses never expose raw lease tokens; acquire/renew/
 release only return a token to the current holder.
 Scheduler job upsert/delete only mutate runtime scheduler state and do not
 trigger tick execution, AI calls, outbox creation, or platform sends.
+`/v1/scheduler/jobs/{job_id}/complete` requires the current execution lease
+holder and token, then performs either `action=reschedule` with a full job body
+or `action=delete`, and releases the lease only after the state write succeeds.
 
 Read and advance knowledge/RAG checkpoints:
 

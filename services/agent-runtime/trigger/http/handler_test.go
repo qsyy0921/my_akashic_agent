@@ -2302,6 +2302,78 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 	}
 }
 
+func TestSchedulerJobCompleteEndpointDeletesAndReleasesLease(t *testing.T) {
+	store := memory.NewStore()
+	schedulerJobs := appservice.NewSchedulerJobService(store)
+	mux := http.NewServeMux()
+	httptrigger.RegisterSchedulerJobRoutes(mux, schedulerJobs)
+
+	upsertBody := []byte(`{
+		"source":"python_scheduler",
+		"job":{
+			"id":"job-complete-http",
+			"trigger":"after",
+			"tier":"instant",
+			"fire_at":"2026-06-01T10:00:00Z",
+			"channel":"qq",
+			"chat_id":"1049511700",
+			"message":"提醒",
+			"timezone":"Asia/Shanghai",
+			"created_at":"2026-06-01T09:00:00Z",
+			"enabled":true
+		}
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/jobs/upsert", bytes.NewReader(upsertBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected upsert 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	acquireBody := []byte(`{
+		"job_id":"job-complete-http",
+		"holder_id":"scheduler:worker-a",
+		"ttl_seconds":120,
+		"timestamp":"2026-06-01T09:59:00Z"
+	}`)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/leases/acquire", bytes.NewReader(acquireBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected acquire 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var acquirePayload struct {
+		Data query.SchedulerExecutionLeaseView `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &acquirePayload); err != nil {
+		t.Fatalf("decode acquire response: %v", err)
+	}
+
+	completeBody, _ := json.Marshal(map[string]any{
+		"source":      "python_scheduler",
+		"holder_id":   "scheduler:worker-a",
+		"lease_token": acquirePayload.Data.LeaseToken,
+		"action":      "delete",
+		"timestamp":   "2026-06-01T09:59:30Z",
+	})
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/scheduler/jobs/job-complete-http/complete", bytes.NewReader(completeBody)))
+	if response.Code != http.StatusOK ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"action":"delete"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"lease_released":true`)) {
+		t.Fatalf("expected complete delete response, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/jobs", nil))
+	if response.Code != http.StatusOK || bytes.Contains(response.Body.Bytes(), []byte(`job-complete-http`)) {
+		t.Fatalf("expected completed job removed, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/leases", nil))
+	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"leases":0`)) {
+		t.Fatalf("expected complete to release lease, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestKnowledgeWorkerDiagnosticsEndpointSummarizesJobsAndCheckpoints(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(

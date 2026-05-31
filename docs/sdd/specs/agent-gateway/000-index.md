@@ -96,4 +96,6 @@ execution.
   lease/fencing, while Python keeps tick loop and job execution.
 - `039-scheduler-job-crud.md`: Go-owned single scheduler job upsert/delete for
   tool-driven add/cancel, reducing snapshot overwrite risk.
+- `040-scheduler-completion-mutation.md`: Go-owned lease-fenced scheduler
+  completion mutation for recurring reschedule and one-shot delete.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -335,8 +335,15 @@ class JobStore:
             except Exception as e:
                 logger.warning("[job_store] agent-runtime 保存失败，继续写本地 JSON: %s", e)
                 runtime_synced = False
-        save_json(self.path, data, domain="job_store")
+        self.save_local(jobs)
         return runtime_synced
+
+    def save_local(self, jobs: dict[str, ScheduledJob]) -> None:
+        save_json(
+            self.path,
+            [self._to_dict(j) for j in jobs.values()],
+            domain="job_store",
+        )
 
     def upsert(self, job: ScheduledJob, jobs: dict[str, ScheduledJob]) -> bool:
         runtime_synced = True
@@ -353,7 +360,7 @@ class JobStore:
             except Exception as e:
                 logger.warning("[job_store] agent-runtime upsert 失败，继续写本地 JSON: %s", e)
                 runtime_synced = False
-        save_json(self.path, [self._to_dict(j) for j in jobs.values()], domain="job_store")
+        self.save_local(jobs)
         return runtime_synced
 
     def delete(self, job_id: str, jobs: dict[str, ScheduledJob]) -> bool:
@@ -368,7 +375,7 @@ class JobStore:
             except Exception as e:
                 logger.warning("[job_store] agent-runtime delete 失败，继续写本地 JSON: %s", e)
                 runtime_synced = False
-        save_json(self.path, [self._to_dict(j) for j in jobs.values()], domain="job_store")
+        self.save_local(jobs)
         return runtime_synced
 
     # ── private ──
@@ -620,16 +627,27 @@ class SchedulerService:
                 reschedule_after = max(now, job.fire_at) + timedelta(microseconds=1)
                 job.fire_at = self._advance_every(job, reschedule_after)
                 self._jobs[job.id] = job
+                completion_action = "reschedule"
+                completion_job: ScheduledJob | None = job
             else:
                 self._jobs.pop(job.id, None)
-            runtime_snapshot_synced = self.store.save(self._jobs)
-            if lease_token and runtime_snapshot_synced:
-                await self._release_execution_lease(job.id, lease_token)
-            elif lease_token:
-                logger.warning(
-                    "[scheduler] runtime snapshot save failed; keeping execution lease until TTL expires job_id=%s",
+                completion_action = "delete"
+                completion_job = None
+            if lease_token:
+                runtime_completed = await self._complete_execution_lease(
                     job.id,
+                    lease_token,
+                    action=completion_action,
+                    job=completion_job,
                 )
+                self.store.save_local(self._jobs)
+                if not runtime_completed:
+                    logger.warning(
+                        "[scheduler] runtime completion failed; keeping execution lease until TTL expires job_id=%s",
+                        job.id,
+                    )
+            else:
+                self.store.save(self._jobs)
 
     async def _execute(self, job: ScheduledJob) -> None:
         label = job.name or job.id[:8]
@@ -774,25 +792,39 @@ class SchedulerService:
                     e,
                 )
 
-    async def _release_execution_lease(self, job_id: str, lease_token: str) -> None:
+    async def _complete_execution_lease(
+        self,
+        job_id: str,
+        lease_token: str,
+        *,
+        action: str,
+        job: ScheduledJob | None = None,
+    ) -> bool:
         if not self._runtime_enabled():
-            return
+            return False
+        body: dict[str, Any] = {
+            "source": "python_scheduler",
+            "holder_id": self._scheduler_holder_id,
+            "lease_token": lease_token,
+            "action": action,
+        }
+        if job is not None:
+            body["job"] = self.store._to_dict(job)
         try:
             await self._request_runtime(
                 "POST",
-                "/v1/scheduler/leases/release",
-                json_body={
-                    "job_id": job_id,
-                    "holder_id": self._scheduler_holder_id,
-                    "lease_token": lease_token,
-                },
+                f"/v1/scheduler/jobs/{quote(str(job_id), safe='')}/complete",
+                json_body=body,
             )
+            return True
         except Exception as e:
             logger.warning(
-                "[scheduler] agent-runtime execution lease release failed job_id=%s: %s",
+                "[scheduler] agent-runtime execution completion failed job_id=%s action=%s: %s",
                 job_id,
+                action,
                 e,
             )
+            return False
 
     def _advance_every(self, job: ScheduledJob, after: datetime) -> datetime:
         """将 every job 的 fire_at 推进到 after 之后的下一个触发时间。"""

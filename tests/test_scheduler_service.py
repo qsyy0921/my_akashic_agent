@@ -295,7 +295,7 @@ async def test_every_soft_cron_pretrigger_advances_past_current_boundary(
     assert mock_loop.process_direct.call_count == 1
 
 
-async def test_runtime_execution_lease_acquired_and_released(
+async def test_runtime_execution_lease_acquired_and_completed(
     tmp_path, mock_push, mock_loop, fixed_now
 ):
     requests: list[httpx.Request] = []
@@ -320,27 +320,20 @@ async def test_runtime_execution_lease_acquired_and_released(
                     },
                 },
             )
-        if request.url.path == "/v1/scheduler/jobs/snapshot":
-            return httpx.Response(
-                202,
-                json={
-                    "code": "OK",
-                    "data": {"count": 0, "side_effect": "runtime_state_write"},
-                },
-            )
-        if request.url.path == "/v1/scheduler/leases/release":
+        if request.url.path == "/v1/scheduler/jobs/lease-job/complete":
             body = json_request(request)
-            assert body["job_id"] == "lease-job"
+            assert body["action"] == "delete"
             assert body["lease_token"] == "lease-token-1"
             return httpx.Response(
                 200,
                 json={
                     "code": "OK",
                     "data": {
-                        "job_id": body["job_id"],
-                        "lease_token_present": True,
-                        "active": False,
-                        "acquired": False,
+                        "job_id": "lease-job",
+                        "action": "delete",
+                        "deleted": True,
+                        "lease_released": True,
+                        "side_effect": "runtime_state_write",
                     },
                 },
             )
@@ -376,12 +369,11 @@ async def test_runtime_execution_lease_acquired_and_released(
     )
     assert [request.url.path for request in requests] == [
         "/v1/scheduler/leases/acquire",
-        "/v1/scheduler/jobs/snapshot",
-        "/v1/scheduler/leases/release",
+        "/v1/scheduler/jobs/lease-job/complete",
     ]
 
 
-async def test_runtime_execution_lease_not_released_when_snapshot_sync_fails(
+async def test_runtime_execution_lease_not_released_when_completion_fails(
     tmp_path, mock_push, mock_loop, fixed_now
 ):
     requests: list[httpx.Request] = []
@@ -402,10 +394,10 @@ async def test_runtime_execution_lease_not_released_when_snapshot_sync_fails(
                     },
                 },
             )
-        if request.url.path == "/v1/scheduler/jobs/snapshot":
-            return httpx.Response(500, text="snapshot failed")
+        if request.url.path == "/v1/scheduler/jobs/snapshot-fails/complete":
+            return httpx.Response(500, text="complete failed")
         if request.url.path == "/v1/scheduler/leases/release":
-            raise AssertionError("lease must not be released after snapshot failure")
+            raise AssertionError("lease must not be released after completion failure")
         raise AssertionError(f"unexpected runtime request: {request.url.path}")
 
     svc = SchedulerService(
@@ -437,7 +429,84 @@ async def test_runtime_execution_lease_not_released_when_snapshot_sync_fails(
     assert job.id not in svc._jobs
     assert [request.url.path for request in requests] == [
         "/v1/scheduler/leases/acquire",
-        "/v1/scheduler/jobs/snapshot",
+        "/v1/scheduler/jobs/snapshot-fails/complete",
+    ]
+
+
+async def test_runtime_execution_lease_completion_reschedules_every_job(
+    tmp_path, mock_push, mock_loop, fixed_now
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/v1/scheduler/leases/acquire":
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "every-complete",
+                        "lease_token": "lease-token-3",
+                        "lease_token_present": True,
+                        "active": True,
+                        "acquired": True,
+                    },
+                },
+            )
+        if request.url.path == "/v1/scheduler/jobs/every-complete/complete":
+            body = json_request(request)
+            assert body["action"] == "reschedule"
+            assert body["lease_token"] == "lease-token-3"
+            assert body["job"]["id"] == "every-complete"
+            assert body["job"]["run_count"] == 1
+            assert body["job"]["fire_at"] > fixed_now.isoformat()
+            return httpx.Response(
+                200,
+                json={
+                    "code": "OK",
+                    "data": {
+                        "job_id": "every-complete",
+                        "action": "reschedule",
+                        "deleted": False,
+                        "lease_released": True,
+                        "side_effect": "runtime_state_write",
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected runtime request: {request.url.path}")
+
+    svc = SchedulerService(
+        store_path=tmp_path / "jobs.json",
+        push_tool=mock_push,
+        agent_loop=mock_loop,
+        _now_fn=lambda: fixed_now,
+        runtime_config=AgentRuntimeIntegrationConfig(
+            enabled=True,
+            base_url="http://agent-runtime.test",
+            worker_id="python-worker",
+            lease_ttl_seconds=300,
+        ),
+        runtime_transport=httpx.MockTransport(handler),
+    )
+    job = make_job(
+        trigger="every",
+        tier="instant",
+        fire_at=fixed_now - timedelta(seconds=1),
+        interval_seconds=60,
+        message="runtime lease",
+    )
+    job.id = "every-complete"
+    svc._jobs[job.id] = job
+
+    await svc._tick()
+    await drain_tasks()
+
+    assert svc._jobs[job.id].run_count == 1
+    assert svc._jobs[job.id].fire_at > fixed_now
+    assert [request.url.path for request in requests] == [
+        "/v1/scheduler/leases/acquire",
+        "/v1/scheduler/jobs/every-complete/complete",
     ]
 
 

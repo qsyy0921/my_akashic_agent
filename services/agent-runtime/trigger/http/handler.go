@@ -580,8 +580,18 @@ func SchedulerJobStateHandler(schedulerJobs inport.SchedulerJobManager) http.Han
 			http.Error(w, "scheduler job manager disabled", http.StatusNotImplemented)
 			return
 		}
-		rest := strings.TrimPrefix(r.URL.Path, "/v1/scheduler/jobs/")
-		jobID := strings.Trim(rest, "/")
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/scheduler/jobs/"), "/")
+		if r.Method == http.MethodPost && strings.HasSuffix(rest, "/complete") {
+			completeJobID := strings.TrimSuffix(rest, "/complete")
+			completeJobID = strings.TrimSuffix(completeJobID, "/")
+			if completeJobID == "" || strings.Contains(completeJobID, "/") {
+				http.Error(w, "invalid scheduler job id", http.StatusBadRequest)
+				return
+			}
+			handleSchedulerJobComplete(w, r, schedulerJobs, completeJobID)
+			return
+		}
+		jobID := rest
 		if jobID == "" || strings.Contains(jobID, "/") {
 			http.Error(w, "invalid scheduler job id", http.StatusBadRequest)
 			return
@@ -600,6 +610,41 @@ func SchedulerJobStateHandler(schedulerJobs inport.SchedulerJobManager) http.Han
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
+}
+
+func handleSchedulerJobComplete(w http.ResponseWriter, r *http.Request, schedulerJobs inport.SchedulerJobManager, jobID string) {
+	var request dto.SchedulerJobCompleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
+	timestamp, err := parseOptionalTimestamp(request.Timestamp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var job command.SchedulerJobCommand
+	if strings.TrimSpace(request.Action) == "reschedule" {
+		job, err = toSchedulerJobCommand(request.Job)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	view, err := schedulerJobs.CompleteSchedulerJob(r.Context(), command.CompleteSchedulerJobCommand{
+		ID:         jobID,
+		Source:     request.Source,
+		HolderID:   request.HolderID,
+		LeaseToken: request.LeaseToken,
+		Action:     request.Action,
+		Job:        job,
+		Timestamp:  timestamp,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 }
 
 func SchedulerJobDiagnosticsHandler(viewer inport.SchedulerJobDiagnosticsViewer) http.Handler {

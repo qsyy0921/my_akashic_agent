@@ -34,3 +34,13 @@ type DeleteSchedulerJobCommand struct {
 	ID     string
 	Source string
 }
+
+type CompleteSchedulerJobCommand struct {
+	ID         string
+	Source     string
+	HolderID   string
+	LeaseToken string
+	Action     string
+	Job        SchedulerJobCommand
+	Timestamp  time.Time
+}

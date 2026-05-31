@@ -134,6 +134,109 @@ func TestSchedulerJobServiceUpsertAndDeleteJob(t *testing.T) {
 	}
 }
 
+func TestSchedulerJobServiceCompleteReschedulesAndReleasesLease(t *testing.T) {
+	ctx := context.Background()
+	service := appservice.NewSchedulerJobService(memory.NewStore())
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	acquired, err := service.AcquireSchedulerExecutionLease(ctx, command.AcquireSchedulerExecutionLeaseCommand{
+		JobID:      "job-complete",
+		HolderID:   "scheduler:worker-a",
+		TTLSeconds: 120,
+		Timestamp:  now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	completed, err := service.CompleteSchedulerJob(ctx, command.CompleteSchedulerJobCommand{
+		ID:         "job-complete",
+		Source:     "python_scheduler",
+		HolderID:   "scheduler:worker-a",
+		LeaseToken: acquired.LeaseToken,
+		Action:     "reschedule",
+		Timestamp:  now.Add(time.Second),
+		Job: command.SchedulerJobCommand{
+			ID:        "job-complete",
+			Trigger:   "every",
+			Tier:      "instant",
+			FireAt:    now.Add(time.Hour),
+			Channel:   "qq",
+			ChatID:    "1049511700",
+			Message:   "提醒",
+			Timezone:  "Asia/Shanghai",
+			CreatedAt: now.Add(-time.Hour),
+			RunCount:  1,
+			Enabled:   true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Job == nil || completed.Action != "reschedule" || completed.Deleted || !completed.LeaseReleased {
+		t.Fatalf("unexpected completion view: %+v", completed)
+	}
+	jobs, err := service.ListSchedulerJobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].ID != "job-complete" || jobs[0].RunCount != 1 {
+		t.Fatalf("expected rescheduled job: %+v", jobs)
+	}
+	leases, err := service.ListSchedulerExecutionLeases(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leases.Totals["leases"] != 0 {
+		t.Fatalf("expected completion to release lease: %+v", leases)
+	}
+}
+
+func TestSchedulerJobServiceCompleteRejectsTokenMismatch(t *testing.T) {
+	ctx := context.Background()
+	service := appservice.NewSchedulerJobService(memory.NewStore())
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := service.UpsertSchedulerJob(ctx, command.UpsertSchedulerJobCommand{
+		Job: command.SchedulerJobCommand{
+			ID:        "job-token-mismatch",
+			Trigger:   "after",
+			Tier:      "instant",
+			FireAt:    now,
+			Channel:   "qq",
+			ChatID:    "1049511700",
+			Message:   "原始",
+			CreatedAt: now.Add(-time.Hour),
+			Enabled:   true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AcquireSchedulerExecutionLease(ctx, command.AcquireSchedulerExecutionLeaseCommand{
+		JobID:     "job-token-mismatch",
+		HolderID:  "scheduler:worker-a",
+		Timestamp: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := service.CompleteSchedulerJob(ctx, command.CompleteSchedulerJobCommand{
+		ID:         "job-token-mismatch",
+		HolderID:   "scheduler:worker-a",
+		LeaseToken: "wrong-token",
+		Action:     "delete",
+		Timestamp:  now.Add(time.Second),
+	})
+	if err == nil {
+		t.Fatal("expected token mismatch to fail")
+	}
+	jobs, err := service.ListSchedulerJobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].Message != "原始" {
+		t.Fatalf("token mismatch should not delete job: %+v", jobs)
+	}
+}
+
 func TestSchedulerJobServiceDiagnosticsSummarizesTiming(t *testing.T) {
 	ctx := context.Background()
 	service := appservice.NewSchedulerJobService(memory.NewStore())

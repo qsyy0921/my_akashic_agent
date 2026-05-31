@@ -34,6 +34,16 @@ type SchedulerJobMutationView struct {
 	SideEffect string            `json:"side_effect"`
 }
 
+type SchedulerJobCompletionView struct {
+	Job           *SchedulerJobView `json:"job,omitempty"`
+	JobID         string            `json:"job_id"`
+	Source        string            `json:"source,omitempty"`
+	Action        string            `json:"action"`
+	Deleted       bool              `json:"deleted"`
+	LeaseReleased bool              `json:"lease_released"`
+	SideEffect    string            `json:"side_effect"`
+}
+
 type SchedulerJobDiagnosticsFilter struct {
 	Limit          int
 	Timestamp      string
