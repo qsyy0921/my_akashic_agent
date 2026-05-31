@@ -24,7 +24,8 @@ Python proactive loop 里仍有两类确定性状态留在 SQLite：
 
 - semantic items 的文本候选缓存。
 - tick log / tick step log。
-- `bg_context_last_main_at`。
+- `bg_context_last_main_at` 已在后续
+  `035-proactive-bg-context-global-mark.md` 迁移。
 - cleanup 的 SQLite 本地清理。
 
 ## 领域规则

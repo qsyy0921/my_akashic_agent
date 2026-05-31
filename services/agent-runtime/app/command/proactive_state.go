@@ -67,6 +67,10 @@ type RecordProactiveDriftRunCommand struct {
 	Timestamp  time.Time
 }
 
+type RecordProactiveBGContextMainCommand struct {
+	Timestamp time.Time
+}
+
 type SnapshotProactiveAnyActionQuotaCommand struct {
 	QuotaKey  string
 	ResetHour int

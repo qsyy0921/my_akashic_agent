@@ -55,6 +55,13 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if err := store.SaveProactiveSessionMark(ctx, mark); err != nil {
 		t.Fatal(err)
 	}
+	globalMark, err := model.NewProactiveGlobalMark(model.ProactiveGlobalMarkBGContextMainAt, now.Add(150*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveGlobalMark(ctx, globalMark); err != nil {
+		t.Fatal(err)
+	}
 	quota, err := model.NewProactiveAnyActionQuota("default", "2026-05-30@12@Asia/Shanghai", now.Add(24*time.Hour), 2, now.Add(3*time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +115,13 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	}
 	if !ok || lastDrift.MarkedAt.IsZero() {
 		t.Fatalf("expected drift mark, got ok=%v mark=%+v", ok, lastDrift)
+	}
+	foundGlobal, ok, err := reloaded.FindProactiveGlobalMark(ctx, model.ProactiveGlobalMarkBGContextMainAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || foundGlobal.MarkedAt.IsZero() {
+		t.Fatalf("expected global mark, got ok=%v mark=%+v", ok, foundGlobal)
 	}
 	listed, err := reloaded.ListProactiveDeliveries(ctx, query.ProactiveDeliveryFilter{Limit: 10})
 	if err != nil {

@@ -73,6 +73,14 @@ func ToProactiveTimestampView(sessionKey string, key string, timestamp time.Time
 	}
 }
 
+func ToProactiveGlobalTimestampView(key string, timestamp time.Time, found bool) query.ProactiveTimestampView {
+	return query.ProactiveTimestampView{
+		Key:       key,
+		Timestamp: formatProactiveTime(timestamp),
+		Found:     found,
+	}
+}
+
 func ToProactiveAnyActionQuotaView(record model.ProactiveAnyActionQuota, found bool, sideEffect string) query.ProactiveAnyActionQuotaView {
 	return query.ProactiveAnyActionQuotaView{
 		QuotaKey:     record.QuotaKey,

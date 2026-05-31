@@ -42,6 +42,7 @@ type Store struct {
 	proactiveRejections    map[string]model.ProactiveRejectionCooldownRecord
 	proactiveContextOnly   []model.ProactiveContextOnlyRecord
 	proactiveSessionMarks  map[string]model.ProactiveSessionMark
+	proactiveGlobalMarks   map[string]model.ProactiveGlobalMark
 	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
 }
 
@@ -69,6 +70,7 @@ func NewStore() *Store {
 		proactiveSeenItems:    make(map[string]model.ProactiveSeenItemRecord),
 		proactiveRejections:   make(map[string]model.ProactiveRejectionCooldownRecord),
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
+		proactiveGlobalMarks:  make(map[string]model.ProactiveGlobalMark),
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
 	}
 }
@@ -1063,6 +1065,29 @@ func (s *Store) FindProactiveSessionMark(_ context.Context, sessionKey string, k
 	defer s.mu.Unlock()
 
 	mark, ok := s.proactiveSessionMarks[proactiveSessionMarkKey(sessionKey, key)]
+	return mark, ok, nil
+}
+
+func (s *Store) SaveProactiveGlobalMark(_ context.Context, mark model.ProactiveGlobalMark) error {
+	if err := mark.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.proactiveGlobalMarks == nil {
+		s.proactiveGlobalMarks = make(map[string]model.ProactiveGlobalMark)
+	}
+	s.proactiveGlobalMarks[strings.TrimSpace(mark.Key)] = mark
+	return nil
+}
+
+func (s *Store) FindProactiveGlobalMark(_ context.Context, key string) (model.ProactiveGlobalMark, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mark, ok := s.proactiveGlobalMarks[strings.TrimSpace(key)]
 	return mark, ok, nil
 }
 

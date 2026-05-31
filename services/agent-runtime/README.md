@@ -661,6 +661,8 @@ GET  /v1/proactive/context-only/last?session_key=telegram:100
 GET  /v1/proactive/context-only/count?session_key=telegram:100&window_hours=24
 POST /v1/proactive/drift-runs
 GET  /v1/proactive/drift-runs/last?session_key=telegram:100
+POST /v1/proactive/bg-context/main
+GET  /v1/proactive/bg-context/main/last
 GET  /v1/proactive/anyaction/quota?quota_key=default&reset_hour=12&timezone=Asia%2FShanghai
 POST /v1/proactive/anyaction/actions
 POST /v1/proactive/cleanup

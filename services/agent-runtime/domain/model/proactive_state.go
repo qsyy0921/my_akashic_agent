@@ -9,6 +9,7 @@ import (
 const (
 	ProactiveSessionMarkContextOnlyLastAt = "context_only_last_at"
 	ProactiveSessionMarkDriftLastAt       = "drift_last_at"
+	ProactiveGlobalMarkBGContextMainAt    = "bg_context_last_main_at"
 )
 
 type ProactiveDeliveryRecord struct {
@@ -218,6 +219,37 @@ func (m ProactiveSessionMark) Validate() error {
 	}
 	if m.MarkedAt.IsZero() {
 		return errors.New("proactive session mark requires marked_at")
+	}
+	return nil
+}
+
+type ProactiveGlobalMark struct {
+	Key      string
+	MarkedAt time.Time
+}
+
+func NewProactiveGlobalMark(key string, markedAt time.Time) (ProactiveGlobalMark, error) {
+	if markedAt.IsZero() {
+		markedAt = time.Now().UTC()
+	}
+	mark := ProactiveGlobalMark{
+		Key:      strings.TrimSpace(key),
+		MarkedAt: markedAt.UTC(),
+	}
+	if err := mark.Validate(); err != nil {
+		return ProactiveGlobalMark{}, err
+	}
+	return mark, nil
+}
+
+func (m ProactiveGlobalMark) Validate() error {
+	switch strings.TrimSpace(m.Key) {
+	case ProactiveGlobalMarkBGContextMainAt:
+	default:
+		return errors.New("proactive global mark has invalid key")
+	}
+	if m.MarkedAt.IsZero() {
+		return errors.New("proactive global mark requires marked_at")
 	}
 	return nil
 }

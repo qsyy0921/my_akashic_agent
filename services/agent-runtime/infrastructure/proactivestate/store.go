@@ -26,6 +26,7 @@ type Store struct {
 	rejections    map[string]model.ProactiveRejectionCooldownRecord
 	contextOnly   []model.ProactiveContextOnlyRecord
 	sessionMarks  map[string]model.ProactiveSessionMark
+	globalMarks   map[string]model.ProactiveGlobalMark
 	anyAction     map[string]model.ProactiveAnyActionQuota
 }
 
@@ -36,6 +37,7 @@ type persistedState struct {
 	Rejections   []model.ProactiveRejectionCooldownRecord `json:"rejection_cooldowns,omitempty"`
 	ContextOnly  []model.ProactiveContextOnlyRecord       `json:"context_only"`
 	SessionMarks []model.ProactiveSessionMark             `json:"session_marks"`
+	GlobalMarks  []model.ProactiveGlobalMark              `json:"global_marks,omitempty"`
 	AnyAction    []model.ProactiveAnyActionQuota          `json:"anyaction_quotas,omitempty"`
 }
 
@@ -52,6 +54,7 @@ func NewStore(path string) (*Store, error) {
 		rejections:   make(map[string]model.ProactiveRejectionCooldownRecord),
 		contextOnly:  make([]model.ProactiveContextOnlyRecord, 0),
 		sessionMarks: make(map[string]model.ProactiveSessionMark),
+		globalMarks:  make(map[string]model.ProactiveGlobalMark),
 		anyAction:    make(map[string]model.ProactiveAnyActionQuota),
 	}
 	if err := os.MkdirAll(filepath.Dir(cleanPath), 0o755); err != nil {
@@ -209,6 +212,26 @@ func (s *Store) FindProactiveSessionMark(_ context.Context, sessionKey string, k
 	return mark, ok, nil
 }
 
+func (s *Store) SaveProactiveGlobalMark(_ context.Context, mark model.ProactiveGlobalMark) error {
+	if err := mark.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.globalMarks[strings.TrimSpace(mark.Key)] = mark
+	return s.flush()
+}
+
+func (s *Store) FindProactiveGlobalMark(_ context.Context, key string) (model.ProactiveGlobalMark, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mark, ok := s.globalMarks[strings.TrimSpace(key)]
+	return mark, ok, nil
+}
+
 func (s *Store) SaveProactiveAnyActionQuota(_ context.Context, quota model.ProactiveAnyActionQuota) error {
 	if err := quota.Validate(); err != nil {
 		return err
@@ -333,6 +356,12 @@ func (s *Store) load() error {
 		}
 		s.sessionMarks[sessionMarkKey(mark.SessionKey, mark.Key)] = mark
 	}
+	for _, mark := range state.GlobalMarks {
+		if err := mark.Validate(); err != nil {
+			continue
+		}
+		s.globalMarks[strings.TrimSpace(mark.Key)] = mark
+	}
 	for _, quota := range state.AnyAction {
 		if err := quota.Validate(); err != nil {
 			continue
@@ -350,6 +379,7 @@ func (s *Store) flush() error {
 		Rejections:   make([]model.ProactiveRejectionCooldownRecord, 0, len(s.rejections)),
 		ContextOnly:  append(make([]model.ProactiveContextOnlyRecord, 0, len(s.contextOnly)), s.contextOnly...),
 		SessionMarks: make([]model.ProactiveSessionMark, 0, len(s.sessionMarks)),
+		GlobalMarks:  make([]model.ProactiveGlobalMark, 0, len(s.globalMarks)),
 		AnyAction:    make([]model.ProactiveAnyActionQuota, 0, len(s.anyAction)),
 	}
 	for _, key := range s.deliveryOrder {
@@ -365,6 +395,9 @@ func (s *Store) flush() error {
 	}
 	for _, mark := range s.sessionMarks {
 		state.SessionMarks = append(state.SessionMarks, mark)
+	}
+	for _, mark := range s.globalMarks {
+		state.GlobalMarks = append(state.GlobalMarks, mark)
 	}
 	for _, quota := range s.anyAction {
 		state.AnyAction = append(state.AnyAction, quota)

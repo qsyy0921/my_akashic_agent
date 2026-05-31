@@ -225,6 +225,21 @@ func TestProactiveStateServiceRecordsContextAndDriftMarks(t *testing.T) {
 	if !lastDrift.Found || lastDrift.Timestamp == "" {
 		t.Fatalf("expected drift mark, got %+v", lastDrift)
 	}
+
+	if _, err := svc.RecordBGContextMain(ctx, command.RecordProactiveBGContextMainCommand{
+		Timestamp: now.Add(2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lastBGContext, err := svc.LastBGContextMain(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lastBGContext.Found ||
+		lastBGContext.Key != "bg_context_last_main_at" ||
+		lastBGContext.Timestamp == "" {
+		t.Fatalf("expected bg context mark, got %+v", lastBGContext)
+	}
 }
 
 func TestProactiveStateServiceAnyActionQuotaRolloverAndRecord(t *testing.T) {

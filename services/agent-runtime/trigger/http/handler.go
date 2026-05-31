@@ -249,6 +249,8 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/context-only/count", ProactiveContextOnlyCountHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs", ProactiveDriftRunsHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs/last", ProactiveDriftRunLastHandler(proactiveState))
+	mux.Handle("/v1/proactive/bg-context/main", ProactiveBGContextMainHandler(proactiveState))
+	mux.Handle("/v1/proactive/bg-context/main/last", ProactiveBGContextMainLastHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/quota", ProactiveAnyActionQuotaHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/actions", ProactiveAnyActionRecordHandler(proactiveState))
 	mux.Handle("/v1/proactive/cleanup", ProactiveCleanupHandler(proactiveState))
@@ -2275,6 +2277,56 @@ func ProactiveDriftRunLastHandler(proactiveState inport.ProactiveStateManager) h
 			return
 		}
 		mark, err := proactiveState.LastDriftRun(r.Context(), r.URL.Query().Get("session_key"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveBGContextMainHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveTimestampRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mark, err := proactiveState.RecordBGContextMain(r.Context(), command.RecordProactiveBGContextMainCommand{
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveBGContextMainLastHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mark, err := proactiveState.LastBGContextMain(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

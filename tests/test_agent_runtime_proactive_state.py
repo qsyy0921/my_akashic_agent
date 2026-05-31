@@ -69,6 +69,11 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
             return httpx.Response(202, json={"code": "OK", "data": body})
         if request.url.path == "/v1/proactive/drift-runs/last":
             return _ok({"found": True, "timestamp": "2026-05-30T10:00:00Z"})
+        if request.url.path == "/v1/proactive/bg-context/main":
+            assert body["timestamp"] == now.isoformat()
+            return httpx.Response(202, json={"code": "OK", "data": body})
+        if request.url.path == "/v1/proactive/bg-context/main/last":
+            return _ok({"found": True, "timestamp": "2026-05-30T10:30:00Z"})
         if request.url.path == "/v1/proactive/cleanup":
             assert body["seen_ttl_hours"] == 24
             assert body["delivery_ttl_hours"] == 48
@@ -109,6 +114,12 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         2026, 5, 30, 10, 0, tzinfo=timezone.utc
     )
 
+    store.mark_bg_context_main_send(now)
+
+    assert store.get_bg_context_last_main_at() == datetime(
+        2026, 5, 30, 10, 30, tzinfo=timezone.utc
+    )
+
     assert fallback.count_deliveries_in_window("telegram:1", 24, now) == 1
     assert fallback.is_item_seen("mcp:news:feed-b", "item-a", 24, now) is True
     assert fallback.is_rejection_cooled("qq:group:1", "item-b", 2, now) is True
@@ -127,6 +138,8 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         "/v1/proactive/context-only/last",
         "/v1/proactive/drift-runs",
         "/v1/proactive/drift-runs/last",
+        "/v1/proactive/bg-context/main",
+        "/v1/proactive/bg-context/main/last",
         "/v1/proactive/cleanup",
     ]
 
@@ -163,6 +176,9 @@ def test_agent_runtime_proactive_state_falls_back_to_sqlite_on_runtime_error(tmp
 
     store.mark_drift_run("telegram:1", now)
     assert store.get_last_drift_at("telegram:1") == now
+
+    store.mark_bg_context_main_send(now)
+    assert store.get_bg_context_last_main_at() == now
 
     store.close()
 

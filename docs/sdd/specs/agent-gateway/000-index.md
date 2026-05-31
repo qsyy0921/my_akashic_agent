@@ -86,4 +86,6 @@ execution.
   candidate extraction and tick logs.
 - `034-proactive-retention-cleanup.md`: Go-owned TTL cleanup for proactive
   deterministic runtime state, while Python keeps SQLite fallback cleanup.
+- `035-proactive-bg-context-global-mark.md`: Go-owned global mark for proactive
+  background-context main-topic send timestamp.
 - Agent architecture boundary specs live under `../agent-architecture/`.

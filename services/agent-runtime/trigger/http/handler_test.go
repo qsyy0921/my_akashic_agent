@@ -2435,6 +2435,21 @@ func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"key":"drift_last_at"`)) {
 		t.Fatalf("drift response missing marker key: %s", response.Body.String())
 	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/bg-context/main", bytes.NewReader([]byte(`{"timestamp":"2026-05-30T12:30:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected bg context 202, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/proactive/bg-context/main/last", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected bg context last 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"key":"bg_context_last_main_at"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"found":true`)) {
+		t.Fatalf("bg context response missing marker: %s", response.Body.String())
+	}
 }
 
 func queryQueueBackendViewForTest() query.QueueBackendView {

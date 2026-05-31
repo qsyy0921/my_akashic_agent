@@ -98,6 +98,7 @@
 - [x] 将 proactive AnyAction quota 状态迁移到 Go：Go 在 `ProactiveStateService` 中新增 `GET /v1/proactive/anyaction/quota` 和 `POST /v1/proactive/anyaction/actions`，负责每日窗口、reset_hour/timezone rollover、used 计数和 last_action_at 持久化；Python `AnyActionGate` 仍负责概率判断，`AgentRuntimeAnyActionQuotaStore` 优先走 Go，失败回退原 `proactive_quota.json`。
 - [x] 将 proactive source item seen 去重和 rejection cooldown 状态迁移到 Go：Go 新增 `POST /v1/proactive/seen-items`、`GET /v1/proactive/seen-items/seen`、`POST /v1/proactive/rejection-cooldowns`、`GET /v1/proactive/rejection-cooldowns/cooled`，负责 MCP source key 归一、TTL 判断和文件态持久化；Python `AgentRuntimeProactiveStateStore` 优先走 Go，未命中或失败时回退 SQLite，semantic items 与 tick log 继续留在 Python。
 - [x] 增加 Go-owned proactive retention cleanup：Go 新增 `POST /v1/proactive/cleanup`，按 TTL 清理 delivery、seen items、context-only timestamp 和 rejection cooldown JSON/file state，并返回删除计数；Python `AgentRuntimeProactiveStateStore.cleanup` 先清 Go 再清 SQLite fallback，semantic items 与 tick log 仍由 Python SQLite 管理。
+- [x] 将 proactive background context 主 topic 时间戳迁移到 Go：Go 新增 `POST /v1/proactive/bg-context/main` 和 `GET /v1/proactive/bg-context/main/last`，用显式白名单 `ProactiveGlobalMark` 持久化 `bg_context_last_main_at`；Python bridge 写入时双写 Go/SQLite，读取时取较新时间，避免迁移期间放宽节流。
 
 ## 下一步
 
@@ -109,6 +110,7 @@
 - [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 至少上报 `starting`/`idle`，执行任务时切到 `running`，完成后回到 `idle`，停服后变为 `stopped` 或 stale；如果发现同一 worker_id 多进程抢占，需要后续补 worker lease/fencing，而不是仅靠状态覆盖。
 - [ ] 观察 proactive AnyAction quota live 状态：主动推送实际触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中 `anyaction_quotas.used` 增长，且原 `proactive_quota.json` fallback 不会让 quota 放宽；如果后续要跨进程统一随机 draw，再单独设计 Go-owned admission decision。
 - [ ] 观察 proactive seen/rejection/cleanup live 状态：主动推送候选流运行后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `seen_items` 或 `rejection_cooldowns`，并在 cleanup 触发后确认过期记录减少，且 SQLite fallback 不会放宽去重。
+- [ ] 观察 proactive background context live 状态：background context 主 topic 触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `global_marks` / `bg_context_last_main_at`，且 SQLite fallback 不会让节流时间回退。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

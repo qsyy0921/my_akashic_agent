@@ -246,6 +246,34 @@ func (s *ProactiveStateService) LastDriftRun(ctx context.Context, sessionKey str
 	return s.lastSessionMark(ctx, sessionKey, model.ProactiveSessionMarkDriftLastAt)
 }
 
+func (s *ProactiveStateService) RecordBGContextMain(ctx context.Context, cmd command.RecordProactiveBGContextMainCommand) (query.ProactiveTimestampView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")
+	}
+	mark, err := model.NewProactiveGlobalMark(model.ProactiveGlobalMarkBGContextMainAt, timestampOrNow(cmd.Timestamp))
+	if err != nil {
+		return query.ProactiveTimestampView{}, err
+	}
+	if err := s.repository.SaveProactiveGlobalMark(ctx, mark); err != nil {
+		return query.ProactiveTimestampView{}, err
+	}
+	return assembler.ToProactiveGlobalTimestampView(mark.Key, mark.MarkedAt, true), nil
+}
+
+func (s *ProactiveStateService) LastBGContextMain(ctx context.Context) (query.ProactiveTimestampView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")
+	}
+	mark, ok, err := s.repository.FindProactiveGlobalMark(ctx, model.ProactiveGlobalMarkBGContextMainAt)
+	if err != nil {
+		return query.ProactiveTimestampView{}, err
+	}
+	if !ok {
+		return assembler.ToProactiveGlobalTimestampView(model.ProactiveGlobalMarkBGContextMainAt, time.Time{}, false), nil
+	}
+	return assembler.ToProactiveGlobalTimestampView(mark.Key, mark.MarkedAt, true), nil
+}
+
 func (s *ProactiveStateService) SnapshotAnyActionQuota(ctx context.Context, cmd command.SnapshotProactiveAnyActionQuotaCommand) (query.ProactiveAnyActionQuotaView, error) {
 	if s == nil || s.repository == nil {
 		return query.ProactiveAnyActionQuotaView{}, errors.New("proactive state service requires repository")

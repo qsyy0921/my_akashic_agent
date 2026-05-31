@@ -27,12 +27,13 @@ SQLite，因此 Go 侧 API 还没有成为运行时路径。
 - `get_last_drift_at`
 - `mark_drift_run`
 - `cleanup`（只清理 Go-owned deterministic state；SQLite cleanup 仍继续执行）
+- `get_bg_context_last_main_at`
+- `mark_bg_context_main_send`
 
 继续留在 SQLite：
 
 - tick log / tick step log
 - semantic items
-- `bg_context_last_main_at`
 
 ## 设计
 

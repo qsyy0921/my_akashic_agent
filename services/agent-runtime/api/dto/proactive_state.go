@@ -11,6 +11,10 @@ type RecordProactiveSessionRequest struct {
 	Timestamp  string `json:"timestamp,omitempty"`
 }
 
+type RecordProactiveTimestampRequest struct {
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
 type ProactiveAnyActionQuotaRequest struct {
 	QuotaKey  string `json:"quota_key"`
 	ResetHour int    `json:"reset_hour"`

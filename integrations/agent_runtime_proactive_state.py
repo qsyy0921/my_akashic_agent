@@ -317,10 +317,27 @@ class AgentRuntimeProactiveStateStore:
         )
 
     def get_bg_context_last_main_at(self) -> datetime | None:
-        return self._fallback.get_bg_context_last_main_at()
+        try:
+            runtime_timestamp = self._get_global_timestamp(
+                "/v1/proactive/bg-context/main/last"
+            )
+            fallback_timestamp = self._fallback.get_bg_context_last_main_at()
+            return _max_datetime(runtime_timestamp, fallback_timestamp)
+        except Exception as exc:
+            self._log_fallback("get_bg_context_last_main_at", exc)
+            return self._fallback.get_bg_context_last_main_at()
 
     def mark_bg_context_main_send(self, now: datetime | None = None) -> None:
-        self._fallback.mark_bg_context_main_send(now)
+        timestamp = now or _utcnow()
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/bg-context/main",
+                json_body={"timestamp": timestamp.isoformat()},
+            )
+        except Exception as exc:
+            self._log_fallback("mark_bg_context_main_send", exc)
+        self._fallback.mark_bg_context_main_send(timestamp)
 
     def get_last_drift_at(self, session_key: str) -> datetime | None:
         try:
@@ -422,6 +439,17 @@ class AgentRuntimeProactiveStateStore:
 
     def _get_timestamp(self, path: str, *, session_key: str) -> datetime | None:
         data = self._request("GET", path, params={"session_key": session_key})
+        if not isinstance(data, dict):
+            raise AgentRuntimeProactiveStateError("timestamp response is not an object")
+        if not bool(data.get("found")):
+            return None
+        timestamp = _parse_iso(str(data.get("timestamp") or ""))
+        if timestamp is None:
+            raise AgentRuntimeProactiveStateError("timestamp response is invalid")
+        return timestamp
+
+    def _get_global_timestamp(self, path: str) -> datetime | None:
+        data = self._request("GET", path)
         if not isinstance(data, dict):
             raise AgentRuntimeProactiveStateError("timestamp response is not an object")
         if not bool(data.get("found")):
