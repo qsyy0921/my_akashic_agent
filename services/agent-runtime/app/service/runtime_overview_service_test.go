@@ -15,7 +15,19 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			ExternalQueueConfigured: true,
 			ConsumerConcurrency:     8,
 			MaxInFlight:             64,
-			ExternalLease:           &query.QueueExternalLeaseGate{AllowExecution: false},
+			ExternalLease: &query.QueueExternalLeaseGate{
+				AllowExecution: false,
+				Diagnostics: &query.QueueExternalLeaseDiagnostics{
+					Enabled:       true,
+					ExecutedTotal: 5,
+					ErrorTotal:    1,
+					Dispositions: []query.QueueExternalLeaseCounter{
+						{Name: "ack", Count: 2},
+						{Name: "nack", Count: 2},
+						{Name: "term", Count: 1},
+					},
+				},
+			},
 		}},
 		RuntimeConfig: staticRuntimeConfig{view: query.RuntimeConfigView{
 			Runtime: query.RuntimeProcessConfigView{
@@ -182,6 +194,13 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["queue_backend_provider"] != "nats_jetstream" {
 		t.Fatalf("unexpected queue backend: %#v", view.Summary)
 	}
+	if view.Summary["queue_external_lease_executed_total"] != 5 ||
+		view.Summary["queue_external_lease_error_total"] != 1 ||
+		view.Summary["queue_external_lease_ack"] != 2 ||
+		view.Summary["queue_external_lease_nack"] != 2 ||
+		view.Summary["queue_external_lease_term"] != 1 {
+		t.Fatalf("unexpected external lease summary: %#v", view.Summary)
+	}
 	if view.Summary["runtime_workers_running"] != 1 {
 		t.Fatalf("unexpected runtime worker summary: %#v", view.Summary)
 	}
@@ -208,6 +227,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "external_lease_diagnostics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")

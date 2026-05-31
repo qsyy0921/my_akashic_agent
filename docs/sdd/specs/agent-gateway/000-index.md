@@ -119,4 +119,6 @@ execution.
 - `047-external-lease-execution-diagnostics.md`: Go-owned diagnostics for
   external queue lease execution disposition, reason, work-kind counters, and
   bounded recent samples.
+- `048-runtime-overview-external-lease-diagnostics.md`: Runtime overview summary
+  and card aggregation for external lease execution diagnostics.
 - Agent architecture boundary specs live under `../agent-architecture/`.

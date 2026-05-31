@@ -373,8 +373,21 @@ func runtimeOverviewSummary(
 	outboxLeases := intFromMap(outboxMetrics.DeliveriesByStatus, "leased") + intFromMap(outboxMetrics.DeliveriesByStatus, "dispatching")
 	checkpointLagMax := maxCheckpointLag(diagnostics)
 	externalLeaseReady := false
+	externalLeaseExecutedTotal := 0
+	externalLeaseErrorTotal := 0
+	externalLeaseAck := 0
+	externalLeaseNack := 0
+	externalLeaseTerm := 0
 	if queueBackend.ExternalLease != nil {
 		externalLeaseReady = queueBackend.ExternalLease.AllowExecution
+		if queueBackend.ExternalLease.Diagnostics != nil {
+			externalLeaseDiagnostics := queueBackend.ExternalLease.Diagnostics
+			externalLeaseExecutedTotal = externalLeaseDiagnostics.ExecutedTotal
+			externalLeaseErrorTotal = externalLeaseDiagnostics.ErrorTotal
+			externalLeaseAck = queueExternalLeaseCounter(externalLeaseDiagnostics.Dispositions, "ack")
+			externalLeaseNack = queueExternalLeaseCounter(externalLeaseDiagnostics.Dispositions, "nack")
+			externalLeaseTerm = queueExternalLeaseCounter(externalLeaseDiagnostics.Dispositions, "term")
+		}
 	}
 
 	return map[string]any{
@@ -398,6 +411,11 @@ func runtimeOverviewSummary(
 		"queue_consumer_concurrency":                queueBackend.ConsumerConcurrency,
 		"queue_max_in_flight":                       queueBackend.MaxInFlight,
 		"queue_external_lease_ready":                externalLeaseReady,
+		"queue_external_lease_executed_total":       externalLeaseExecutedTotal,
+		"queue_external_lease_error_total":          externalLeaseErrorTotal,
+		"queue_external_lease_ack":                  externalLeaseAck,
+		"queue_external_lease_nack":                 externalLeaseNack,
+		"queue_external_lease_term":                 externalLeaseTerm,
 		"runtime_config_blockers":                   len(runtimeConfig.Readiness.Blockers),
 		"runtime_config_onebot_missing":             len(runtimeConfig.Delivery.OneBotMissingChannels),
 		"runtime_workers":                           intFromMap(runtimeWorkers.Totals, "workers"),
@@ -492,6 +510,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("rag_eval_failures", "RAG Eval Failures", intSummary(summary, "rag_eval_failures"), statusIfPositive(intSummary(summary, "rag_eval_failures"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
+		runtimeOverviewCard("external_lease_diagnostics", "External Lease", externalLeaseValue(queueBackend), externalLeaseStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
 		runtimeOverviewCard("agent_workers", "Agent Workers", agentWorkerValue(agentWorkers), agentWorkerStatus(agentWorkers), map[string]any{"agent_workers": agentWorkers}),
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
@@ -551,6 +570,15 @@ func intSummary(summary map[string]any, key string) int {
 	}
 }
 
+func queueExternalLeaseCounter(items []query.QueueExternalLeaseCounter, name string) int {
+	for _, item := range items {
+		if item.Name == name {
+			return item.Count
+		}
+	}
+	return 0
+}
+
 func statusIfPositive(value int, positive string, zero string) string {
 	if value > 0 {
 		return positive
@@ -594,6 +622,35 @@ func queueBackendStatus(view query.QueueBackendView) string {
 		return "ok"
 	}
 	return "warn"
+}
+
+func externalLeaseStatus(view query.QueueBackendView) string {
+	if view.ExternalLease == nil || view.ExternalLease.Diagnostics == nil || !view.ExternalLease.Diagnostics.Enabled {
+		return "muted"
+	}
+	diagnostics := view.ExternalLease.Diagnostics
+	if diagnostics.ErrorTotal > 0 {
+		return "danger"
+	}
+	if queueExternalLeaseCounter(diagnostics.Dispositions, "nack") > 0 ||
+		queueExternalLeaseCounter(diagnostics.Dispositions, "term") > 0 {
+		return "warn"
+	}
+	if diagnostics.ExecutedTotal > 0 {
+		return "ok"
+	}
+	return "muted"
+}
+
+func externalLeaseValue(view query.QueueBackendView) string {
+	if view.ExternalLease == nil || view.ExternalLease.Diagnostics == nil {
+		return "0"
+	}
+	diagnostics := view.ExternalLease.Diagnostics
+	ack := queueExternalLeaseCounter(diagnostics.Dispositions, "ack")
+	nack := queueExternalLeaseCounter(diagnostics.Dispositions, "nack")
+	term := queueExternalLeaseCounter(diagnostics.Dispositions, "term")
+	return fmt.Sprintf("%d a:%d n:%d t:%d", diagnostics.ExecutedTotal, ack, nack, term)
 }
 
 func runtimeWorkerStatus(view query.RuntimeWorkerDiagnosticsView) string {
