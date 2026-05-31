@@ -59,6 +59,22 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			{Provider: "onebot", Channel: "qq_2365524513", Enabled: true},
 			{Provider: "onebot", Channel: "qq_1049511700", Enabled: false},
 		}},
+		DeliverySmoke: staticRuntimeDeliverySmoke{view: query.DeliverySmokeReadinessView{
+			Ready:  false,
+			Reason: "delivery_smoke_not_ready",
+			Cases: []query.DeliverySmokeCaseReadinessView{
+				{Name: "qq_private_text_2365524513_to_1049511700", Ready: true, Reason: "delivery_adapter_ready"},
+				{
+					Name:            "qq_group_text_1049511700_to_27234224",
+					Ready:           false,
+					Reason:          "delivery_adapter_unavailable",
+					MissingChannels: []string{"qq_1049511700"},
+				},
+			},
+			Totals:     map[string]int{"cases": 2, "ready": 1, "not_ready": 1},
+			Blockers:   []string{"qq_group_text_1049511700_to_27234224:missing_channel:qq_1049511700"},
+			SideEffect: "none",
+		}},
 		SendLedger: staticRuntimeSendLedgerMetrics{view: query.SendLedgerMetricsView{
 			SampledRecords:        4,
 			RepeatedContentHashes: 1,
@@ -555,6 +571,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["delivery_adapters_enabled"] != 1 {
 		t.Fatalf("unexpected adapter summary: %#v", view.Summary)
 	}
+	if view.Summary["delivery_smoke_ready"] != false ||
+		view.Summary["delivery_smoke_reason"] != "delivery_smoke_not_ready" ||
+		view.Summary["delivery_smoke_cases"] != 2 ||
+		view.Summary["delivery_smoke_ready_cases"] != 1 ||
+		view.Summary["delivery_smoke_not_ready_cases"] != 1 ||
+		view.Summary["delivery_smoke_blockers"] != 1 {
+		t.Fatalf("unexpected delivery smoke summary: %#v", view.Summary)
+	}
 	if view.Summary["worker_leases"] != 2 {
 		t.Fatalf("unexpected worker lease count: %#v", view.Summary)
 	}
@@ -722,6 +746,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		t.Fatalf("unexpected outbox pressure summary: %#v", view.Summary)
 	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_smoke", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "delivery_smoke", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "queue_backend", "nats_jetstream/external_lease (first_external_mq)")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "external_lease_diagnostics", "danger")
@@ -775,6 +801,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.AgentJobWorkerCoverage[3].CoverageStatus != "warn" ||
 		view.AgentJobWorkerCoverage[3].CoverageReason != "failed_worker_present" {
 		t.Fatalf("unexpected rag_eval coverage item: %+v", view.AgentJobWorkerCoverage[3])
+	}
+	if view.DeliverySmokeReadiness.Ready || len(view.DeliverySmokeReadiness.Blockers) != 1 {
+		t.Fatalf("unexpected delivery smoke detail: %+v", view.DeliverySmokeReadiness)
 	}
 	if intFromMap(view.MediaAssetContent.Totals, "assets") != 4 ||
 		intFromMap(view.MediaAssetContent.Totals, "forbidden") != 1 {
@@ -854,6 +883,14 @@ type staticRuntimeDeliveryAdapters struct {
 
 func (s staticRuntimeDeliveryAdapters) ListDeliveryAdapters(context.Context) ([]query.DeliveryAdapterDiagnosticsView, error) {
 	return s.items, nil
+}
+
+type staticRuntimeDeliverySmoke struct {
+	view query.DeliverySmokeReadinessView
+}
+
+func (s staticRuntimeDeliverySmoke) CheckDeliverySmokeReadiness(context.Context, command.CheckDeliverySmokeReadinessCommand) (query.DeliverySmokeReadinessView, error) {
+	return s.view, nil
 }
 
 type staticRuntimeSendLedgerMetrics struct {

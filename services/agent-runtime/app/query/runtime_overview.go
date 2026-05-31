@@ -44,6 +44,7 @@ type RuntimeOverviewView struct {
 	Summary                map[string]any                     `json:"summary"`
 	Cards                  []RuntimeOverviewCardView          `json:"cards"`
 	DeliveryAdapters       []DeliveryAdapterDiagnosticsView   `json:"delivery_adapters,omitempty"`
+	DeliverySmokeReadiness DeliverySmokeReadinessView         `json:"delivery_smoke_readiness,omitempty"`
 	QueueBackend           QueueBackendView                   `json:"queue_backend"`
 	RuntimeConfig          RuntimeConfigView                  `json:"runtime_config,omitempty"`
 	RuntimeWorkers         RuntimeWorkerDiagnosticsView       `json:"runtime_workers"`

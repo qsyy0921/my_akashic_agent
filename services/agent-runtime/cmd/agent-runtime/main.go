@@ -341,6 +341,7 @@ func main() {
 		QueueBackend:               queueBackend,
 		RuntimeConfig:              runtimeConfig,
 		DeliveryAdapters:           deliveryAdapterDiagnostics,
+		DeliverySmoke:              deliverySmokeReadiness,
 		SendLedger:                 sendLedger,
 		InboxMetrics:               inboxMetrics,
 		InboundDedupe:              inboundDedupe,

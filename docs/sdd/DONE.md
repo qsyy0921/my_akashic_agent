@@ -24,6 +24,7 @@
 - 已实现 outbound cutover readiness：`/v1/outbound-cutover/readiness` 聚合 OneBot 配置、delivery smoke matrix、queue backend execution owner 和 runtime worker 状态，判断 QQ/NapCat 发送链路是否可交给 Go 执行，且不发送平台消息。
 - 已实现 outbound cutover plan：`/v1/outbound-cutover/plan` 在 readiness 基础上输出 Go local outbox worker 或 NATS external lease 的启用步骤、验证入口和回滚步骤，保持只读且不改环境变量、不发平台消息。
 - runtime overview 已聚合 outbound cutover plan：summary/card/detail 可直接看到当前/目标/推荐 execution owner、决策和 blocker 数，避免 dashboard/operator 入口漏看 QQ/NapCat cutover 门禁。
+- runtime overview 已聚合 delivery smoke readiness：`Delivery Smoke` card 和 `delivery_smoke_*` summary 可直接展示默认 QQ/Telegram smoke matrix 是否具备 adapter 路由条件，仍不发送平台消息、不租约 outbox、不触发 Python AI。
 - 已实现 `agent_job` external lease result-ack readiness：`/v1/agent-job-external-lease/readiness` 聚合 queue backend gate、strict lease token、runtime flag、AgentJob pressure 和 Python worker coverage，判断是否可以把 generic job 队列确认权扩展到 NATS external lease；Go 仍不执行 AI job。
 - 已实现 `agent_job` external lease result-ack plan：`/v1/agent-job-external-lease/plan` 输出只读启用、验证和回滚步骤，明确 Python AI worker 继续执行模型/RAG/memory/OCR/VLM/图片任务，Go 只规划确定性 AgentJob 生命周期确认权。
 - runtime overview 已聚合 `agent_job` external lease result-ack plan：summary/card/detail 可直接看到当前/目标/推荐 execution owner、决策、blocker 数和回滚步骤，仍保持只读且不 ack/nack MQ、不执行 AI job。

@@ -20,6 +20,7 @@ type RuntimeOverviewDeps struct {
 	QueueBackend               runtimeQueueBackendGetter
 	RuntimeConfig              runtimeConfigGetter
 	DeliveryAdapters           runtimeDeliveryAdapterLister
+	DeliverySmoke              runtimeDeliverySmokeReadinessChecker
 	SendLedger                 runtimeSendLedgerMetricsGetter
 	InboxMetrics               runtimeInboxMetricsGetter
 	InboundDedupe              runtimeInboundDedupeMetricsGetter
@@ -54,6 +55,10 @@ type runtimeConfigGetter interface {
 
 type runtimeDeliveryAdapterLister interface {
 	ListDeliveryAdapters(ctx context.Context) ([]query.DeliveryAdapterDiagnosticsView, error)
+}
+
+type runtimeDeliverySmokeReadinessChecker interface {
+	CheckDeliverySmokeReadiness(ctx context.Context, cmd command.CheckDeliverySmokeReadinessCommand) (query.DeliverySmokeReadinessView, error)
 }
 
 type runtimeSendLedgerMetricsGetter interface {
@@ -165,6 +170,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	var (
 		errors                []query.RuntimeOverviewErrorView
 		deliveryAdapters      []query.DeliveryAdapterDiagnosticsView
+		deliverySmoke         query.DeliverySmokeReadinessView
 		queueBackend          query.QueueBackendView
 		runtimeConfig         query.RuntimeConfigView
 		sendLedger            query.SendLedgerMetricsView
@@ -216,6 +222,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			errors = append(errors, runtimeOverviewError("delivery-adapters", err))
 		} else {
 			deliveryAdapters = items
+		}
+
+		if deps.DeliverySmoke != nil {
+			if item, err := deps.DeliverySmoke.CheckDeliverySmokeReadiness(ctx, command.CheckDeliverySmokeReadinessCommand{}); err != nil {
+				errors = append(errors, runtimeOverviewError("delivery-smoke-readiness", err))
+			} else {
+				deliverySmoke = item
+			}
 		}
 
 		if deps.SendLedger == nil {
@@ -415,6 +429,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	agentJobWorkerCoverage := runtimeAgentJobWorkerCoverage(agentJobMetrics, agentWorkers)
 	summary := runtimeOverviewSummary(
 		deliveryAdapters,
+		deliverySmoke,
 		queueBackend,
 		runtimeConfig,
 		sendLedger,
@@ -443,6 +458,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	cards := runtimeOverviewCards(
 		summary,
 		deliveryAdapters,
+		deliverySmoke,
 		queueBackend,
 		runtimeConfig,
 		sendLedger,
@@ -474,6 +490,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		Summary:                summary,
 		Cards:                  cards,
 		DeliveryAdapters:       deliveryAdapters,
+		DeliverySmokeReadiness: deliverySmoke,
 		QueueBackend:           queueBackend,
 		RuntimeConfig:          runtimeConfig,
 		RuntimeWorkers:         runtimeWorkers,
@@ -509,6 +526,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 
 func runtimeOverviewSummary(
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
+	deliverySmoke query.DeliverySmokeReadinessView,
 	queueBackend query.QueueBackendView,
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
@@ -596,6 +614,12 @@ func runtimeOverviewSummary(
 		"delivery_adapters":                                     len(deliveryAdapters),
 		"delivery_adapters_enabled":                             enabledAdapters,
 		"delivery_adapters_disabled":                            len(deliveryAdapters) - enabledAdapters,
+		"delivery_smoke_ready":                                  deliverySmoke.Ready,
+		"delivery_smoke_reason":                                 deliverySmoke.Reason,
+		"delivery_smoke_cases":                                  intFromMap(deliverySmoke.Totals, "cases"),
+		"delivery_smoke_ready_cases":                            intFromMap(deliverySmoke.Totals, "ready"),
+		"delivery_smoke_not_ready_cases":                        intFromMap(deliverySmoke.Totals, "not_ready"),
+		"delivery_smoke_blockers":                               len(deliverySmoke.Blockers),
 		"queue_backend_provider":                                queueBackend.Provider,
 		"queue_backend_mode":                                    queueBackend.Mode,
 		"queue_outbox_execution_owner":                          queueBackend.OutboxExecutionOwner,
@@ -774,6 +798,7 @@ func runtimeOverviewSummary(
 func runtimeOverviewCards(
 	summary map[string]any,
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
+	deliverySmoke query.DeliverySmokeReadinessView,
 	queueBackend query.QueueBackendView,
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
@@ -819,6 +844,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("outbox_events", "Outbox Events", intSummary(summary, "outbox_events"), statusIfPositive(intSummary(summary, "outbox_events"), "ok", "muted"), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("rag_eval_failures", "RAG Eval Failures", intSummary(summary, "rag_eval_failures"), statusIfPositive(intSummary(summary, "rag_eval_failures"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
+		runtimeOverviewCard("delivery_smoke", "Delivery Smoke", deliverySmokeValue(deliverySmoke), deliverySmokeStatus(deliverySmoke), map[string]any{"delivery_smoke_readiness": deliverySmoke}),
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("external_lease_diagnostics", "External Lease", externalLeaseValue(queueBackend), externalLeaseStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
@@ -918,6 +944,23 @@ func deliveryAdapterStatus(items []query.DeliveryAdapterDiagnosticsView) string 
 		}
 	}
 	return "ok"
+}
+
+func deliverySmokeStatus(view query.DeliverySmokeReadinessView) string {
+	if view.SideEffect == "" || intFromMap(view.Totals, "cases") == 0 {
+		return "muted"
+	}
+	if view.Ready {
+		return "ok"
+	}
+	if len(view.Blockers) > 0 {
+		return "danger"
+	}
+	return "warn"
+}
+
+func deliverySmokeValue(view query.DeliverySmokeReadinessView) string {
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "cases"))
 }
 
 func queueBackendStatus(view query.QueueBackendView) string {

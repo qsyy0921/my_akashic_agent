@@ -957,6 +957,10 @@ before generic jobs use NATS external lease result acknowledgement.
 `/v1/agent-job-external-lease/plan`, including current, desired and recommended
 execution owner, decision and blocker count before generic AgentJob queue
 acknowledgement is moved to NATS result-ack.
+`Delivery Smoke` summarizes the read-only `/v1/delivery-smoke/readiness`
+matrix, using runtime-configured default smoke cases and channel aliases. It
+checks dispatch planning and adapter support for QQ/Telegram send paths without
+sending platform messages, leasing outbox deliveries, or invoking Python AI.
 `Outbound Cutover` summarizes the read-only `/v1/outbound-cutover/plan`,
 including current, desired and recommended execution owner, decision and blocker
 count before QQ/NapCat delivery ownership is moved to Go local outbox worker or

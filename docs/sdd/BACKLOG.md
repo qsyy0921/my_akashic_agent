@@ -18,7 +18,7 @@
 ## Queue / Worker / Runtime
 
 - 基于已完成的 local worker 与 NATS `external_lease` 账号级节流，后续再评估持久化/分布式 rate-limit state、全局 backpressure、平台风控策略参数化和生产 cutover；切换前必须保持可回滚和 observe-only smoke。
-- 生产 cutover 前继续做真实 NATS external lease preflight：确认 local outbox worker 已关闭、dual-read smoke 已通过、outbox external lease smoke 已通过，再启用真实平台发送范围。
+- 生产 cutover 前继续做真实 NATS external lease preflight：确认 local outbox worker 已关闭、delivery smoke readiness 与 runtime overview `Delivery Smoke` card 均通过、dual-read smoke 已通过、outbox external lease smoke 已通过，再启用真实平台发送范围。
 - MQ 方案下一步只做有证据的 adapter 扩展：NATS JetStream 已是当前推荐外部 MQ 且 provider capability matrix 已可见；Redis Streams / RabbitMQ 仅在出现明确部署需求时再实现 infrastructure adapter，并继续保持 domain/provider-neutral。
 - 若前端需要更强队列可视化，再把 provider capability 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
 - 若前端需要更强执行边界可视化，再把 execution owner、provider capability、external lease diagnostics 合并成独立 queue topology 面板；当前 `/v1/queue-backend` 和 runtime overview summary 已提供只读诊断，避免本轮扩大 UI 改造范围。

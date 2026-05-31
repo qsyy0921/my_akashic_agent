@@ -82,6 +82,12 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"media_asset_content_assets":                            3,
 				"media_asset_content_ready":                             1,
 				"media_asset_content_unavailable":                       1,
+				"delivery_smoke_ready":                                  false,
+				"delivery_smoke_reason":                                 "delivery_smoke_not_ready",
+				"delivery_smoke_cases":                                  2,
+				"delivery_smoke_ready_cases":                            1,
+				"delivery_smoke_not_ready_cases":                        1,
+				"delivery_smoke_blockers":                               1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -114,6 +120,19 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 					Value:  "1/3",
 					Status: "danger",
 				},
+				{
+					ID:     "delivery_smoke",
+					Label:  "Delivery Smoke",
+					Value:  "1/2",
+					Status: "danger",
+				},
+			},
+			DeliverySmokeReadiness: query.DeliverySmokeReadinessView{
+				Ready:      false,
+				Reason:     "delivery_smoke_not_ready",
+				Totals:     map[string]int{"cases": 2, "ready": 1, "not_ready": 1},
+				Blockers:   []string{"qq_group_text_1049511700_to_27234224:missing_channel:qq_1049511700"},
+				SideEffect: "none",
 			},
 			MediaAssetContent: query.MediaAssetContentDiagnosticsView{
 				Totals:     map[string]int{"assets": 3, "ready": 1, "unavailable": 1, "disabled": 1},
@@ -145,6 +164,12 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"agent_job_capacity_blocked_job_types":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"agent_job_capacity_plan"`)) {
 		t.Fatalf("response missing agent job capacity plan diagnostics: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"delivery_smoke_cases":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"delivery_smoke_blockers":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"delivery_smoke"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"delivery_smoke_readiness"`)) {
+		t.Fatalf("response missing delivery smoke diagnostics: %s", response.Body.String())
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"media_asset_content_assets":3`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"media_asset_content_unavailable":1`)) ||

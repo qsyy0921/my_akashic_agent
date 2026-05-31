@@ -217,4 +217,7 @@ execution.
 - `081-runtime-overview-media-asset-content.md`: Runtime overview aggregates
   media asset content readiness so dashboard and operators can see attachment
   display health without running OCR/VLM or changing file access policy.
+- `082-runtime-overview-delivery-smoke.md`: Runtime overview aggregates
+  delivery smoke readiness so dashboard and operators can inspect QQ/Telegram
+  send-path cutover gates without sending messages or invoking AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.
