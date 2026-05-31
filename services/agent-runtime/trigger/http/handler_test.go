@@ -61,6 +61,8 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"inbox_metric_events":                                   9,
 				"agent_job_worker_coverage_job_types":                   2,
 				"agent_job_worker_coverage_uncovered_job_types":         1,
+				"agent_job_capacity_ready":                              false,
+				"agent_job_capacity_blocked_job_types":                  1,
 				"knowledge_pipeline_targets":                            2,
 				"knowledge_pipeline_lagging_targets":                    1,
 				"knowledge_pipeline_stale_checkpoint_targets":           1,
@@ -92,6 +94,12 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 					Status: "warn",
 				},
 				{
+					ID:     "agent_job_capacity_plan",
+					Label:  "Agent Job Capacity",
+					Value:  "attention:2",
+					Status: "danger",
+				},
+				{
 					ID:     "knowledge_pipelines",
 					Label:  "Knowledge Pipelines",
 					Value:  "1/2",
@@ -120,6 +128,10 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"agent_job_worker_coverage_job_types":2`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"agent_job_worker_coverage"`)) {
 		t.Fatalf("response missing agent job worker coverage diagnostics: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"agent_job_capacity_blocked_job_types":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"agent_job_capacity_plan"`)) {
+		t.Fatalf("response missing agent job capacity plan diagnostics: %s", response.Body.String())
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_targets":2`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_lagging_targets":1`)) ||

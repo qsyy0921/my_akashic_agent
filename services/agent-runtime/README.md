@@ -930,7 +930,11 @@ dead-letter and event throughput so knowledge/RAG buildup can be seen without
 inspecting multiple endpoints manually. `Agent Job Worker Coverage` correlates
 that pressure with Python worker heartbeat coverage, so backlog can be
 distinguished between “worker exists and is healthy”, “worker stale/failed”, and
-“no active worker available”. `Knowledge Pipelines` summarizes the same control
+“no active worker available”. `Agent Job Capacity` summarizes the read-only
+`/v1/agent-job-capacity/plan`, turning pressure plus worker coverage into
+operational recommendations without starting workers, changing concurrency,
+leasing jobs, acknowledging MQ messages, or executing AI work. `Knowledge
+Pipelines` summarizes the same control
 plane one level closer to the user workflow: per observe-only QQ group target,
 combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
 lag, checkpoint-age diagnostics, stage lease freshness, configured dataset

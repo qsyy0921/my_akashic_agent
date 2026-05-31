@@ -23,6 +23,7 @@
 - 若前端需要更强执行边界可视化，再把 execution owner、provider capability、external lease diagnostics 合并成独立 queue topology 面板；当前 `/v1/queue-backend` 和 runtime overview summary 已提供只读诊断，避免本轮扩大 UI 改造范围。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview，`agent_job` result-ack readiness/plan 及二者 runtime overview 聚合已可见；后续继续收敛外部 MQ result-ack live smoke 和切换后的稳定性观察。
 - 若后续要做 Python worker 并发控制、autoscaling 或知识任务优先级调度，优先基于已落地的 Go `AgentJob` pressure、`Agent Job Worker Coverage` 和 `/v1/agent-job-capacity/plan`；当前只提供只读容量建议，不引入调度副作用。
+- `Agent Job Capacity` 已进入 runtime overview；后续如需前端 drilldown，可直接消费 runtime overview detail，真实 autoscaling/优先级控制仍必须另做 operator ack 和审计设计。
 - 后续若要把 capacity plan 推进成真实控制面，必须先补 operator ack、配置变更审计、限流/熔断策略和 Python worker 侧并发实现；不要直接让 Go 自动启动 AI worker 或修改模型/RAG/图片执行策略。
 
 ## Knowledge / Memory / RAG

@@ -34,6 +34,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgeJobPlanner        runtimeKnowledgeJobPlannerPreviewer
 	KnowledgePlannerReady      runtimeKnowledgeJobPlannerReadinessChecker
 	KnowledgePlannerPlan       command.PlanKnowledgeJobsCommand
+	AgentJobCapacityPlan       runtimeAgentJobCapacityPlanner
 	AgentJobExternalLeaseReady runtimeAgentJobExternalLeaseReadinessChecker
 	AgentJobExternalLeasePlan  runtimeAgentJobExternalLeasePlanner
 	OutboundCutoverPlan        runtimeOutboundCutoverPlanner
@@ -106,6 +107,10 @@ type runtimeKnowledgeJobPlannerReadinessChecker interface {
 	CheckKnowledgeJobPlannerReadiness(ctx context.Context, cmd command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error)
 }
 
+type runtimeAgentJobCapacityPlanner interface {
+	PlanAgentJobCapacity(ctx context.Context, cmd command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error)
+}
+
 type runtimeAgentJobExternalLeaseReadinessChecker interface {
 	CheckAgentJobExternalLeaseReadiness(ctx context.Context, cmd command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error)
 }
@@ -170,6 +175,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines    query.KnowledgePipelineDiagnosticsView
 		knowledgePlanner      query.KnowledgeJobPlannerPreviewView
 		knowledgeReady        query.KnowledgeJobPlannerReadinessView
+		agentJobCapacity      query.AgentJobCapacityPlanView
 		agentJobExternalLease query.AgentJobExternalLeaseReadinessView
 		agentJobExternalPlan  query.AgentJobExternalLeasePlanView
 		outboundCutover       query.OutboundCutoverPlanView
@@ -321,6 +327,18 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.AgentJobCapacityPlan != nil {
+			if item, err := deps.AgentJobCapacityPlan.PlanAgentJobCapacity(ctx, command.PlanAgentJobCapacityCommand{
+				JobLimit:          limit,
+				EventLimit:        eventLimit,
+				StaleAfterSeconds: staleAfterSeconds,
+			}); err != nil {
+				errors = append(errors, runtimeOverviewError("agent-job-capacity-plan", err))
+			} else {
+				agentJobCapacity = item
+			}
+		}
+
 		if deps.AgentJobExternalLeaseReady != nil {
 			if item, err := deps.AgentJobExternalLeaseReady.CheckAgentJobExternalLeaseReadiness(ctx, command.CheckAgentJobExternalLeaseReadinessCommand{
 				JobLimit:          limit,
@@ -398,6 +416,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		agentJobCapacity,
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
@@ -424,6 +443,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		agentJobCapacity,
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
@@ -447,6 +467,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		KnowledgePipelines:     knowledgePipelines,
 		KnowledgeJobPlanner:    knowledgePlanner,
 		KnowledgePlannerReady:  knowledgeReady,
+		AgentJobCapacityPlan:   agentJobCapacity,
 		AgentJobExternalLease:  agentJobExternalLease,
 		AgentJobExternalPlan:   agentJobExternalPlan,
 		OutboundCutoverPlan:    outboundCutover,
@@ -486,6 +507,7 @@ func runtimeOverviewSummary(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	agentJobCapacity query.AgentJobCapacityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
@@ -637,6 +659,21 @@ func runtimeOverviewSummary(
 		"knowledge_job_planner_readiness_worker_stale":          knowledgeReady.KnowledgeWorkerStale,
 		"knowledge_job_planner_readiness_worker_failed":         knowledgeReady.KnowledgeWorkerFailed,
 		"knowledge_job_planner_readiness_worker_stopped":        knowledgeReady.KnowledgeWorkerStopped,
+		"agent_job_capacity_ready":                              agentJobCapacity.Ready,
+		"agent_job_capacity_reason":                             agentJobCapacity.Reason,
+		"agent_job_capacity_blockers":                           len(agentJobCapacity.Blockers),
+		"agent_job_capacity_job_types":                          agentJobCapacity.Summary.JobTypes,
+		"agent_job_capacity_mapped_job_types":                   agentJobCapacity.Summary.MappedJobTypes,
+		"agent_job_capacity_unmapped_job_types":                 agentJobCapacity.Summary.UnmappedJobTypes,
+		"agent_job_capacity_high_pressure_job_types":            agentJobCapacity.Summary.HighPressureJobTypes,
+		"agent_job_capacity_blocked_job_types":                  agentJobCapacity.Summary.CapacityBlockedJobTypes,
+		"agent_job_capacity_worker_warning_job_types":           agentJobCapacity.Summary.WorkerWarningJobTypes,
+		"agent_job_capacity_active_worker_job_types":            agentJobCapacity.Summary.ActiveWorkerJobTypes,
+		"agent_job_capacity_stale_worker_job_types":             agentJobCapacity.Summary.StaleWorkerJobTypes,
+		"agent_job_capacity_failed_worker_job_types":            agentJobCapacity.Summary.FailedWorkerJobTypes,
+		"agent_job_capacity_max_pending":                        agentJobCapacity.Summary.MaxPending,
+		"agent_job_capacity_max_active":                         agentJobCapacity.Summary.MaxActive,
+		"agent_job_capacity_oldest_pending_age_seconds":         agentJobCapacity.Summary.OldestPendingAgeSeconds,
 		"receiver_statuses":                                     intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":                             intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":                             intFromMap(receiverStatuses.Totals, "suspended"),
@@ -728,6 +765,7 @@ func runtimeOverviewCards(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	agentJobCapacity query.AgentJobCapacityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
@@ -748,6 +786,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("agent_job_metrics", "Agent Job Metrics", intSummary(summary, "agent_job_metric_events"), statusIfPositive(intSummary(summary, "agent_job_metric_dead_letters"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_pressure", "Agent Job Pressure", runtimeAgentJobPressureValue(agentJobMetrics), runtimeAgentJobPressureStatus(agentJobMetrics), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_worker_coverage", "Agent Job Worker Coverage", runtimeAgentJobWorkerCoverageValue(agentJobWorkerCoverage), runtimeAgentJobWorkerCoverageStatus(agentJobWorkerCoverage), map[string]any{"agent_job_worker_coverage": agentJobWorkerCoverage}),
+		runtimeOverviewCard("agent_job_capacity_plan", "Agent Job Capacity", agentJobCapacityPlanValue(agentJobCapacity), agentJobCapacityPlanStatus(agentJobCapacity), map[string]any{"agent_job_capacity_plan": agentJobCapacity}),
 		runtimeOverviewCard("agent_job_external_lease_readiness", "Agent Job External Lease", agentJobExternalLeaseValue(agentJobExternalLease), agentJobExternalLeaseStatus(agentJobExternalLease), map[string]any{"agent_job_external_lease_readiness": agentJobExternalLease}),
 		runtimeOverviewCard("agent_job_external_lease_plan", "Agent Job External Lease Plan", agentJobExternalLeasePlanValue(agentJobExternalPlan), agentJobExternalLeasePlanStatus(agentJobExternalPlan), map[string]any{"agent_job_external_lease_plan": agentJobExternalPlan}),
 		runtimeOverviewCard("outbox_metrics", "Outbox Metrics", intSummary(summary, "outbox_metric_events"), statusIfPositive(intSummary(summary, "outbox_metric_dead_letters"), "danger", "ok"), map[string]any{"outbox_metrics": outboxMetrics}),
@@ -912,6 +951,40 @@ func runtimeAgentJobPressureValue(view query.AgentJobMetricsView) string {
 
 func runtimeAgentJobWorkerCoverage(view query.AgentJobMetricsView, workers query.AgentWorkerStatusesView) []query.AgentJobWorkerCoverageView {
 	return agentJobWorkerCoverageFromPressure(view.Pressure.ByType, workers)
+}
+
+func agentJobCapacityPlanStatus(view query.AgentJobCapacityPlanView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if view.Ready {
+		return "ok"
+	}
+	if view.Summary.CapacityBlockedJobTypes > 0 {
+		return "danger"
+	}
+	if len(view.Blockers) > 0 ||
+		view.Summary.WorkerWarningJobTypes > 0 ||
+		view.Summary.HighPressureJobTypes > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func agentJobCapacityPlanValue(view query.AgentJobCapacityPlanView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	if view.Ready {
+		return "ready"
+	}
+	if view.Reason == "agent_job_capacity_attention_required" {
+		return fmt.Sprintf("attention:%d", len(view.Blockers))
+	}
+	if view.Reason != "" {
+		return fmt.Sprintf("%s:%d", view.Reason, len(view.Blockers))
+	}
+	return fmt.Sprintf("blocked:%d", len(view.Blockers))
 }
 
 func externalLeaseStatus(view query.QueueBackendView) string {

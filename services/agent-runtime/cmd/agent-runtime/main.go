@@ -355,6 +355,7 @@ func main() {
 		KnowledgeJobPlanner:        knowledgeJobPlannerPreview,
 		KnowledgePlannerReady:      knowledgeJobPlannerReadiness,
 		KnowledgePlannerPlan:       knowledgeJobPlannerPreviewDefaults,
+		AgentJobCapacityPlan:       agentJobCapacityPlan,
 		AgentJobExternalLeaseReady: agentJobExternalLeaseReadiness,
 		AgentJobExternalLeasePlan:  agentJobExternalLeasePlan,
 		OutboundCutoverPlan:        outboundCutoverPlan,

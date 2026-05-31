@@ -351,6 +351,48 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Preview:                query.KnowledgeJobPlannerPreviewView{TotalJobs: 3, Targets: 1, SideEffect: "none"},
 			SideEffect:             "none",
 		}},
+		AgentJobCapacityPlan: staticRuntimeAgentJobCapacityPlan{view: query.AgentJobCapacityPlanView{
+			Ready:  false,
+			Reason: "agent_job_capacity_attention_required",
+			Summary: query.AgentJobCapacitySummaryView{
+				JobTypes:                4,
+				MappedJobTypes:          4,
+				HighPressureJobTypes:    1,
+				CapacityBlockedJobTypes: 1,
+				WorkerWarningJobTypes:   2,
+				ActiveWorkerJobTypes:    1,
+				StaleWorkerJobTypes:     2,
+				FailedWorkerJobTypes:    1,
+				MaxPending:              11,
+				MaxActive:               2,
+				OldestPendingAgeSeconds: 1800,
+			},
+			Items: []query.AgentJobCapacityPlanItemView{
+				{
+					JobType:                 "group_memory_extract",
+					Severity:                "danger",
+					Action:                  "start_or_recover_python_worker",
+					Recommendation:          "Start or recover a Python knowledge worker.",
+					Pending:                 11,
+					OldestPendingAgeSeconds: 1800,
+					HighPressure:            true,
+					PressureReason:          "pending>=10",
+				},
+				{
+					JobType:        "image_generation",
+					Severity:       "ok",
+					Action:         "monitor",
+					Recommendation: "Capacity coverage is available.",
+					Active:         1,
+				},
+			},
+			Blockers: []string{
+				"agent_job_capacity_blocked",
+				"agent_job_high_pressure",
+				"agent_job_worker_warning",
+			},
+			SideEffect: "none",
+		}},
 		AgentJobExternalLeaseReady: staticRuntimeAgentJobExternalLeaseReadiness{view: query.AgentJobExternalLeaseReadinessView{
 			Ready:                   false,
 			Reason:                  "agent_job_external_lease_not_ready",
@@ -582,6 +624,21 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_job_planner_readiness_worker_stopped"] != 1 {
 		t.Fatalf("unexpected knowledge planner readiness summary: %#v", view.Summary)
 	}
+	if view.Summary["agent_job_capacity_ready"] != false ||
+		view.Summary["agent_job_capacity_reason"] != "agent_job_capacity_attention_required" ||
+		view.Summary["agent_job_capacity_blockers"] != 3 ||
+		view.Summary["agent_job_capacity_job_types"] != 4 ||
+		view.Summary["agent_job_capacity_mapped_job_types"] != 4 ||
+		view.Summary["agent_job_capacity_high_pressure_job_types"] != 1 ||
+		view.Summary["agent_job_capacity_blocked_job_types"] != 1 ||
+		view.Summary["agent_job_capacity_worker_warning_job_types"] != 2 ||
+		view.Summary["agent_job_capacity_active_worker_job_types"] != 1 ||
+		view.Summary["agent_job_capacity_stale_worker_job_types"] != 2 ||
+		view.Summary["agent_job_capacity_failed_worker_job_types"] != 1 ||
+		view.Summary["agent_job_capacity_max_pending"] != 11 ||
+		view.Summary["agent_job_capacity_oldest_pending_age_seconds"] != 1800 {
+		t.Fatalf("unexpected agent job capacity summary: %#v", view.Summary)
+	}
 	if view.Summary["agent_job_external_lease_ready"] != false ||
 		view.Summary["agent_job_external_lease_reason"] != "agent_job_external_lease_not_ready" ||
 		view.Summary["agent_job_external_lease_blockers"] != 3 ||
@@ -669,6 +726,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_pressure", "1/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_worker_coverage", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_worker_coverage", "3/4")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_capacity_plan", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_capacity_plan", "attention:3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
 	if len(view.AgentJobWorkerCoverage) != 4 {
@@ -695,6 +754,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.KnowledgePlannerReady.Ready || len(view.KnowledgePlannerReady.Blockers) != 2 {
 		t.Fatalf("unexpected knowledge planner readiness detail: %+v", view.KnowledgePlannerReady)
+	}
+	if view.AgentJobCapacityPlan.Ready ||
+		view.AgentJobCapacityPlan.Summary.CapacityBlockedJobTypes != 1 ||
+		len(view.AgentJobCapacityPlan.Blockers) != 3 {
+		t.Fatalf("unexpected agent job capacity plan detail: %+v", view.AgentJobCapacityPlan)
 	}
 	if view.AgentJobExternalLease.Ready ||
 		view.AgentJobExternalLease.ExecutionScope != "agent_job_result_ack_only" ||
@@ -867,6 +931,14 @@ func (s staticKnowledgeJobPlannerReadiness) CheckKnowledgeJobPlannerReadiness(co
 
 type staticRuntimeAgentJobExternalLeaseReadiness struct {
 	view query.AgentJobExternalLeaseReadinessView
+}
+
+type staticRuntimeAgentJobCapacityPlan struct {
+	view query.AgentJobCapacityPlanView
+}
+
+func (s staticRuntimeAgentJobCapacityPlan) PlanAgentJobCapacity(context.Context, command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error) {
+	return s.view, nil
 }
 
 func (s staticRuntimeAgentJobExternalLeaseReadiness) CheckAgentJobExternalLeaseReadiness(context.Context, command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error) {

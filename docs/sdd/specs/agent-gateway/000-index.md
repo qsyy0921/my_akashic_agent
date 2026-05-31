@@ -208,4 +208,7 @@ execution.
 - `078-agent-job-capacity-plan.md`: Go exposes a read-only AgentJob capacity
   plan that turns pressure plus Python worker coverage into operational
   recommendations without scheduling or AI execution side effects.
+- `079-runtime-overview-agent-job-capacity-plan.md`: Runtime overview
+  aggregates the AgentJob capacity plan into summary/card/detail fields without
+  starting workers, scheduling jobs or mutating queue/config state.
 - Agent architecture boundary specs live under `../agent-architecture/`.
