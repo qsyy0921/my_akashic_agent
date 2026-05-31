@@ -811,6 +811,11 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	if externalLease.Enabled || externalLease.Running {
 		t.Fatalf("external lease should remain disabled without cutover gate: %#v", externalLease)
 	}
+	if externalLease.Attributes["account_min_interval_seconds"] != "3" ||
+		externalLease.Attributes["account_window_seconds"] != "60" ||
+		externalLease.Attributes["account_max_dispatches_in_window"] != "5" {
+		t.Fatalf("unexpected external lease rate-limit attributes: %#v", externalLease.Attributes)
+	}
 }
 
 func TestParseKeyValueCSVSkipsMalformedEntries(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	appservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	jobtrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/job"
 )
 
@@ -64,15 +65,7 @@ func outboxDeliveryWorkerConfigFromEnv() (jobtrigger.OutboxDeliveryWorkerConfig,
 	if err != nil {
 		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
 	}
-	accountMinIntervalSeconds, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", 0, 86400)
-	if err != nil {
-		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
-	}
-	accountWindowSeconds, err := positiveIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", 60, 86400)
-	if err != nil {
-		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
-	}
-	accountMaxPerWindow, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", 0, 100000)
+	accountRateLimit, err := outboxAccountRateLimitConfigFromEnv()
 	if err != nil {
 		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
 	}
@@ -83,8 +76,37 @@ func outboxDeliveryWorkerConfigFromEnv() (jobtrigger.OutboxDeliveryWorkerConfig,
 		LeaseTTLSeconds:              leaseTTLSeconds,
 		RunOnStart:                   boolEnvDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", true),
 		ChannelByAccount:             keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
-		AccountMinInterval:           time.Duration(accountMinIntervalSeconds) * time.Second,
-		AccountWindow:                time.Duration(accountWindowSeconds) * time.Second,
-		AccountMaxDispatchesInWindow: accountMaxPerWindow,
+		AccountMinInterval:           accountRateLimit.MinInterval,
+		AccountWindow:                accountRateLimit.Window,
+		AccountMaxDispatchesInWindow: accountRateLimit.MaxDispatchesInWindow,
+		AccountLimiter:               domainservice.NewOutboxAccountRateLimiter(accountRateLimit),
 	}, true, nil
+}
+
+func outboxAccountRateLimitConfigFromEnv() (domainservice.OutboxAccountRateLimitConfig, error) {
+	accountMinIntervalSeconds, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", 0, 86400)
+	if err != nil {
+		return domainservice.OutboxAccountRateLimitConfig{}, err
+	}
+	accountWindowSeconds, err := positiveIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", 60, 86400)
+	if err != nil {
+		return domainservice.OutboxAccountRateLimitConfig{}, err
+	}
+	accountMaxPerWindow, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", 0, 100000)
+	if err != nil {
+		return domainservice.OutboxAccountRateLimitConfig{}, err
+	}
+	return domainservice.OutboxAccountRateLimitConfig{
+		MinInterval:           time.Duration(accountMinIntervalSeconds) * time.Second,
+		Window:                time.Duration(accountWindowSeconds) * time.Second,
+		MaxDispatchesInWindow: accountMaxPerWindow,
+	}, nil
+}
+
+func mustOutboxAccountRateLimitConfig() domainservice.OutboxAccountRateLimitConfig {
+	config, err := outboxAccountRateLimitConfigFromEnv()
+	if err != nil {
+		log.Fatalf("init outbox account rate limit config: %v", err)
+	}
+	return config
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 )
 
@@ -88,6 +89,60 @@ func TestWorkQueueExternalLeaseServiceRetriesRetryableDispatchFailure(t *testing
 	}
 	if stored.Status != model.DeliveryQueued || stored.Attempts != 1 {
 		t.Fatalf("expected queued retry state, got %#v", stored)
+	}
+}
+
+func TestWorkQueueExternalLeaseServiceRateLimitsOutboxBeforeLease(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 11, 30, 0, 0, time.UTC)
+	if err := saveExternalLeaseDelivery(ctx, store, "outbox:lease:rate:first", 3, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveExternalLeaseDelivery(ctx, store, "outbox:lease:rate:second", 3, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingLeaseDeliveryAdapter{}
+	service := NewWorkQueueExternalLeaseService(
+		NewOutboxServiceWithEvents(store, store, store),
+		NewDeliveryDispatchServiceWithAdapters(store, adapter),
+		WithExternalLeaseAccountRateLimit(domainservice.OutboxAccountRateLimitConfig{
+			MinInterval: time.Minute,
+		}),
+	)
+
+	first, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "outbox_delivery",
+		WorkID:    "outbox:lease:rate:first",
+		Timestamp: now.Add(2 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("execute first lease: %v", err)
+	}
+	if first.Disposition != QueueLeaseDispositionAck || first.Reason != "delivery_succeeded" {
+		t.Fatalf("expected first ack success, got %+v", first)
+	}
+
+	second, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "outbox_delivery",
+		WorkID:    "outbox:lease:rate:second",
+		Timestamp: now.Add(3 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("execute second lease: %v", err)
+	}
+	if second.Disposition != QueueLeaseDispositionNack || second.Reason != "delivery_rate_limited" {
+		t.Fatalf("expected second rate-limited nack, got %+v", second)
+	}
+	if len(adapter.steps) != 1 {
+		t.Fatalf("rate-limited delivery should not dispatch, got steps=%#v", adapter.steps)
+	}
+	stored, ok, err := store.FindOutboxDelivery(ctx, "outbox:lease:rate:second")
+	if err != nil || !ok {
+		t.Fatalf("find rate-limited delivery: ok=%t err=%v", ok, err)
+	}
+	if stored.Status != model.DeliveryQueued || stored.Attempts != 0 || stored.LeaseOwner != "" {
+		t.Fatalf("rate-limited delivery should remain queued without lease, got %#v", stored)
 	}
 }
 

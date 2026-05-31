@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
@@ -24,6 +22,11 @@ type OutboxDeliveryDispatcher interface {
 	Dispatch(ctx context.Context, cmd command.DispatchDeliveryCommand) (query.DeliveryDispatchResultView, error)
 }
 
+type OutboxAccountLimiter interface {
+	BlockedAccountKeys(now time.Time) []string
+	Record(accountKey string, now time.Time)
+}
+
 type OutboxDeliveryWorkerConfig struct {
 	Interval                     time.Duration
 	BatchSize                    int
@@ -34,6 +37,7 @@ type OutboxDeliveryWorkerConfig struct {
 	AccountMinInterval           time.Duration
 	AccountWindow                time.Duration
 	AccountMaxDispatchesInWindow int
+	AccountLimiter               OutboxAccountLimiter
 	Now                          func() time.Time
 	Logf                         func(format string, args ...any)
 }
@@ -58,7 +62,7 @@ type OutboxDeliveryWorker struct {
 	leaseTTLSeconds  int
 	runOnStart       bool
 	channelByAccount map[string]string
-	accountLimiter   *outboxAccountDispatchLimiter
+	accountLimiter   OutboxAccountLimiter
 	now              func() time.Time
 	logf             func(format string, args ...any)
 }
@@ -89,11 +93,6 @@ func NewOutboxDeliveryWorker(
 	if config.Now == nil {
 		config.Now = func() time.Time { return time.Now().UTC() }
 	}
-	accountLimiter := newOutboxAccountDispatchLimiter(
-		config.AccountMinInterval,
-		config.AccountWindow,
-		config.AccountMaxDispatchesInWindow,
-	)
 	return &OutboxDeliveryWorker{
 		outbox:           outbox,
 		dispatcher:       dispatcher,
@@ -103,7 +102,7 @@ func NewOutboxDeliveryWorker(
 		leaseTTLSeconds:  config.LeaseTTLSeconds,
 		runOnStart:       config.RunOnStart,
 		channelByAccount: cloneStringMap(config.ChannelByAccount),
-		accountLimiter:   accountLimiter,
+		accountLimiter:   config.AccountLimiter,
 		now:              config.Now,
 		logf:             config.Logf,
 	}, nil
@@ -280,101 +279,4 @@ func cloneStringMap(items map[string]string) map[string]string {
 
 func outboxDeliveryViewAccountKey(delivery query.OutboxDeliveryView) string {
 	return strings.TrimSpace(delivery.Channel.Kind) + ":" + strings.TrimSpace(delivery.Channel.AccountID)
-}
-
-type outboxAccountDispatchLimiter struct {
-	mu            sync.Mutex
-	minInterval   time.Duration
-	window        time.Duration
-	maxPerWindow  int
-	dispatchTimes map[string][]time.Time
-}
-
-func newOutboxAccountDispatchLimiter(minInterval time.Duration, window time.Duration, maxPerWindow int) *outboxAccountDispatchLimiter {
-	if minInterval <= 0 && (window <= 0 || maxPerWindow <= 0) {
-		return nil
-	}
-	if window <= 0 {
-		window = time.Minute
-	}
-	if minInterval > window {
-		window = minInterval
-	}
-	return &outboxAccountDispatchLimiter{
-		minInterval:   minInterval,
-		window:        window,
-		maxPerWindow:  maxPerWindow,
-		dispatchTimes: make(map[string][]time.Time),
-	}
-}
-
-func (l *outboxAccountDispatchLimiter) BlockedAccountKeys(now time.Time) []string {
-	if l == nil {
-		return nil
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	blocked := make([]string, 0)
-	for accountKey, items := range l.dispatchTimes {
-		items = l.prune(items, now)
-		if len(items) == 0 {
-			delete(l.dispatchTimes, accountKey)
-			continue
-		}
-		l.dispatchTimes[accountKey] = items
-		if l.blocked(items, now) {
-			blocked = append(blocked, accountKey)
-		}
-	}
-	sort.Strings(blocked)
-	return blocked
-}
-
-func (l *outboxAccountDispatchLimiter) Record(accountKey string, now time.Time) {
-	if l == nil {
-		return
-	}
-	accountKey = strings.TrimSpace(accountKey)
-	if accountKey == ":" || accountKey == "" {
-		return
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	items := l.prune(l.dispatchTimes[accountKey], now)
-	items = append(items, now)
-	l.dispatchTimes[accountKey] = items
-}
-
-func (l *outboxAccountDispatchLimiter) prune(items []time.Time, now time.Time) []time.Time {
-	if l == nil || l.window <= 0 {
-		return items
-	}
-	cutoff := now.Add(-l.window)
-	result := items[:0]
-	for _, item := range items {
-		if !item.Before(cutoff) {
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
-func (l *outboxAccountDispatchLimiter) blocked(items []time.Time, now time.Time) bool {
-	if l == nil || len(items) == 0 {
-		return false
-	}
-	latest := items[len(items)-1]
-	if l.minInterval > 0 && now.Sub(latest) < l.minInterval {
-		return true
-	}
-	if l.window > 0 && l.maxPerWindow > 0 && len(items) >= l.maxPerWindow {
-		return true
-	}
-	return false
 }

@@ -126,4 +126,6 @@ execution.
   enforcement.
 - `050-outbox-account-rate-limit.md`: Go local outbox delivery worker
   account-level send throttling with lease-time blocked-account skip.
+- `051-external-lease-outbox-account-rate-limit.md`: NATS external lease outbox
+  executor uses the same Go account throttling policy before leasing/sending.
 - Agent architecture boundary specs live under `../agent-architecture/`.

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	jobtrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/job"
 )
 
@@ -14,6 +15,10 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 		return query.RuntimeWorkerDiagnosticsView{}, err
 	}
 	outboxDelivery, outboxDeliveryEnabled, err := outboxDeliveryWorkerConfigFromEnv()
+	if err != nil {
+		return query.RuntimeWorkerDiagnosticsView{}, err
+	}
+	accountRateLimit, err := outboxAccountRateLimitConfigFromEnv()
 	if err != nil {
 		return query.RuntimeWorkerDiagnosticsView{}, err
 	}
@@ -44,7 +49,7 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 			Notes:           []string{"leases the Go outbox state store and dispatches through Go delivery adapters"},
 		},
 	}
-	workers = append(workers, queueRuntimeWorkerViews(queueBackend)...)
+	workers = append(workers, queueRuntimeWorkerViews(queueBackend, accountRateLimit)...)
 
 	return query.RuntimeWorkerDiagnosticsView{
 		Workers: workers,
@@ -57,12 +62,12 @@ func outboxDeliveryWorkerAttributes(config jobtrigger.OutboxDeliveryWorkerConfig
 	for key, value := range config.ChannelByAccount {
 		attributes[key] = value
 	}
-	if config.AccountMinInterval > 0 {
-		attributes["account_min_interval_seconds"] = fmt.Sprintf("%d", int(config.AccountMinInterval/time.Second))
-	}
-	if config.AccountMaxDispatchesInWindow > 0 {
-		attributes["account_window_seconds"] = fmt.Sprintf("%d", int(config.AccountWindow/time.Second))
-		attributes["account_max_dispatches_in_window"] = fmt.Sprintf("%d", config.AccountMaxDispatchesInWindow)
+	for key, value := range outboxAccountRateLimitAttributes(domainservice.OutboxAccountRateLimitConfig{
+		MinInterval:           config.AccountMinInterval,
+		Window:                config.AccountWindow,
+		MaxDispatchesInWindow: config.AccountMaxDispatchesInWindow,
+	}) {
+		attributes[key] = value
 	}
 	if len(attributes) == 0 {
 		return nil
@@ -70,7 +75,7 @@ func outboxDeliveryWorkerAttributes(config jobtrigger.OutboxDeliveryWorkerConfig
 	return attributes
 }
 
-func queueRuntimeWorkerViews(queueBackend query.QueueBackendView) []query.RuntimeWorkerView {
+func queueRuntimeWorkerViews(queueBackend query.QueueBackendView, accountRateLimit domainservice.OutboxAccountRateLimitConfig) []query.RuntimeWorkerView {
 	shadowEnabled := queueBackend.ExternalQueueConfigured &&
 		(queueBackend.Mode == "shadow_publish" || queueBackend.Mode == "dual_read_compare" || queueBackend.Mode == "external_lease")
 	dualReadEnabled := queueBackend.ExternalQueueConfigured && queueBackend.Mode == "dual_read_compare"
@@ -109,12 +114,41 @@ func queueRuntimeWorkerViews(queueBackend query.QueueBackendView) []query.Runtim
 			WorkerID:            "agent-runtime-external-lease",
 			ConsumerConcurrency: queueBackend.ConsumerConcurrency,
 			MaxInFlight:         queueBackend.MaxInFlight,
-			Attributes:          queueWorkerAttributes(queueBackend),
+			Attributes:          mergeRuntimeWorkerAttributes(queueWorkerAttributes(queueBackend), outboxAccountRateLimitAttributes(accountRateLimit)),
 			Notes:               []string{"leases eligible work from NATS only after explicit cutover gates pass"},
 		},
 	}
 
 	return workers
+}
+
+func outboxAccountRateLimitAttributes(config domainservice.OutboxAccountRateLimitConfig) map[string]string {
+	attributes := make(map[string]string)
+	if config.MinInterval > 0 {
+		attributes["account_min_interval_seconds"] = fmt.Sprintf("%d", int(config.MinInterval/time.Second))
+	}
+	if config.MaxDispatchesInWindow > 0 {
+		attributes["account_window_seconds"] = fmt.Sprintf("%d", int(config.Window/time.Second))
+		attributes["account_max_dispatches_in_window"] = fmt.Sprintf("%d", config.MaxDispatchesInWindow)
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
+}
+
+func mergeRuntimeWorkerAttributes(left map[string]string, right map[string]string) map[string]string {
+	if len(left) == 0 && len(right) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(left)+len(right))
+	for key, value := range left {
+		merged[key] = value
+	}
+	for key, value := range right {
+		merged[key] = value
+	}
+	return merged
 }
 
 func queueExecutionScope(queueBackend query.QueueBackendView) string {

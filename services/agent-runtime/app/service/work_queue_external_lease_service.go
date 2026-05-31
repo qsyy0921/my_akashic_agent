@@ -11,6 +11,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 )
 
 const (
@@ -28,6 +29,7 @@ type WorkQueueExternalLeaseService struct {
 	channelByAccount map[string]string
 	workerID         string
 	leaseTTLSeconds  int
+	accountLimiter   *domainservice.OutboxAccountRateLimiter
 	diagnosticsMu    sync.Mutex
 	diagnostics      queueExternalLeaseDiagnostics
 }
@@ -88,6 +90,12 @@ func WithExternalLeaseWorker(workerID string, ttlSeconds int) WorkQueueExternalL
 func WithExternalLeaseAgentJobs(agentJobs *AgentJobService) WorkQueueExternalLeaseOption {
 	return func(service *WorkQueueExternalLeaseService) {
 		service.agentJobs = agentJobs
+	}
+}
+
+func WithExternalLeaseAccountRateLimit(config domainservice.OutboxAccountRateLimitConfig) WorkQueueExternalLeaseOption {
+	return func(service *WorkQueueExternalLeaseService) {
+		service.accountLimiter = domainservice.NewOutboxAccountRateLimiter(config)
 	}
 }
 
@@ -241,6 +249,22 @@ func (s *WorkQueueExternalLeaseService) executeOutboxWork(
 		view.Reason = "missing_work_id"
 		return view, nil
 	}
+	current, err := s.outbox.Get(ctx, workID)
+	if err != nil {
+		view.Disposition = QueueLeaseDispositionTerm
+		view.Reason = "missing_state"
+		return view, nil
+	}
+	if current.Status == string(model.DeliverySucceeded) || current.Status == string(model.DeliveryDeadLettered) {
+		return s.leaseRejectedView(ctx, view, workID)
+	}
+	if s.outboxAccountBlocked(current, now) {
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "delivery_rate_limited"
+		view.StateStatus = current.Status
+		view.Attempts = current.Attempts
+		return view, nil
+	}
 
 	leased, err := s.outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
 		EventID:    workID,
@@ -258,6 +282,7 @@ func (s *WorkQueueExternalLeaseService) executeOutboxWork(
 		EventID:          workID,
 		ChannelByAccount: mergeStringMaps(s.channelByAccount, cmd.ChannelByAccount),
 	})
+	s.recordOutboxDispatchAttempt(leased, now)
 	if dispatchErr == nil {
 		succeeded, err := s.outbox.MarkSucceeded(ctx, command.MarkOutboxSucceededCommand{
 			EventID:   workID,
@@ -302,6 +327,20 @@ func (s *WorkQueueExternalLeaseService) executeOutboxWork(
 	view.Disposition = QueueLeaseDispositionAck
 	view.Reason = "delivery_terminal_failure"
 	return view, nil
+}
+
+func (s *WorkQueueExternalLeaseService) outboxAccountBlocked(delivery query.OutboxDeliveryView, now time.Time) bool {
+	if s == nil || s.accountLimiter == nil {
+		return false
+	}
+	return s.accountLimiter.AccountBlocked(outboxDeliveryViewAccountKey(delivery), now)
+}
+
+func (s *WorkQueueExternalLeaseService) recordOutboxDispatchAttempt(delivery query.OutboxDeliveryView, now time.Time) {
+	if s == nil || s.accountLimiter == nil {
+		return
+	}
+	s.accountLimiter.Record(outboxDeliveryViewAccountKey(delivery), now)
 }
 
 func (s *WorkQueueExternalLeaseService) executeAgentJobWork(
@@ -423,6 +462,10 @@ func deliveryFailure(err error) (model.DeliveryErrorKind, string) {
 		message = "delivery dispatch failed"
 	}
 	return kind, message
+}
+
+func outboxDeliveryViewAccountKey(delivery query.OutboxDeliveryView) string {
+	return strings.TrimSpace(delivery.Channel.Kind) + ":" + strings.TrimSpace(delivery.Channel.AccountID)
 }
 
 func firstNonBlank(values ...string) string {

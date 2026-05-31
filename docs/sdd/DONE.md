@@ -18,6 +18,7 @@
 - 已实现 Go outbox 生命周期、outbox event stream、delivery dispatch plan、readiness、smoke readiness 和 metrics。
 - 已实现 Go outbox account pressure 只读诊断：按 `channel_kind:account_id` 汇总 queued/dispatching/active/dead-letter，并接入 runtime overview，为后续账号级限流提供数据基础。
 - 已实现 Go local outbox delivery worker 账号级发送节流：支持 min interval / window limit，lease 前跳过被节流账号，blocked delivery 保持 queued，不误标 failed。
+- 已实现 Go external lease outbox executor 账号级发送节流：复用同一 account rate limiter，在租约前判断被节流账号并返回 `nack/delivery_rate_limited`，不拿 outbox lease、不调用 delivery adapter，避免未来 NATS cutover 绕过限流。
 - 已实现 Telegram DeliveryAdapter、QQ/NapCat OneBot HTTP/WebSocket DeliveryAdapter、adapter diagnostics、live health 和 runtime config 脱敏诊断。
 - 已加入可选 Go local outbox delivery worker，默认关闭，避免未完成 cutover 时触发真实平台发送。
 

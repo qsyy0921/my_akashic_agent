@@ -199,6 +199,7 @@ func main() {
 			outbox,
 			deliveryDispatch,
 			appservice.WithExternalLeaseChannelByAccount(keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT")),
+			appservice.WithExternalLeaseAccountRateLimit(mustOutboxAccountRateLimitConfig()),
 			appservice.WithExternalLeaseWorker(
 				strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
 				positiveIntEnvOrDefault("AKASHIC_QUEUE_EXTERNAL_LEASE_TTL_SECONDS", 300, 86400),

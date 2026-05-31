@@ -154,3 +154,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-105-runtime-overview-external-lease-diagnostics.md`
 - `2026-05-31-phase8-106-outbox-account-pressure-diagnostics.md`
 - `2026-05-31-phase8-107-outbox-account-rate-limit.md`
+- `2026-05-31-phase8-108-external-lease-outbox-account-rate-limit.md`

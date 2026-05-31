@@ -8,6 +8,7 @@ import (
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	jobtrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/job"
 )
 
@@ -132,7 +133,10 @@ func TestOutboxDeliveryWorkerRateLimitSkipsBlockedAccount(t *testing.T) {
 	}
 	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
 		AccountMinInterval: time.Minute,
-		Now:                nextNow,
+		AccountLimiter: domainservice.NewOutboxAccountRateLimiter(domainservice.OutboxAccountRateLimitConfig{
+			MinInterval: time.Minute,
+		}),
+		Now: nextNow,
 	})
 	if err != nil {
 		t.Fatalf("new worker: %v", err)

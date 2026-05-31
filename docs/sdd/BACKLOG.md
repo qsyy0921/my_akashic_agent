@@ -16,7 +16,7 @@
 
 ## Queue / Worker / Runtime
 
-- 基于已完成的 local outbox worker 账号级节流，后续再评估持久化 rate-limit state、NATS `external_lease` 侧节流、全局 backpressure 和生产 cutover；切换前必须保持可回滚和 observe-only smoke。
+- 基于已完成的 local worker 与 NATS `external_lease` 账号级节流，后续再评估持久化/分布式 rate-limit state、全局 backpressure、平台风控策略参数化和生产 cutover；切换前必须保持可回滚和 observe-only smoke。
 - 设计并验证更合适的 MQ 方案，保留多线程消费和可替换边界，避免把 NATS/RabbitMQ/Redis Streams 细节泄漏到 domain。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ result-ack live smoke 和切换门禁。
 
