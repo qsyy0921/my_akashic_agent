@@ -246,21 +246,23 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		}},
 		KnowledgePipelines: staticKnowledgePipelineDiagnostics{view: query.KnowledgePipelineDiagnosticsView{
 			Totals: map[string]int{
-				"targets":              2,
-				"enabled":              2,
-				"ready":                1,
-				"warning":              0,
-				"blocked":              1,
-				"receiver_connected":   2,
-				"group_memory_pending": 1,
-				"rag_ingest_pending":   1,
-				"high_pressure":        1,
-				"memory_checkpoints":   1,
-				"rag_checkpoints":      2,
-				"lagging":              1,
-				"stale_checkpoints":    1,
-				"stagnant":             1,
-				"stalled":              1,
+				"targets":               2,
+				"enabled":               2,
+				"ready":                 1,
+				"warning":               0,
+				"blocked":               1,
+				"receiver_connected":    2,
+				"group_memory_pending":  1,
+				"rag_ingest_pending":    1,
+				"high_pressure":         1,
+				"memory_checkpoints":    1,
+				"rag_checkpoints":       2,
+				"lagging":               1,
+				"stale_checkpoints":     1,
+				"stagnant":              1,
+				"expired_active_leases": 1,
+				"stale_active_leases":   1,
+				"stalled":               1,
 			},
 			Pipelines: []query.KnowledgePipelineView{
 				{
@@ -392,6 +394,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_lagging_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stale_checkpoint_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stagnant_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_expired_active_lease_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_stale_active_lease_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stalled_targets"] != 1 {
 		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
 	}

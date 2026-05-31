@@ -152,4 +152,7 @@ execution.
 - `060-knowledge-pipeline-checkpoint-age-diagnostics.md`: Go-owned knowledge
   pipeline diagnostics add checkpoint age and stagnant-state visibility so
   long-unmoved memory/RAG checkpoints can be separated from short-lived lag.
+- `061-knowledge-pipeline-job-lease-freshness-diagnostics.md`: Go-owned
+  knowledge pipeline diagnostics add per-group job lease freshness so stale or
+  expired `group_memory_extract` / `rag_ingest` execution can be seen directly.
 - Agent architecture boundary specs live under `../agent-architecture/`.

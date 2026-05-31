@@ -9,15 +9,21 @@ type KnowledgePipelineDiagnosticsFilter struct {
 }
 
 type KnowledgePipelineJobStageView struct {
-	JobType        string        `json:"job_type"`
-	Pending        int           `json:"pending"`
-	Leased         int           `json:"leased"`
-	Running        int           `json:"running"`
-	Active         int           `json:"active"`
-	SampledJobs    int           `json:"sampled_jobs"`
-	HighPressure   bool          `json:"high_pressure"`
-	PressureReason string        `json:"pressure_reason,omitempty"`
-	LatestJob      *AgentJobView `json:"latest_job,omitempty"`
+	JobType                 string        `json:"job_type"`
+	Pending                 int           `json:"pending"`
+	Leased                  int           `json:"leased"`
+	Running                 int           `json:"running"`
+	Active                  int           `json:"active"`
+	OldestPendingAgeSeconds int           `json:"oldest_pending_age_seconds,omitempty"`
+	OldestActiveAgeSeconds  int           `json:"oldest_active_age_seconds,omitempty"`
+	StaleActiveLeases       int           `json:"stale_active_leases,omitempty"`
+	ExpiredActiveLeases     int           `json:"expired_active_leases,omitempty"`
+	SampledJobs             int           `json:"sampled_jobs"`
+	HighPressure            bool          `json:"high_pressure"`
+	PressureReason          string        `json:"pressure_reason,omitempty"`
+	FreshnessStatus         string        `json:"freshness_status,omitempty"`
+	FreshnessReason         string        `json:"freshness_reason,omitempty"`
+	LatestJob               *AgentJobView `json:"latest_job,omitempty"`
 }
 
 type KnowledgePipelineCheckpointLagView struct {

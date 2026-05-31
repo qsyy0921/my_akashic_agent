@@ -299,8 +299,8 @@ func buildKnowledgePipelineView(
 	ragCheckpoints []query.KnowledgeCheckpointView,
 	workers query.AgentWorkerStatusesView,
 ) query.KnowledgePipelineView {
-	groupMemory := knowledgePipelineJobStage(string(model.AgentJobGroupMemoryExtract), groupMemoryJobs)
-	ragIngest := knowledgePipelineJobStage(string(model.AgentJobRagIngest), ragIngestJobs)
+	groupMemory := knowledgePipelineJobStage(string(model.AgentJobGroupMemoryExtract), groupMemoryJobs, now, staleAfterSeconds)
+	ragIngest := knowledgePipelineJobStage(string(model.AgentJobRagIngest), ragIngestJobs, now, staleAfterSeconds)
 	memoryLag := knowledgePipelineCheckpointLag(memoryCheckpoint, source, now)
 	ragLagMax := knowledgePipelineCheckpointLagMax(ragCheckpoints, source, now)
 	coverage := agentJobWorkerCoverageFromPressure([]query.AgentJobTypePressureView{
@@ -394,27 +394,86 @@ func knowledgePipelineCheckpointLagMax(
 	return best
 }
 
-func knowledgePipelineJobStage(jobType string, jobs []model.AgentJob) query.KnowledgePipelineJobStageView {
+func knowledgePipelineJobStage(
+	jobType string,
+	jobs []model.AgentJob,
+	now time.Time,
+	staleAfterSeconds int,
+) query.KnowledgePipelineJobStageView {
 	stage := query.KnowledgePipelineJobStageView{JobType: jobType, SampledJobs: len(jobs)}
 	for _, job := range jobs {
 		switch job.Status {
 		case model.AgentJobPending:
 			stage.Pending++
+			age := knowledgePipelineJobAgeSeconds(now, job.CreatedAt)
+			if age > stage.OldestPendingAgeSeconds {
+				stage.OldestPendingAgeSeconds = age
+			}
 		case model.AgentJobLeased:
 			stage.Leased++
+			stage = accumulateKnowledgePipelineActiveLease(stage, job, now, staleAfterSeconds)
 		case model.AgentJobRunning:
 			stage.Running++
+			stage = accumulateKnowledgePipelineActiveLease(stage, job, now, staleAfterSeconds)
 		}
 	}
 	stage.Active = stage.Leased + stage.Running
 	pressure := knowledgePipelinePressure(stage)
 	stage.HighPressure = pressure.HighPressure
 	stage.PressureReason = pressure.PressureReason
+	stage.FreshnessStatus, stage.FreshnessReason = knowledgePipelineStageFreshness(stage, staleAfterSeconds)
 	if len(jobs) > 0 {
 		view := assembler.ToAgentJobView(jobs[0])
 		stage.LatestJob = &view
 	}
 	return stage
+}
+
+func accumulateKnowledgePipelineActiveLease(
+	stage query.KnowledgePipelineJobStageView,
+	job model.AgentJob,
+	now time.Time,
+	staleAfterSeconds int,
+) query.KnowledgePipelineJobStageView {
+	age := knowledgePipelineJobAgeSeconds(now, job.UpdatedAt)
+	if age > stage.OldestActiveAgeSeconds {
+		stage.OldestActiveAgeSeconds = age
+	}
+	if job.LeaseExpired(now) {
+		stage.ExpiredActiveLeases++
+		return stage
+	}
+	if staleAfterSeconds > 0 && age >= staleAfterSeconds {
+		stage.StaleActiveLeases++
+	}
+	return stage
+}
+
+func knowledgePipelineJobAgeSeconds(now time.Time, timestamp time.Time) int {
+	if now.IsZero() || timestamp.IsZero() || now.Before(timestamp) {
+		return 0
+	}
+	return int(now.Sub(timestamp) / time.Second)
+}
+
+func knowledgePipelineStageFreshness(
+	stage query.KnowledgePipelineJobStageView,
+	staleAfterSeconds int,
+) (string, string) {
+	switch {
+	case stage.ExpiredActiveLeases > 0:
+		return "danger", "expired_active_lease"
+	case stage.StaleActiveLeases > 0:
+		return "warn", "stale_active_lease"
+	case staleAfterSeconds > 0 && stage.Pending > 0 && stage.OldestPendingAgeSeconds >= staleAfterSeconds:
+		return "warn", "old_pending_backlog"
+	case stage.Active > 0:
+		return "ok", "active_lease_fresh"
+	case stage.Pending > 0:
+		return "ok", "pending_backlog_recent"
+	default:
+		return "muted", ""
+	}
 }
 
 func knowledgePipelinePressure(stage query.KnowledgePipelineJobStageView) query.AgentJobTypePressureView {
@@ -495,10 +554,31 @@ func knowledgePipelineStatus(
 			status = mergeKnowledgePipelineStatus(status, nextStatus)
 		}
 	}
+	if stageReason, nextStatus := knowledgePipelineStageReason("group_memory", groupMemory); stageReason != "" {
+		reasons = append(reasons, stageReason)
+		status = mergeKnowledgePipelineStatus(status, nextStatus)
+	}
+	if stageReason, nextStatus := knowledgePipelineStageReason("rag_ingest", ragIngest); stageReason != "" {
+		reasons = append(reasons, stageReason)
+		status = mergeKnowledgePipelineStatus(status, nextStatus)
+	}
 	if len(reasons) == 0 {
 		reasons = append(reasons, "pipeline_ready")
 	}
 	return status, reasons
+}
+
+func knowledgePipelineStageReason(prefix string, stage query.KnowledgePipelineJobStageView) (string, string) {
+	switch stage.FreshnessReason {
+	case "expired_active_lease":
+		return prefix + "_lease_expired", "blocked"
+	case "stale_active_lease":
+		return prefix + "_lease_stale", "warn"
+	case "old_pending_backlog":
+		return prefix + "_pending_old", "warn"
+	default:
+		return "", ""
+	}
 }
 
 func knowledgePipelineLagReason(
@@ -542,22 +622,24 @@ func mergeKnowledgePipelineStatus(current string, next string) string {
 
 func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeconds int) map[string]int {
 	totals := map[string]int{
-		"targets":              len(items),
-		"enabled":              0,
-		"ready":                0,
-		"warning":              0,
-		"blocked":              0,
-		"muted":                0,
-		"receiver_connected":   0,
-		"group_memory_pending": 0,
-		"rag_ingest_pending":   0,
-		"high_pressure":        0,
-		"memory_checkpoints":   0,
-		"rag_checkpoints":      0,
-		"lagging":              0,
-		"stale_checkpoints":    0,
-		"stalled":              0,
-		"stagnant":             0,
+		"targets":               len(items),
+		"enabled":               0,
+		"ready":                 0,
+		"warning":               0,
+		"blocked":               0,
+		"muted":                 0,
+		"receiver_connected":    0,
+		"group_memory_pending":  0,
+		"rag_ingest_pending":    0,
+		"high_pressure":         0,
+		"memory_checkpoints":    0,
+		"rag_checkpoints":       0,
+		"lagging":               0,
+		"stale_checkpoints":     0,
+		"expired_active_leases": 0,
+		"stale_active_leases":   0,
+		"stalled":               0,
+		"stagnant":              0,
 	}
 	for _, item := range items {
 		if item.Enabled {
@@ -584,6 +666,12 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		}
 		if item.GroupMemory.HighPressure || item.RagIngest.HighPressure {
 			totals["high_pressure"]++
+		}
+		if item.GroupMemory.ExpiredActiveLeases > 0 || item.RagIngest.ExpiredActiveLeases > 0 {
+			totals["expired_active_leases"]++
+		}
+		if item.GroupMemory.StaleActiveLeases > 0 || item.RagIngest.StaleActiveLeases > 0 {
+			totals["stale_active_leases"]++
 		}
 		if item.MemoryCheckpoint != nil {
 			totals["memory_checkpoints"]++

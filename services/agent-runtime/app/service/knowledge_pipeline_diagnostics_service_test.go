@@ -96,6 +96,12 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
 	}
+	if pipeline.GroupMemory.FreshnessStatus != "muted" || pipeline.GroupMemory.FreshnessReason != "" {
+		t.Fatalf("unexpected group memory freshness: %#v", pipeline.GroupMemory)
+	}
+	if pipeline.RagIngest.FreshnessStatus != "muted" || pipeline.RagIngest.FreshnessReason != "" {
+		t.Fatalf("unexpected rag ingest freshness: %#v", pipeline.RagIngest)
+	}
 	if !pipeline.SourceSeqKnown || pipeline.LatestSourceSeq != 64 || pipeline.SequencedEvents != 3 {
 		t.Fatalf("unexpected source seq state: %#v", pipeline)
 	}
@@ -282,6 +288,154 @@ func TestKnowledgePipelineDiagnosticsServiceMarksCheckpointStagnant(t *testing.T
 	}
 	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 27 || pipeline.MemoryCheckpointLag.Status != "warn" || pipeline.MemoryCheckpointLag.AgeSeconds != 600 {
 		t.Fatalf("unexpected stagnant lag state: %#v", pipeline.MemoryCheckpointLag)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceWarnsOnStaleActiveLease(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "27234224")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-stale-lease", "stale lease", nil, 32)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	jobs := NewAgentJobService(store)
+	created, err := jobs.Create(ctx, knowledgePipelineJobCommand(
+		"group_memory_extract:qq:27234224:stale",
+		"group_memory_extract",
+		"27234224",
+		map[string]string{"group_id": "27234224"},
+		now.Add(-20*time.Minute),
+	))
+	if err != nil {
+		t.Fatalf("create stale lease job: %v", err)
+	}
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      created.JobID,
+		WorkerID:   "knowledge-worker",
+		TTLSeconds: 30 * 60,
+		LeaseToken: "lease-stale",
+		Timestamp:  now.Add(-10 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("lease stale job: %v", err)
+	}
+	if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("mark stale job running: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, nil)
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["warning"] != 1 || view.Totals["stale_active_leases"] != 1 || view.Totals["expired_active_leases"] != 0 {
+		t.Fatalf("unexpected stale lease totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "warn" || !containsString(pipeline.Reasons, "group_memory_lease_stale") {
+		t.Fatalf("unexpected stale lease pipeline: %#v", pipeline)
+	}
+	if pipeline.GroupMemory.FreshnessStatus != "warn" || pipeline.GroupMemory.FreshnessReason != "stale_active_lease" || pipeline.GroupMemory.StaleActiveLeases != 1 || pipeline.GroupMemory.OldestActiveAgeSeconds != 600 {
+		t.Fatalf("unexpected stale lease stage: %#v", pipeline.GroupMemory)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceBlocksExpiredActiveLease(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "3219982")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-expired-lease", "expired lease", nil, 48)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	jobs := NewAgentJobService(store)
+	created, err := jobs.Create(ctx, knowledgePipelineJobCommand(
+		"rag_ingest:qq:3219982:expired",
+		"rag_ingest",
+		"3219982",
+		map[string]string{"group_id": "3219982", "dataset_id": "expired"},
+		now.Add(-20*time.Minute),
+	))
+	if err != nil {
+		t.Fatalf("create expired lease job: %v", err)
+	}
+	leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      created.JobID,
+		WorkerID:   "knowledge-worker",
+		TTLSeconds: 60,
+		LeaseToken: "lease-expired",
+		Timestamp:  now.Add(-10 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("lease expired job: %v", err)
+	}
+	if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      leased.JobID,
+		LeaseToken: leased.LeaseToken,
+		Timestamp:  now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("mark expired job running: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, nil)
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["expired_active_leases"] != 1 {
+		t.Fatalf("unexpected expired lease totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "blocked" || !containsString(pipeline.Reasons, "rag_ingest_lease_expired") {
+		t.Fatalf("unexpected expired lease pipeline: %#v", pipeline)
+	}
+	if pipeline.RagIngest.FreshnessStatus != "danger" || pipeline.RagIngest.FreshnessReason != "expired_active_lease" || pipeline.RagIngest.ExpiredActiveLeases != 1 {
+		t.Fatalf("unexpected expired lease stage: %#v", pipeline.RagIngest)
 	}
 }
 
