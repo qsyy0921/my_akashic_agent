@@ -73,9 +73,18 @@ QQ/NapCat calls Go for events that include a platform `message_id`:
   session write or image download;
 - `/stop` messages are checked before interrupt response sends.
 
-Group upload notices remain out of scope for now because their event shape does
-not consistently guarantee a stable `message_id`; they should get a separate
-file-event idempotency key if needed.
+QQ/NapCat observe-only group upload notices use a separate file-event key:
+
+- prefer `group_file_message:{group_id}:{message_id}` when a platform
+  `message_id` exists;
+- else use `group_file_id:{group_id}:{file_id}` when NapCat exposes a file id;
+- else use `group_file_fingerprint:{group_id}:{sha256(...)}` from
+  `group_id`, `user_id`, `busid`, `file_name`, and `file_size` only when those
+  fields are all present.
+
+If no stable file-event key can be derived, Python skips Go dedupe and preserves
+the previous behavior. Duplicate group upload notices are dropped before
+session writes, file URL lookups, downloads, or file preview generation.
 
 If the runtime call fails, Python logs at debug level and continues with the
 local dedupe decision. That preserves current receive behavior when Go is down.
@@ -102,3 +111,6 @@ local dedupe decision. That preserves current receive behavior when Go is down.
 - QQ private/group duplicate runtime responses stop message publication,
   observe-only session writes, interrupt replies, and attachment downloads for
   stable `message_id` events.
+- QQ group upload duplicate runtime responses stop observe-only file session
+  writes, file URL lookups, downloads, and previews when a stable file-event
+  key is available.

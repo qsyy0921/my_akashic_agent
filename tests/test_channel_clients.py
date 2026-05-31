@@ -2065,6 +2065,81 @@ async def test_qq_group_upload_notice_records_file_preview(
 
 
 @pytest.mark.asyncio
+async def test_qq_group_upload_notice_uses_runtime_inbound_dedupe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    mod = _import_qq_channel(monkeypatch)
+    bus = _Bus()
+    session_manager = _SessionManager(tmp_path)
+    ledger = _FakeSendLedger(inbound_duplicate=True)
+    requester = SimpleNamespace(get=AsyncMock())
+    group_cfg = SimpleNamespace(
+        group_id="100",
+        allow_from=[],
+        require_at=False,
+        observe_only=True,
+    )
+    channel = mod.QQChannel(
+        "42",
+        bus,
+        session_manager,
+        groups=[group_cfg],
+        http_requester=requester,
+        send_ledger_client=ledger,
+    )
+    scheduled = []
+    real_create_task = asyncio.create_task
+
+    def _run_coroutine_threadsafe(coro, loop):
+        scheduled.append(real_create_task(coro))
+        return SimpleNamespace(result=lambda timeout=None: True)
+
+    monkeypatch.setattr(mod.asyncio, "run_coroutine_threadsafe", _run_coroutine_threadsafe)
+    await channel.start()
+    await channel._bot.startup_handler(SimpleNamespace())
+
+    async def _drain(coro):
+        return await coro
+
+    channel._run_on_bot_loop = AsyncMock(side_effect=_drain)
+    await channel._bot.notice_handler(
+        SimpleNamespace(
+            notice_type="group_upload",
+            group_id="100",
+            user_id="9",
+            file={"id": "file-1", "name": "build.txt", "size": 32, "busid": "1"},
+        )
+    )
+    if scheduled:
+        await asyncio.gather(*scheduled)
+
+    assert session_manager.sessions == {}
+    assert requester.get.await_count == 0
+    assert channel._api.calls == []
+    assert ledger.inbound_queries == [
+        {
+            "scope": "qq:qq:42",
+            "message_key": "group_file_id:100:file-1",
+            "ttl_seconds": 24 * 60 * 60,
+            "metadata": {
+                "message_kind": "group_file_upload",
+                "channel": "qq",
+                "account_id": "42",
+                "conversation_type": "group",
+                "conversation_id": "100",
+                "sender_id": "9",
+                "file_id": "file-1",
+                "file_name": "build.txt",
+                "file_size": "32",
+                "file_busid": "1",
+                "key_source": "file_id",
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_qq_private_trace_sends_forward_then_final_and_clears_state(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -17,6 +17,7 @@ chat_id 约定：
 import asyncio
 import base64
 from dataclasses import dataclass, field
+import hashlib
 import html
 import importlib
 import logging
@@ -410,6 +411,33 @@ def _platform_message_id(event: Any | None) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _file_notice_dedupe_key(
+    *,
+    group_id: str,
+    user_id: str,
+    observed_file: _ObservedFile,
+    event: Any | None,
+) -> tuple[str, str]:
+    message_id = _platform_message_id(event)
+    if message_id:
+        return f"group_file_message:{group_id}:{message_id}", "message_id"
+    if observed_file.file_id:
+        return f"group_file_id:{group_id}:{observed_file.file_id}", "file_id"
+    if observed_file.busid and observed_file.name and observed_file.size is not None:
+        raw = "|".join(
+            [
+                str(group_id or ""),
+                str(user_id or ""),
+                str(observed_file.busid or ""),
+                str(observed_file.name or ""),
+                str(observed_file.size),
+            ]
+        )
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+        return f"group_file_fingerprint:{group_id}:{digest}", "file_fingerprint"
+    return "", ""
 
 
 async def _download_to_temp(
@@ -998,6 +1026,21 @@ class QQChannel:
         event: Any | None = None,
     ) -> None:
         """群文件观察模式：记录文件元信息、可下载文件和可检索摘要。"""
+        if await self._inbound_file_notice_seen(
+            event=event,
+            group_id=group_id,
+            user_id=user_id,
+            observed_file=observed_file,
+        ):
+            logger.info(
+                "[qq] runtime inbound dedupe 忽略重复群文件 notice  channel=%s  group_id=%s  user_id=%s  file_id=%s  message_id=%s",
+                self._channel,
+                group_id,
+                user_id,
+                observed_file.file_id,
+                _platform_message_id(event),
+            )
+            return
         chat_id = f"{_GROUP_PREFIX}{group_id}"
         session = self._session_manager.get_or_create(f"{self._channel}:{chat_id}")
         metadata_changed = False
@@ -1458,6 +1501,54 @@ class QQChannel:
                 "[qq] agent runtime inbound dedupe check failed channel=%s message_id=%s err=%s",
                 self._channel,
                 message_id,
+                exc,
+            )
+            return False
+        return bool(result.get("duplicate")) if isinstance(result, dict) else bool(result)
+
+    async def _inbound_file_notice_seen(
+        self,
+        *,
+        event: Any | None,
+        group_id: str,
+        user_id: str,
+        observed_file: _ObservedFile,
+    ) -> bool:
+        message_key, key_source = _file_notice_dedupe_key(
+            group_id=group_id,
+            user_id=user_id,
+            observed_file=observed_file,
+            event=event,
+        )
+        if not message_key:
+            return False
+        client = self._send_ledger_client
+        if client is None or not hasattr(client, "check_inbound_dedupe"):
+            return False
+        try:
+            result = await client.check_inbound_dedupe(
+                scope=f"qq:{self._channel}:{self._bot_uin}",
+                message_key=message_key,
+                ttl_seconds=_INBOUND_DEDUPE_TTL_SECONDS,
+                metadata={
+                    "message_kind": "group_file_upload",
+                    "channel": self._channel,
+                    "account_id": self._bot_uin,
+                    "conversation_type": "group",
+                    "conversation_id": str(group_id or ""),
+                    "sender_id": str(user_id or ""),
+                    "file_id": observed_file.file_id,
+                    "file_name": observed_file.name,
+                    "file_size": "" if observed_file.size is None else str(observed_file.size),
+                    "file_busid": observed_file.busid,
+                    "key_source": key_source,
+                },
+            )
+        except Exception as exc:
+            logger.debug(
+                "[qq] agent runtime file notice dedupe check failed channel=%s key=%s err=%s",
+                self._channel,
+                message_key,
                 exc,
             )
             return False
