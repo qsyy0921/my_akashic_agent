@@ -92,13 +92,17 @@ Override receiver status persistence:
 
 ```powershell
 $env:AKASHIC_RECEIVER_STATUSES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\receiver-statuses.json"
+$env:AKASHIC_RECEIVER_LEASES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\receiver-leases.json"
 $env:AKASHIC_RECEIVER_STATUS_STALE_SECONDS = "180"
 ```
 
 Receiver statuses are file-backed so QQ/Telegram connectivity diagnostics can
 recover after restarting only `agent-runtime`. Python receivers send periodic
 heartbeats; stale `connected` or `starting` heartbeats are shown as `stopped`
-after the configured stale window.
+after the configured stale window. Receiver leases are file-backed separately
+so Telegram polling can continue renewing the same lease token after a short Go
+runtime restart; if the lease was lost or expired, Python attempts a guarded
+reacquire before suspending polling.
 
 Override agent job persistence:
 

@@ -39,6 +39,7 @@ agent-jobs.json
 agent-job-events.jsonl
 observe-targets.json
 receiver-statuses.json
+receiver-leases.json
 media-assets.json
 send-ledger.json
 outbox.json
@@ -71,6 +72,8 @@ AKASHIC_OBSERVE_TARGETS_DSN
 AKASHIC_OBSERVE_TARGETS_PATH
 AKASHIC_RECEIVER_STATUSES_DSN
 AKASHIC_RECEIVER_STATUSES_PATH
+AKASHIC_RECEIVER_LEASES_DSN
+AKASHIC_RECEIVER_LEASES_PATH
 ...
 ```
 

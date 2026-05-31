@@ -1246,6 +1246,57 @@ async def test_telegram_channel_skips_polling_when_receiver_lease_is_held(
 
 
 @pytest.mark.asyncio
+async def test_telegram_channel_reacquires_receiver_lease_after_runtime_restart(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _import_telegram_channel(monkeypatch)
+
+    class _ReceiverRuntime:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, Any]]] = []
+            self._tokens = iter(["tok-1", "tok-2"])
+
+        async def acquire_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("acquire", kwargs))
+            return {
+                "receiver_id": "telegram:telegram:telegram",
+                "acquired": True,
+                "lease_token": next(self._tokens),
+            }
+
+        async def renew_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("renew", kwargs))
+            raise RuntimeError("agent runtime HTTP 400: receiver lease not found")
+
+        async def release_receiver_lease(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("release", kwargs))
+            return {"active": False}
+
+        async def report_receiver_status(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(("status", kwargs))
+            return {"receivers": []}
+
+    runtime = _ReceiverRuntime()
+    channel = mod.TelegramChannel(
+        "token",
+        _Bus(),
+        _SessionManager(),
+        receiver_status_client=runtime,
+    )
+
+    await channel.start()
+    recovered = await channel._recover_receiver_lease_after_renew_failure(
+        RuntimeError("agent runtime HTTP 400: receiver lease not found")
+    )
+
+    assert recovered is True
+    assert channel._receiver_lease_token == "tok-2"
+    assert [call[0] for call in runtime.calls].count("acquire") == 2
+
+    await channel.stop()
+
+
+@pytest.mark.asyncio
 async def test_telegram_channel_records_runtime_send_ledger(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

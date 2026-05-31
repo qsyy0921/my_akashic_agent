@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +22,7 @@ type ReceiverStatusService struct {
 	receivers        map[string]model.ReceiverStatus
 	leases           map[string]model.ReceiverLease
 	statusRepository outport.ReceiverStatusRepository
+	leaseRepository  outport.ReceiverLeaseRepository
 	statusStaleAfter time.Duration
 	statusClock      func() time.Time
 }
@@ -41,24 +41,45 @@ func NewReceiverStatusServiceWithRepository(
 	repository outport.ReceiverStatusRepository,
 	staleAfter time.Duration,
 ) (*ReceiverStatusService, error) {
+	return NewReceiverStatusServiceWithRepositories(ctx, repository, nil, staleAfter)
+}
+
+func NewReceiverStatusServiceWithRepositories(
+	ctx context.Context,
+	statusRepository outport.ReceiverStatusRepository,
+	leaseRepository outport.ReceiverLeaseRepository,
+	staleAfter time.Duration,
+) (*ReceiverStatusService, error) {
 	service := NewReceiverStatusService()
-	service.statusRepository = repository
+	service.statusRepository = statusRepository
+	service.leaseRepository = leaseRepository
 	service.statusStaleAfter = staleAfter
-	if repository == nil {
-		return service, nil
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	items, err := repository.ListReceiverStatuses(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		if err := item.Validate(); err != nil {
-			continue
+	if statusRepository != nil {
+		items, err := statusRepository.ListReceiverStatuses(ctx)
+		if err != nil {
+			return nil, err
 		}
-		service.receivers[item.ReceiverID] = item
+		for _, item := range items {
+			if err := item.Validate(); err != nil {
+				continue
+			}
+			service.receivers[item.ReceiverID] = item
+		}
+	}
+	if leaseRepository != nil {
+		items, err := leaseRepository.ListReceiverLeases(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if err := item.Validate(); err != nil {
+				continue
+			}
+			service.leases[item.ReceiverID] = item
+		}
 	}
 	return service, nil
 }
@@ -178,6 +199,11 @@ func (s *ReceiverStatusService) AcquireReceiverLease(ctx context.Context, cmd co
 	if err != nil {
 		return query.ReceiverLeaseView{}, err
 	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.SaveReceiverLease(ctx, lease); err != nil {
+			return query.ReceiverLeaseView{}, err
+		}
+	}
 	s.leases[lease.ReceiverID] = lease
 	view := assembler.ToReceiverLeaseView(lease, now, true)
 	view.Acquired = receiverLeaseAcquired(true)
@@ -205,12 +231,20 @@ func (s *ReceiverStatusService) RenewReceiverLease(ctx context.Context, cmd comm
 	if !ok {
 		return query.ReceiverLeaseView{}, errors.New("receiver lease not found")
 	}
+	if !current.ActiveAt(now) {
+		return query.ReceiverLeaseView{}, errors.New("receiver lease expired")
+	}
 	if !current.Matches(cmd.HolderID, cmd.LeaseToken) {
 		return query.ReceiverLeaseView{}, errors.New("receiver lease token mismatch")
 	}
 	renewed, err := current.Renew(now.Add(receiverLeaseTTL(cmd.TTLSeconds)), now)
 	if err != nil {
 		return query.ReceiverLeaseView{}, err
+	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.SaveReceiverLease(ctx, renewed); err != nil {
+			return query.ReceiverLeaseView{}, err
+		}
 	}
 	s.leases[receiverID] = renewed
 	view := assembler.ToReceiverLeaseView(renewed, now, true)
@@ -241,6 +275,11 @@ func (s *ReceiverStatusService) ReleaseReceiverLease(ctx context.Context, cmd co
 	}
 	if !current.Matches(cmd.HolderID, cmd.LeaseToken) {
 		return query.ReceiverLeaseView{}, errors.New("receiver lease token mismatch")
+	}
+	if s.leaseRepository != nil {
+		if err := s.leaseRepository.DeleteReceiverLease(ctx, receiverID); err != nil {
+			return query.ReceiverLeaseView{}, err
+		}
 	}
 	delete(s.leases, receiverID)
 	view := assembler.ToReceiverLeaseView(current, now, false)
@@ -314,16 +353,7 @@ func (s *ReceiverStatusService) leaseSnapshotLocked() []model.ReceiverLease {
 	for _, item := range s.leases {
 		items = append(items, item)
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
-		}
-		if items[i].ChannelName != items[j].ChannelName {
-			return items[i].ChannelName < items[j].ChannelName
-		}
-		return items[i].ReceiverID < items[j].ReceiverID
-	})
-	return items
+	return model.SortedReceiverLeases(items)
 }
 
 func receiverStatusesView(items []model.ReceiverStatus) query.ReceiverStatusesView {

@@ -193,6 +193,8 @@ func TestNewReceiverStatusServiceDefaultsToFileBackedRuntimeState(t *testing.T) 
 	t.Setenv("AKASHIC_RUNTIME_STATE_DIR", stateDir)
 	t.Setenv("AKASHIC_RECEIVER_STATUSES_DSN", "")
 	t.Setenv("AKASHIC_RECEIVER_STATUSES_PATH", "")
+	t.Setenv("AKASHIC_RECEIVER_LEASES_DSN", "")
+	t.Setenv("AKASHIC_RECEIVER_LEASES_PATH", "")
 
 	service, err := newReceiverStatusService()
 	if err != nil {
@@ -209,6 +211,17 @@ func TestNewReceiverStatusServiceDefaultsToFileBackedRuntimeState(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
+	acquired, err := service.AcquireReceiverLease(context.Background(), command.AcquireReceiverLeaseCommand{
+		Kind:        "telegram",
+		ChannelName: "telegram",
+		AccountID:   "7689386159",
+		HolderID:    "python:1",
+		TTLSeconds:  120,
+		Timestamp:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reopened, err := newReceiverStatusService()
 	if err != nil {
@@ -223,6 +236,16 @@ func TestNewReceiverStatusServiceDefaultsToFileBackedRuntimeState(t *testing.T) 
 	}
 	if _, err := os.Stat(filepath.Join(stateDir, "receiver-statuses.json")); err != nil {
 		t.Fatalf("expected receiver statuses state file: %v", err)
+	}
+	leases, err := reopened.ListReceiverLeases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leases.Totals["leases"] != 1 || leases.Leases[0].ReceiverID != acquired.ReceiverID {
+		t.Fatalf("expected default file-backed receiver lease persistence: %#v", leases)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "receiver-leases.json")); err != nil {
+		t.Fatalf("expected receiver leases state file: %v", err)
 	}
 }
 

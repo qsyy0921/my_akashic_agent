@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -114,4 +115,18 @@ func stableReceiverID(kind ChannelKind, accountID string, channelName string) st
 		accountID = channelName
 	}
 	return fmt.Sprintf("%s:%s:%s", strings.TrimSpace(string(kind)), accountID, channelName)
+}
+
+func SortedReceiverLeases(items []ReceiverLease) []ReceiverLease {
+	sorted := append([]ReceiverLease(nil), items...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Kind != sorted[j].Kind {
+			return sorted[i].Kind < sorted[j].Kind
+		}
+		if sorted[i].ChannelName != sorted[j].ChannelName {
+			return sorted[i].ChannelName < sorted[j].ChannelName
+		}
+		return sorted[i].ReceiverID < sorted[j].ReceiverID
+	})
+	return sorted
 }

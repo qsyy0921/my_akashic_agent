@@ -71,4 +71,6 @@ execution.
 - `027-receiver-status-heartbeat.md`: durable receiver status storage and
   Python QQ/Telegram heartbeat reporting for restart-safe connectivity
   diagnostics.
+- `028-receiver-lease-persistence.md`: durable receiver lease storage and
+  Telegram reacquire behavior after `agent-runtime` restarts.
 - Agent architecture boundary specs live under `../agent-architecture/`.

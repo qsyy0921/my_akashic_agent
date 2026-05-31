@@ -1046,7 +1046,47 @@ class TelegramChannel:
                     ttl_seconds=self._receiver_lease_ttl_seconds,
                 )
             except Exception as exc:
+                if await self._recover_receiver_lease_after_renew_failure(exc):
+                    logger.info("[telegram] receiver lease 已重新获取")
+                    continue
                 logger.warning("[telegram] receiver lease 续租失败: %s", exc)
+                if not self._receiver_lease_receiver_id:
+                    return
+
+    async def _recover_receiver_lease_after_renew_failure(self, exc: Exception) -> bool:
+        if not _is_receiver_lease_reacquirable_error(exc):
+            return False
+        lease = await self._acquire_receiver_lease()
+        if lease is not None and bool(lease.get("acquired")):
+            return True
+        if lease is not None:
+            self._receiver_lease_receiver_id = ""
+            self._receiver_lease_token = ""
+            await self._suspend_receiver_after_lease_loss(
+                "receiver_lease_held_after_renew",
+                {
+                    "holder_id": str(lease.get("holder_id") or ""),
+                    "expires_at": str(lease.get("expires_at") or ""),
+                },
+            )
+        return False
+
+    async def _suspend_receiver_after_lease_loss(
+        self,
+        reason: str,
+        metadata: dict[str, str],
+    ) -> None:
+        updater = self._app.updater
+        if updater and updater.running:
+            with suppress(Exception):
+                await updater.stop()
+        await self._stop_receiver_status_heartbeat(report_stopped=False)
+        self._receiver_status_connected = False
+        await self._report_receiver_status(
+            "suspended",
+            reason=reason,
+            metadata=metadata,
+        )
 
     def _start_receiver_status_heartbeat(self) -> None:
         if self._receiver_status_client is None:
@@ -1282,3 +1322,12 @@ def _build_inbound_text_with_reply(
         "reply_to_message_id": int(reply_msg.message_id),
         "reply_to_sender": sender_label,
     }
+
+
+def _is_receiver_lease_reacquirable_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "receiver lease not found" in text
+        or "receiver lease expired" in text
+        or "receiver lease token mismatch" in text
+    )

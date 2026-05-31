@@ -26,6 +26,7 @@ import (
 	outboxeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxeventstore"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
+	receiverleasestore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverleasestore"
 	receiverstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
 	sendledgerstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/sendledgerstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/telegramdelivery"
@@ -661,15 +662,30 @@ func newReceiverStatusService() (*appservice.ReceiverStatusService, error) {
 	if err != nil {
 		return nil, err
 	}
+	statusRepository, err := newReceiverStatusRepository()
+	if err != nil {
+		return nil, err
+	}
+	leaseRepository, err := newReceiverLeaseRepository()
+	if err != nil {
+		return nil, err
+	}
+	if statusRepository == nil && leaseRepository == nil {
+		return appservice.NewReceiverStatusService(), nil
+	}
+	return appservice.NewReceiverStatusServiceWithRepositories(context.Background(), statusRepository, leaseRepository, staleAfter)
+}
+
+func newReceiverStatusRepository() (outport.ReceiverStatusRepository, error) {
 	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_STATUSES_DSN")); dsn != "" {
 		if strings.EqualFold(dsn, "memory") {
-			return appservice.NewReceiverStatusService(), nil
+			return nil, nil
 		}
 		store, err := receiverstatusstore.NewStore(dsn)
 		if err != nil {
 			return nil, err
 		}
-		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+		return store, nil
 	}
 
 	if path := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_STATUSES_PATH")); path != "" {
@@ -677,16 +693,45 @@ func newReceiverStatusService() (*appservice.ReceiverStatusService, error) {
 		if err != nil {
 			return nil, err
 		}
-		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+		return store, nil
 	}
 	if path, ok := defaultRuntimeStatePath("receiver-statuses.json"); ok {
 		store, err := receiverstatusstore.NewStore(path)
 		if err != nil {
 			return nil, err
 		}
-		return appservice.NewReceiverStatusServiceWithRepository(context.Background(), store, staleAfter)
+		return store, nil
 	}
-	return appservice.NewReceiverStatusService(), nil
+	return nil, nil
+}
+
+func newReceiverLeaseRepository() (outport.ReceiverLeaseRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_LEASES_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return nil, nil
+		}
+		store, err := receiverleasestore.NewStore(dsn)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_RECEIVER_LEASES_PATH")); path != "" {
+		store, err := receiverleasestore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+	if path, ok := defaultRuntimeStatePath("receiver-leases.json"); ok {
+		store, err := receiverleasestore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+	return nil, nil
 }
 
 func receiverStatusStaleAfterFromEnv() (time.Duration, error) {

@@ -48,6 +48,8 @@ Acquire returns a side-effect-limited control-plane result:
 
 Renew extends only the active matching token. Release clears only the active
 matching token. Expired leases are treated as inactive during acquire/list.
+Durable storage and restart recovery are specified separately in
+`028-receiver-lease-persistence.md`.
 
 ## Boundaries
 

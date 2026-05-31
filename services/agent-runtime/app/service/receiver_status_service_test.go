@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverleasestore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/receiverstatusstore"
 )
 
@@ -214,5 +215,77 @@ func TestReceiverStatusServiceReceiverLeaseAcquireDenyRenewRelease(t *testing.T)
 	}
 	if listed.Totals["leases"] != 0 || listed.Totals["active"] != 0 {
 		t.Fatalf("unexpected lease totals: %#v", listed.Totals)
+	}
+}
+
+func TestReceiverStatusServiceLoadsFileBackedLeases(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receiver-leases.json")
+	store, err := receiverleasestore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewReceiverStatusServiceWithRepositories(context.Background(), nil, store, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 5, 31, 9, 0, 0, 0, time.UTC)
+	acquired, err := service.AcquireReceiverLease(context.Background(), command.AcquireReceiverLeaseCommand{
+		Kind:        "telegram",
+		ChannelName: "telegram",
+		AccountID:   "7689386159",
+		HolderID:    "python:1",
+		TTLSeconds:  120,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedStore, err := receiverleasestore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewReceiverStatusServiceWithRepositories(context.Background(), nil, reopenedStore, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed, err := reopened.RenewReceiverLease(context.Background(), command.RenewReceiverLeaseCommand{
+		ReceiverID: acquired.ReceiverID,
+		HolderID:   "python:1",
+		LeaseToken: acquired.LeaseToken,
+		TTLSeconds: 120,
+		Timestamp:  now.Add(30 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed.LeaseToken != acquired.LeaseToken || renewed.Active != true {
+		t.Fatalf("expected persisted lease to renew after reopen: %#v", renewed)
+	}
+}
+
+func TestReceiverStatusServiceRejectsExpiredReceiverLeaseRenewal(t *testing.T) {
+	service := NewReceiverStatusService()
+	now := time.Date(2026, 5, 31, 9, 0, 0, 0, time.UTC)
+	acquired, err := service.AcquireReceiverLease(context.Background(), command.AcquireReceiverLeaseCommand{
+		Kind:        "telegram",
+		ChannelName: "telegram",
+		AccountID:   "7689386159",
+		HolderID:    "python:1",
+		TTLSeconds:  30,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.RenewReceiverLease(context.Background(), command.RenewReceiverLeaseCommand{
+		ReceiverID: acquired.ReceiverID,
+		HolderID:   "python:1",
+		LeaseToken: acquired.LeaseToken,
+		TTLSeconds: 120,
+		Timestamp:  now.Add(31 * time.Second),
+	})
+	if err == nil || err.Error() != "receiver lease expired" {
+		t.Fatalf("expected expired lease error, got %v", err)
 	}
 }
