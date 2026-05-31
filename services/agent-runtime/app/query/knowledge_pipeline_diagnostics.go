@@ -37,6 +37,16 @@ type KnowledgePipelineCheckpointLagView struct {
 	UpdatedAt       string `json:"updated_at,omitempty"`
 }
 
+type KnowledgePipelineRagDatasetView struct {
+	DatasetID     string                              `json:"dataset_id"`
+	DisplayName   string                              `json:"display_name,omitempty"`
+	JobStage      KnowledgePipelineJobStageView       `json:"job_stage"`
+	Checkpoint    *KnowledgeCheckpointView            `json:"checkpoint,omitempty"`
+	CheckpointLag *KnowledgePipelineCheckpointLagView `json:"checkpoint_lag,omitempty"`
+	Status        string                              `json:"status"`
+	Reasons       []string                            `json:"reasons,omitempty"`
+}
+
 type KnowledgePipelineView struct {
 	TargetID            string                              `json:"target_id"`
 	Channel             ObserveTargetChannelView            `json:"channel"`
@@ -52,6 +62,7 @@ type KnowledgePipelineView struct {
 	RagIngest           KnowledgePipelineJobStageView       `json:"rag_ingest"`
 	MemoryCheckpoint    *KnowledgeCheckpointView            `json:"memory_checkpoint,omitempty"`
 	RagCheckpoints      []KnowledgeCheckpointView           `json:"rag_checkpoints,omitempty"`
+	RagDatasets         []KnowledgePipelineRagDatasetView   `json:"rag_datasets,omitempty"`
 	MemoryCheckpointLag *KnowledgePipelineCheckpointLagView `json:"memory_checkpoint_lag,omitempty"`
 	RagCheckpointLagMax *KnowledgePipelineCheckpointLagView `json:"rag_checkpoint_lag_max,omitempty"`
 	WorkerCoverage      []AgentJobWorkerCoverageView        `json:"worker_coverage,omitempty"`

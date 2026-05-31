@@ -67,6 +67,9 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"knowledge_pipeline_stagnant_targets":             1,
 				"knowledge_pipeline_expired_active_lease_targets": 1,
 				"knowledge_pipeline_stale_active_lease_targets":   1,
+				"knowledge_pipeline_rag_datasets":                 2,
+				"knowledge_pipeline_rag_dataset_warning":          1,
+				"knowledge_pipeline_rag_dataset_blocked":          1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -117,6 +120,9 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stagnant_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_expired_active_lease_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stale_active_lease_targets":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_datasets":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_warning":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_blocked":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"knowledge_pipelines"`)) {
 		t.Fatalf("response missing knowledge pipeline diagnostics: %s", response.Body.String())
 	}
@@ -152,6 +158,19 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 					FreshnessStatus:        "danger",
 					FreshnessReason:        "expired_active_lease",
 				},
+				RagDatasets: []query.KnowledgePipelineRagDatasetView{{
+					DatasetID:   "ds-main",
+					DisplayName: "main dataset",
+					JobStage: query.KnowledgePipelineJobStageView{
+						JobType:         "rag_ingest",
+						Pending:         1,
+						SampledJobs:     1,
+						FreshnessStatus: "warn",
+						FreshnessReason: "old_pending_backlog",
+					},
+					Status:  "warn",
+					Reasons: []string{"rag_ingest_pending_old"},
+				}},
 				MemoryCheckpointLag: &query.KnowledgePipelineCheckpointLagView{
 					CheckpointID:    "memory:qq:27234224",
 					Cursor:          22,
@@ -179,6 +198,7 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 		`"latest_source_seq":42`,
 		`"freshness_status":"danger"`,
 		`"expired_active_leases":1`,
+		`"dataset_id":"ds-main"`,
 		`"lag":20`,
 		`"age_seconds":600`,
 		`"side_effect":"none"`,
@@ -224,6 +244,9 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 	manager := appservice.NewAgentWorkerStatusService()
 	mux := http.NewServeMux()
 	httptrigger.RegisterAgentWorkerStatusRoutes(mux, manager)
+	reportedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	conflictAt := reportedAt.Add(time.Second)
+	leaseUntil := reportedAt.Add(2 * time.Minute).Format(time.RFC3339)
 
 	body := strings.NewReader(`{
 		"worker_id":"worker-a",
@@ -235,7 +258,7 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 		"failed_total":1,
 		"source":"python",
 		"lease_ttl_seconds":120,
-		"timestamp":"2026-05-31T10:00:00Z"
+		"timestamp":"` + reportedAt.Format(time.RFC3339) + `"
 	}`)
 	report := httptest.NewRecorder()
 	mux.ServeHTTP(report, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/report", body))
@@ -252,7 +275,7 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 		`"worker_id":"worker-a"`,
 		`"instance_id":"instance-a"`,
 		`"worker_type":"knowledge"`,
-		`"lease_until":"2026-05-31T10:02:00Z"`,
+		`"lease_until":"` + leaseUntil + `"`,
 		`"running":1`,
 		`"side_effect":"none"`,
 	} {
@@ -269,7 +292,7 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 		"status":"running",
 		"source":"python",
 		"lease_ttl_seconds":120,
-		"timestamp":"2026-05-31T10:00:01Z"
+		"timestamp":"` + conflictAt.Format(time.RFC3339) + `"
 	}`)
 	mux.ServeHTTP(conflict, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/report", conflictBody))
 	if conflict.Code != http.StatusConflict {

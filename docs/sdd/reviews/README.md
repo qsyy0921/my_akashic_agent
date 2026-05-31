@@ -165,3 +165,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-116-knowledge-pipeline-source-lag-diagnostics.md`
 - `2026-05-31-phase8-117-knowledge-pipeline-checkpoint-age-diagnostics.md`
 - `2026-05-31-phase8-118-knowledge-pipeline-job-lease-freshness-diagnostics.md`
+- `2026-05-31-phase8-119-knowledge-pipeline-rag-dataset-state-diagnostics.md`

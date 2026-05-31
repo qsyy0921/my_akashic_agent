@@ -257,6 +257,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"high_pressure":         1,
 				"memory_checkpoints":    1,
 				"rag_checkpoints":       2,
+				"rag_datasets":          2,
+				"rag_dataset_warning":   1,
+				"rag_dataset_blocked":   1,
 				"lagging":               1,
 				"stale_checkpoints":     1,
 				"stagnant":              1,
@@ -396,6 +399,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_stagnant_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_expired_active_lease_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stale_active_lease_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_datasets"] != 2 ||
+		view.Summary["knowledge_pipeline_rag_dataset_warning"] != 1 ||
+		view.Summary["knowledge_pipeline_rag_dataset_blocked"] != 1 ||
 		view.Summary["knowledge_pipeline_stalled_targets"] != 1 {
 		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
 	}

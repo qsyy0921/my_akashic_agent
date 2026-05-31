@@ -121,8 +121,10 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 	}
 	groupMemoryByConversation := bucketAgentJobsByConversation(groupMemoryJobs)
 	ragIngestByConversation := bucketAgentJobsByConversation(ragIngestJobs)
+	ragIngestByConversationDataset := bucketAgentJobsByConversationDataset(ragIngestJobs)
 	memoryCheckpointByConversation := latestMemoryCheckpointByConversation(memoryCheckpoints)
 	ragCheckpointByConversation := ragCheckpointsByConversation(ragCheckpoints)
+	ragCheckpointByConversationDataset := ragCheckpointsByConversationDataset(ragCheckpoints)
 
 	pipelines := make([]query.KnowledgePipelineView, 0, len(targetsView.Targets))
 	for _, target := range targetsView.Targets {
@@ -139,8 +141,10 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 			captureByTarget[target.TargetID],
 			groupMemoryByConversation[target.Channel.ConversationID],
 			ragIngestByConversation[target.Channel.ConversationID],
+			ragIngestByConversationDataset[target.Channel.ConversationID],
 			memoryCheckpointByConversation[target.Channel.ConversationID],
 			ragCheckpointByConversation[target.Channel.ConversationID],
+			ragCheckpointByConversationDataset[target.Channel.ConversationID],
 			workersView,
 		))
 	}
@@ -239,6 +243,34 @@ func bucketAgentJobsByConversation(items []model.AgentJob) map[string][]model.Ag
 	return grouped
 }
 
+func bucketAgentJobsByConversationDataset(items []model.AgentJob) map[string]map[string][]model.AgentJob {
+	grouped := make(map[string]map[string][]model.AgentJob)
+	for _, item := range items {
+		conversationID := strings.TrimSpace(item.Route.ConversationID)
+		datasetID := knowledgePipelineJobDatasetID(item)
+		if conversationID == "" || datasetID == "" {
+			continue
+		}
+		byDataset := grouped[conversationID]
+		if byDataset == nil {
+			byDataset = make(map[string][]model.AgentJob)
+			grouped[conversationID] = byDataset
+		}
+		byDataset[datasetID] = append(byDataset[datasetID], item)
+	}
+	for _, byDataset := range grouped {
+		for key := range byDataset {
+			sort.SliceStable(byDataset[key], func(i, j int) bool {
+				if byDataset[key][i].UpdatedAt.Equal(byDataset[key][j].UpdatedAt) {
+					return byDataset[key][i].JobID > byDataset[key][j].JobID
+				}
+				return byDataset[key][i].UpdatedAt.After(byDataset[key][j].UpdatedAt)
+			})
+		}
+	}
+	return grouped
+}
+
 func latestMemoryCheckpointByConversation(items []model.KnowledgeCheckpoint) map[string]*query.KnowledgeCheckpointView {
 	result := make(map[string]*query.KnowledgeCheckpointView)
 	for _, item := range items {
@@ -276,6 +308,34 @@ func ragCheckpointsByConversation(items []model.KnowledgeCheckpoint) map[string]
 	return result
 }
 
+func ragCheckpointsByConversationDataset(items []model.KnowledgeCheckpoint) map[string]map[string][]query.KnowledgeCheckpointView {
+	result := make(map[string]map[string][]query.KnowledgeCheckpointView)
+	for _, item := range items {
+		groupID := knowledgeCheckpointConversationID(item)
+		datasetID := knowledgeCheckpointDatasetID(item)
+		if groupID == "" || datasetID == "" {
+			continue
+		}
+		byDataset := result[groupID]
+		if byDataset == nil {
+			byDataset = make(map[string][]query.KnowledgeCheckpointView)
+			result[groupID] = byDataset
+		}
+		byDataset[datasetID] = append(byDataset[datasetID], assembler.ToKnowledgeCheckpointView(item))
+	}
+	for _, byDataset := range result {
+		for key := range byDataset {
+			sort.SliceStable(byDataset[key], func(i, j int) bool {
+				if byDataset[key][i].UpdatedAt == byDataset[key][j].UpdatedAt {
+					return byDataset[key][i].CheckpointID > byDataset[key][j].CheckpointID
+				}
+				return byDataset[key][i].UpdatedAt > byDataset[key][j].UpdatedAt
+			})
+		}
+	}
+	return result
+}
+
 func knowledgeCheckpointConversationID(item model.KnowledgeCheckpoint) string {
 	if groupID := strings.TrimSpace(item.Metadata["group_id"]); groupID != "" {
 		return groupID
@@ -283,6 +343,31 @@ func knowledgeCheckpointConversationID(item model.KnowledgeCheckpoint) string {
 	parts := strings.Split(strings.TrimSpace(item.CheckpointID), ":")
 	if len(parts) >= 3 && parts[1] == "qq" {
 		return parts[2]
+	}
+	return ""
+}
+
+func knowledgeCheckpointDatasetID(item model.KnowledgeCheckpoint) string {
+	if datasetID := strings.TrimSpace(item.Metadata["dataset_id"]); datasetID != "" {
+		return datasetID
+	}
+	parts := strings.Split(strings.TrimSpace(item.CheckpointID), ":")
+	if len(parts) >= 4 && parts[0] == "ragflow" {
+		return strings.Join(parts[3:], ":")
+	}
+	return ""
+}
+
+func knowledgePipelineJobDatasetID(item model.AgentJob) string {
+	if datasetID := strings.TrimSpace(item.Payload["dataset_id"]); datasetID != "" {
+		return datasetID
+	}
+	if datasetID := strings.TrimSpace(item.Metadata["dataset_id"]); datasetID != "" {
+		return datasetID
+	}
+	parts := strings.Split(strings.TrimSpace(item.JobID), ":")
+	if len(parts) >= 4 && parts[0] == "rag_ingest" {
+		return parts[3]
 	}
 	return ""
 }
@@ -295,12 +380,21 @@ func buildKnowledgePipelineView(
 	capture query.ObserveCaptureTargetDiagnosticsView,
 	groupMemoryJobs []model.AgentJob,
 	ragIngestJobs []model.AgentJob,
+	ragIngestJobsByDataset map[string][]model.AgentJob,
 	memoryCheckpoint *query.KnowledgeCheckpointView,
 	ragCheckpoints []query.KnowledgeCheckpointView,
+	ragCheckpointsByDataset map[string][]query.KnowledgeCheckpointView,
 	workers query.AgentWorkerStatusesView,
 ) query.KnowledgePipelineView {
 	groupMemory := knowledgePipelineJobStage(string(model.AgentJobGroupMemoryExtract), groupMemoryJobs, now, staleAfterSeconds)
 	ragIngest := knowledgePipelineJobStage(string(model.AgentJobRagIngest), ragIngestJobs, now, staleAfterSeconds)
+	ragDatasets := knowledgePipelineRagDatasets(
+		now,
+		staleAfterSeconds,
+		source,
+		ragIngestJobsByDataset,
+		ragCheckpointsByDataset,
+	)
 	memoryLag := knowledgePipelineCheckpointLag(memoryCheckpoint, source, now)
 	ragLagMax := knowledgePipelineCheckpointLagMax(ragCheckpoints, source, now)
 	coverage := agentJobWorkerCoverageFromPressure([]query.AgentJobTypePressureView{
@@ -323,12 +417,74 @@ func buildKnowledgePipelineView(
 		RagIngest:           ragIngest,
 		MemoryCheckpoint:    memoryCheckpoint,
 		RagCheckpoints:      append([]query.KnowledgeCheckpointView(nil), ragCheckpoints...),
+		RagDatasets:         ragDatasets,
 		MemoryCheckpointLag: memoryLag,
 		RagCheckpointLagMax: ragLagMax,
 		WorkerCoverage:      coverage,
 		Status:              status,
 		Reasons:             reasons,
 	}
+}
+
+func knowledgePipelineRagDatasets(
+	now time.Time,
+	staleAfterSeconds int,
+	source knowledgePipelineSourceState,
+	jobsByDataset map[string][]model.AgentJob,
+	checkpointsByDataset map[string][]query.KnowledgeCheckpointView,
+) []query.KnowledgePipelineRagDatasetView {
+	keys := make(map[string]struct{})
+	for key := range jobsByDataset {
+		if strings.TrimSpace(key) != "" {
+			keys[key] = struct{}{}
+		}
+	}
+	for key := range checkpointsByDataset {
+		if strings.TrimSpace(key) != "" {
+			keys[key] = struct{}{}
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	items := make([]query.KnowledgePipelineRagDatasetView, 0, len(keys))
+	for datasetID := range keys {
+		stage := knowledgePipelineJobStage(string(model.AgentJobRagIngest), jobsByDataset[datasetID], now, staleAfterSeconds)
+		checkpoint := latestKnowledgeCheckpointView(checkpointsByDataset[datasetID])
+		lag := knowledgePipelineCheckpointLag(checkpoint, source, now)
+		status, reasons := knowledgePipelineRagDatasetStatus(stage, lag, staleAfterSeconds)
+		items = append(items, query.KnowledgePipelineRagDatasetView{
+			DatasetID:     datasetID,
+			DisplayName:   knowledgePipelineDatasetDisplayName(checkpoint),
+			JobStage:      stage,
+			Checkpoint:    checkpoint,
+			CheckpointLag: lag,
+			Status:        status,
+			Reasons:       reasons,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Status != items[j].Status {
+			return knowledgePipelineStatusRank(items[i].Status) > knowledgePipelineStatusRank(items[j].Status)
+		}
+		return items[i].DatasetID < items[j].DatasetID
+	})
+	return items
+}
+
+func latestKnowledgeCheckpointView(items []query.KnowledgeCheckpointView) *query.KnowledgeCheckpointView {
+	if len(items) == 0 {
+		return nil
+	}
+	item := items[0]
+	return &item
+}
+
+func knowledgePipelineDatasetDisplayName(checkpoint *query.KnowledgeCheckpointView) string {
+	if checkpoint == nil || checkpoint.Metadata == nil {
+		return ""
+	}
+	return strings.TrimSpace(checkpoint.Metadata["display_name"])
 }
 
 func knowledgePipelineCheckpointLag(
@@ -581,6 +737,35 @@ func knowledgePipelineStageReason(prefix string, stage query.KnowledgePipelineJo
 	}
 }
 
+func knowledgePipelineRagDatasetStatus(
+	stage query.KnowledgePipelineJobStageView,
+	lag *query.KnowledgePipelineCheckpointLagView,
+	staleAfterSeconds int,
+) (string, []string) {
+	status := "ok"
+	reasons := make([]string, 0, 4)
+	if stageReason, nextStatus := knowledgePipelineStageReason("rag_ingest", stage); stageReason != "" {
+		reasons = append(reasons, stageReason)
+		status = mergeKnowledgePipelineStatus(status, nextStatus)
+	}
+	if lagReason, nextStatus := knowledgePipelineLagReason("rag", lag, stage, staleAfterSeconds); lagReason != "" {
+		reasons = append(reasons, lagReason)
+		status = mergeKnowledgePipelineStatus(status, nextStatus)
+	}
+	if status == "ok" && (stage.Pending > 0 || stage.Active > 0) {
+		status = "warn"
+		if stage.Pending > 0 {
+			reasons = append(reasons, "rag_ingest_pending_recent")
+		} else if stage.Active > 0 {
+			reasons = append(reasons, "rag_ingest_active_recent")
+		}
+	}
+	if len(reasons) == 0 {
+		reasons = append(reasons, "dataset_ready")
+	}
+	return status, reasons
+}
+
 func knowledgePipelineLagReason(
 	prefix string,
 	lag *query.KnowledgePipelineCheckpointLagView,
@@ -634,6 +819,9 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		"high_pressure":         0,
 		"memory_checkpoints":    0,
 		"rag_checkpoints":       0,
+		"rag_datasets":          0,
+		"rag_dataset_warning":   0,
+		"rag_dataset_blocked":   0,
 		"lagging":               0,
 		"stale_checkpoints":     0,
 		"expired_active_leases": 0,
@@ -677,6 +865,15 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 			totals["memory_checkpoints"]++
 		}
 		totals["rag_checkpoints"] += len(item.RagCheckpoints)
+		totals["rag_datasets"] += len(item.RagDatasets)
+		for _, dataset := range item.RagDatasets {
+			switch dataset.Status {
+			case "warn":
+				totals["rag_dataset_warning"]++
+			case "blocked":
+				totals["rag_dataset_blocked"]++
+			}
+		}
 		if (item.MemoryCheckpointLag != nil && (item.MemoryCheckpointLag.Status == "warn" || item.MemoryCheckpointLag.Status == "danger")) ||
 			(item.RagCheckpointLagMax != nil && (item.RagCheckpointLagMax.Status == "warn" || item.RagCheckpointLagMax.Status == "danger")) {
 			totals["lagging"]++

@@ -155,4 +155,7 @@ execution.
 - `061-knowledge-pipeline-job-lease-freshness-diagnostics.md`: Go-owned
   knowledge pipeline diagnostics add per-group job lease freshness so stale or
   expired `group_memory_extract` / `rag_ingest` execution can be seen directly.
+- `062-knowledge-pipeline-rag-dataset-state-diagnostics.md`: Go-owned
+  knowledge pipeline diagnostics add per-dataset RAG state so dataset-specific
+  `rag_ingest` lag and lease degradation can be inspected directly.
 - Agent architecture boundary specs live under `../agent-architecture/`.

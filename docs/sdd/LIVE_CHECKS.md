@@ -20,6 +20,7 @@
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 `latest_source_seq` / `memory_checkpoint_lag` / `rag_checkpoint_lag_max`：真实群消息增长后，应能看到 lag 变化，并在高压积压时把 stalled target 计入 runtime overview `knowledge_pipeline_stalled_targets`。
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 checkpoint `age_seconds`：当群持续有新消息但 memory / rag checkpoint 不推进时，应先看到 `*_checkpoint_stagnant`，并把 stale/stagnant target 计入 runtime overview `knowledge_pipeline_stale_checkpoint_targets` / `knowledge_pipeline_stagnant_targets`。
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 stage `freshness_status` / `freshness_reason`：当 `group_memory_extract` 或 `rag_ingest` 长时间停在旧 lease 上时，应看到 `*_lease_stale` 或 `*_lease_expired`，并把目标计入 runtime overview `knowledge_pipeline_stale_active_lease_targets` / `knowledge_pipeline_expired_active_lease_targets`。
+- [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 `rag_datasets`：同一群绑定多个 RAG dataset 时，应能直接看到具体 `dataset_id` 的 lag / freshness / blocked 状态，并在 runtime overview `knowledge_pipeline_rag_dataset_*` summary 中聚合。
 - [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 上报 `starting` / `idle` / `running` / `stopped` 或 stale。
 - [ ] 验证 worker status fencing：故意以相同 `worker_id` 启动第二个 Python AI worker 进程时，Go `/v1/agent-worker-statuses/report` 应返回 409 conflict，原实例状态不被覆盖；原实例 stopped 或 lease 过期后新实例可接管。
 - [ ] 验证长任务 worker status 续租：触发一次耗时 image / knowledge / rag_eval / outbox 任务，确认 `/v1/agent-worker-statuses` 中对应 worker 的 `updated_at` 在任务运行期间持续推进，且 `lease_active=true`，不会误判 stale。

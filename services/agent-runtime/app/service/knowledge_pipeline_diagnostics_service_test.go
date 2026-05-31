@@ -93,6 +93,9 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if len(pipeline.RagCheckpoints) != 1 || pipeline.RagCheckpoints[0].CheckpointID != "ragflow:qq:27234224:ds-main" {
 		t.Fatalf("unexpected rag checkpoints: %#v", pipeline.RagCheckpoints)
 	}
+	if len(pipeline.RagDatasets) != 1 || pipeline.RagDatasets[0].DatasetID != "ds-main" || pipeline.RagDatasets[0].Status != "ok" {
+		t.Fatalf("unexpected rag datasets: %#v", pipeline.RagDatasets)
+	}
 	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
 	}
@@ -437,6 +440,9 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksExpiredActiveLease(t *testing.
 	if pipeline.RagIngest.FreshnessStatus != "danger" || pipeline.RagIngest.FreshnessReason != "expired_active_lease" || pipeline.RagIngest.ExpiredActiveLeases != 1 {
 		t.Fatalf("unexpected expired lease stage: %#v", pipeline.RagIngest)
 	}
+	if len(pipeline.RagDatasets) != 1 || pipeline.RagDatasets[0].DatasetID != "expired" || pipeline.RagDatasets[0].Status != "blocked" || !containsString(pipeline.RagDatasets[0].Reasons, "rag_ingest_lease_expired") {
+		t.Fatalf("unexpected expired rag dataset: %#v", pipeline.RagDatasets)
+	}
 }
 
 func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t *testing.T) {
@@ -483,7 +489,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 			"rag_ingest:qq:3219982:blocked:"+string(rune('a'+index)),
 			"rag_ingest",
 			"3219982",
-			map[string]string{"group_id": "3219982", "dataset_id": "blocked"},
+			map[string]string{"group_id": "3219982", "dataset_id": "ds-stalled"},
 			now.Add(-10*time.Minute).Add(time.Duration(index)*time.Second),
 		)); err != nil {
 			t.Fatalf("create blocked rag ingest job %d: %v", index, err)
@@ -511,7 +517,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stale_checkpoints"] != 1 || view.Totals["stalled"] != 1 || view.Totals["stagnant"] != 0 {
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stale_checkpoints"] != 1 || view.Totals["stalled"] != 1 || view.Totals["stagnant"] != 0 || view.Totals["rag_datasets"] != 1 || view.Totals["rag_dataset_blocked"] != 1 {
 		t.Fatalf("unexpected high-pressure totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
@@ -526,6 +532,9 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	}
 	if pipeline.RagCheckpointLagMax.AgeSeconds != 300 {
 		t.Fatalf("unexpected rag checkpoint lag age: %#v", pipeline.RagCheckpointLagMax)
+	}
+	if len(pipeline.RagDatasets) != 1 || pipeline.RagDatasets[0].DatasetID != "ds-stalled" || pipeline.RagDatasets[0].Status != "blocked" || !containsString(pipeline.RagDatasets[0].Reasons, "rag_checkpoint_stalled_under_pressure") {
+		t.Fatalf("unexpected blocked rag dataset: %#v", pipeline.RagDatasets)
 	}
 	if !containsString(pipeline.Reasons, "rag_checkpoint_stalled_under_pressure") {
 		t.Fatalf("expected rag_checkpoint_stalled_under_pressure reason: %#v", pipeline.Reasons)

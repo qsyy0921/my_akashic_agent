@@ -47,6 +47,7 @@
 - `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。
 - `Knowledge Pipeline Diagnostics` 已新增 checkpoint age / stagnant 诊断：Go 会按群暴露 memory / rag checkpoint `age_seconds`，区分短暂 lag 与长时间未推进的 stagnant pipeline，并把 stale/stagnant target 汇总到 runtime overview。
 - `Knowledge Pipeline Diagnostics` 已新增 per-group job lease freshness：Go 会按群暴露 `group_memory_extract` / `rag_ingest` stage 的 pending/active age、stale active lease、expired active lease，并把 lease 卡死直接提升到 pipeline warn/blocked。
+- `Knowledge Pipeline Diagnostics` 已新增 per-dataset RAG state：Go 现在能按群输出每个 `dataset_id` 的 `rag_ingest` stage、checkpoint、lag 和 degraded 状态，避免只看到群级 `rag_checkpoint_lag_max` 却不知道是哪一个 dataset 出问题。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。
