@@ -51,6 +51,7 @@ type RuntimeOverviewView struct {
 	ObserveTargets         ObserveTargetsView               `json:"observe_targets"`
 	ObserveCapture         ObserveCaptureDiagnosticsView    `json:"observe_capture"`
 	KnowledgePipelines     KnowledgePipelineDiagnosticsView `json:"knowledge_pipelines,omitempty"`
+	KnowledgeJobPlanner    KnowledgeJobPlannerPreviewView   `json:"knowledge_job_planner_preview,omitempty"`
 	ReceiverStatuses       ReceiverStatusesView             `json:"receiver_statuses"`
 	ReceiverLeases         ReceiverLeasesView               `json:"receiver_leases"`
 	SchedulerJobs          SchedulerJobDiagnosticsView      `json:"scheduler_jobs"`

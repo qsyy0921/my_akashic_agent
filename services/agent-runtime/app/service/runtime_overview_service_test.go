@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 )
 
@@ -304,6 +305,34 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			},
 			SideEffect: "none",
 		}},
+		KnowledgeJobPlanner: staticKnowledgeJobPlannerPreview{view: query.KnowledgeJobPlannerPreviewView{
+			Timestamp:       "2026-05-31T08:02:00Z",
+			Bucket:          29670242,
+			IntervalSeconds: 60,
+			Targets:         1,
+			SkippedTargets:  2,
+			TotalJobs:       3,
+			GroupMemoryJobs: 1,
+			RagIngestJobs:   2,
+			Groups:          []string{"27234224"},
+			Plans: []query.KnowledgeJobPlannerTargetPlanView{{
+				TargetID: "qq:1049511700:group:27234224",
+				Channel: query.ObserveTargetChannelView{
+					Kind:             "qq",
+					AccountID:        "1049511700",
+					ConversationID:   "27234224",
+					ConversationType: "group",
+				},
+				Datasets: []string{"ds-main", "ds-guides"},
+				Jobs: []query.KnowledgeJobPlannerJobPlanView{{
+					JobID:     "group_memory_extract:qq:27234224:29670242",
+					JobType:   "group_memory_extract",
+					AgentID:   "akashic-python-worker",
+					DedupeKey: "knowledge:group_memory_extract:qq:1049511700:27234224",
+				}},
+			}},
+			SideEffect: "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -411,6 +440,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_stalled_targets"] != 1 {
 		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
 	}
+	if view.Summary["knowledge_job_planner_preview_targets"] != 1 ||
+		view.Summary["knowledge_job_planner_preview_skipped_targets"] != 2 ||
+		view.Summary["knowledge_job_planner_preview_groups"] != 1 ||
+		view.Summary["knowledge_job_planner_preview_total_jobs"] != 3 ||
+		view.Summary["knowledge_job_planner_preview_group_memory_jobs"] != 1 ||
+		view.Summary["knowledge_job_planner_preview_rag_ingest_jobs"] != 2 {
+		t.Fatalf("unexpected knowledge planner preview summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -452,6 +489,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
+	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_preview", "3/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
@@ -482,6 +521,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.AgentJobWorkerCoverage[3].CoverageStatus != "warn" ||
 		view.AgentJobWorkerCoverage[3].CoverageReason != "failed_worker_present" {
 		t.Fatalf("unexpected rag_eval coverage item: %+v", view.AgentJobWorkerCoverage[3])
+	}
+	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
+		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
 	}
 }
 
@@ -620,6 +662,14 @@ type staticKnowledgePipelineDiagnostics struct {
 }
 
 func (s staticKnowledgePipelineDiagnostics) GetKnowledgePipelineDiagnostics(context.Context, query.KnowledgePipelineDiagnosticsFilter) (query.KnowledgePipelineDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgeJobPlannerPreview struct {
+	view query.KnowledgeJobPlannerPreviewView
+}
+
+func (s staticKnowledgeJobPlannerPreview) PreviewKnowledgeJobs(context.Context, command.PlanKnowledgeJobsCommand) (query.KnowledgeJobPlannerPreviewView, error) {
 	return s.view, nil
 }
 

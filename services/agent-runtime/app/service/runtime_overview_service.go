@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 )
 
@@ -30,6 +31,8 @@ type RuntimeOverviewDeps struct {
 	ObserveTargets       runtimeObserveTargetsGetter
 	ObserveCapture       runtimeObserveCaptureGetter
 	KnowledgePipelines   runtimeKnowledgePipelineDiagnosticsGetter
+	KnowledgeJobPlanner  runtimeKnowledgeJobPlannerPreviewer
+	KnowledgePlannerPlan command.PlanKnowledgeJobsCommand
 	ReceiverStatuses     runtimeReceiverStatusesGetter
 	ReceiverLeases       runtimeReceiverLeasesGetter
 	SchedulerJobs        runtimeSchedulerJobDiagnosticsGetter
@@ -91,6 +94,10 @@ type runtimeKnowledgePipelineDiagnosticsGetter interface {
 	GetKnowledgePipelineDiagnostics(ctx context.Context, filter query.KnowledgePipelineDiagnosticsFilter) (query.KnowledgePipelineDiagnosticsView, error)
 }
 
+type runtimeKnowledgeJobPlannerPreviewer interface {
+	PreviewKnowledgeJobs(ctx context.Context, cmd command.PlanKnowledgeJobsCommand) (query.KnowledgeJobPlannerPreviewView, error)
+}
+
 type runtimeReceiverStatusesGetter interface {
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
 }
@@ -141,6 +148,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets     query.ObserveTargetsView
 		observeCapture     query.ObserveCaptureDiagnosticsView
 		knowledgePipelines query.KnowledgePipelineDiagnosticsView
+		knowledgePlanner   query.KnowledgeJobPlannerPreviewView
 		receiverStatuses   query.ReceiverStatusesView
 		receiverLeases     query.ReceiverLeasesView
 		schedulerJobs      query.SchedulerJobDiagnosticsView
@@ -270,6 +278,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			knowledgePipelines = item
 		}
 
+		if deps.KnowledgeJobPlanner != nil {
+			if item, err := deps.KnowledgeJobPlanner.PreviewKnowledgeJobs(ctx, deps.KnowledgePlannerPlan); err != nil {
+				errors = append(errors, runtimeOverviewError("knowledge-job-planner-preview", err))
+			} else {
+				knowledgePlanner = item
+			}
+		}
+
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
 		} else if item, err := deps.ReceiverStatuses.ListReceiverStatuses(ctx); err != nil {
@@ -311,6 +327,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets,
 		observeCapture,
 		knowledgePipelines,
+		knowledgePlanner,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -332,6 +349,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets,
 		observeCapture,
 		knowledgePipelines,
+		knowledgePlanner,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -350,6 +368,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		ObserveTargets:         observeTargets,
 		ObserveCapture:         observeCapture,
 		KnowledgePipelines:     knowledgePipelines,
+		KnowledgeJobPlanner:    knowledgePlanner,
 		ReceiverStatuses:       receiverStatuses,
 		ReceiverLeases:         receiverLeases,
 		SchedulerJobs:          schedulerJobs,
@@ -384,6 +403,7 @@ func runtimeOverviewSummary(
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
+	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -513,6 +533,12 @@ func runtimeOverviewSummary(
 		"knowledge_pipeline_rag_dataset_warning":                intFromMap(knowledgePipelines.Totals, "rag_dataset_warning"),
 		"knowledge_pipeline_rag_dataset_blocked":                intFromMap(knowledgePipelines.Totals, "rag_dataset_blocked"),
 		"knowledge_pipeline_stalled_targets":                    intFromMap(knowledgePipelines.Totals, "stalled"),
+		"knowledge_job_planner_preview_targets":                 knowledgePlanner.Targets,
+		"knowledge_job_planner_preview_skipped_targets":         knowledgePlanner.SkippedTargets,
+		"knowledge_job_planner_preview_groups":                  len(knowledgePlanner.Groups),
+		"knowledge_job_planner_preview_total_jobs":              knowledgePlanner.TotalJobs,
+		"knowledge_job_planner_preview_group_memory_jobs":       knowledgePlanner.GroupMemoryJobs,
+		"knowledge_job_planner_preview_rag_ingest_jobs":         knowledgePlanner.RagIngestJobs,
 		"receiver_statuses":                                     intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":                             intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":                             intFromMap(receiverStatuses.Totals, "suspended"),
@@ -582,6 +608,7 @@ func runtimeOverviewCards(
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
+	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -611,6 +638,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
 		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
+		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("scheduler_jobs", "Scheduler Jobs", schedulerJobValue(schedulerJobs), schedulerJobStatus(schedulerJobs), map[string]any{"scheduler_jobs": schedulerJobs}),
@@ -863,6 +891,17 @@ func knowledgePipelineCardStatus(view query.KnowledgePipelineDiagnosticsView) st
 
 func knowledgePipelineCardValue(view query.KnowledgePipelineDiagnosticsView) string {
 	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "targets"))
+}
+
+func knowledgePlannerPreviewStatus(view query.KnowledgeJobPlannerPreviewView) string {
+	if view.SideEffect == "" || view.TotalJobs == 0 {
+		return "muted"
+	}
+	return "ok"
+}
+
+func knowledgePlannerPreviewValue(view query.KnowledgeJobPlannerPreviewView) string {
+	return fmt.Sprintf("%d/%d", view.TotalJobs, view.Targets)
 }
 
 func receiverStatusStatus(view query.ReceiverStatusesView) string {

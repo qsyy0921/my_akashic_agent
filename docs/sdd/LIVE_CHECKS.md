@@ -15,6 +15,7 @@
 
 - [ ] 观察 Go `AgentJob` admission dedupe live 效果：重启 Python knowledge worker 后确认 `group_memory_extract` / `rag_ingest` pending 数不再按分钟无界增长。
 - [ ] 启用真实 `knowledge_job_planner` 前先查看 `/v1/knowledge-job-planner/preview`：应看到本轮 observe-only QQ 群、`group_memory_extract` / `rag_ingest` 计划 job、`side_effect=none`，并确认调用后 `/v1/jobs` 未新增记录。
+- [ ] 查看 `/v1/runtime-overview` 的 `knowledge_job_planner_preview_*` summary 和 `Knowledge Planner` card：应与 `/v1/knowledge-job-planner/preview` 的 targets / groups / total jobs 一致，且不新增 `/v1/jobs` 记录。
 - [ ] 启用 `AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED=true` 后观察 `/v1/runtime-config` 和 `/v1/runtime-workers`：应显示 `knowledge_job_planner_enabled=true` 且 `knowledge_job_planner.running=true`；Python knowledge worker 日志不再出现 legacy enqueue，但仍能 lease/execute `group_memory_extract` / `rag_ingest`。
 - [ ] 查看 `/v1/job-metrics` 与 `/v1/runtime-overview.summary`：当 `group_memory_extract` / `rag_ingest` 堆积时，`pressure.by_type` 应反映 pending / active / oldest_pending_age_seconds，`agent_job_pressure_high_job_types` 应随 high pressure job type 增长。
 - [ ] 查看 `/v1/runtime-overview` 的 `agent_job_worker_coverage_*` 和 `Agent Job Worker Coverage` card：当 knowledge / rag_eval / image job 堆积时，应能区分 no active worker、stale worker、failed worker 和 active worker available。

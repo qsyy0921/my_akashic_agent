@@ -862,6 +862,10 @@ combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
 lag, checkpoint-age diagnostics, stage lease freshness, configured dataset
 bindings, per-dataset RAG state, and the last successful `rag_ingest`
 snapshot.
+`Knowledge Planner` summarizes the read-only planner preview from
+`/v1/knowledge-job-planner/preview`, including planned observe-only QQ targets,
+groups, `group_memory_extract` jobs, and `rag_ingest` jobs before real planner
+admission is enabled.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

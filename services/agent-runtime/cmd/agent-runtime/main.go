@@ -322,6 +322,8 @@ func main() {
 		ObserveTargets:       observeTargets,
 		ObserveCapture:       observeCaptureDiagnostics,
 		KnowledgePipelines:   knowledgePipelines,
+		KnowledgeJobPlanner:  knowledgeJobPlannerPreview,
+		KnowledgePlannerPlan: knowledgeJobPlannerPreviewDefaults,
 		ReceiverStatuses:     receiverStatuses,
 		ReceiverLeases:       receiverStatuses,
 		SchedulerJobs:        schedulerJobs,

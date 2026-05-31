@@ -27,7 +27,7 @@
 
 ## Knowledge / Memory / RAG
 
-- 若前端需要知识任务启用前的可视化门禁，可把 `/v1/knowledge-job-planner/preview` 接入 dashboard 面板；当前本轮只提供稳定 Go API，避免扩大 UI 范围。
+- 若前端需要更完整的知识任务启用前可视化门禁，可把 runtime overview 中的 `Knowledge Planner` card 做成 dashboard drilldown；当前已提供稳定 Go API 和 aggregate，避免扩大 UI 范围。
 - group memory / RAG ingestion 的 AgentJob 生命周期与定期 admission 已交给 Go；后续只在出现明确需求时再推进优先级、并发控制、dataset/index readiness 或外部 MQ result-ack 的 live cutover，Python 继续做 AI worker 和策略实验。
 - 当前 source-seq lag、checkpoint age/stagnant、per-group stage lease freshness 和 per-dataset RAG state 已落地；后续若要把群知识编排再往前推进，可继续增加更接近外部索引的 dataset/index state，但先保持只读控制面。
 - 当前配置期 dataset 绑定也已纳入 observe-target metadata；后续若继续推进，可再把更稳定的 dataset/index readiness、文档数、最近 ingest 时间等外部索引元数据接入 Go，但前提仍是只读 control-plane。

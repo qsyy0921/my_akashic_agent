@@ -171,4 +171,7 @@ execution.
 - `066-knowledge-job-planner-preview-diagnostics.md`: Go exposes a read-only
   planner preview so observe-only knowledge job admission can be preflighted
   without creating AgentJob records.
+- `067-runtime-overview-knowledge-planner-preview.md`: Runtime overview
+  aggregates the read-only planner preview so dashboard/operator entrypoints can
+  see planned knowledge jobs before enabling real admission.
 - Agent architecture boundary specs live under `../agent-architecture/`.
