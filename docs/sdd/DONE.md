@@ -69,6 +69,7 @@
 - 已实现 Go-owned knowledge job planner readiness：`/v1/knowledge-job-planner/readiness` 聚合 preview、runtime config、runtime worker 和 Python knowledge worker heartbeat，输出 ready/reason/blockers，作为启用真实 admission 前的只读门禁。
 - runtime overview 已聚合 knowledge job planner readiness：summary/card/detail 可直接看到 planner 是否 ready、blocker 数、planner enabled/running 状态和 Python knowledge worker 可用性，仍保持只读且不创建 AgentJob。
 - 已实现 Go-owned knowledge job planner cutover plan：`/v1/knowledge-job-planner/cutover-plan` 输出 Go planner 与 Python legacy enqueue 的当前/目标 admission owner、required/enable/verify/rollback steps 和 blockers；runtime overview 已聚合 `Knowledge Planner Cutover`，全程只读，不改环境变量、不创建 AgentJob、不执行 group memory/RAG/AI。
+- Python dashboard 已规范化 Go-owned `knowledge_job_planner_cutover_plan`：`/api/dashboard/runtime-overview` 会暴露 cutover summary 默认值、`Knowledge Planner Cutover` card 和只读 readiness/step/detail，仍不接管 admission、不创建 AgentJob、不执行 group memory/RAG/AI。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。

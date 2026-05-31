@@ -669,6 +669,18 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_content_unavailable": 1,
             "media_asset_content_disabled": 0,
             "media_asset_content_error": 0,
+            "knowledge_job_planner_cutover_plan_ready": False,
+            "knowledge_job_planner_cutover_plan_decision": "blocked",
+            "knowledge_job_planner_cutover_plan_blockers": 2,
+            "knowledge_job_planner_cutover_plan_current_owner": (
+                "python_legacy_knowledge_enqueue"
+            ),
+            "knowledge_job_planner_cutover_plan_desired_owner": (
+                "go_runtime_knowledge_job_planner"
+            ),
+            "knowledge_job_planner_cutover_plan_recommended_owner": (
+                "go_runtime_knowledge_job_planner"
+            ),
             "receiver_statuses": 2,
             "receiver_status_connected": 1,
             "receiver_status_suspended": 1,
@@ -714,6 +726,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
+            {
+                "id": "knowledge_job_planner_cutover_plan",
+                "label": "Knowledge Planner Cutover",
+                "value": "blocked:2",
+                "status": "warn",
+            },
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
             {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
             {
@@ -798,6 +816,72 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "unavailable": 1,
                 "disabled": 0,
                 "error": 0,
+            },
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "knowledge_job_planner_cutover_plan": {
+            "ready": False,
+            "decision": "blocked",
+            "desired_admission_owner": "go_runtime_knowledge_job_planner",
+            "recommended_admission_owner": "go_runtime_knowledge_job_planner",
+            "current_admission_owner": "python_legacy_knowledge_enqueue",
+            "readiness": {
+                "ready": False,
+                "reason": "knowledge_job_planner_not_ready",
+                "planner_enabled": True,
+                "planner_running": False,
+                "knowledge_worker_ready": False,
+                "knowledge_worker_active": 0,
+                "knowledge_worker_stale": 1,
+                "knowledge_worker_failed": 0,
+                "knowledge_worker_stopped": 1,
+                "blockers": [
+                    "knowledge_job_planner_worker_not_running",
+                    "knowledge_worker_unavailable",
+                ],
+                "side_effect": "none",
+            },
+            "required_checks": [
+                {
+                    "step_index": 1,
+                    "phase": "precheck",
+                    "action": "check_knowledge_job_planner_readiness",
+                    "method": "GET",
+                    "endpoint": "/v1/knowledge-job-planner/readiness",
+                }
+            ],
+            "enable_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "enable",
+                    "action": "enable_go_knowledge_job_planner",
+                    "env": {"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "true"},
+                }
+            ],
+            "verification_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "verify",
+                    "action": "read_runtime_workers",
+                    "method": "GET",
+                    "endpoint": "/v1/runtime-workers",
+                }
+            ],
+            "rollback_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "rollback",
+                    "action": "disable_go_knowledge_job_planner",
+                    "env": {"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "false"},
+                }
+            ],
+            "blockers": [
+                "knowledge_job_planner_worker_not_running",
+                "knowledge_worker_unavailable",
+            ],
+            "attributes": {
+                "planned_by": "agent_runtime_knowledge_job_planner_cutover_plan"
             },
             "notes": ["read-only"],
             "side_effect": "none",
@@ -921,6 +1005,18 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["media_asset_content_ready"] == 1
     assert payload["summary"]["media_asset_content_forbidden"] == 1
     assert payload["summary"]["media_asset_content_unavailable"] == 1
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_ready"] is False
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_decision"] == "blocked"
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_blockers"] == 2
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_current_owner"] == (
+        "python_legacy_knowledge_enqueue"
+    )
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_desired_owner"] == (
+        "go_runtime_knowledge_job_planner"
+    )
+    assert payload["summary"]["knowledge_job_planner_cutover_plan_recommended_owner"] == (
+        "go_runtime_knowledge_job_planner"
+    )
     assert payload["summary"]["receiver_statuses"] == 2
     assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["receiver_leases"] == 1
@@ -977,6 +1073,27 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
     )
+    cutover_card = next(
+        item for item in payload["cards"] if item["id"] == "knowledge_job_planner_cutover_plan"
+    )
+    assert cutover_card["value"] == "blocked:2"
+    assert cutover_card["status"] == "warn"
+    cutover_plan = payload["knowledge_job_planner_cutover_plan"]
+    assert cutover_plan["decision"] == "blocked"
+    assert cutover_plan["current_admission_owner"] == "python_legacy_knowledge_enqueue"
+    assert cutover_plan["desired_admission_owner"] == "go_runtime_knowledge_job_planner"
+    assert cutover_plan["readiness"]["reason"] == "knowledge_job_planner_not_ready"
+    assert cutover_plan["readiness"]["knowledge_worker_stale"] == 1
+    assert cutover_plan["required_checks"][0]["endpoint"] == (
+        "/v1/knowledge-job-planner/readiness"
+    )
+    assert cutover_plan["enable_steps"][0]["env"] == {
+        "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED": "true"
+    }
+    assert cutover_plan["rollback_steps"][0]["action"] == (
+        "disable_go_knowledge_job_planner"
+    )
+    assert cutover_plan["side_effect"] == "none"
     receiver_card = next(item for item in payload["cards"] if item["id"] == "receiver_statuses")
     assert receiver_card["status"] == "warn"
     assert payload["receiver_statuses"]["receivers"][1]["reason"] == "getupdates_conflict"

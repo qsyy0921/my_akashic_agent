@@ -1114,6 +1114,11 @@ def _normalize_go_runtime_overview(
     media_asset_content = _normalize_media_asset_content_diagnostics(
         _mapping_or_empty(item.get("media_asset_content_diagnostics"))
     )
+    knowledge_job_planner_cutover_plan = (
+        _normalize_knowledge_job_planner_cutover_plan(
+            _mapping_or_empty(item.get("knowledge_job_planner_cutover_plan"))
+        )
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1162,6 +1167,7 @@ def _normalize_go_runtime_overview(
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
         "media_asset_content_diagnostics": media_asset_content,
+        "knowledge_job_planner_cutover_plan": knowledge_job_planner_cutover_plan,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
         "scheduler_jobs": scheduler_jobs,
@@ -1236,6 +1242,12 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "media_asset_content_unavailable": 0,
         "media_asset_content_disabled": 0,
         "media_asset_content_error": 0,
+        "knowledge_job_planner_cutover_plan_ready": False,
+        "knowledge_job_planner_cutover_plan_decision": "unknown",
+        "knowledge_job_planner_cutover_plan_blockers": 0,
+        "knowledge_job_planner_cutover_plan_current_owner": "unknown",
+        "knowledge_job_planner_cutover_plan_desired_owner": "unknown",
+        "knowledge_job_planner_cutover_plan_recommended_owner": "unknown",
         "receiver_statuses": 0,
         "receiver_status_connected": 0,
         "receiver_status_suspended": 0,
@@ -1538,6 +1550,108 @@ def _normalize_media_asset_content_item(item: Mapping[str, Any]) -> dict[str, An
         "content_mime_type": _text(item.get("content_mime_type")),
         "content_size_bytes": _int_value(item.get("content_size_bytes"), fallback=0),
         "updated_at": _text(item.get("updated_at")),
+    }
+
+
+def _normalize_knowledge_job_planner_cutover_plan(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    blockers = item.get("blockers")
+    if not isinstance(blockers, list):
+        blockers = []
+    notes = item.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+    return {
+        "ready": bool(item.get("ready")),
+        "decision": _text(item.get("decision") or "unknown"),
+        "desired_admission_owner": _text(
+            item.get("desired_admission_owner") or "unknown"
+        ),
+        "recommended_admission_owner": _text(
+            item.get("recommended_admission_owner") or "unknown"
+        ),
+        "current_admission_owner": _text(
+            item.get("current_admission_owner") or "unknown"
+        ),
+        "readiness": _normalize_knowledge_job_planner_readiness_summary(
+            _mapping_or_empty(item.get("readiness"))
+        ),
+        "required_checks": _normalize_knowledge_job_planner_cutover_steps(
+            item.get("required_checks")
+        ),
+        "enable_steps": _normalize_knowledge_job_planner_cutover_steps(
+            item.get("enable_steps")
+        ),
+        "verification_steps": _normalize_knowledge_job_planner_cutover_steps(
+            item.get("verification_steps")
+        ),
+        "rollback_steps": _normalize_knowledge_job_planner_cutover_steps(
+            item.get("rollback_steps")
+        ),
+        "blockers": [str(value) for value in blockers],
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": [str(value) for value in notes],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_knowledge_job_planner_readiness_summary(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    blockers = item.get("blockers")
+    if not isinstance(blockers, list):
+        blockers = []
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason")),
+        "planner_enabled": bool(item.get("planner_enabled")),
+        "planner_running": bool(item.get("planner_running")),
+        "knowledge_worker_ready": bool(item.get("knowledge_worker_ready")),
+        "knowledge_worker_active": _int_value(
+            item.get("knowledge_worker_active"),
+            fallback=0,
+        ),
+        "knowledge_worker_stale": _int_value(
+            item.get("knowledge_worker_stale"),
+            fallback=0,
+        ),
+        "knowledge_worker_failed": _int_value(
+            item.get("knowledge_worker_failed"),
+            fallback=0,
+        ),
+        "knowledge_worker_stopped": _int_value(
+            item.get("knowledge_worker_stopped"),
+            fallback=0,
+        ),
+        "blockers": [str(value) for value in blockers],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_knowledge_job_planner_cutover_steps(
+    value: object,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        _normalize_knowledge_job_planner_cutover_step(item)
+        for item in value
+        if isinstance(item, Mapping)
+    ]
+
+
+def _normalize_knowledge_job_planner_cutover_step(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "step_index": _int_value(item.get("step_index"), fallback=0),
+        "phase": _text(item.get("phase")),
+        "action": _text(item.get("action")),
+        "detail": _text(item.get("detail")),
+        "method": _text(item.get("method")),
+        "endpoint": _text(item.get("endpoint")),
+        "env": _mapping_or_empty(item.get("env")),
     }
 
 

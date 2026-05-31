@@ -227,4 +227,7 @@ execution.
   knowledge job planner cutover plan and runtime overview aggregate so
   observe-only memory/RAG admission can be enabled or rolled back deliberately
   without creating jobs or executing AI.
+- `085-dashboard-knowledge-planner-cutover-plan.md`: Python dashboard
+  normalizes the Go-owned knowledge planner cutover plan from runtime overview
+  without taking ownership of admission, jobs, worker startup or AI execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.
