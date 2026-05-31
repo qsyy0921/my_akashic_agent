@@ -244,6 +244,54 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"targets": 1, "enabled": 1, "ready": 0, "warning": 1, "blocked": 0, "text_covered": 1, "image_covered": 1, "file_covered": 0},
 			SideEffect: "none",
 		}},
+		KnowledgePipelines: staticKnowledgePipelineDiagnostics{view: query.KnowledgePipelineDiagnosticsView{
+			Totals: map[string]int{
+				"targets":              2,
+				"enabled":              2,
+				"ready":                1,
+				"warning":              0,
+				"blocked":              1,
+				"receiver_connected":   2,
+				"group_memory_pending": 1,
+				"rag_ingest_pending":   1,
+				"high_pressure":        1,
+				"memory_checkpoints":   1,
+				"rag_checkpoints":      2,
+			},
+			Pipelines: []query.KnowledgePipelineView{
+				{
+					TargetID: "qq:1049511700:group:27234224",
+					Channel: query.ObserveTargetChannelView{
+						Kind:             "qq",
+						AccountID:        "1049511700",
+						ConversationID:   "27234224",
+						ConversationType: "group",
+					},
+					Enabled:           true,
+					ObserveOnly:       true,
+					CaptureStatus:     "ok",
+					ReceiverConnected: true,
+					Status:            "ok",
+					Reasons:           []string{"pipeline_ready"},
+				},
+				{
+					TargetID: "qq:1049511700:group:3219982",
+					Channel: query.ObserveTargetChannelView{
+						Kind:             "qq",
+						AccountID:        "1049511700",
+						ConversationID:   "3219982",
+						ConversationType: "group",
+					},
+					Enabled:           true,
+					ObserveOnly:       true,
+					CaptureStatus:     "warn",
+					ReceiverConnected: true,
+					Status:            "blocked",
+					Reasons:           []string{"rag_ingest_worker_blocked"},
+				},
+			},
+			SideEffect: "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -333,6 +381,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["observe_capture_targets"] != 1 || view.Summary["observe_capture_warning"] != 1 || view.Summary["observe_capture_file"] != 0 {
 		t.Fatalf("unexpected observe capture summary: %#v", view.Summary)
 	}
+	if view.Summary["knowledge_pipeline_targets"] != 2 ||
+		view.Summary["knowledge_pipeline_ready"] != 1 ||
+		view.Summary["knowledge_pipeline_warning"] != 0 ||
+		view.Summary["knowledge_pipeline_blocked"] != 1 {
+		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -372,6 +426,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
@@ -532,6 +588,14 @@ type staticObserveCaptureDiagnostics struct {
 }
 
 func (s staticObserveCaptureDiagnostics) GetObserveCaptureDiagnostics(context.Context, query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgePipelineDiagnostics struct {
+	view query.KnowledgePipelineDiagnosticsView
+}
+
+func (s staticKnowledgePipelineDiagnostics) GetKnowledgePipelineDiagnostics(context.Context, query.KnowledgePipelineDiagnosticsFilter) (query.KnowledgePipelineDiagnosticsView, error) {
 	return s.view, nil
 }
 

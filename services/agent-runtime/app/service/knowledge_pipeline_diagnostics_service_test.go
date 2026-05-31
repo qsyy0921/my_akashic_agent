@@ -1,0 +1,266 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
+)
+
+func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "27234224")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-text", "ready text", nil)
+	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-image", "ready image", []command.AttachmentCommand{{
+		ID:       "asset:ready:image:1",
+		Kind:     "image",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/ready-image.png",
+		MimeType: "image/png",
+		Name:     "ready-image.png",
+	}})
+	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-file", "ready file", []command.AttachmentCommand{{
+		ID:       "asset:ready:file:1",
+		Kind:     "file",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/ready-file.txt",
+		MimeType: "text/plain",
+		Name:     "ready-file.txt",
+	}})
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "idle",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	checkpoints := NewKnowledgeCheckpointService(store)
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "memory:qq:27234224",
+		Cursor:       64,
+		Metadata:     map[string]string{"group_id": "27234224"},
+		Timestamp:    now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert memory checkpoint: %v", err)
+	}
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "ragflow:qq:27234224:ds-main",
+		Cursor:       32,
+		Metadata:     map[string]string{"group_id": "27234224", "dataset_id": "ds-main"},
+		Timestamp:    now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert rag checkpoint: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, map[string]bool{
+		"asset:ready:image:1": true,
+		"asset:ready:file:1":  true,
+	})
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["ready"] != 1 || view.Totals["blocked"] != 0 {
+		t.Fatalf("unexpected totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "ok" || pipeline.CaptureStatus != "ok" {
+		t.Fatalf("unexpected ready pipeline: %#v", pipeline)
+	}
+	if pipeline.MemoryCheckpoint == nil || pipeline.MemoryCheckpoint.CheckpointID != "memory:qq:27234224" {
+		t.Fatalf("unexpected memory checkpoint: %#v", pipeline.MemoryCheckpoint)
+	}
+	if len(pipeline.RagCheckpoints) != 1 || pipeline.RagCheckpoints[0].CheckpointID != "ragflow:qq:27234224:ds-main" {
+		t.Fatalf("unexpected rag checkpoints: %#v", pipeline.RagCheckpoints)
+	}
+	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
+		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceBlocksCaptureFailure(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "3219982")
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, nil)
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 {
+		t.Fatalf("unexpected capture-blocked totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "blocked" || pipeline.CaptureStatus != "danger" || !containsString(pipeline.Reasons, "capture_blocked") {
+		t.Fatalf("unexpected capture-blocked pipeline: %#v", pipeline)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureWithoutWorker(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "3219982")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-text", "blocked text", nil)
+	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-image", "blocked image", []command.AttachmentCommand{{
+		ID:       "asset:blocked:image:1",
+		Kind:     "image",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/blocked-image.png",
+		MimeType: "image/png",
+		Name:     "blocked-image.png",
+	}})
+	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-file", "blocked file", []command.AttachmentCommand{{
+		ID:       "asset:blocked:file:1",
+		Kind:     "file",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/blocked-file.txt",
+		MimeType: "text/plain",
+		Name:     "blocked-file.txt",
+	}})
+
+	jobs := NewAgentJobService(store)
+	for index := 0; index < 10; index++ {
+		if _, err := jobs.Create(ctx, knowledgePipelineJobCommand(
+			"rag_ingest:qq:3219982:blocked:"+string(rune('a'+index)),
+			"rag_ingest",
+			"3219982",
+			map[string]string{"group_id": "3219982", "dataset_id": "blocked"},
+			now.Add(-10*time.Minute).Add(time.Duration(index)*time.Second),
+		)); err != nil {
+			t.Fatalf("create blocked rag ingest job %d: %v", index, err)
+		}
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, map[string]bool{
+		"asset:blocked:image:1": true,
+		"asset:blocked:file:1":  true,
+	})
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 {
+		t.Fatalf("unexpected high-pressure totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "blocked" || pipeline.RagIngest.Pending != 10 || !pipeline.RagIngest.HighPressure {
+		t.Fatalf("unexpected high-pressure pipeline: %#v", pipeline)
+	}
+	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[1].JobType != "rag_ingest" || pipeline.WorkerCoverage[1].CoverageStatus != "danger" {
+		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
+	}
+	if !containsString(pipeline.Reasons, "rag_ingest_worker_blocked") {
+		t.Fatalf("expected rag_ingest_worker_blocked reason: %#v", pipeline.Reasons)
+	}
+}
+
+func newKnowledgePipelineDiagnosticsServiceForTest(
+	store *memory.Store,
+	observeTargets *ObserveTargetService,
+	receiverStatuses *ReceiverStatusService,
+	agentWorkers *AgentWorkerStatusService,
+	ready map[string]bool,
+) *KnowledgePipelineDiagnosticsService {
+	capture := NewObserveCaptureDiagnosticsService(
+		observeTargets,
+		receiverStatuses,
+		store,
+		store,
+		fakeObserveCaptureContentReader{ready: ready},
+	)
+	return NewKnowledgePipelineDiagnosticsService(
+		observeTargets,
+		capture,
+		agentWorkers,
+		store,
+		store,
+	)
+}
+
+func ingestObserveMessageForGroup(t *testing.T, store *memory.Store, groupID string, suffix string, content string, attachments []command.AttachmentCommand) {
+	t.Helper()
+	ingestor := NewMessageIngestServiceWithRuntimeStores(
+		store,
+		store,
+		store,
+		store,
+		domainservice.NewProvenanceClassifier([]string{"1049511700"}),
+		domainservice.NewLoopGuard([]string{"1049511700"}, 15*time.Second, 6),
+		store,
+		store,
+	)
+	_, err := ingestor.ShadowIngest(context.Background(), command.IngestMessageCommand{
+		EventID: "qq:1049511700:group:" + groupID + ":" + suffix,
+		Channel: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   groupID,
+			ConversationType: "group",
+		},
+		Sender: command.SenderCommand{
+			ID:   "2948770636",
+			Kind: "human",
+		},
+		Content:     content,
+		Attachments: attachments,
+		Timestamp:   time.Now().UTC(),
+		Metadata: map[string]string{
+			"observe_only": "true",
+			"session_key":  "qq:gqq:" + groupID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ingest observe message for group %s: %v", groupID, err)
+	}
+}
+
+func knowledgePipelineJobCommand(jobID string, jobType string, groupID string, payload map[string]string, timestamp time.Time) command.CreateAgentJobCommand {
+	return command.CreateAgentJobCommand{
+		JobID:   jobID,
+		JobType: jobType,
+		AgentID: "knowledge-worker",
+		Route: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   groupID,
+			ConversationType: "group",
+		},
+		Payload:     payload,
+		MaxAttempts: 2,
+		Timestamp:   timestamp,
+	}
+}

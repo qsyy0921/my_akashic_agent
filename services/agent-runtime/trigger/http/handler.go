@@ -73,6 +73,13 @@ func RegisterKnowledgeDiagnosticsRoutes(
 	mux.Handle("/v1/knowledge-worker-diagnostics", KnowledgeWorkerDiagnosticsHandler(diagnostics))
 }
 
+func RegisterKnowledgePipelineDiagnosticsRoutes(
+	mux *http.ServeMux,
+	diagnostics inport.KnowledgePipelineDiagnosticsViewer,
+) {
+	mux.Handle("/v1/knowledge-pipeline-diagnostics", KnowledgePipelineDiagnosticsHandler(diagnostics))
+}
+
 func RegisterAgentJobEventRoutes(
 	mux *http.ServeMux,
 	jobEvents inport.AgentJobEventViewer,
@@ -193,6 +200,31 @@ func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsVie
 		}
 		view, err := viewer.GetObserveCaptureDiagnostics(r.Context(), query.ObserveCaptureDiagnosticsFilter{
 			Limit: parsePositiveInt(r.URL.Query().Get("limit"), 200, 1000),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: view,
+		})
+	})
+}
+
+func KnowledgePipelineDiagnosticsHandler(viewer inport.KnowledgePipelineDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if viewer == nil {
+			http.Error(w, "knowledge pipeline diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := viewer.GetKnowledgePipelineDiagnostics(r.Context(), query.KnowledgePipelineDiagnosticsFilter{
+			Limit:             parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

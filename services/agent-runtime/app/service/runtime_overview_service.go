@@ -29,6 +29,7 @@ type RuntimeOverviewDeps struct {
 	AgentWorkers         runtimeAgentWorkerStatusesGetter
 	ObserveTargets       runtimeObserveTargetsGetter
 	ObserveCapture       runtimeObserveCaptureGetter
+	KnowledgePipelines   runtimeKnowledgePipelineDiagnosticsGetter
 	ReceiverStatuses     runtimeReceiverStatusesGetter
 	ReceiverLeases       runtimeReceiverLeasesGetter
 	SchedulerJobs        runtimeSchedulerJobDiagnosticsGetter
@@ -86,6 +87,10 @@ type runtimeObserveCaptureGetter interface {
 	GetObserveCaptureDiagnostics(ctx context.Context, filter query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error)
 }
 
+type runtimeKnowledgePipelineDiagnosticsGetter interface {
+	GetKnowledgePipelineDiagnostics(ctx context.Context, filter query.KnowledgePipelineDiagnosticsFilter) (query.KnowledgePipelineDiagnosticsView, error)
+}
+
 type runtimeReceiverStatusesGetter interface {
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
 }
@@ -121,23 +126,24 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	}
 
 	var (
-		errors           []query.RuntimeOverviewErrorView
-		deliveryAdapters []query.DeliveryAdapterDiagnosticsView
-		queueBackend     query.QueueBackendView
-		runtimeConfig    query.RuntimeConfigView
-		sendLedger       query.SendLedgerMetricsView
-		inboxMetrics     query.InboxMetricsView
-		inboundDedupe    query.InboundDedupeMetricsView
-		agentJobMetrics  query.AgentJobMetricsView
-		outboxMetrics    query.OutboxMetricsView
-		diagnostics      query.KnowledgeWorkerDiagnosticsView
-		runtimeWorkers   query.RuntimeWorkerDiagnosticsView
-		agentWorkers     query.AgentWorkerStatusesView
-		observeTargets   query.ObserveTargetsView
-		observeCapture   query.ObserveCaptureDiagnosticsView
-		receiverStatuses query.ReceiverStatusesView
-		receiverLeases   query.ReceiverLeasesView
-		schedulerJobs    query.SchedulerJobDiagnosticsView
+		errors             []query.RuntimeOverviewErrorView
+		deliveryAdapters   []query.DeliveryAdapterDiagnosticsView
+		queueBackend       query.QueueBackendView
+		runtimeConfig      query.RuntimeConfigView
+		sendLedger         query.SendLedgerMetricsView
+		inboxMetrics       query.InboxMetricsView
+		inboundDedupe      query.InboundDedupeMetricsView
+		agentJobMetrics    query.AgentJobMetricsView
+		outboxMetrics      query.OutboxMetricsView
+		diagnostics        query.KnowledgeWorkerDiagnosticsView
+		runtimeWorkers     query.RuntimeWorkerDiagnosticsView
+		agentWorkers       query.AgentWorkerStatusesView
+		observeTargets     query.ObserveTargetsView
+		observeCapture     query.ObserveCaptureDiagnosticsView
+		knowledgePipelines query.KnowledgePipelineDiagnosticsView
+		receiverStatuses   query.ReceiverStatusesView
+		receiverLeases     query.ReceiverLeasesView
+		schedulerJobs      query.SchedulerJobDiagnosticsView
 	)
 
 	if s == nil {
@@ -253,6 +259,17 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			observeCapture = item
 		}
 
+		if deps.KnowledgePipelines == nil {
+			errors = append(errors, runtimeOverviewError("knowledge-pipeline-diagnostics", fmt.Errorf("knowledge pipeline diagnostics disabled")))
+		} else if item, err := deps.KnowledgePipelines.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+			Limit:             limit,
+			StaleAfterSeconds: staleAfterSeconds,
+		}); err != nil {
+			errors = append(errors, runtimeOverviewError("knowledge-pipeline-diagnostics", err))
+		} else {
+			knowledgePipelines = item
+		}
+
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
 		} else if item, err := deps.ReceiverStatuses.ListReceiverStatuses(ctx); err != nil {
@@ -293,6 +310,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentWorkers,
 		observeTargets,
 		observeCapture,
+		knowledgePipelines,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -313,6 +331,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentWorkers,
 		observeTargets,
 		observeCapture,
+		knowledgePipelines,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -330,6 +349,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		AgentWorkers:           agentWorkers,
 		ObserveTargets:         observeTargets,
 		ObserveCapture:         observeCapture,
+		KnowledgePipelines:     knowledgePipelines,
 		ReceiverStatuses:       receiverStatuses,
 		ReceiverLeases:         receiverLeases,
 		SchedulerJobs:          schedulerJobs,
@@ -363,6 +383,7 @@ func runtimeOverviewSummary(
 	agentWorkers query.AgentWorkerStatusesView,
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
+	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -476,6 +497,10 @@ func runtimeOverviewSummary(
 		"observe_capture_receiver_connected":            intFromMap(observeCapture.Totals, "receiver_connected"),
 		"observe_capture_receiver_status_connected":     intFromMap(observeCapture.Totals, "receiver_status_connected"),
 		"observe_capture_receiver_activity_recent":      intFromMap(observeCapture.Totals, "receiver_activity_recent"),
+		"knowledge_pipeline_targets":                    intFromMap(knowledgePipelines.Totals, "targets"),
+		"knowledge_pipeline_ready":                      intFromMap(knowledgePipelines.Totals, "ready"),
+		"knowledge_pipeline_warning":                    intFromMap(knowledgePipelines.Totals, "warning"),
+		"knowledge_pipeline_blocked":                    intFromMap(knowledgePipelines.Totals, "blocked"),
 		"receiver_statuses":                             intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":                     intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":                     intFromMap(receiverStatuses.Totals, "suspended"),
@@ -511,13 +536,13 @@ func runtimeOverviewSummary(
 		"agent_job_pressure_max_active":                 agentJobMetrics.Pressure.MaxActive,
 		"agent_job_pressure_oldest_pending_age_seconds": agentJobMetrics.Pressure.OldestPendingAgeSeconds,
 		"agent_job_worker_coverage_job_types":           len(agentJobWorkerCoverage),
-		"agent_job_worker_coverage_uncovered_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+		"agent_job_worker_coverage_uncovered_job_types": agentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
 			return len(item.ExpectedWorkerTypes) > 0 && item.ActiveWorkers == 0
 		}),
-		"agent_job_worker_coverage_stale_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+		"agent_job_worker_coverage_stale_job_types": agentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
 			return item.StaleWorkers > 0
 		}),
-		"agent_job_worker_coverage_failed_job_types": runtimeAgentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
+		"agent_job_worker_coverage_failed_job_types": agentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
 			return item.FailedWorkers > 0
 		}),
 		"outbox_metric_events":          outboxMetrics.SampledEvents,
@@ -544,6 +569,7 @@ func runtimeOverviewCards(
 	agentWorkers query.AgentWorkerStatusesView,
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
+	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -572,6 +598,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("agent_workers", "Agent Workers", agentWorkerValue(agentWorkers), agentWorkerStatus(agentWorkers), map[string]any{"agent_workers": agentWorkers}),
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
 		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
+		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("scheduler_jobs", "Scheduler Jobs", schedulerJobValue(schedulerJobs), schedulerJobStatus(schedulerJobs), map[string]any{"scheduler_jobs": schedulerJobs}),
@@ -718,135 +745,7 @@ func runtimeAgentJobPressureValue(view query.AgentJobMetricsView) string {
 }
 
 func runtimeAgentJobWorkerCoverage(view query.AgentJobMetricsView, workers query.AgentWorkerStatusesView) []query.AgentJobWorkerCoverageView {
-	if len(view.Pressure.ByType) == 0 {
-		return nil
-	}
-	workersByType := make(map[string][]query.AgentWorkerStatusView)
-	for _, worker := range workers.Workers {
-		workersByType[worker.WorkerType] = append(workersByType[worker.WorkerType], worker)
-	}
-	items := make([]query.AgentJobWorkerCoverageView, 0, len(view.Pressure.ByType))
-	for _, pressure := range view.Pressure.ByType {
-		expected := expectedWorkerTypesForAgentJobType(pressure.JobType)
-		item := query.AgentJobWorkerCoverageView{
-			JobType:             pressure.JobType,
-			ExpectedWorkerTypes: append([]string(nil), expected...),
-			HighPressure:        pressure.HighPressure,
-			PressureReason:      pressure.PressureReason,
-			CoverageStatus:      "muted",
-		}
-		if len(expected) == 0 {
-			item.CoverageReason = "no_expected_worker_mapping"
-			items = append(items, item)
-			continue
-		}
-		for _, workerType := range expected {
-			for _, worker := range workersByType[workerType] {
-				item.WorkerCount++
-				if worker.Stale {
-					item.StaleWorkers++
-				}
-				switch worker.Status {
-				case "starting", "idle":
-					item.ActiveWorkers++
-				case "running":
-					item.ActiveWorkers++
-					item.RunningWorkers++
-				case "failed":
-					item.FailedWorkers++
-				}
-			}
-		}
-		item.CoverageStatus, item.CoverageReason = agentJobWorkerCoverageStatus(item)
-		items = append(items, item)
-	}
-	return items
-}
-
-func expectedWorkerTypesForAgentJobType(jobType string) []string {
-	switch jobType {
-	case "group_memory_extract", "rag_ingest":
-		return []string{"knowledge"}
-	case "rag_eval":
-		return []string{"rag_eval"}
-	case "image_generation":
-		return []string{"image_generation"}
-	default:
-		return nil
-	}
-}
-
-func agentJobWorkerCoverageStatus(item query.AgentJobWorkerCoverageView) (string, string) {
-	if len(item.ExpectedWorkerTypes) == 0 {
-		return "muted", "no_expected_worker_mapping"
-	}
-	if item.HighPressure && item.ActiveWorkers == 0 {
-		if item.WorkerCount == 0 {
-			return "danger", "high_pressure_no_registered_worker"
-		}
-		return "danger", "high_pressure_no_active_worker"
-	}
-	if item.ActiveWorkers == 0 {
-		if item.WorkerCount == 0 {
-			return "warn", "no_registered_worker"
-		}
-		if item.FailedWorkers > 0 {
-			return "warn", "failed_worker_present"
-		}
-		if item.StaleWorkers > 0 {
-			return "warn", "stale_worker_present"
-		}
-		return "warn", "no_active_worker"
-	}
-	if item.FailedWorkers > 0 {
-		return "warn", "failed_worker_present"
-	}
-	if item.StaleWorkers > 0 {
-		return "warn", "stale_worker_present"
-	}
-	return "ok", "active_worker_available"
-}
-
-func runtimeAgentJobWorkerCoverageCount(items []query.AgentJobWorkerCoverageView, include func(query.AgentJobWorkerCoverageView) bool) int {
-	total := 0
-	for _, item := range items {
-		if include(item) {
-			total++
-		}
-	}
-	return total
-}
-
-func runtimeAgentJobWorkerCoverageStatus(items []query.AgentJobWorkerCoverageView) string {
-	if len(items) == 0 {
-		return "muted"
-	}
-	for _, item := range items {
-		if item.CoverageStatus == "danger" {
-			return "danger"
-		}
-	}
-	for _, item := range items {
-		if item.CoverageStatus == "warn" {
-			return "warn"
-		}
-	}
-	for _, item := range items {
-		if item.CoverageStatus == "ok" {
-			return "ok"
-		}
-	}
-	return "muted"
-}
-
-func runtimeAgentJobWorkerCoverageValue(items []query.AgentJobWorkerCoverageView) string {
-	if len(items) == 0 {
-		return "0/0"
-	}
-	uncovered := runtimeAgentJobWorkerCoverageCount(items, func(item query.AgentJobWorkerCoverageView) bool {
-		return len(item.ExpectedWorkerTypes) > 0 && item.ActiveWorkers == 0
-	})
-	return fmt.Sprintf("%d/%d", uncovered, len(items))
+	return agentJobWorkerCoverageFromPressure(view.Pressure.ByType, workers)
 }
 
 func externalLeaseStatus(view query.QueueBackendView) string {
@@ -935,6 +834,23 @@ func observeCaptureStatus(view query.ObserveCaptureDiagnosticsView) string {
 
 func observeCaptureValue(view query.ObserveCaptureDiagnosticsView) string {
 	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "enabled"))
+}
+
+func knowledgePipelineCardStatus(view query.KnowledgePipelineDiagnosticsView) string {
+	if intFromMap(view.Totals, "targets") == 0 {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "blocked") > 0 {
+		return "danger"
+	}
+	if intFromMap(view.Totals, "warning") > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func knowledgePipelineCardValue(view query.KnowledgePipelineDiagnosticsView) string {
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "targets"))
 }
 
 func receiverStatusStatus(view query.ReceiverStatusesView) string {

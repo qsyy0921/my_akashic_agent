@@ -787,6 +787,20 @@ generic jobs with `memory:` and `ragflow:` checkpoints, status counts, leaseable
 counts, and stale lease counts. It is intended for dashboard/ops visibility and
 does not execute or mutate jobs.
 
+Inspect group-level knowledge pipeline diagnostics:
+
+```text
+GET /v1/knowledge-pipeline-diagnostics?limit=50&stale_after_seconds=900
+```
+
+This read-only endpoint is the Go-owned knowledge control-plane view for each
+observe-only QQ group target. It correlates observe capture readiness,
+group-level `group_memory_extract` / `rag_ingest` backlog, knowledge
+checkpoints, and Python worker coverage. It is intended to answer whether a
+group pipeline is ready, warning, or blocked without inspecting multiple
+endpoints manually. It does not upload to RAGFlow, execute Python workers, or
+change memory/RAG strategy.
+
 Inspect the Go-owned runtime overview aggregate:
 
 ```text
@@ -802,7 +816,9 @@ dead-letter and event throughput so knowledge/RAG buildup can be seen without
 inspecting multiple endpoints manually. `Agent Job Worker Coverage` correlates
 that pressure with Python worker heartbeat coverage, so backlog can be
 distinguished between “worker exists and is healthy”, “worker stale/failed”, and
-“no active worker available”.
+“no active worker available”. `Knowledge Pipelines` summarizes the same control
+plane one level closer to the user workflow: per observe-only QQ group target,
+combining capture, knowledge jobs, checkpoints, and worker coverage.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

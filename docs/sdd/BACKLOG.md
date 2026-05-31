@@ -28,6 +28,7 @@
 ## Knowledge / Memory / RAG
 
 - 继续把 group memory / RAG ingestion 的生命周期交给 Go job，Python 只做 AI worker 和策略实验。
+- 后续若要把群知识编排再往前推进，可在已落地的 `knowledge pipeline diagnostics` 之上增加 per-group lease lag、checkpoint 停滞时长、dataset/索引状态，但先保持只读控制面。
 - 后续评估 RAGFlow 或其它 RAG 组件与 Go runtime 的边界：Go 管任务、资产、索引状态和审计；Python 管 chunking、embedding、rerank、answer synthesis 实验。
 
 ## SDD / 文档治理

@@ -143,4 +143,7 @@ execution.
 - `057-agent-job-worker-coverage-diagnostics.md`: Runtime overview correlates
   Go-owned AgentJob pressure with Python worker heartbeat coverage so backlog
   can be explained by missing, stale, or failed worker capacity.
+- `058-knowledge-pipeline-diagnostics.md`: Go-owned group-level knowledge
+  pipeline diagnostics correlate observe capture, knowledge jobs, checkpoints,
+  and worker coverage for each observe-only QQ target.
 - Agent architecture boundary specs live under `../agent-architecture/`.

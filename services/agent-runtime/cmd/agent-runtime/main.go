@@ -281,6 +281,13 @@ func main() {
 		mediaAssetRepository,
 		mediaContentReader,
 	)
+	knowledgePipelines := appservice.NewKnowledgePipelineDiagnosticsService(
+		observeTargets,
+		observeCaptureDiagnostics,
+		agentWorkerStatuses,
+		agentJobRepository,
+		knowledgeCheckpointRepository,
+	)
 	queueBackend := appservice.NewQueueBackendServiceWithDiagnostics(queueBackendView, appservice.QueueBackendDiagnosticsDeps{
 		Diagnostics:    workQueueDiagnostics,
 		Compare:        queueCompare,
@@ -304,6 +311,7 @@ func main() {
 		AgentWorkers:         agentWorkerStatuses,
 		ObserveTargets:       observeTargets,
 		ObserveCapture:       observeCaptureDiagnostics,
+		KnowledgePipelines:   knowledgePipelines,
 		ReceiverStatuses:     receiverStatuses,
 		ReceiverLeases:       receiverStatuses,
 		SchedulerJobs:        schedulerJobs,
@@ -313,6 +321,7 @@ func main() {
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, sendLedger, inboxEvents)
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
+	httptrigger.RegisterKnowledgePipelineDiagnosticsRoutes(mux, knowledgePipelines)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)
