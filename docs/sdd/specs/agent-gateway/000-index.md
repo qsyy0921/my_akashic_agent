@@ -146,4 +146,7 @@ execution.
 - `058-knowledge-pipeline-diagnostics.md`: Go-owned group-level knowledge
   pipeline diagnostics correlate observe capture, knowledge jobs, checkpoints,
   and worker coverage for each observe-only QQ target.
+- `059-knowledge-pipeline-source-lag-diagnostics.md`: Go-owned group-level
+  knowledge pipeline diagnostics compare inbox source seq against checkpoint
+  cursor to expose lagging and stalled pipelines.
 - Agent architecture boundary specs live under `../agent-architecture/`.

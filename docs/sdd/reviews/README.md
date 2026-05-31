@@ -162,3 +162,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-113-agent-job-pressure-diagnostics.md`
 - `2026-05-31-phase8-114-agent-job-worker-coverage-diagnostics.md`
 - `2026-05-31-phase8-115-knowledge-pipeline-diagnostics.md`
+- `2026-05-31-phase8-116-knowledge-pipeline-source-lag-diagnostics.md`

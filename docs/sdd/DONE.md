@@ -44,6 +44,7 @@
 - 已实现 Go-owned `AgentJob` pressure 诊断：`/v1/job-metrics` 可按 `job_type` 查看 pending / leased / running / active / oldest_pending_age，并标记 high pressure；runtime overview 也聚合了 `agent_job_pressure_*` summary 与 `Agent Job Pressure` card。
 - runtime overview 已新增 `Agent Job Worker Coverage`：把 Go-owned `AgentJob` pressure 与 Python worker heartbeat / stale / failed 状态关联起来，直接解释 backlog 是否由无 active worker、stale worker 或 failed worker 导致，不改变 Python 执行边界。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
+- `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。

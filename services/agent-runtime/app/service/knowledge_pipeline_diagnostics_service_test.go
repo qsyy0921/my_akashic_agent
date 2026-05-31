@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,21 +22,21 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	agentWorkers := NewAgentWorkerStatusService()
 	syncObserveTarget(t, observeTargets, "27234224")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
-	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-text", "ready text", nil)
-	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-image", "ready image", []command.AttachmentCommand{{
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-ready-text", "ready text", nil, 62)
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-ready-image", "ready image", []command.AttachmentCommand{{
 		ID:       "asset:ready:image:1",
 		Kind:     "image",
 		URL:      "E:/agent/akashic/.akashic-workspace/uploads/ready-image.png",
 		MimeType: "image/png",
 		Name:     "ready-image.png",
-	}})
-	ingestObserveMessageForGroup(t, store, "27234224", "msg-ready-file", "ready file", []command.AttachmentCommand{{
+	}}, 63)
+	ingestObserveMessageForGroupWithSeq(t, store, "27234224", "msg-ready-file", "ready file", []command.AttachmentCommand{{
 		ID:       "asset:ready:file:1",
 		Kind:     "file",
 		URL:      "E:/agent/akashic/.akashic-workspace/uploads/ready-file.txt",
 		MimeType: "text/plain",
 		Name:     "ready-file.txt",
-	}})
+	}}, 64)
 
 	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
 		WorkerID:        "knowledge-worker-main",
@@ -60,7 +61,7 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	}
 	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
 		CheckpointID: "ragflow:qq:27234224:ds-main",
-		Cursor:       32,
+		Cursor:       64,
 		Metadata:     map[string]string{"group_id": "27234224", "dataset_id": "ds-main"},
 		Timestamp:    now.Add(-2 * time.Minute),
 	}); err != nil {
@@ -95,6 +96,15 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
 	}
+	if !pipeline.SourceSeqKnown || pipeline.LatestSourceSeq != 64 || pipeline.SequencedEvents != 3 {
+		t.Fatalf("unexpected source seq state: %#v", pipeline)
+	}
+	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 0 || pipeline.MemoryCheckpointLag.Status != "ok" {
+		t.Fatalf("unexpected memory lag: %#v", pipeline.MemoryCheckpointLag)
+	}
+	if pipeline.RagCheckpointLagMax == nil || pipeline.RagCheckpointLagMax.Lag != 0 || pipeline.RagCheckpointLagMax.Status != "ok" {
+		t.Fatalf("unexpected rag lag: %#v", pipeline.RagCheckpointLagMax)
+	}
 }
 
 func TestKnowledgePipelineDiagnosticsServiceBlocksCaptureFailure(t *testing.T) {
@@ -122,7 +132,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksCaptureFailure(t *testing.T) {
 	}
 }
 
-func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureWithoutWorker(t *testing.T) {
+func TestKnowledgePipelineDiagnosticsServiceWarnsOnCheckpointLag(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()
 	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
@@ -132,21 +142,105 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureWithoutWorker(t *t
 	agentWorkers := NewAgentWorkerStatusService()
 	syncObserveTarget(t, observeTargets, "3219982")
 	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
-	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-text", "blocked text", nil)
-	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-image", "blocked image", []command.AttachmentCommand{{
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-lag-text", "lag text", nil, 50)
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-lag-image", "lag image", []command.AttachmentCommand{{
+		ID:       "asset:lag:image:1",
+		Kind:     "image",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/lag-image.png",
+		MimeType: "image/png",
+		Name:     "lag-image.png",
+	}}, 51)
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-lag-file", "lag file", []command.AttachmentCommand{{
+		ID:       "asset:lag:file:1",
+		Kind:     "file",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/lag-file.txt",
+		MimeType: "text/plain",
+		Name:     "lag-file.txt",
+	}}, 52)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "idle",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	checkpoints := NewKnowledgeCheckpointService(store)
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "memory:qq:3219982",
+		Cursor:       25,
+		Metadata:     map[string]string{"group_id": "3219982"},
+		Timestamp:    now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert memory checkpoint: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, map[string]bool{
+		"asset:lag:image:1": true,
+		"asset:lag:file:1":  true,
+	})
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["warning"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stalled"] != 0 {
+		t.Fatalf("unexpected lagging totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "warn" || !containsString(pipeline.Reasons, "memory_checkpoint_lagging") {
+		t.Fatalf("unexpected lagging pipeline: %#v", pipeline)
+	}
+	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 27 || pipeline.MemoryCheckpointLag.Status != "warn" {
+		t.Fatalf("unexpected memory lag state: %#v", pipeline.MemoryCheckpointLag)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "3219982")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-blocked-text", "blocked text", nil, 118)
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-blocked-image", "blocked image", []command.AttachmentCommand{{
 		ID:       "asset:blocked:image:1",
 		Kind:     "image",
 		URL:      "E:/agent/akashic/.akashic-workspace/uploads/blocked-image.png",
 		MimeType: "image/png",
 		Name:     "blocked-image.png",
-	}})
-	ingestObserveMessageForGroup(t, store, "3219982", "msg-blocked-file", "blocked file", []command.AttachmentCommand{{
+	}}, 119)
+	ingestObserveMessageForGroupWithSeq(t, store, "3219982", "msg-blocked-file", "blocked file", []command.AttachmentCommand{{
 		ID:       "asset:blocked:file:1",
 		Kind:     "file",
 		URL:      "E:/agent/akashic/.akashic-workspace/uploads/blocked-file.txt",
 		MimeType: "text/plain",
 		Name:     "blocked-file.txt",
-	}})
+	}}, 120)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
 
 	jobs := NewAgentJobService(store)
 	for index := 0; index < 10; index++ {
@@ -159,6 +253,15 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureWithoutWorker(t *t
 		)); err != nil {
 			t.Fatalf("create blocked rag ingest job %d: %v", index, err)
 		}
+	}
+	checkpoints := NewKnowledgeCheckpointService(store)
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "ragflow:qq:3219982:ds-stalled",
+		Cursor:       0,
+		Metadata:     map[string]string{"group_id": "3219982", "dataset_id": "ds-stalled"},
+		Timestamp:    now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert stalled rag checkpoint: %v", err)
 	}
 
 	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, map[string]bool{
@@ -173,18 +276,21 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureWithoutWorker(t *t
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 {
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stalled"] != 1 {
 		t.Fatalf("unexpected high-pressure totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
 	if pipeline.Status != "blocked" || pipeline.RagIngest.Pending != 10 || !pipeline.RagIngest.HighPressure {
 		t.Fatalf("unexpected high-pressure pipeline: %#v", pipeline)
 	}
-	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[1].JobType != "rag_ingest" || pipeline.WorkerCoverage[1].CoverageStatus != "danger" {
+	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[1].JobType != "rag_ingest" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)
 	}
-	if !containsString(pipeline.Reasons, "rag_ingest_worker_blocked") {
-		t.Fatalf("expected rag_ingest_worker_blocked reason: %#v", pipeline.Reasons)
+	if pipeline.RagCheckpointLagMax == nil || pipeline.RagCheckpointLagMax.Lag != 120 || pipeline.RagCheckpointLagMax.Status != "danger" {
+		t.Fatalf("unexpected rag checkpoint lag: %#v", pipeline.RagCheckpointLagMax)
+	}
+	if !containsString(pipeline.Reasons, "rag_checkpoint_stalled_under_pressure") {
+		t.Fatalf("expected rag_checkpoint_stalled_under_pressure reason: %#v", pipeline.Reasons)
 	}
 }
 
@@ -208,10 +314,16 @@ func newKnowledgePipelineDiagnosticsServiceForTest(
 		agentWorkers,
 		store,
 		store,
+		store,
 	)
 }
 
 func ingestObserveMessageForGroup(t *testing.T, store *memory.Store, groupID string, suffix string, content string, attachments []command.AttachmentCommand) {
+	t.Helper()
+	ingestObserveMessageForGroupWithSeq(t, store, groupID, suffix, content, attachments, 0)
+}
+
+func ingestObserveMessageForGroupWithSeq(t *testing.T, store *memory.Store, groupID string, suffix string, content string, attachments []command.AttachmentCommand, seq int) {
 	t.Helper()
 	ingestor := NewMessageIngestServiceWithRuntimeStores(
 		store,
@@ -223,6 +335,13 @@ func ingestObserveMessageForGroup(t *testing.T, store *memory.Store, groupID str
 		store,
 		store,
 	)
+	metadata := map[string]string{
+		"observe_only": "true",
+		"session_key":  "qq:gqq:" + groupID,
+	}
+	if seq > 0 {
+		metadata["seq"] = strconv.Itoa(seq)
+	}
 	_, err := ingestor.ShadowIngest(context.Background(), command.IngestMessageCommand{
 		EventID: "qq:1049511700:group:" + groupID + ":" + suffix,
 		Channel: command.ChannelCommand{
@@ -238,10 +357,7 @@ func ingestObserveMessageForGroup(t *testing.T, store *memory.Store, groupID str
 		Content:     content,
 		Attachments: attachments,
 		Timestamp:   time.Now().UTC(),
-		Metadata: map[string]string{
-			"observe_only": "true",
-			"session_key":  "qq:gqq:" + groupID,
-		},
+		Metadata:    metadata,
 	})
 	if err != nil {
 		t.Fatalf("ingest observe message for group %s: %v", groupID, err)

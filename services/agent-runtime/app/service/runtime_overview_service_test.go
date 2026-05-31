@@ -257,6 +257,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"high_pressure":        1,
 				"memory_checkpoints":   1,
 				"rag_checkpoints":      2,
+				"lagging":              1,
+				"stalled":              1,
 			},
 			Pipelines: []query.KnowledgePipelineView{
 				{
@@ -384,7 +386,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["knowledge_pipeline_targets"] != 2 ||
 		view.Summary["knowledge_pipeline_ready"] != 1 ||
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
-		view.Summary["knowledge_pipeline_blocked"] != 1 {
+		view.Summary["knowledge_pipeline_blocked"] != 1 ||
+		view.Summary["knowledge_pipeline_lagging_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_stalled_targets"] != 1 {
 		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
 	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {

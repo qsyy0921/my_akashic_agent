@@ -285,6 +285,7 @@ func main() {
 		observeTargets,
 		observeCaptureDiagnostics,
 		agentWorkerStatuses,
+		inboxEventRepository,
 		agentJobRepository,
 		knowledgeCheckpointRepository,
 	)

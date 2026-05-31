@@ -62,6 +62,7 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"agent_job_worker_coverage_job_types":           2,
 				"agent_job_worker_coverage_uncovered_job_types": 1,
 				"knowledge_pipeline_targets":                    2,
+				"knowledge_pipeline_lagging_targets":            1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -107,6 +108,7 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 		t.Fatalf("response missing agent job worker coverage diagnostics: %s", response.Body.String())
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_targets":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_lagging_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"knowledge_pipelines"`)) {
 		t.Fatalf("response missing knowledge pipeline diagnostics: %s", response.Body.String())
 	}
@@ -128,10 +130,20 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 					ConversationID:   "27234224",
 					ConversationType: "group",
 				},
-				Enabled:       true,
-				ObserveOnly:   true,
-				CaptureStatus: "ok",
-				Status:        "ok",
+				Enabled:         true,
+				ObserveOnly:     true,
+				CaptureStatus:   "ok",
+				SourceSeqKnown:  true,
+				LatestSourceSeq: 42,
+				MemoryCheckpointLag: &query.KnowledgePipelineCheckpointLagView{
+					CheckpointID:    "memory:qq:27234224",
+					Cursor:          22,
+					LatestSourceSeq: 42,
+					Lag:             20,
+					Status:          "warn",
+					Reason:          "lag>=20",
+				},
+				Status: "ok",
 			}},
 			SideEffect: "none",
 		},
@@ -146,6 +158,8 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 	for _, expected := range []string{
 		`"targets":1`,
 		`"target_id":"qq:1049511700:group:27234224"`,
+		`"latest_source_seq":42`,
+		`"lag":20`,
 		`"side_effect":"none"`,
 	} {
 		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {

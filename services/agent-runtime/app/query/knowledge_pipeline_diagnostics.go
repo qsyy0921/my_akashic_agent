@@ -20,21 +20,36 @@ type KnowledgePipelineJobStageView struct {
 	LatestJob      *AgentJobView `json:"latest_job,omitempty"`
 }
 
+type KnowledgePipelineCheckpointLagView struct {
+	CheckpointID    string `json:"checkpoint_id"`
+	Cursor          int    `json:"cursor"`
+	LatestSourceSeq int    `json:"latest_source_seq,omitempty"`
+	Lag             int    `json:"lag,omitempty"`
+	Status          string `json:"status"`
+	Reason          string `json:"reason,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
 type KnowledgePipelineView struct {
-	TargetID          string                        `json:"target_id"`
-	Channel           ObserveTargetChannelView      `json:"channel"`
-	Enabled           bool                          `json:"enabled"`
-	ObserveOnly       bool                          `json:"observe_only"`
-	CaptureStatus     string                        `json:"capture_status"`
-	ReceiverConnected bool                          `json:"receiver_connected"`
-	CaptureBlockers   []string                      `json:"capture_blockers,omitempty"`
-	GroupMemory       KnowledgePipelineJobStageView `json:"group_memory"`
-	RagIngest         KnowledgePipelineJobStageView `json:"rag_ingest"`
-	MemoryCheckpoint  *KnowledgeCheckpointView      `json:"memory_checkpoint,omitempty"`
-	RagCheckpoints    []KnowledgeCheckpointView     `json:"rag_checkpoints,omitempty"`
-	WorkerCoverage    []AgentJobWorkerCoverageView  `json:"worker_coverage,omitempty"`
-	Status            string                        `json:"status"`
-	Reasons           []string                      `json:"reasons,omitempty"`
+	TargetID            string                              `json:"target_id"`
+	Channel             ObserveTargetChannelView            `json:"channel"`
+	Enabled             bool                                `json:"enabled"`
+	ObserveOnly         bool                                `json:"observe_only"`
+	CaptureStatus       string                              `json:"capture_status"`
+	ReceiverConnected   bool                                `json:"receiver_connected"`
+	CaptureBlockers     []string                            `json:"capture_blockers,omitempty"`
+	SequencedEvents     int                                 `json:"sequenced_events"`
+	SourceSeqKnown      bool                                `json:"source_seq_known"`
+	LatestSourceSeq     int                                 `json:"latest_source_seq,omitempty"`
+	GroupMemory         KnowledgePipelineJobStageView       `json:"group_memory"`
+	RagIngest           KnowledgePipelineJobStageView       `json:"rag_ingest"`
+	MemoryCheckpoint    *KnowledgeCheckpointView            `json:"memory_checkpoint,omitempty"`
+	RagCheckpoints      []KnowledgeCheckpointView           `json:"rag_checkpoints,omitempty"`
+	MemoryCheckpointLag *KnowledgePipelineCheckpointLagView `json:"memory_checkpoint_lag,omitempty"`
+	RagCheckpointLagMax *KnowledgePipelineCheckpointLagView `json:"rag_checkpoint_lag_max,omitempty"`
+	WorkerCoverage      []AgentJobWorkerCoverageView        `json:"worker_coverage,omitempty"`
+	Status              string                              `json:"status"`
+	Reasons             []string                            `json:"reasons,omitempty"`
 }
 
 type KnowledgePipelineDiagnosticsView struct {

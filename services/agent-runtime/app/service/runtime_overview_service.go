@@ -501,6 +501,8 @@ func runtimeOverviewSummary(
 		"knowledge_pipeline_ready":                      intFromMap(knowledgePipelines.Totals, "ready"),
 		"knowledge_pipeline_warning":                    intFromMap(knowledgePipelines.Totals, "warning"),
 		"knowledge_pipeline_blocked":                    intFromMap(knowledgePipelines.Totals, "blocked"),
+		"knowledge_pipeline_lagging_targets":            intFromMap(knowledgePipelines.Totals, "lagging"),
+		"knowledge_pipeline_stalled_targets":            intFromMap(knowledgePipelines.Totals, "stalled"),
 		"receiver_statuses":                             intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":                     intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":                     intFromMap(receiverStatuses.Totals, "suspended"),

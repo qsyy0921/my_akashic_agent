@@ -15,6 +15,10 @@ import (
 )
 
 const defaultKnowledgePipelineDiagnosticsLimit = 50
+const (
+	knowledgePipelineLagWarn   = 20
+	knowledgePipelineLagDanger = 100
+)
 
 type knowledgePipelineObserveTargetLister interface {
 	ListObserveTargets(ctx context.Context) (query.ObserveTargetsView, error)
@@ -24,6 +28,7 @@ type KnowledgePipelineDiagnosticsService struct {
 	observeTargets knowledgePipelineObserveTargetLister
 	observeCapture inport.ObserveCaptureDiagnosticsViewer
 	agentWorkers   inport.AgentWorkerStatusManager
+	inboxEvents    outport.InboxEventRepository
 	agentJobs      outport.AgentJobRepository
 	checkpoints    outport.KnowledgeCheckpointRepository
 	clock          func() time.Time
@@ -33,6 +38,7 @@ func NewKnowledgePipelineDiagnosticsService(
 	observeTargets knowledgePipelineObserveTargetLister,
 	observeCapture inport.ObserveCaptureDiagnosticsViewer,
 	agentWorkers inport.AgentWorkerStatusManager,
+	inboxEvents outport.InboxEventRepository,
 	agentJobs outport.AgentJobRepository,
 	checkpoints outport.KnowledgeCheckpointRepository,
 ) *KnowledgePipelineDiagnosticsService {
@@ -40,6 +46,7 @@ func NewKnowledgePipelineDiagnosticsService(
 		observeTargets: observeTargets,
 		observeCapture: observeCapture,
 		agentWorkers:   agentWorkers,
+		inboxEvents:    inboxEvents,
 		agentJobs:      agentJobs,
 		checkpoints:    checkpoints,
 		clock:          time.Now,
@@ -53,8 +60,8 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 	if err := ctx.Err(); err != nil {
 		return query.KnowledgePipelineDiagnosticsView{}, err
 	}
-	if s == nil || s.observeTargets == nil || s.observeCapture == nil || s.agentWorkers == nil || s.agentJobs == nil || s.checkpoints == nil {
-		return query.KnowledgePipelineDiagnosticsView{}, errors.New("knowledge pipeline diagnostics service requires observe targets, capture diagnostics, agent workers, agent jobs, and checkpoints")
+	if s == nil || s.observeTargets == nil || s.observeCapture == nil || s.agentWorkers == nil || s.inboxEvents == nil || s.agentJobs == nil || s.checkpoints == nil {
+		return query.KnowledgePipelineDiagnosticsView{}, errors.New("knowledge pipeline diagnostics service requires observe targets, capture diagnostics, agent workers, inbox events, agent jobs, and checkpoints")
 	}
 	now := filter.Now
 	if now.IsZero() {
@@ -125,6 +132,7 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 			continue
 		}
 		pipelines = append(pipelines, buildKnowledgePipelineView(
+			s.latestSourceState(ctx, target.Channel, limit),
 			target,
 			captureByTarget[target.TargetID],
 			groupMemoryByConversation[target.Channel.ConversationID],
@@ -154,6 +162,43 @@ func (s *KnowledgePipelineDiagnosticsService) GetKnowledgePipelineDiagnostics(
 		},
 		SideEffect: "none",
 	}, nil
+}
+
+type knowledgePipelineSourceState struct {
+	Known           bool
+	LatestSeq       int
+	SequencedEvents int
+}
+
+func (s *KnowledgePipelineDiagnosticsService) latestSourceState(
+	ctx context.Context,
+	channel query.ObserveTargetChannelView,
+	limit int,
+) knowledgePipelineSourceState {
+	events, err := s.inboxEvents.ListInboxEvents(ctx, query.InboxEventFilter{
+		Limit:            limit,
+		ChannelKind:      channel.Kind,
+		AccountID:        channel.AccountID,
+		ConversationID:   channel.ConversationID,
+		ConversationType: channel.ConversationType,
+		ObserveOnly:      "true",
+	})
+	if err != nil {
+		return knowledgePipelineSourceState{}
+	}
+	state := knowledgePipelineSourceState{}
+	for _, event := range events {
+		seq, ok := inboxMetricSeq(event)
+		if !ok {
+			continue
+		}
+		state.SequencedEvents++
+		if !state.Known || seq > state.LatestSeq {
+			state.Known = true
+			state.LatestSeq = seq
+		}
+	}
+	return state
 }
 
 func (s *KnowledgePipelineDiagnosticsService) now() time.Time {
@@ -241,6 +286,7 @@ func knowledgeCheckpointConversationID(item model.KnowledgeCheckpoint) string {
 }
 
 func buildKnowledgePipelineView(
+	source knowledgePipelineSourceState,
 	target query.ObserveTargetView,
 	capture query.ObserveCaptureTargetDiagnosticsView,
 	groupMemoryJobs []model.AgentJob,
@@ -251,27 +297,88 @@ func buildKnowledgePipelineView(
 ) query.KnowledgePipelineView {
 	groupMemory := knowledgePipelineJobStage(string(model.AgentJobGroupMemoryExtract), groupMemoryJobs)
 	ragIngest := knowledgePipelineJobStage(string(model.AgentJobRagIngest), ragIngestJobs)
+	memoryLag := knowledgePipelineCheckpointLag(memoryCheckpoint, source)
+	ragLagMax := knowledgePipelineCheckpointLagMax(ragCheckpoints, source)
 	coverage := agentJobWorkerCoverageFromPressure([]query.AgentJobTypePressureView{
 		knowledgePipelinePressure(groupMemory),
 		knowledgePipelinePressure(ragIngest),
 	}, workers)
-	status, reasons := knowledgePipelineStatus(target, capture, groupMemory, ragIngest, coverage)
+	status, reasons := knowledgePipelineStatus(target, capture, source, groupMemory, ragIngest, memoryLag, ragLagMax, coverage)
 	return query.KnowledgePipelineView{
-		TargetID:          target.TargetID,
-		Channel:           target.Channel,
-		Enabled:           target.Enabled,
-		ObserveOnly:       target.ObserveOnly,
-		CaptureStatus:     capture.Status,
-		ReceiverConnected: capture.ReceiverConnected,
-		CaptureBlockers:   append([]string(nil), capture.Blockers...),
-		GroupMemory:       groupMemory,
-		RagIngest:         ragIngest,
-		MemoryCheckpoint:  memoryCheckpoint,
-		RagCheckpoints:    append([]query.KnowledgeCheckpointView(nil), ragCheckpoints...),
-		WorkerCoverage:    coverage,
-		Status:            status,
-		Reasons:           reasons,
+		TargetID:            target.TargetID,
+		Channel:             target.Channel,
+		Enabled:             target.Enabled,
+		ObserveOnly:         target.ObserveOnly,
+		CaptureStatus:       capture.Status,
+		ReceiverConnected:   capture.ReceiverConnected,
+		CaptureBlockers:     append([]string(nil), capture.Blockers...),
+		SequencedEvents:     source.SequencedEvents,
+		SourceSeqKnown:      source.Known,
+		LatestSourceSeq:     source.LatestSeq,
+		GroupMemory:         groupMemory,
+		RagIngest:           ragIngest,
+		MemoryCheckpoint:    memoryCheckpoint,
+		RagCheckpoints:      append([]query.KnowledgeCheckpointView(nil), ragCheckpoints...),
+		MemoryCheckpointLag: memoryLag,
+		RagCheckpointLagMax: ragLagMax,
+		WorkerCoverage:      coverage,
+		Status:              status,
+		Reasons:             reasons,
 	}
+}
+
+func knowledgePipelineCheckpointLag(
+	checkpoint *query.KnowledgeCheckpointView,
+	source knowledgePipelineSourceState,
+) *query.KnowledgePipelineCheckpointLagView {
+	if checkpoint == nil {
+		return nil
+	}
+	view := &query.KnowledgePipelineCheckpointLagView{
+		CheckpointID: checkpoint.CheckpointID,
+		Cursor:       checkpoint.Cursor,
+		UpdatedAt:    checkpoint.UpdatedAt,
+		Status:       "muted",
+	}
+	if !source.Known {
+		view.Reason = "source_seq_unknown"
+		return view
+	}
+	view.LatestSourceSeq = source.LatestSeq
+	lag := source.LatestSeq - checkpoint.Cursor
+	if lag < 0 {
+		lag = 0
+	}
+	view.Lag = lag
+	switch {
+	case lag >= knowledgePipelineLagDanger:
+		view.Status = "danger"
+		view.Reason = "lag>=100"
+	case lag >= knowledgePipelineLagWarn:
+		view.Status = "warn"
+		view.Reason = "lag>=20"
+	default:
+		view.Status = "ok"
+		view.Reason = "lag_within_threshold"
+	}
+	return view
+}
+
+func knowledgePipelineCheckpointLagMax(
+	checkpoints []query.KnowledgeCheckpointView,
+	source knowledgePipelineSourceState,
+) *query.KnowledgePipelineCheckpointLagView {
+	var best *query.KnowledgePipelineCheckpointLagView
+	for _, checkpoint := range checkpoints {
+		item := knowledgePipelineCheckpointLag(&checkpoint, source)
+		if item == nil {
+			continue
+		}
+		if best == nil || item.Lag > best.Lag || (item.Lag == best.Lag && item.CheckpointID > best.CheckpointID) {
+			best = item
+		}
+	}
+	return best
 }
 
 func knowledgePipelineJobStage(jobType string, jobs []model.AgentJob) query.KnowledgePipelineJobStageView {
@@ -319,8 +426,11 @@ func knowledgePipelinePressure(stage query.KnowledgePipelineJobStageView) query.
 func knowledgePipelineStatus(
 	target query.ObserveTargetView,
 	capture query.ObserveCaptureTargetDiagnosticsView,
+	source knowledgePipelineSourceState,
 	groupMemory query.KnowledgePipelineJobStageView,
 	ragIngest query.KnowledgePipelineJobStageView,
+	memoryLag *query.KnowledgePipelineCheckpointLagView,
+	ragLagMax *query.KnowledgePipelineCheckpointLagView,
 	coverage []query.AgentJobWorkerCoverageView,
 ) (string, []string) {
 	if !target.Enabled {
@@ -361,10 +471,44 @@ func knowledgePipelineStatus(
 	if status == "ok" && (groupMemory.Pending > 0 || ragIngest.Pending > 0 || groupMemory.Active > 0 || ragIngest.Active > 0) {
 		status = "warn"
 	}
+	if source.Known {
+		if lagReason, nextStatus := knowledgePipelineLagReason("memory", memoryLag, groupMemory); lagReason != "" {
+			reasons = append(reasons, lagReason)
+			status = mergeKnowledgePipelineStatus(status, nextStatus)
+		}
+		if lagReason, nextStatus := knowledgePipelineLagReason("rag", ragLagMax, ragIngest); lagReason != "" {
+			reasons = append(reasons, lagReason)
+			status = mergeKnowledgePipelineStatus(status, nextStatus)
+		}
+	}
 	if len(reasons) == 0 {
 		reasons = append(reasons, "pipeline_ready")
 	}
 	return status, reasons
+}
+
+func knowledgePipelineLagReason(
+	prefix string,
+	lag *query.KnowledgePipelineCheckpointLagView,
+	stage query.KnowledgePipelineJobStageView,
+) (string, string) {
+	if lag == nil {
+		return "", ""
+	}
+	if lag.Status == "danger" && stage.HighPressure {
+		return prefix + "_checkpoint_stalled_under_pressure", "blocked"
+	}
+	if lag.Status == "danger" || lag.Status == "warn" {
+		return prefix + "_checkpoint_lagging", "warn"
+	}
+	return "", ""
+}
+
+func mergeKnowledgePipelineStatus(current string, next string) string {
+	if knowledgePipelineStatusRank(next) > knowledgePipelineStatusRank(current) {
+		return next
+	}
+	return current
 }
 
 func knowledgePipelineTotals(items []query.KnowledgePipelineView) map[string]int {
@@ -381,6 +525,8 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView) map[string]int
 		"high_pressure":        0,
 		"memory_checkpoints":   0,
 		"rag_checkpoints":      0,
+		"lagging":              0,
+		"stalled":              0,
 	}
 	for _, item := range items {
 		if item.Enabled {
@@ -412,8 +558,25 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView) map[string]int
 			totals["memory_checkpoints"]++
 		}
 		totals["rag_checkpoints"] += len(item.RagCheckpoints)
+		if (item.MemoryCheckpointLag != nil && (item.MemoryCheckpointLag.Status == "warn" || item.MemoryCheckpointLag.Status == "danger")) ||
+			(item.RagCheckpointLagMax != nil && (item.RagCheckpointLagMax.Status == "warn" || item.RagCheckpointLagMax.Status == "danger")) {
+			totals["lagging"]++
+		}
+		if knowledgePipelineContainsReason(item.Reasons, "memory_checkpoint_stalled_under_pressure") ||
+			knowledgePipelineContainsReason(item.Reasons, "rag_checkpoint_stalled_under_pressure") {
+			totals["stalled"]++
+		}
 	}
 	return totals
+}
+
+func knowledgePipelineContainsReason(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 func knowledgePipelineStatusRank(status string) int {
