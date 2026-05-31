@@ -319,6 +319,10 @@ async def test_smoke_knowledge_worker_end_to_end_with_real_group_memory_and_fake
         "ragflow:qq:284331268:ds-smoke-1",
         "ragflow:qq:284331268:ds-smoke-2",
     ]
+    for checkpoint in fake_gateway.checkpoints.values():
+        assert checkpoint["metadata"]["last_message_count"] == "2"
+        assert checkpoint["metadata"]["last_document_count"] == "1"
+        assert checkpoint["metadata"]["last_parse_requested"] == "true"
 
     failed = await worker.process_once()
     assert failed == {"processed": False, "reason": "no_job"}

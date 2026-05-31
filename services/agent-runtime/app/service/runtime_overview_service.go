@@ -507,6 +507,7 @@ func runtimeOverviewSummary(
 		"knowledge_pipeline_expired_active_lease_targets":       intFromMap(knowledgePipelines.Totals, "expired_active_leases"),
 		"knowledge_pipeline_stale_active_lease_targets":         intFromMap(knowledgePipelines.Totals, "stale_active_leases"),
 		"knowledge_pipeline_rag_datasets":                       intFromMap(knowledgePipelines.Totals, "rag_datasets"),
+		"knowledge_pipeline_rag_dataset_ingest_snapshots":       intFromMap(knowledgePipelines.Totals, "rag_dataset_ingest_snapshots"),
 		"knowledge_pipeline_configured_rag_datasets":            intFromMap(knowledgePipelines.Totals, "configured_rag_datasets"),
 		"knowledge_pipeline_configured_rag_dataset_not_started": intFromMap(knowledgePipelines.Totals, "configured_rag_dataset_not_started"),
 		"knowledge_pipeline_rag_dataset_warning":                intFromMap(knowledgePipelines.Totals, "rag_dataset_warning"),

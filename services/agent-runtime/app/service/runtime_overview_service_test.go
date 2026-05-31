@@ -258,6 +258,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"memory_checkpoints":                 1,
 				"rag_checkpoints":                    2,
 				"rag_datasets":                       2,
+				"rag_dataset_ingest_snapshots":       1,
 				"rag_dataset_warning":                1,
 				"rag_dataset_blocked":                1,
 				"lagging":                            1,
@@ -402,6 +403,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_expired_active_lease_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stale_active_lease_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_rag_datasets"] != 2 ||
+		view.Summary["knowledge_pipeline_rag_dataset_ingest_snapshots"] != 1 ||
 		view.Summary["knowledge_pipeline_configured_rag_datasets"] != 2 ||
 		view.Summary["knowledge_pipeline_configured_rag_dataset_not_started"] != 1 ||
 		view.Summary["knowledge_pipeline_rag_dataset_warning"] != 1 ||

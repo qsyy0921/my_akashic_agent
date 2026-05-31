@@ -323,6 +323,7 @@ class AgentGatewayKnowledgeWorker:
         end_seq = _optional_int(result.get("end_seq"))
         message_count = _non_negative_int(result.get("message_count"), 0)
         if message_count > 0 and end_seq is not None:
+            document_count = _result_document_count(result)
             await self._client.update_knowledge_checkpoint(
                 checkpoint_id,
                 cursor=end_seq,
@@ -332,6 +333,11 @@ class AgentGatewayKnowledgeWorker:
                     "group_id": group_id,
                     "dataset_id": dataset_id,
                     "display_name": str(result.get("display_name") or ""),
+                    "last_message_count": str(message_count),
+                    "last_document_count": str(document_count),
+                    "last_start_seq": str(_optional_int(result.get("start_seq")) or 0),
+                    "last_end_seq": str(end_seq),
+                    "last_parse_requested": "true" if _bool_text(payload.get("parse"), True) else "false",
                 },
             )
         return {
@@ -415,3 +421,13 @@ def _normalize_dataset_ids(values: list[str] | None) -> list[str]:
         seen.add(text)
         normalized.append(text)
     return normalized
+
+
+def _result_document_count(result: dict[str, Any]) -> int:
+    data = result.get("data")
+    if not isinstance(data, dict):
+        return 0
+    document_ids = data.get("document_ids")
+    if not isinstance(document_ids, list):
+        return 0
+    return sum(1 for item in document_ids if str(item or "").strip())

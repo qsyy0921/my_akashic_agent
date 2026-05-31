@@ -825,7 +825,8 @@ distinguished between “worker exists and is healthy”, “worker stale/failed
 plane one level closer to the user workflow: per observe-only QQ group target,
 combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
 lag, checkpoint-age diagnostics, stage lease freshness, configured dataset
-bindings, and per-dataset RAG state.
+bindings, per-dataset RAG state, and the last successful `rag_ingest`
+snapshot.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

@@ -22,6 +22,7 @@
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 stage `freshness_status` / `freshness_reason`：当 `group_memory_extract` 或 `rag_ingest` 长时间停在旧 lease 上时，应看到 `*_lease_stale` 或 `*_lease_expired`，并把目标计入 runtime overview `knowledge_pipeline_stale_active_lease_targets` / `knowledge_pipeline_expired_active_lease_targets`。
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 `rag_datasets`：同一群绑定多个 RAG dataset 时，应能直接看到具体 `dataset_id` 的 lag / freshness / blocked 状态，并在 runtime overview `knowledge_pipeline_rag_dataset_*` summary 中聚合。
 - [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的配置期 dataset 可见性：当某个 observe-only QQ 群已配置 `ragflow_dataset_ids` 但还没跑出 `rag_ingest` job/checkpoint 时，应能看到 `configured_dataset_not_started`，并在 runtime overview `knowledge_pipeline_configured_rag_*` summary 中聚合。
+- [ ] 观察 `/v1/knowledge-pipeline-diagnostics` 的 `ingest_snapshot`：当某个 dataset 成功完成一次 `rag_ingest` 后，应能看到最近一次 ingest 的 `message_count`、`document_count`、`start_seq`、`end_seq`、`parse_requested` 和 `display_name`，并在 runtime overview `knowledge_pipeline_rag_dataset_ingest_snapshots` 中聚合。
 - [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 上报 `starting` / `idle` / `running` / `stopped` 或 stale。
 - [ ] 验证 worker status fencing：故意以相同 `worker_id` 启动第二个 Python AI worker 进程时，Go `/v1/agent-worker-statuses/report` 应返回 409 conflict，原实例状态不被覆盖；原实例 stopped 或 lease 过期后新实例可接管。
 - [ ] 验证长任务 worker status 续租：触发一次耗时 image / knowledge / rag_eval / outbox 任务，确认 `/v1/agent-worker-statuses` 中对应 worker 的 `updated_at` 在任务运行期间持续推进，且 `lease_active=true`，不会误判 stale。

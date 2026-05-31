@@ -68,6 +68,7 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"knowledge_pipeline_expired_active_lease_targets":       1,
 				"knowledge_pipeline_stale_active_lease_targets":         1,
 				"knowledge_pipeline_rag_datasets":                       2,
+				"knowledge_pipeline_rag_dataset_ingest_snapshots":       1,
 				"knowledge_pipeline_configured_rag_datasets":            2,
 				"knowledge_pipeline_configured_rag_dataset_not_started": 1,
 				"knowledge_pipeline_rag_dataset_warning":                1,
@@ -123,6 +124,7 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_expired_active_lease_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stale_active_lease_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_datasets":2`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_ingest_snapshots":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_configured_rag_datasets":2`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_configured_rag_dataset_not_started":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_rag_dataset_warning":1`)) ||
@@ -172,6 +174,15 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 						FreshnessStatus: "warn",
 						FreshnessReason: "old_pending_backlog",
 					},
+					IngestSnapshot: &query.KnowledgePipelineRagIngestSnapshotView{
+						MessageCount:   3,
+						DocumentCount:  1,
+						StartSeq:       40,
+						EndSeq:         42,
+						ParseRequested: true,
+						UpdatedAt:      "2026-05-31T10:00:00Z",
+						DisplayName:    "qq_group_27234224_seq40_42.txt",
+					},
 					Status:  "warn",
 					Reasons: []string{"rag_ingest_pending_old"},
 				}},
@@ -203,6 +214,7 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 		`"freshness_status":"danger"`,
 		`"expired_active_leases":1`,
 		`"dataset_id":"ds-main"`,
+		`"ingest_snapshot":{"message_count":3,"document_count":1,"start_seq":40,"end_seq":42,"parse_requested":true,"updated_at":"2026-05-31T10:00:00Z","display_name":"qq_group_27234224_seq40_42.txt"}`,
 		`"lag":20`,
 		`"age_seconds":600`,
 		`"side_effect":"none"`,

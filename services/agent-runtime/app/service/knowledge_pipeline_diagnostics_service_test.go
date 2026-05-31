@@ -62,8 +62,17 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
 		CheckpointID: "ragflow:qq:27234224:ds-main",
 		Cursor:       64,
-		Metadata:     map[string]string{"group_id": "27234224", "dataset_id": "ds-main"},
-		Timestamp:    now.Add(-2 * time.Minute),
+		Metadata: map[string]string{
+			"group_id":             "27234224",
+			"dataset_id":           "ds-main",
+			"display_name":         "qq_group_27234224_seq62_64.txt",
+			"last_message_count":   "3",
+			"last_document_count":  "1",
+			"last_start_seq":       "62",
+			"last_end_seq":         "64",
+			"last_parse_requested": "true",
+		},
+		Timestamp: now.Add(-2 * time.Minute),
 	}); err != nil {
 		t.Fatalf("upsert rag checkpoint: %v", err)
 	}
@@ -95,6 +104,14 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	}
 	if len(pipeline.RagDatasets) != 1 || pipeline.RagDatasets[0].DatasetID != "ds-main" || pipeline.RagDatasets[0].Status != "ok" {
 		t.Fatalf("unexpected rag datasets: %#v", pipeline.RagDatasets)
+	}
+	if pipeline.RagDatasets[0].IngestSnapshot == nil ||
+		pipeline.RagDatasets[0].IngestSnapshot.MessageCount != 3 ||
+		pipeline.RagDatasets[0].IngestSnapshot.DocumentCount != 1 ||
+		pipeline.RagDatasets[0].IngestSnapshot.StartSeq != 62 ||
+		pipeline.RagDatasets[0].IngestSnapshot.EndSeq != 64 ||
+		!pipeline.RagDatasets[0].IngestSnapshot.ParseRequested {
+		t.Fatalf("unexpected rag ingest snapshot: %#v", pipeline.RagDatasets[0].IngestSnapshot)
 	}
 	if len(pipeline.WorkerCoverage) != 2 || pipeline.WorkerCoverage[0].CoverageStatus != "ok" || pipeline.WorkerCoverage[1].CoverageStatus != "ok" {
 		t.Fatalf("unexpected worker coverage: %#v", pipeline.WorkerCoverage)

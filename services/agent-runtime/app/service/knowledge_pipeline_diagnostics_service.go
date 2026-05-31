@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -486,6 +487,7 @@ func knowledgePipelineRagDatasets(
 			JobStage:        stage,
 			Checkpoint:      checkpoint,
 			CheckpointLag:   lag,
+			IngestSnapshot:  knowledgePipelineRagIngestSnapshot(checkpoint),
 			Status:          status,
 			Reasons:         reasons,
 		})
@@ -539,6 +541,55 @@ func knowledgePipelineDatasetDisplayName(checkpoint *query.KnowledgeCheckpointVi
 		return ""
 	}
 	return strings.TrimSpace(checkpoint.Metadata["display_name"])
+}
+
+func knowledgePipelineRagIngestSnapshot(
+	checkpoint *query.KnowledgeCheckpointView,
+) *query.KnowledgePipelineRagIngestSnapshotView {
+	if checkpoint == nil || checkpoint.Metadata == nil {
+		return nil
+	}
+	messageCount, okMessage := parseKnowledgePipelineMetadataInt(checkpoint.Metadata["last_message_count"])
+	documentCount, okDocument := parseKnowledgePipelineMetadataInt(checkpoint.Metadata["last_document_count"])
+	startSeq, okStart := parseKnowledgePipelineMetadataInt(checkpoint.Metadata["last_start_seq"])
+	endSeq, okEnd := parseKnowledgePipelineMetadataInt(checkpoint.Metadata["last_end_seq"])
+	parseRequested, okParse := parseKnowledgePipelineMetadataBool(checkpoint.Metadata["last_parse_requested"])
+	if !okMessage || !okDocument || !okStart || !okEnd || !okParse {
+		return nil
+	}
+	return &query.KnowledgePipelineRagIngestSnapshotView{
+		MessageCount:   messageCount,
+		DocumentCount:  documentCount,
+		StartSeq:       startSeq,
+		EndSeq:         endSeq,
+		ParseRequested: parseRequested,
+		UpdatedAt:      checkpoint.UpdatedAt,
+		DisplayName:    knowledgePipelineDatasetDisplayName(checkpoint),
+	}
+}
+
+func parseKnowledgePipelineMetadataInt(value string) (int, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func parseKnowledgePipelineMetadataBool(value string) (bool, bool) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case "true", "1", "yes", "y", "on":
+		return true, true
+	case "false", "0", "no", "n", "off":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func knowledgePipelineCheckpointLag(
@@ -874,6 +925,7 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		"memory_checkpoints":                 0,
 		"rag_checkpoints":                    0,
 		"rag_datasets":                       0,
+		"rag_dataset_ingest_snapshots":       0,
 		"configured_rag_datasets":            0,
 		"configured_rag_dataset_not_started": 0,
 		"rag_dataset_warning":                0,
@@ -923,6 +975,9 @@ func knowledgePipelineTotals(items []query.KnowledgePipelineView, staleAfterSeco
 		totals["rag_checkpoints"] += len(item.RagCheckpoints)
 		totals["rag_datasets"] += len(item.RagDatasets)
 		for _, dataset := range item.RagDatasets {
+			if dataset.IngestSnapshot != nil {
+				totals["rag_dataset_ingest_snapshots"]++
+			}
 			if dataset.Configured {
 				totals["configured_rag_datasets"]++
 			}

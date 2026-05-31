@@ -162,4 +162,7 @@ execution.
   target sync exposes configured per-group RAG dataset bindings so Go
   diagnostics can show datasets that should exist before jobs/checkpoints have
   started.
+- `064-knowledge-pipeline-rag-ingest-snapshot-diagnostics.md`: Python writes a
+  bounded successful `rag_ingest` snapshot into checkpoint metadata and Go
+  surfaces it as structured per-dataset diagnostics.
 - Agent architecture boundary specs live under `../agent-architecture/`.

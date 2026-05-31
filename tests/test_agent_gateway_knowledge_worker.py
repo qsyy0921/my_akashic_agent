@@ -266,6 +266,18 @@ async def test_knowledge_worker_processes_rag_ingest_job():
     assert complete[2]["dataset_id"] == "ds-1"
     assert complete[2]["message_count"] == "3"
     assert client.checkpoints["ragflow:qq:284331268:ds-1"]["cursor"] == 2
+    assert client.checkpoints["ragflow:qq:284331268:ds-1"]["metadata"] == {
+        "job_type": "rag_ingest",
+        "source": "qq",
+        "group_id": "284331268",
+        "dataset_id": "ds-1",
+        "display_name": "qq_group_284331268_seq0_2.txt",
+        "last_message_count": "3",
+        "last_document_count": "1",
+        "last_start_seq": "0",
+        "last_end_seq": "2",
+        "last_parse_requested": "true",
+    }
 
 
 @pytest.mark.asyncio
