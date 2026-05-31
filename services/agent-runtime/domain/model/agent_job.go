@@ -169,6 +169,15 @@ func (j AgentJob) LeaseExpired(now time.Time) bool {
 	return !j.LeaseExpiresAt.IsZero() && now.After(j.LeaseExpiresAt)
 }
 
+func (j AgentJob) ActiveForDedupe() bool {
+	switch j.Status {
+	case AgentJobPending, AgentJobLeased, AgentJobRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 func (j *AgentJob) Lease(owner string, ttl time.Duration, leaseToken string, now time.Time) error {
 	if j == nil {
 		return errors.New("agent job is nil")

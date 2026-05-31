@@ -222,3 +222,65 @@ func TestAgentJobStoreListsExpiredLeasesOldestFirst(t *testing.T) {
 		t.Fatalf("unexpected expired leases: %+v", items)
 	}
 }
+
+func TestAgentJobStoreFindsActiveJobByDedupeKey(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "agent_jobs_dedupe.json")
+	repo, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	now := time.Date(2026, 5, 31, 10, 50, 0, 0, time.UTC)
+	active, err := model.NewAgentJob(model.AgentJobSpec{
+		JobID:   "job-active-dedupe",
+		JobType: model.AgentJobGroupMemoryExtract,
+		AgentID: "worker-memory",
+		Route: model.ChannelRef{
+			Kind:             "qq",
+			AccountID:        "2365524513",
+			ConversationID:   "284331268",
+			ConversationType: "group",
+		},
+		MaxAttempts: 2,
+		Metadata: map[string]string{
+			"dedupe_key": "knowledge:group_memory_extract:qq:2365524513:284331268",
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("new active job: %v", err)
+	}
+	if err := repo.SaveAgentJob(ctx, active); err != nil {
+		t.Fatalf("save active job: %v", err)
+	}
+
+	found, ok, err := repo.FindActiveAgentJobByDedupeKey(
+		ctx,
+		string(model.AgentJobGroupMemoryExtract),
+		"knowledge:group_memory_extract:qq:2365524513:284331268",
+		now,
+	)
+	if err != nil {
+		t.Fatalf("find active by dedupe key: %v", err)
+	}
+	if !ok || found.JobID != active.JobID {
+		t.Fatalf("expected active dedupe job, got ok=%t job=%+v", ok, found)
+	}
+
+	if err := active.Cancel(now.Add(time.Second)); err != nil {
+		t.Fatalf("cancel active job: %v", err)
+	}
+	if err := repo.SaveAgentJob(ctx, active); err != nil {
+		t.Fatalf("save cancelled job: %v", err)
+	}
+	if _, ok, err := repo.FindActiveAgentJobByDedupeKey(
+		ctx,
+		string(model.AgentJobGroupMemoryExtract),
+		"knowledge:group_memory_extract:qq:2365524513:284331268",
+		now.Add(2*time.Second),
+	); err != nil {
+		t.Fatalf("find cancelled by dedupe key: %v", err)
+	} else if ok {
+		t.Fatal("expected terminal cancelled job not to match active dedupe lookup")
+	}
+}

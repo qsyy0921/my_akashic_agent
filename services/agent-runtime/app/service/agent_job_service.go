@@ -81,6 +81,18 @@ func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJob
 	} else if ok {
 		return assembler.ToAgentJobView(existing), nil
 	}
+	dedupeKey := agentJobDedupeKey(cmd)
+	if dedupeKey != "" {
+		if existing, ok, err := s.repository.FindActiveAgentJobByDedupeKey(ctx, cmd.JobType, dedupeKey, cmd.Timestamp); err != nil {
+			return query.AgentJobView{}, err
+		} else if ok {
+			return assembler.ToAgentJobView(existing), nil
+		}
+	}
+	metadata := cloneAgentJobMetadata(cmd.Metadata)
+	if dedupeKey != "" {
+		metadata["dedupe_key"] = dedupeKey
+	}
 	job, err := model.NewAgentJob(model.AgentJobSpec{
 		JobID:          cmd.JobID,
 		JobType:        model.AgentJobType(cmd.JobType),
@@ -90,7 +102,7 @@ func (s *AgentJobService) Create(ctx context.Context, cmd command.CreateAgentJob
 		SourceAssetIDs: cmd.SourceAssetIDs,
 		Payload:        cmd.Payload,
 		MaxAttempts:    cmd.MaxAttempts,
-		Metadata:       cmd.Metadata,
+		Metadata:       metadata,
 	}, cmd.Timestamp)
 	if err != nil {
 		return query.AgentJobView{}, err
@@ -380,4 +392,29 @@ func agentJobLeaseToken(value string) string {
 		return hex.EncodeToString(raw)
 	}
 	return fmt.Sprintf("agent-job-lease:%d", time.Now().UTC().UnixNano())
+}
+
+func agentJobDedupeKey(cmd command.CreateAgentJobCommand) string {
+	if value := strings.TrimSpace(cmd.DedupeKey); value != "" {
+		return value
+	}
+	if cmd.Metadata == nil {
+		return ""
+	}
+	return strings.TrimSpace(cmd.Metadata["dedupe_key"])
+}
+
+func cloneAgentJobMetadata(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return map[string]string{}
+	}
+	cloned := make(map[string]string, len(items))
+	for key, value := range items {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		cloned[key] = value
+	}
+	return cloned
 }

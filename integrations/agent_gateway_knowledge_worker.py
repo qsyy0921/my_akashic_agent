@@ -64,22 +64,26 @@ class AgentGatewayKnowledgeWorker:
     async def enqueue_once(self) -> dict[str, Any]:
         bucket = int(float(self._now_fn()) // self._enqueue_interval)
         created = 0
+        suppressed = 0
         for group_id, account_id in self._group_accounts.items():
-            await self._create_group_memory_job(group_id, account_id, bucket)
+            if not await self._create_group_memory_job(group_id, account_id, bucket):
+                suppressed += 1
             created += 1
             if self._ragflow_indexer is not None:
                 for dataset_id in self._ragflow_dataset_ids:
-                    await self._create_rag_ingest_job(
+                    if not await self._create_rag_ingest_job(
                         group_id,
                         account_id,
                         dataset_id,
                         bucket,
-                    )
+                    ):
+                        suppressed += 1
                     created += 1
         self._last_enqueue_bucket = bucket
         return {
             "bucket": bucket,
             "created_or_existing": created,
+            "suppressed_by_runtime_dedupe": suppressed,
             "groups": sorted(self._group_accounts),
         }
 
@@ -192,9 +196,10 @@ class AgentGatewayKnowledgeWorker:
         group_id: str,
         account_id: str,
         bucket: int,
-    ) -> None:
-        await self._client.create_job(
-            job_id=f"group_memory_extract:qq:{group_id}:{bucket}",
+    ) -> bool:
+        job_id = f"group_memory_extract:qq:{group_id}:{bucket}"
+        job = await self._client.create_job(
+            job_id=job_id,
             job_type="group_memory_extract",
             agent_id=self._worker_id,
             route=_qq_group_route(account_id, group_id),
@@ -203,9 +208,14 @@ class AgentGatewayKnowledgeWorker:
                 "session_key": f"qq:gqq:{group_id}",
                 "observe_only": "true",
             },
+            dedupe_key=f"knowledge:group_memory_extract:qq:{account_id}:{group_id}",
             max_attempts=2,
-            metadata={"scheduler": "agent_runtime_knowledge_worker"},
+            metadata={
+                "scheduler": "agent_runtime_knowledge_worker",
+                "dedupe_key": f"knowledge:group_memory_extract:qq:{account_id}:{group_id}",
+            },
         )
+        return str(job.get("job_id") or "") == job_id
 
     async def _create_rag_ingest_job(
         self,
@@ -213,9 +223,11 @@ class AgentGatewayKnowledgeWorker:
         account_id: str,
         dataset_id: str,
         bucket: int,
-    ) -> None:
-        await self._client.create_job(
-            job_id=f"rag_ingest:qq:{group_id}:{dataset_id}:{bucket}",
+    ) -> bool:
+        job_id = f"rag_ingest:qq:{group_id}:{dataset_id}:{bucket}"
+        dedupe_key = f"knowledge:rag_ingest:qq:{account_id}:{group_id}:{dataset_id}"
+        job = await self._client.create_job(
+            job_id=job_id,
             job_type="rag_ingest",
             agent_id=self._worker_id,
             route=_qq_group_route(account_id, group_id),
@@ -227,9 +239,14 @@ class AgentGatewayKnowledgeWorker:
                 "parse": "true",
                 "observe_only": "true",
             },
+            dedupe_key=dedupe_key,
             max_attempts=2,
-            metadata={"scheduler": "agent_runtime_knowledge_worker"},
+            metadata={
+                "scheduler": "agent_runtime_knowledge_worker",
+                "dedupe_key": dedupe_key,
+            },
         )
+        return str(job.get("job_id") or "") == job_id
 
     async def _process_group_memory_job(self, job: dict[str, Any]) -> dict[str, Any]:
         payload = _payload(job)

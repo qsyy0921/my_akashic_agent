@@ -379,6 +379,11 @@ POST /v1/jobs/{job_id}/cancel
 
 The generic job API owns lifecycle, leasing, retry, and dead-letter state. Python
 workers still execute image generation, RAG, and memory extraction.
+`POST /v1/jobs` accepts optional `dedupe_key`; if an active pending, leased, or
+running job of the same type/key already exists, Go returns that job instead of
+creating another job or publishing another queue work notification. The
+observe-only knowledge worker uses this for `group_memory_extract` and
+`rag_ingest` backpressure.
 Each lease response includes a `lease_token`. New Python workers pass that token
 back to `running`, `succeeded`, and `failed` transitions so Go can reject stale
 writebacks after an expired lease is re-leased by another worker. Empty-token

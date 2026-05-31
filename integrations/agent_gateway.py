@@ -75,6 +75,7 @@ class AgentGatewayClient:
         source_event_ids: list[str] | None = None,
         source_asset_ids: list[str] | None = None,
         payload: dict[str, str] | None = None,
+        dedupe_key: str = "",
         max_attempts: int | None = None,
         metadata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
@@ -88,6 +89,8 @@ class AgentGatewayClient:
             "payload": payload or {},
             "metadata": metadata or {},
         }
+        if dedupe_key:
+            body["dedupe_key"] = str(dedupe_key)
         if max_attempts is not None:
             body["max_attempts"] = int(max_attempts)
         return await self._request("POST", "/v1/jobs", json_body=body)

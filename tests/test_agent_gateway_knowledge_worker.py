@@ -159,7 +159,29 @@ async def test_knowledge_worker_enqueues_group_memory_and_rag_jobs():
     ]
     assert client.created[0]["route"]["conversation_id"] == "284331268"
     assert client.created[0]["payload"]["observe_only"] == "true"
+    assert client.created[0]["dedupe_key"] == (
+        "knowledge:group_memory_extract:qq:2365524513:284331268"
+    )
     assert client.created[1]["payload"]["dataset_id"] == "ds-1"
+    assert client.created[1]["dedupe_key"] == (
+        "knowledge:rag_ingest:qq:2365524513:284331268:ds-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_knowledge_worker_reports_runtime_dedupe_suppression():
+    class _DedupeGateway(_FakeGatewayClient):
+        async def create_job(self, **kwargs: Any) -> dict[str, Any]:
+            self.created.append(kwargs)
+            return {"job_id": "group_memory_extract:qq:284331268:previous", "status": "pending"}
+
+    client = _DedupeGateway()
+    worker = _worker(client)
+
+    summary = await worker.enqueue_once()
+
+    assert summary["created_or_existing"] == 1
+    assert summary["suppressed_by_runtime_dedupe"] == 1
 
 
 @pytest.mark.asyncio

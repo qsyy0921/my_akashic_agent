@@ -93,6 +93,7 @@
 - [x] 将 QQ/NapCat 私聊、普通群聊、observe-only 群聊和 `/stop` 入站事件接入 Go inbound dedupe：使用 `qq:{channel}:{bot_uin}` scope 和 `private|group:{conversation_id}:{message_id}` key，重复事件会在 bus publish、观察群 session 写入、附件下载或中断回复前被丢弃；无稳定 `message_id` 的群文件上传 notice 暂不纳入。
 - [x] 将 QQ/NapCat observe-only 群文件上传 notice 接入 Go inbound dedupe：单独使用 `group_file_message` / `group_file_id` / `group_file_fingerprint` 文件事件 key，重复 notice 会在 session 写入、文件 URL 获取、下载和预览前被丢弃；无法推导稳定 key 时保留旧行为。
 - [x] 增加 Go-owned inbound dedupe metrics：Go 提供只读 `GET /v1/inbound-dedupe/metrics`，按 scope 汇总采样记录、active/expired、重复记录和 duplicate seen 次数，并接入 runtime overview/dashboard；该路径 `side_effect=none`，不清理 TTL、不触发平台发送。
+- [x] 增加 Go-owned `AgentJob` admission dedupe：`POST /v1/jobs` 支持 `dedupe_key`，Go 在创建前查同类型 pending/leased/running job，命中则返回已有 active job，不再写 created event 或发布 MQ work；Python knowledge worker 为 `group_memory_extract` / `rag_ingest` 提交稳定 dedupe key，避免 worker 停止或积压时按分钟堆积重复 observe-only jobs。
 
 ## 下一步
 
@@ -100,6 +101,7 @@
 - [ ] 若 Telegram `getUpdates` conflict 再次出现，先看 Go `/v1/receiver-statuses` 是否显示 `status=suspended`、`reason=getupdates_conflict`，并确认 `/v1/receiver-leases` 是否没有重复 Akashic receiver；如果仍冲突，说明外部非 Akashic polling 进程占用 token，需要停止外部进程或改成 webhook。
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
 - [ ] 继续观察 QQ/NapCat `message_id` 和 group upload file 字段在真实重连/重投场景的稳定性；如果 NapCat 暴露新的文件 notice 字段名，将其补进 `_file_meta_from_notice` 和 file-event key metadata。
+- [ ] 观察 Go `AgentJob` admission dedupe live 效果：重启 Python knowledge worker 后确认 `group_memory_extract`/`rag_ingest` pending 数不再随每个 bucket 无界增长，enqueue summary 的 `suppressed_by_runtime_dedupe` 会在已有 active job 时递增；若仍积压，需要补 recovery/cancel 策略而不是放宽 Python 创建频率。
 - [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
 
 ## 边界约束

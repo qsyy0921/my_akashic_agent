@@ -33,9 +33,13 @@ class _FakeGatewayService:
         payload: dict[str, Any],
         source_event_ids: list[str] | None = None,
         source_asset_ids: list[str] | None = None,
+        dedupe_key: str = "",
         max_attempts: int = 3,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        metadata = dict(metadata or {})
+        if dedupe_key:
+            metadata.setdefault("dedupe_key", dedupe_key)
         if job_id not in self.jobs:
             now = _now_iso()
             self.jobs[job_id] = {
@@ -51,7 +55,7 @@ class _FakeGatewayService:
                 "status": "pending",
                 "result": {},
                 "error_message": "",
-                "metadata": metadata or {},
+                "metadata": metadata,
                 "lease_owner": "",
                 "lease_expires_at": "",
                 "created_at": now,

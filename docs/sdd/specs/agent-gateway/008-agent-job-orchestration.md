@@ -99,6 +99,22 @@ Create job:
 POST /v1/jobs
 ```
 
+`POST /v1/jobs` accepts optional `dedupe_key`. When present, Go checks active
+jobs of the same type before creating a new job. If a pending, leased, or
+running job with the same key exists, Go returns that active job without
+appending another `created` lifecycle event or publishing another queue work
+notification. Terminal jobs do not suppress future work.
+
+The observe-only knowledge scheduler uses:
+
+```text
+knowledge:group_memory_extract:qq:{account_id}:{group_id}
+knowledge:rag_ingest:qq:{account_id}:{group_id}:{dataset_id}
+```
+
+This keeps Python as the AI worker/client while Go owns queue admission and
+prevents minute-bucket job storms when a worker is stopped or backlogged.
+
 List recent jobs:
 
 ```text
@@ -149,6 +165,7 @@ Python still owns:
 Go owns:
 
 - job ids and idempotency;
+- active job admission dedupe by `dedupe_key`;
 - lease and retry;
 - status visibility;
 - dead-letter decisions;
@@ -172,6 +189,8 @@ Go owns:
 ## Acceptance Tests
 
 - Duplicate create request returns the existing job.
+- Duplicate create request with `dedupe_key` returns an existing active job of
+  the same type/key and does not emit another created event.
 - Lease-next skips leased/running/succeeded/dead-lettered jobs.
 - Expired leases can be leased again.
 - Failed jobs retry until max attempts, then dead-letter.

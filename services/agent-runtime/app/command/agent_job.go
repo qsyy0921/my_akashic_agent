@@ -10,6 +10,7 @@ type CreateAgentJobCommand struct {
 	SourceEventIDs []string
 	SourceAssetIDs []string
 	Payload        map[string]string
+	DedupeKey      string
 	MaxAttempts    int
 	Timestamp      time.Time
 	Metadata       map[string]string

@@ -133,3 +133,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-84-qq-inbound-dedupe-runtime.md`
 - `2026-05-31-phase8-85-qq-file-notice-dedupe.md`
 - `2026-05-31-phase8-86-inbound-dedupe-metrics.md`
+- `2026-05-31-phase8-87-agent-job-admission-dedupe.md`

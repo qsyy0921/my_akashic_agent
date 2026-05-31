@@ -77,6 +77,34 @@ func (s *Store) FindAgentJob(_ context.Context, jobID string) (model.AgentJob, b
 	return job, true, nil
 }
 
+func (s *Store) FindActiveAgentJobByDedupeKey(_ context.Context, jobType string, dedupeKey string, _ time.Time) (model.AgentJob, bool, error) {
+	dedupeKey = strings.TrimSpace(dedupeKey)
+	if dedupeKey == "" {
+		return model.AgentJob{}, false, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.order) - 1; i >= 0; i-- {
+		jobID := s.order[i]
+		job, ok := s.jobs[jobID]
+		if !ok {
+			continue
+		}
+		if jobType != "" && string(job.JobType) != jobType {
+			continue
+		}
+		if !job.ActiveForDedupe() {
+			continue
+		}
+		if strings.TrimSpace(job.Metadata["dedupe_key"]) == dedupeKey {
+			return job, true, nil
+		}
+	}
+	return model.AgentJob{}, false, nil
+}
+
 func (s *Store) ListAgentJobs(_ context.Context, filter query.AgentJobFilter) ([]model.AgentJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

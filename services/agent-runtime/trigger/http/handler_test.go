@@ -1485,6 +1485,7 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 		"source_event_ids": []string{"qq:gqq:27234224:1"},
 		"source_asset_ids": []string{"asset:1"},
 		"payload":          map[string]string{"source": "group"},
+		"dedupe_key":       "knowledge:rag_ingest:qq:1049511700:27234224:source",
 		"max_attempts":     2,
 		"timestamp":        time.Now().UTC().Format(time.RFC3339Nano),
 	}
@@ -1499,6 +1500,25 @@ func TestAgentJobEndpointCreatesLeasesAndCompletesJob(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"status":"pending"`)) {
 		t.Fatalf("create response missing pending status: %s", response.Body.String())
+	}
+
+	duplicateBody := map[string]any{}
+	for key, value := range body {
+		duplicateBody[key] = value
+	}
+	duplicateBody["job_id"] = "job-http-duplicate"
+	raw, err = json.Marshal(duplicateBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/jobs", bytes.NewReader(raw)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected duplicate job accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"job_id":"job-http-1"`)) ||
+		bytes.Contains(response.Body.Bytes(), []byte(`"job_id":"job-http-duplicate"`)) {
+		t.Fatalf("duplicate create should return active existing job: %s", response.Body.String())
 	}
 
 	response = httptest.NewRecorder()

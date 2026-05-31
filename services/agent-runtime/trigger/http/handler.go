@@ -2461,6 +2461,7 @@ func toCreateAgentJobCommand(request dto.CreateAgentJobRequest) (command.CreateA
 		SourceEventIDs: request.SourceEventIDs,
 		SourceAssetIDs: request.SourceAssetIDs,
 		Payload:        request.Payload,
+		DedupeKey:      request.DedupeKey,
 		MaxAttempts:    request.MaxAttempts,
 		Timestamp:      timestamp,
 		Metadata:       request.Metadata,

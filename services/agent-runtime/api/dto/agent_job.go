@@ -8,6 +8,7 @@ type CreateAgentJobRequest struct {
 	SourceEventIDs []string          `json:"source_event_ids,omitempty"`
 	SourceAssetIDs []string          `json:"source_asset_ids,omitempty"`
 	Payload        map[string]string `json:"payload,omitempty"`
+	DedupeKey      string            `json:"dedupe_key,omitempty"`
 	MaxAttempts    int               `json:"max_attempts,omitempty"`
 	Timestamp      string            `json:"timestamp,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`

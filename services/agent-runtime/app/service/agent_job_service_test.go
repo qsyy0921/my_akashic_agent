@@ -379,6 +379,88 @@ func TestAgentJobServiceDuplicateCreateIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAgentJobServiceDedupeKeySuppressesActiveDuplicateCreates(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewAgentJobServiceWithEvents(store, store)
+	events := appservice.NewAgentJobEventService(store)
+	now := time.Date(2026, 5, 31, 10, 45, 0, 0, time.UTC)
+
+	firstCmd := sampleKnowledgeJobCommand(
+		"group_memory_extract:qq:284331268:1",
+		"group_memory_extract",
+		"284331268",
+		map[string]string{"group_id": "284331268"},
+		now,
+	)
+	firstCmd.DedupeKey = "knowledge:group_memory_extract:qq:2365524513:284331268"
+	first, err := service.Create(ctx, firstCmd)
+	if err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+
+	secondCmd := firstCmd
+	secondCmd.JobID = "group_memory_extract:qq:284331268:2"
+	secondCmd.Timestamp = now.Add(time.Minute)
+	second, err := service.Create(ctx, secondCmd)
+	if err != nil {
+		t.Fatalf("create duplicate: %v", err)
+	}
+	if second.JobID != first.JobID {
+		t.Fatalf("expected duplicate create to return active job %s, got %+v", first.JobID, second)
+	}
+	if len(store.AgentJobs()) != 1 {
+		t.Fatalf("expected one active deduped job, got %d", len(store.AgentJobs()))
+	}
+	items, err := events.List(ctx, query.AgentJobEventFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(items) != 1 || items[0].EventType != string(model.AgentJobEventCreated) {
+		t.Fatalf("expected one created event, got %+v", items)
+	}
+
+	leased, err := service.Lease(ctx, command.AgentJobLeaseCommand{
+		JobID:      first.JobID,
+		WorkerID:   "knowledge-worker",
+		LeaseToken: "lease-dedupe",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("lease first: %v", err)
+	}
+	if _, err := service.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+		JobID:      leased.JobID,
+		LeaseToken: "lease-dedupe",
+		Timestamp:  now.Add(2*time.Minute + time.Second),
+	}); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	if _, err := service.Complete(ctx, command.CompleteAgentJobCommand{
+		JobID:      leased.JobID,
+		LeaseToken: "lease-dedupe",
+		Result:     map[string]string{"ok": "true"},
+		Timestamp:  now.Add(2*time.Minute + 2*time.Second),
+	}); err != nil {
+		t.Fatalf("complete first: %v", err)
+	}
+
+	thirdCmd := firstCmd
+	thirdCmd.JobID = "group_memory_extract:qq:284331268:3"
+	thirdCmd.Timestamp = now.Add(3 * time.Minute)
+	third, err := service.Create(ctx, thirdCmd)
+	if err != nil {
+		t.Fatalf("create after terminal: %v", err)
+	}
+	if third.JobID != thirdCmd.JobID {
+		t.Fatalf("expected terminal job not to suppress new create, got %+v", third)
+	}
+	if len(store.AgentJobs()) != 2 {
+		t.Fatalf("expected second job after terminal state, got %d", len(store.AgentJobs()))
+	}
+}
+
 func TestAgentJobServiceWritesLifecycleEvents(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

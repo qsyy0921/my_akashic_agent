@@ -42,6 +42,7 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
         calls.append((request.method, request.url.path, body))
         if request.url.path == "/v1/jobs":
             assert body["job_type"] == "image_generation"
+            assert body["dedupe_key"] == "image_generation:qq:2365524513:1049511700:prompt-1"
             return httpx.Response(
                 202,
                 json={
@@ -80,6 +81,7 @@ async def test_agent_gateway_client_creates_leases_and_completes_job():
         },
         source_event_ids=["qq:private:1"],
         payload={"prompt": "古装美女"},
+        dedupe_key="image_generation:qq:2365524513:1049511700:prompt-1",
         max_attempts=2,
     )
     leased = await client.lease_next(job_type="image_generation")
