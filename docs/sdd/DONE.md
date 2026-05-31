@@ -23,6 +23,7 @@
 - 已加入可选 Go local outbox delivery worker，默认关闭，避免未完成 cutover 时触发真实平台发送。
 - 已实现 outbound cutover readiness：`/v1/outbound-cutover/readiness` 聚合 OneBot 配置、delivery smoke matrix、queue backend execution owner 和 runtime worker 状态，判断 QQ/NapCat 发送链路是否可交给 Go 执行，且不发送平台消息。
 - 已实现 outbound cutover plan：`/v1/outbound-cutover/plan` 在 readiness 基础上输出 Go local outbox worker 或 NATS external lease 的启用步骤、验证入口和回滚步骤，保持只读且不改环境变量、不发平台消息。
+- runtime overview 已聚合 outbound cutover plan：summary/card/detail 可直接看到当前/目标/推荐 execution owner、决策和 blocker 数，避免 dashboard/operator 入口漏看 QQ/NapCat cutover 门禁。
 
 ## 观察群与接收链路
 

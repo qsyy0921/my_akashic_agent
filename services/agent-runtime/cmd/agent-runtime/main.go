@@ -342,6 +342,7 @@ func main() {
 		KnowledgeJobPlanner:   knowledgeJobPlannerPreview,
 		KnowledgePlannerReady: knowledgeJobPlannerReadiness,
 		KnowledgePlannerPlan:  knowledgeJobPlannerPreviewDefaults,
+		OutboundCutoverPlan:   outboundCutoverPlan,
 		ReceiverStatuses:      receiverStatuses,
 		ReceiverLeases:        receiverStatuses,
 		SchedulerJobs:         schedulerJobs,

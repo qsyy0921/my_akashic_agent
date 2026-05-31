@@ -900,6 +900,10 @@ snapshot plus derived RAG index readiness.
 `/v1/knowledge-job-planner/preview`, including planned observe-only QQ targets,
 groups, `group_memory_extract` jobs, and `rag_ingest` jobs before real planner
 admission is enabled.
+`Outbound Cutover` summarizes the read-only `/v1/outbound-cutover/plan`,
+including current, desired and recommended execution owner, decision and blocker
+count before QQ/NapCat delivery ownership is moved to Go local outbox worker or
+NATS external lease.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

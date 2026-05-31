@@ -11,6 +11,7 @@
 - [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels` 或启用 Go local outbox worker。
 - [ ] 做 QQ/NapCat cutover 前先查看 `/v1/outbound-cutover/readiness`：应同时满足 OneBot aliases 完整、delivery smoke ready、`execution_ready=true`；若 local worker 和 NATS external lease 都没执行 outbox，应出现 `outbox_execution_path_not_ready`。
 - [ ] 做 QQ/NapCat cutover 前查看 `/v1/outbound-cutover/plan`：确认 `desired_execution_owner`、enable steps、verification endpoints 和 rollback steps 与本次计划一致，并确认 `side_effect=none`。
+- [ ] 做 QQ/NapCat cutover 前查看 `/v1/runtime-overview` 的 `outbound_cutover_plan_*` summary 和 `Outbound Cutover` card：应与 `/v1/outbound-cutover/plan` 一致，并能直接看到当前/目标/推荐 execution owner 和 blocker 数。
 - [ ] 继续观察 QQ/NapCat `message_id` 和 group upload file 字段在真实重连/重投场景的稳定性；如果 NapCat 暴露新的文件 notice 字段名，补进 `_file_meta_from_notice` 和 file-event dedupe key metadata。
 
 ## AgentJob / Worker / Queue

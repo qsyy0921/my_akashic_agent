@@ -34,6 +34,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgeJobPlanner   runtimeKnowledgeJobPlannerPreviewer
 	KnowledgePlannerReady runtimeKnowledgeJobPlannerReadinessChecker
 	KnowledgePlannerPlan  command.PlanKnowledgeJobsCommand
+	OutboundCutoverPlan   runtimeOutboundCutoverPlanner
 	ReceiverStatuses      runtimeReceiverStatusesGetter
 	ReceiverLeases        runtimeReceiverLeasesGetter
 	SchedulerJobs         runtimeSchedulerJobDiagnosticsGetter
@@ -103,6 +104,10 @@ type runtimeKnowledgeJobPlannerReadinessChecker interface {
 	CheckKnowledgeJobPlannerReadiness(ctx context.Context, cmd command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error)
 }
 
+type runtimeOutboundCutoverPlanner interface {
+	PlanOutboundCutover(ctx context.Context, cmd command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error)
+}
+
 type runtimeReceiverStatusesGetter interface {
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
 }
@@ -155,6 +160,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines query.KnowledgePipelineDiagnosticsView
 		knowledgePlanner   query.KnowledgeJobPlannerPreviewView
 		knowledgeReady     query.KnowledgeJobPlannerReadinessView
+		outboundCutover    query.OutboundCutoverPlanView
 		receiverStatuses   query.ReceiverStatusesView
 		receiverLeases     query.ReceiverLeasesView
 		schedulerJobs      query.SchedulerJobDiagnosticsView
@@ -303,6 +309,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.OutboundCutoverPlan != nil {
+			if item, err := deps.OutboundCutoverPlan.PlanOutboundCutover(ctx, command.PlanOutboundCutoverCommand{}); err != nil {
+				errors = append(errors, runtimeOverviewError("outbound-cutover-plan", err))
+			} else {
+				outboundCutover = item
+			}
+		}
+
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
 		} else if item, err := deps.ReceiverStatuses.ListReceiverStatuses(ctx); err != nil {
@@ -346,6 +360,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		outboundCutover,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -369,6 +384,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
+		outboundCutover,
 		receiverStatuses,
 		receiverLeases,
 		schedulerJobs,
@@ -389,6 +405,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		KnowledgePipelines:     knowledgePipelines,
 		KnowledgeJobPlanner:    knowledgePlanner,
 		KnowledgePlannerReady:  knowledgeReady,
+		OutboundCutoverPlan:    outboundCutover,
 		ReceiverStatuses:       receiverStatuses,
 		ReceiverLeases:         receiverLeases,
 		SchedulerJobs:          schedulerJobs,
@@ -425,6 +442,7 @@ func runtimeOverviewSummary(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	outboundCutover query.OutboundCutoverPlanView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -617,12 +635,18 @@ func runtimeOverviewSummary(
 		"agent_job_worker_coverage_failed_job_types": agentJobWorkerCoverageCount(agentJobWorkerCoverage, func(item query.AgentJobWorkerCoverageView) bool {
 			return item.FailedWorkers > 0
 		}),
-		"outbox_metric_events":          outboxMetrics.SampledEvents,
-		"outbox_metric_dead_letters":    outboxMetrics.DeadLetters.CurrentTotal,
-		"outbox_pressure_accounts":      outboxMetrics.Pressure.Accounts,
-		"outbox_pressure_high_accounts": outboxMetrics.Pressure.HighPressureAccounts,
-		"outbox_pressure_max_active":    outboxMetrics.Pressure.MaxActive,
-		"outbox_pressure_max_queued":    outboxMetrics.Pressure.MaxQueued,
+		"outbox_metric_events":                    outboxMetrics.SampledEvents,
+		"outbox_metric_dead_letters":              outboxMetrics.DeadLetters.CurrentTotal,
+		"outbox_pressure_accounts":                outboxMetrics.Pressure.Accounts,
+		"outbox_pressure_high_accounts":           outboxMetrics.Pressure.HighPressureAccounts,
+		"outbox_pressure_max_active":              outboxMetrics.Pressure.MaxActive,
+		"outbox_pressure_max_queued":              outboxMetrics.Pressure.MaxQueued,
+		"outbound_cutover_plan_ready":             outboundCutover.Ready,
+		"outbound_cutover_plan_decision":          outboundCutover.Decision,
+		"outbound_cutover_plan_blockers":          len(outboundCutover.Blockers),
+		"outbound_cutover_plan_current_owner":     outboundCutover.CurrentExecutionOwner,
+		"outbound_cutover_plan_desired_owner":     outboundCutover.DesiredExecutionOwner,
+		"outbound_cutover_plan_recommended_owner": outboundCutover.RecommendedExecutionOwner,
 	}
 }
 
@@ -644,6 +668,7 @@ func runtimeOverviewCards(
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
+	outboundCutover query.OutboundCutoverPlanView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
 	schedulerJobs query.SchedulerJobDiagnosticsView,
@@ -675,6 +700,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
+		runtimeOverviewCard("outbound_cutover_plan", "Outbound Cutover", outboundCutoverPlanValue(outboundCutover), outboundCutoverPlanStatus(outboundCutover), map[string]any{"outbound_cutover_plan": outboundCutover}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
 		runtimeOverviewCard("scheduler_jobs", "Scheduler Jobs", schedulerJobValue(schedulerJobs), schedulerJobStatus(schedulerJobs), map[string]any{"scheduler_jobs": schedulerJobs}),
@@ -956,6 +982,32 @@ func knowledgePlannerReadinessValue(view query.KnowledgeJobPlannerReadinessView)
 	}
 	if view.Ready {
 		return "ready"
+	}
+	return fmt.Sprintf("blocked:%d", len(view.Blockers))
+}
+
+func outboundCutoverPlanStatus(view query.OutboundCutoverPlanView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if view.Ready {
+		return "ok"
+	}
+	if len(view.Blockers) > 0 || view.Decision == "blocked" {
+		return "warn"
+	}
+	return "ok"
+}
+
+func outboundCutoverPlanValue(view query.OutboundCutoverPlanView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	if view.Ready {
+		return "ready"
+	}
+	if view.Decision != "" {
+		return fmt.Sprintf("%s:%d", view.Decision, len(view.Blockers))
 	}
 	return fmt.Sprintf("blocked:%d", len(view.Blockers))
 }

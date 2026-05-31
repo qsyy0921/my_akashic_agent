@@ -189,4 +189,7 @@ execution.
 - `072-outbound-cutover-plan.md`: Go exposes a read-only outbound cutover plan
   with required checks, enable steps, verification endpoints, rollback steps,
   blockers and explicit Go/Python delivery boundary before operator cutover.
+- `073-runtime-overview-outbound-cutover-plan.md`: Runtime overview aggregates
+  the outbound cutover plan into summary/card/detail fields for dashboard and
+  operator entrypoints without mutating delivery state.
 - Agent architecture boundary specs live under `../agent-architecture/`.

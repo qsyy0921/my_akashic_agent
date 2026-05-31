@@ -351,6 +351,47 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Preview:                query.KnowledgeJobPlannerPreviewView{TotalJobs: 3, Targets: 1, SideEffect: "none"},
 			SideEffect:             "none",
 		}},
+		OutboundCutoverPlan: staticRuntimeOutboundCutoverPlan{view: query.OutboundCutoverPlanView{
+			Ready:                     false,
+			Decision:                  "blocked",
+			DesiredExecutionOwner:     "nats_external_lease",
+			RecommendedExecutionOwner: "nats_external_lease",
+			CurrentExecutionOwner:     "go_state_store_api",
+			Readiness: query.OutboundCutoverReadinessView{
+				Ready:          false,
+				Reason:         "outbound_cutover_not_ready",
+				ExecutionOwner: "go_state_store_api",
+				SideEffect:     "none",
+			},
+			RequiredChecks: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "precheck",
+				Action:    "check_outbound_cutover_readiness",
+				Method:    "POST",
+				Endpoint:  "/v1/outbound-cutover/readiness",
+			}},
+			EnableSteps: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "enable",
+				Action:    "configure_nats_external_lease",
+				Env:       map[string]string{"AKASHIC_QUEUE_MODE": "external_lease"},
+			}},
+			VerificationSteps: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "verify",
+				Action:    "read_queue_backend",
+				Method:    "GET",
+				Endpoint:  "/v1/queue-backend",
+			}},
+			RollbackSteps: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "rollback",
+				Action:    "disable_external_lease_cutover",
+				Env:       map[string]string{"AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER": "false"},
+			}},
+			Blockers:   []string{"external_lease_outbox_not_ready", "dual_read_smoke_passed"},
+			SideEffect: "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -481,6 +522,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_job_planner_readiness_worker_stopped"] != 1 {
 		t.Fatalf("unexpected knowledge planner readiness summary: %#v", view.Summary)
 	}
+	if view.Summary["outbound_cutover_plan_ready"] != false ||
+		view.Summary["outbound_cutover_plan_decision"] != "blocked" ||
+		view.Summary["outbound_cutover_plan_blockers"] != 2 ||
+		view.Summary["outbound_cutover_plan_current_owner"] != "go_state_store_api" ||
+		view.Summary["outbound_cutover_plan_desired_owner"] != "nats_external_lease" ||
+		view.Summary["outbound_cutover_plan_recommended_owner"] != "nats_external_lease" {
+		t.Fatalf("unexpected outbound cutover plan summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -526,6 +575,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_preview", "3/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_readiness", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_job_planner_readiness", "blocked:2")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "outbound_cutover_plan", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "outbound_cutover_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
@@ -562,6 +613,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.KnowledgePlannerReady.Ready || len(view.KnowledgePlannerReady.Blockers) != 2 {
 		t.Fatalf("unexpected knowledge planner readiness detail: %+v", view.KnowledgePlannerReady)
+	}
+	if view.OutboundCutoverPlan.Decision != "blocked" || len(view.OutboundCutoverPlan.RollbackSteps) == 0 {
+		t.Fatalf("unexpected outbound cutover plan detail: %+v", view.OutboundCutoverPlan)
 	}
 }
 
@@ -716,6 +770,14 @@ type staticKnowledgeJobPlannerReadiness struct {
 }
 
 func (s staticKnowledgeJobPlannerReadiness) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeOutboundCutoverPlan struct {
+	view query.OutboundCutoverPlanView
+}
+
+func (s staticRuntimeOutboundCutoverPlan) PlanOutboundCutover(context.Context, command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error) {
 	return s.view, nil
 }
 
