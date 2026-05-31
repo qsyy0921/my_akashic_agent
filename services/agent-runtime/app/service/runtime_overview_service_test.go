@@ -258,6 +258,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"memory_checkpoints":   1,
 				"rag_checkpoints":      2,
 				"lagging":              1,
+				"stale_checkpoints":    1,
+				"stagnant":             1,
 				"stalled":              1,
 			},
 			Pipelines: []query.KnowledgePipelineView{
@@ -388,6 +390,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
 		view.Summary["knowledge_pipeline_blocked"] != 1 ||
 		view.Summary["knowledge_pipeline_lagging_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_stale_checkpoint_targets"] != 1 ||
+		view.Summary["knowledge_pipeline_stagnant_targets"] != 1 ||
 		view.Summary["knowledge_pipeline_stalled_targets"] != 1 {
 		t.Fatalf("unexpected knowledge pipeline summary: %#v", view.Summary)
 	}

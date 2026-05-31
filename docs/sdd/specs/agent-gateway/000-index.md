@@ -149,4 +149,7 @@ execution.
 - `059-knowledge-pipeline-source-lag-diagnostics.md`: Go-owned group-level
   knowledge pipeline diagnostics compare inbox source seq against checkpoint
   cursor to expose lagging and stalled pipelines.
+- `060-knowledge-pipeline-checkpoint-age-diagnostics.md`: Go-owned knowledge
+  pipeline diagnostics add checkpoint age and stagnant-state visibility so
+  long-unmoved memory/RAG checkpoints can be separated from short-lived lag.
 - Agent architecture boundary specs live under `../agent-architecture/`.

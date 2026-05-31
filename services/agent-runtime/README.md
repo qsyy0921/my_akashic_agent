@@ -799,7 +799,8 @@ group-level `group_memory_extract` / `rag_ingest` backlog, knowledge
 checkpoints, and Python worker coverage. It is intended to answer whether a
 group pipeline is ready, warning, or blocked without inspecting multiple
 endpoints manually. It also compares inbox `metadata.seq` against checkpoint
-cursor so the runtime can expose per-group lagging and stalled pipelines.
+cursor and derives checkpoint `age_seconds`, so the runtime can expose
+per-group lagging, stagnant, and stalled pipelines.
 It does not upload to RAGFlow, execute Python workers, or change memory/RAG
 strategy.
 
@@ -820,8 +821,8 @@ that pressure with Python worker heartbeat coverage, so backlog can be
 distinguished between “worker exists and is healthy”, “worker stale/failed”, and
 “no active worker available”. `Knowledge Pipelines` summarizes the same control
 plane one level closer to the user workflow: per observe-only QQ group target,
-combining capture, knowledge jobs, checkpoints, worker coverage, and source-seq
-lag diagnostics.
+combining capture, knowledge jobs, checkpoints, worker coverage, source-seq
+lag, and checkpoint-age diagnostics.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

@@ -102,8 +102,14 @@ func TestKnowledgePipelineDiagnosticsServiceReportsReadyPipeline(t *testing.T) {
 	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 0 || pipeline.MemoryCheckpointLag.Status != "ok" {
 		t.Fatalf("unexpected memory lag: %#v", pipeline.MemoryCheckpointLag)
 	}
+	if pipeline.MemoryCheckpointLag.AgeSeconds != 60 {
+		t.Fatalf("unexpected memory checkpoint age: %#v", pipeline.MemoryCheckpointLag)
+	}
 	if pipeline.RagCheckpointLagMax == nil || pipeline.RagCheckpointLagMax.Lag != 0 || pipeline.RagCheckpointLagMax.Status != "ok" {
 		t.Fatalf("unexpected rag lag: %#v", pipeline.RagCheckpointLagMax)
+	}
+	if pipeline.RagCheckpointLagMax.AgeSeconds != 120 {
+		t.Fatalf("unexpected rag checkpoint age: %#v", pipeline.RagCheckpointLagMax)
 	}
 }
 
@@ -202,6 +208,81 @@ func TestKnowledgePipelineDiagnosticsServiceWarnsOnCheckpointLag(t *testing.T) {
 	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 27 || pipeline.MemoryCheckpointLag.Status != "warn" {
 		t.Fatalf("unexpected memory lag state: %#v", pipeline.MemoryCheckpointLag)
 	}
+	if pipeline.MemoryCheckpointLag.AgeSeconds != 60 {
+		t.Fatalf("unexpected memory lag age: %#v", pipeline.MemoryCheckpointLag)
+	}
+}
+
+func TestKnowledgePipelineDiagnosticsServiceMarksCheckpointStagnant(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	agentWorkers := NewAgentWorkerStatusService()
+	syncObserveTarget(t, observeTargets, "164369633")
+	reportQQReceiver(t, receiverStatuses, "1049511700", "connected")
+	ingestObserveMessageForGroupWithSeq(t, store, "164369633", "msg-stagnant-text", "stagnant text", nil, 80)
+	ingestObserveMessageForGroupWithSeq(t, store, "164369633", "msg-stagnant-image", "stagnant image", []command.AttachmentCommand{{
+		ID:       "asset:stagnant:image:1",
+		Kind:     "image",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/stagnant-image.png",
+		MimeType: "image/png",
+		Name:     "stagnant-image.png",
+	}}, 81)
+	ingestObserveMessageForGroupWithSeq(t, store, "164369633", "msg-stagnant-file", "stagnant file", []command.AttachmentCommand{{
+		ID:       "asset:stagnant:file:1",
+		Kind:     "file",
+		URL:      "E:/agent/akashic/.akashic-workspace/uploads/stagnant-file.txt",
+		MimeType: "text/plain",
+		Name:     "stagnant-file.txt",
+	}}, 82)
+
+	if _, err := agentWorkers.ReportAgentWorkerStatus(ctx, command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "knowledge-worker-main",
+		InstanceID:      "instance-1",
+		WorkerType:      "knowledge",
+		Status:          "idle",
+		LeaseTTLSeconds: 120,
+		Timestamp:       now,
+		Source:          "test",
+	}); err != nil {
+		t.Fatalf("report knowledge worker: %v", err)
+	}
+
+	checkpoints := NewKnowledgeCheckpointService(store)
+	if _, err := checkpoints.Upsert(ctx, command.UpsertKnowledgeCheckpointCommand{
+		CheckpointID: "memory:qq:164369633",
+		Cursor:       55,
+		Metadata:     map[string]string{"group_id": "164369633"},
+		Timestamp:    now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert stagnant memory checkpoint: %v", err)
+	}
+
+	service := newKnowledgePipelineDiagnosticsServiceForTest(store, observeTargets, receiverStatuses, agentWorkers, map[string]bool{
+		"asset:stagnant:image:1": true,
+		"asset:stagnant:file:1":  true,
+	})
+	view, err := service.GetKnowledgePipelineDiagnostics(ctx, query.KnowledgePipelineDiagnosticsFilter{
+		Limit:             50,
+		StaleAfterSeconds: 300,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("knowledge pipeline diagnostics: %v", err)
+	}
+	if view.Totals["targets"] != 1 || view.Totals["warning"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stale_checkpoints"] != 1 || view.Totals["stagnant"] != 1 || view.Totals["stalled"] != 0 {
+		t.Fatalf("unexpected stagnant totals: %#v", view.Totals)
+	}
+	pipeline := view.Pipelines[0]
+	if pipeline.Status != "warn" || !containsString(pipeline.Reasons, "memory_checkpoint_stagnant") {
+		t.Fatalf("unexpected stagnant pipeline: %#v", pipeline)
+	}
+	if pipeline.MemoryCheckpointLag == nil || pipeline.MemoryCheckpointLag.Lag != 27 || pipeline.MemoryCheckpointLag.Status != "warn" || pipeline.MemoryCheckpointLag.AgeSeconds != 600 {
+		t.Fatalf("unexpected stagnant lag state: %#v", pipeline.MemoryCheckpointLag)
+	}
 }
 
 func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t *testing.T) {
@@ -276,7 +357,7 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	if err != nil {
 		t.Fatalf("knowledge pipeline diagnostics: %v", err)
 	}
-	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stalled"] != 1 {
+	if view.Totals["targets"] != 1 || view.Totals["blocked"] != 1 || view.Totals["high_pressure"] != 1 || view.Totals["lagging"] != 1 || view.Totals["stale_checkpoints"] != 1 || view.Totals["stalled"] != 1 || view.Totals["stagnant"] != 0 {
 		t.Fatalf("unexpected high-pressure totals: %#v", view.Totals)
 	}
 	pipeline := view.Pipelines[0]
@@ -288,6 +369,9 @@ func TestKnowledgePipelineDiagnosticsServiceBlocksHighPressureCheckpointStall(t 
 	}
 	if pipeline.RagCheckpointLagMax == nil || pipeline.RagCheckpointLagMax.Lag != 120 || pipeline.RagCheckpointLagMax.Status != "danger" {
 		t.Fatalf("unexpected rag checkpoint lag: %#v", pipeline.RagCheckpointLagMax)
+	}
+	if pipeline.RagCheckpointLagMax.AgeSeconds != 300 {
+		t.Fatalf("unexpected rag checkpoint lag age: %#v", pipeline.RagCheckpointLagMax)
 	}
 	if !containsString(pipeline.Reasons, "rag_checkpoint_stalled_under_pressure") {
 		t.Fatalf("expected rag_checkpoint_stalled_under_pressure reason: %#v", pipeline.Reasons)

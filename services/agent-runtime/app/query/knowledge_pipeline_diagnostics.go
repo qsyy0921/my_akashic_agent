@@ -25,6 +25,7 @@ type KnowledgePipelineCheckpointLagView struct {
 	Cursor          int    `json:"cursor"`
 	LatestSourceSeq int    `json:"latest_source_seq,omitempty"`
 	Lag             int    `json:"lag,omitempty"`
+	AgeSeconds      int    `json:"age_seconds,omitempty"`
 	Status          string `json:"status"`
 	Reason          string `json:"reason,omitempty"`
 	UpdatedAt       string `json:"updated_at,omitempty"`

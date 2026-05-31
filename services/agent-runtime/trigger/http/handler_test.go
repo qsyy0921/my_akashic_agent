@@ -63,6 +63,8 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"agent_job_worker_coverage_uncovered_job_types": 1,
 				"knowledge_pipeline_targets":                    2,
 				"knowledge_pipeline_lagging_targets":            1,
+				"knowledge_pipeline_stale_checkpoint_targets":   1,
+				"knowledge_pipeline_stagnant_targets":           1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -109,6 +111,8 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_targets":2`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_lagging_targets":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stale_checkpoint_targets":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_stagnant_targets":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"knowledge_pipelines"`)) {
 		t.Fatalf("response missing knowledge pipeline diagnostics: %s", response.Body.String())
 	}
@@ -140,6 +144,7 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 					Cursor:          22,
 					LatestSourceSeq: 42,
 					Lag:             20,
+					AgeSeconds:      600,
 					Status:          "warn",
 					Reason:          "lag>=20",
 				},
@@ -160,6 +165,7 @@ func TestKnowledgePipelineDiagnosticsEndpointReturnsReadOnlyPipelines(t *testing
 		`"target_id":"qq:1049511700:group:27234224"`,
 		`"latest_source_seq":42`,
 		`"lag":20`,
+		`"age_seconds":600`,
 		`"side_effect":"none"`,
 	} {
 		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
