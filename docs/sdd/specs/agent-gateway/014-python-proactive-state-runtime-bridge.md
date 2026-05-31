@@ -17,6 +17,10 @@ SQLite，因此 Go 侧 API 还没有成为运行时路径。
 - `is_delivery_duplicate`
 - `mark_delivery`
 - `count_deliveries_in_window`
+- `is_item_seen`
+- `mark_items_seen`
+- `is_rejection_cooled`
+- `mark_rejection_cooldown`
 - `get_last_context_only_at`
 - `mark_context_only_send`
 - `count_context_only_in_window`
@@ -26,9 +30,7 @@ SQLite，因此 Go 侧 API 还没有成为运行时路径。
 继续留在 SQLite：
 
 - tick log / tick step log
-- seen items
 - semantic items
-- rejection cooldown
 - `bg_context_last_main_at`
 - cleanup
 

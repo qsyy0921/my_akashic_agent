@@ -26,7 +26,8 @@ Python 仍负责 prompt、LLM 决策、候选内容分类、发送内容生成�
 ## 非目标
 
 - 不迁移 proactive tick log / tick step log。
-- 不迁移 semantic items、source seen items、rejection cooldown。
+- 不迁移 semantic items。source seen items 和 rejection cooldown 已在后续
+  `033-proactive-seen-and-rejection-state.md` 迁移。
 - 不改变 LLM 判断策略。
 - 不直接接管 Telegram/QQ 发送。
 

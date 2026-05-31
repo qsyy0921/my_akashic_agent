@@ -81,4 +81,7 @@ execution.
   AI workers while Python keeps model and tool execution.
 - `032-proactive-anyaction-quota.md`: Go-owned deterministic AnyAction quota
   window state for proactive admission, with Python retaining probability logic.
+- `033-proactive-seen-and-rejection-state.md`: Go-owned proactive source item
+  seen dedupe and rejection cooldown state, with Python retaining semantic
+  candidate extraction and tick logs.
 - Agent architecture boundary specs live under `../agent-architecture/`.

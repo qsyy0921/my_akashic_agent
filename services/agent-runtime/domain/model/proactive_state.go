@@ -55,6 +55,94 @@ func (r ProactiveDeliveryRecord) WithinWindow(now time.Time, window time.Duratio
 	return !r.SentAt.Before(now.Add(-window))
 }
 
+type ProactiveSeenItemRecord struct {
+	SourceKey string
+	ItemID    string
+	SeenAt    time.Time
+}
+
+func NewProactiveSeenItemRecord(sourceKey string, itemID string, seenAt time.Time) (ProactiveSeenItemRecord, error) {
+	if seenAt.IsZero() {
+		seenAt = time.Now().UTC()
+	}
+	record := ProactiveSeenItemRecord{
+		SourceKey: NormalizeProactiveSourceKey(sourceKey),
+		ItemID:    strings.TrimSpace(itemID),
+		SeenAt:    seenAt.UTC(),
+	}
+	if err := record.Validate(); err != nil {
+		return ProactiveSeenItemRecord{}, err
+	}
+	return record, nil
+}
+
+func (r ProactiveSeenItemRecord) Validate() error {
+	if strings.TrimSpace(r.SourceKey) == "" {
+		return errors.New("proactive seen item requires source key")
+	}
+	if strings.TrimSpace(r.ItemID) == "" {
+		return errors.New("proactive seen item requires item id")
+	}
+	if r.SeenAt.IsZero() {
+		return errors.New("proactive seen item requires seen_at")
+	}
+	return nil
+}
+
+func (r ProactiveSeenItemRecord) WithinWindow(now time.Time, window time.Duration) bool {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if window <= 0 {
+		return false
+	}
+	return !r.SeenAt.Before(now.Add(-window))
+}
+
+type ProactiveRejectionCooldownRecord struct {
+	SourceKey  string
+	ItemID     string
+	RejectedAt time.Time
+}
+
+func NewProactiveRejectionCooldownRecord(sourceKey string, itemID string, rejectedAt time.Time) (ProactiveRejectionCooldownRecord, error) {
+	if rejectedAt.IsZero() {
+		rejectedAt = time.Now().UTC()
+	}
+	record := ProactiveRejectionCooldownRecord{
+		SourceKey:  NormalizeProactiveSourceKey(sourceKey),
+		ItemID:     strings.TrimSpace(itemID),
+		RejectedAt: rejectedAt.UTC(),
+	}
+	if err := record.Validate(); err != nil {
+		return ProactiveRejectionCooldownRecord{}, err
+	}
+	return record, nil
+}
+
+func (r ProactiveRejectionCooldownRecord) Validate() error {
+	if strings.TrimSpace(r.SourceKey) == "" {
+		return errors.New("proactive rejection cooldown requires source key")
+	}
+	if strings.TrimSpace(r.ItemID) == "" {
+		return errors.New("proactive rejection cooldown requires item id")
+	}
+	if r.RejectedAt.IsZero() {
+		return errors.New("proactive rejection cooldown requires rejected_at")
+	}
+	return nil
+}
+
+func (r ProactiveRejectionCooldownRecord) WithinWindow(now time.Time, window time.Duration) bool {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if window <= 0 {
+		return false
+	}
+	return !r.RejectedAt.Before(now.Add(-window))
+}
+
 type ProactiveContextOnlyRecord struct {
 	SessionKey string
 	SentAt     time.Time
@@ -178,4 +266,16 @@ func proactiveQuotaKeyOrDefault(value string) string {
 		return "default"
 	}
 	return value
+}
+
+func NormalizeProactiveSourceKey(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "mcp:") {
+		return value
+	}
+	parts := strings.SplitN(value, ":", 3)
+	if len(parts) < 2 {
+		return value
+	}
+	return strings.Join(parts[:2], ":")
 }

@@ -57,14 +57,58 @@ class AgentRuntimeProactiveStateStore:
         ttl_hours: int,
         now: datetime | None = None,
     ) -> bool:
-        return self._fallback.is_item_seen(source_key, item_id, ttl_hours, now)
+        timestamp = now or _utcnow()
+        try:
+            data = self._request(
+                "GET",
+                "/v1/proactive/seen-items/seen",
+                params={
+                    "source_key": source_key,
+                    "item_id": item_id,
+                    "ttl_hours": max(1, int(ttl_hours)),
+                    "timestamp": timestamp.isoformat(),
+                },
+            )
+            if isinstance(data, dict):
+                if bool(data.get("seen")):
+                    return True
+                return self._fallback.is_item_seen(
+                    source_key,
+                    item_id,
+                    ttl_hours,
+                    timestamp,
+                )
+            raise AgentRuntimeProactiveStateError("seen response is not an object")
+        except Exception as exc:
+            self._log_fallback("is_item_seen", exc)
+            return self._fallback.is_item_seen(
+                source_key,
+                item_id,
+                ttl_hours,
+                timestamp,
+            )
 
     def mark_items_seen(
         self,
         entries: list[tuple[str, str]],
         now: datetime | None = None,
     ) -> None:
-        self._fallback.mark_items_seen(entries, now)
+        timestamp = now or _utcnow()
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/seen-items",
+                json_body={
+                    "entries": [
+                        {"source_key": source_key, "item_id": item_id}
+                        for source_key, item_id in entries
+                    ],
+                    "timestamp": timestamp.isoformat(),
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("mark_items_seen", exc)
+        self._fallback.mark_items_seen(entries, timestamp)
 
     def is_delivery_duplicate(
         self,
@@ -184,12 +228,38 @@ class AgentRuntimeProactiveStateStore:
         ttl_hours: int,
         now: datetime | None = None,
     ) -> bool:
-        return self._fallback.is_rejection_cooled(
-            source_key,
-            item_id,
-            ttl_hours,
-            now,
-        )
+        timestamp = now or _utcnow()
+        try:
+            data = self._request(
+                "GET",
+                "/v1/proactive/rejection-cooldowns/cooled",
+                params={
+                    "source_key": source_key,
+                    "item_id": item_id,
+                    "ttl_hours": max(0, int(ttl_hours)),
+                    "timestamp": timestamp.isoformat(),
+                },
+            )
+            if isinstance(data, dict):
+                if bool(data.get("cooled")):
+                    return True
+                return self._fallback.is_rejection_cooled(
+                    source_key,
+                    item_id,
+                    ttl_hours,
+                    timestamp,
+                )
+            raise AgentRuntimeProactiveStateError(
+                "rejection cooldown response is not an object"
+            )
+        except Exception as exc:
+            self._log_fallback("is_rejection_cooled", exc)
+            return self._fallback.is_rejection_cooled(
+                source_key,
+                item_id,
+                ttl_hours,
+                timestamp,
+            )
 
     def mark_rejection_cooldown(
         self,
@@ -197,7 +267,23 @@ class AgentRuntimeProactiveStateStore:
         hours: int,
         now: datetime | None = None,
     ) -> None:
-        self._fallback.mark_rejection_cooldown(entries, hours, now)
+        timestamp = now or _utcnow()
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/rejection-cooldowns",
+                json_body={
+                    "entries": [
+                        {"source_key": source_key, "item_id": item_id}
+                        for source_key, item_id in entries
+                    ],
+                    "hours": int(hours),
+                    "timestamp": timestamp.isoformat(),
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("mark_rejection_cooldown", exc)
+        self._fallback.mark_rejection_cooldown(entries, hours, timestamp)
 
     def cleanup(
         self,

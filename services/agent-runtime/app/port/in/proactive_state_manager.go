@@ -13,6 +13,12 @@ type ProactiveStateManager interface {
 	CountDeliveries(ctx context.Context, cmd command.CountProactiveDeliveriesCommand) (query.ProactiveCountView, error)
 	ListDeliveries(ctx context.Context, filter query.ProactiveDeliveryFilter) ([]query.ProactiveDeliveryView, error)
 
+	IsItemSeen(ctx context.Context, cmd command.CheckProactiveItemSeenCommand) (query.ProactiveSeenView, error)
+	MarkItemsSeen(ctx context.Context, cmd command.MarkProactiveItemsSeenCommand) (query.ProactiveMarkItemsView, error)
+
+	IsRejectionCooled(ctx context.Context, cmd command.CheckProactiveRejectionCooldownCommand) (query.ProactiveRejectionCooldownView, error)
+	MarkRejectionCooldown(ctx context.Context, cmd command.MarkProactiveRejectionCooldownCommand) (query.ProactiveMarkItemsView, error)
+
 	RecordContextOnly(ctx context.Context, cmd command.RecordProactiveContextOnlyCommand) (query.ProactiveTimestampView, error)
 	LastContextOnly(ctx context.Context, sessionKey string) (query.ProactiveTimestampView, error)
 	CountContextOnly(ctx context.Context, cmd command.CountProactiveContextOnlyCommand) (query.ProactiveCountView, error)

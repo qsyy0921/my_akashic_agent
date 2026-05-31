@@ -14,6 +14,12 @@ type ProactiveStateRepository interface {
 	CountProactiveDeliveriesSince(ctx context.Context, sessionKey string, since time.Time) (int, error)
 	ListProactiveDeliveries(ctx context.Context, filter query.ProactiveDeliveryFilter) ([]model.ProactiveDeliveryRecord, error)
 
+	SaveProactiveSeenItems(ctx context.Context, records []model.ProactiveSeenItemRecord) error
+	FindProactiveSeenItem(ctx context.Context, sourceKey string, itemID string) (model.ProactiveSeenItemRecord, bool, error)
+
+	SaveProactiveRejectionCooldowns(ctx context.Context, records []model.ProactiveRejectionCooldownRecord) error
+	FindProactiveRejectionCooldown(ctx context.Context, sourceKey string, itemID string) (model.ProactiveRejectionCooldownRecord, bool, error)
+
 	SaveProactiveContextOnly(ctx context.Context, record model.ProactiveContextOnlyRecord) error
 	CountProactiveContextOnlySince(ctx context.Context, sessionKey string, since time.Time) (int, error)
 

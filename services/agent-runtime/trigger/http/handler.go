@@ -240,6 +240,10 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/deliveries", ProactiveDeliveriesHandler(proactiveState))
 	mux.Handle("/v1/proactive/deliveries/duplicate", ProactiveDeliveryDuplicateHandler(proactiveState))
 	mux.Handle("/v1/proactive/deliveries/count", ProactiveDeliveryCountHandler(proactiveState))
+	mux.Handle("/v1/proactive/seen-items", ProactiveSeenItemsHandler(proactiveState))
+	mux.Handle("/v1/proactive/seen-items/seen", ProactiveSeenItemsSeenHandler(proactiveState))
+	mux.Handle("/v1/proactive/rejection-cooldowns", ProactiveRejectionCooldownsHandler(proactiveState))
+	mux.Handle("/v1/proactive/rejection-cooldowns/cooled", ProactiveRejectionCooldownsCooledHandler(proactiveState))
 	mux.Handle("/v1/proactive/context-only", ProactiveContextOnlyHandler(proactiveState))
 	mux.Handle("/v1/proactive/context-only/last", ProactiveContextOnlyLastHandler(proactiveState))
 	mux.Handle("/v1/proactive/context-only/count", ProactiveContextOnlyCountHandler(proactiveState))
@@ -2012,6 +2016,140 @@ func ProactiveDeliveryCountHandler(proactiveState inport.ProactiveStateManager) 
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: count})
 	})
+}
+
+func ProactiveSeenItemsHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.MarkProactiveItemsRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		record, err := proactiveState.MarkItemsSeen(r.Context(), command.MarkProactiveItemsSeenCommand{
+			Entries:   proactiveSourceItemEntriesFromDTO(request.Entries),
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
+	})
+}
+
+func ProactiveSeenItemsSeenHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		seen, err := proactiveState.IsItemSeen(r.Context(), command.CheckProactiveItemSeenCommand{
+			SourceKey: r.URL.Query().Get("source_key"),
+			ItemID:    r.URL.Query().Get("item_id"),
+			TTLHours:  parsePositiveInt(r.URL.Query().Get("ttl_hours"), 24, 8760),
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: seen})
+	})
+}
+
+func ProactiveRejectionCooldownsHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.MarkProactiveRejectionCooldownRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		record, err := proactiveState.MarkRejectionCooldown(r.Context(), command.MarkProactiveRejectionCooldownCommand{
+			Entries:   proactiveSourceItemEntriesFromDTO(request.Entries),
+			Hours:     request.Hours,
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
+	})
+}
+
+func ProactiveRejectionCooldownsCooledHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cooled, err := proactiveState.IsRejectionCooled(r.Context(), command.CheckProactiveRejectionCooldownCommand{
+			SourceKey: r.URL.Query().Get("source_key"),
+			ItemID:    r.URL.Query().Get("item_id"),
+			TTLHours:  parseNonNegativeInt(r.URL.Query().Get("ttl_hours"), 0),
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: cooled})
+	})
+}
+
+func proactiveSourceItemEntriesFromDTO(items []dto.ProactiveSourceItemEntry) []command.ProactiveSourceItemEntry {
+	entries := make([]command.ProactiveSourceItemEntry, 0, len(items))
+	for _, item := range items {
+		entries = append(entries, command.ProactiveSourceItemEntry{
+			SourceKey: item.SourceKey,
+			ItemID:    item.ItemID,
+		})
+	}
+	return entries
 }
 
 func ProactiveContextOnlyHandler(proactiveState inport.ProactiveStateManager) http.Handler {

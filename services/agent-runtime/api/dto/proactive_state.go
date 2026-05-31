@@ -17,3 +17,19 @@ type ProactiveAnyActionQuotaRequest struct {
 	Timezone  string `json:"timezone"`
 	Timestamp string `json:"timestamp,omitempty"`
 }
+
+type ProactiveSourceItemEntry struct {
+	SourceKey string `json:"source_key"`
+	ItemID    string `json:"item_id"`
+}
+
+type MarkProactiveItemsRequest struct {
+	Entries   []ProactiveSourceItemEntry `json:"entries"`
+	Timestamp string                     `json:"timestamp,omitempty"`
+}
+
+type MarkProactiveRejectionCooldownRequest struct {
+	Entries   []ProactiveSourceItemEntry `json:"entries"`
+	Hours     int                        `json:"hours"`
+	Timestamp string                     `json:"timestamp,omitempty"`
+}

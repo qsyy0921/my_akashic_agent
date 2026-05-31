@@ -47,6 +47,73 @@ func TestProactiveStateServiceRecordsDeliveryAndChecksWindow(t *testing.T) {
 	}
 }
 
+func TestProactiveStateServiceRecordsSeenAndRejectionCooldown(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	svc := service.NewProactiveStateService(memory.NewStore())
+
+	marked, err := svc.MarkItemsSeen(ctx, command.MarkProactiveItemsSeenCommand{
+		Entries: []command.ProactiveSourceItemEntry{{
+			SourceKey: "mcp:news:feed-a",
+			ItemID:    "item-a",
+		}},
+		Timestamp: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked.Count != 1 {
+		t.Fatalf("unexpected seen count: %d", marked.Count)
+	}
+	seen, err := svc.IsItemSeen(ctx, command.CheckProactiveItemSeenCommand{
+		SourceKey: "mcp:news:feed-b",
+		ItemID:    "item-a",
+		TTLHours:  2,
+		Timestamp: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seen.Seen || seen.SourceKey != "mcp:news" {
+		t.Fatalf("expected normalized seen hit, got %+v", seen)
+	}
+	expired, err := svc.IsItemSeen(ctx, command.CheckProactiveItemSeenCommand{
+		SourceKey: "mcp:news:feed-b",
+		ItemID:    "item-a",
+		TTLHours:  1,
+		Timestamp: now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expired.Seen {
+		t.Fatalf("expected seen item to expire, got %+v", expired)
+	}
+
+	if _, err := svc.MarkRejectionCooldown(ctx, command.MarkProactiveRejectionCooldownCommand{
+		Entries: []command.ProactiveSourceItemEntry{{
+			SourceKey: "qq:group:1",
+			ItemID:    "item-b",
+		}},
+		Hours:     3,
+		Timestamp: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cooled, err := svc.IsRejectionCooled(ctx, command.CheckProactiveRejectionCooldownCommand{
+		SourceKey: "qq:group:1",
+		ItemID:    "item-b",
+		TTLHours:  3,
+		Timestamp: now.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cooled.Cooled {
+		t.Fatalf("expected rejection cooldown hit, got %+v", cooled)
+	}
+}
+
 func TestProactiveStateServiceRecordsContextAndDriftMarks(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)

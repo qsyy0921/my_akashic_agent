@@ -27,6 +27,20 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if err := store.SaveProactiveDelivery(ctx, delivery); err != nil {
 		t.Fatal(err)
 	}
+	seen, err := model.NewProactiveSeenItemRecord("mcp:news:feed-a", "item-a", now.Add(30*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveSeenItems(ctx, []model.ProactiveSeenItemRecord{seen}); err != nil {
+		t.Fatal(err)
+	}
+	rejection, err := model.NewProactiveRejectionCooldownRecord("qq:group:1", "item-b", now.Add(45*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveRejectionCooldowns(ctx, []model.ProactiveRejectionCooldownRecord{rejection}); err != nil {
+		t.Fatal(err)
+	}
 	contextOnly, err := model.NewProactiveContextOnlyRecord("telegram:1", now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +80,20 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("unexpected delivery count: %d", count)
+	}
+	foundSeen, ok, err := reloaded.FindProactiveSeenItem(ctx, "mcp:news:feed-b", "item-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || foundSeen.SourceKey != "mcp:news" {
+		t.Fatalf("expected persisted normalized seen item, got ok=%v record=%+v", ok, foundSeen)
+	}
+	foundRejection, ok, err := reloaded.FindProactiveRejectionCooldown(ctx, "qq:group:1", "item-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || foundRejection.RejectedAt.IsZero() {
+		t.Fatalf("expected persisted rejection cooldown, got ok=%v record=%+v", ok, foundRejection)
 	}
 	contextCount, err := reloaded.CountProactiveContextOnlySince(ctx, "telegram:1", now.Add(-time.Hour))
 	if err != nil {

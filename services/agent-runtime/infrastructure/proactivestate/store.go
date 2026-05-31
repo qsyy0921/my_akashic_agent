@@ -22,17 +22,21 @@ type Store struct {
 	path          string
 	deliveries    map[string]model.ProactiveDeliveryRecord
 	deliveryOrder []string
+	seenItems     map[string]model.ProactiveSeenItemRecord
+	rejections    map[string]model.ProactiveRejectionCooldownRecord
 	contextOnly   []model.ProactiveContextOnlyRecord
 	sessionMarks  map[string]model.ProactiveSessionMark
 	anyAction     map[string]model.ProactiveAnyActionQuota
 }
 
 type persistedState struct {
-	Version      string                             `json:"version"`
-	Deliveries   []model.ProactiveDeliveryRecord    `json:"deliveries"`
-	ContextOnly  []model.ProactiveContextOnlyRecord `json:"context_only"`
-	SessionMarks []model.ProactiveSessionMark       `json:"session_marks"`
-	AnyAction    []model.ProactiveAnyActionQuota    `json:"anyaction_quotas,omitempty"`
+	Version      string                                   `json:"version"`
+	Deliveries   []model.ProactiveDeliveryRecord          `json:"deliveries"`
+	SeenItems    []model.ProactiveSeenItemRecord          `json:"seen_items,omitempty"`
+	Rejections   []model.ProactiveRejectionCooldownRecord `json:"rejection_cooldowns,omitempty"`
+	ContextOnly  []model.ProactiveContextOnlyRecord       `json:"context_only"`
+	SessionMarks []model.ProactiveSessionMark             `json:"session_marks"`
+	AnyAction    []model.ProactiveAnyActionQuota          `json:"anyaction_quotas,omitempty"`
 }
 
 func NewStore(path string) (*Store, error) {
@@ -44,6 +48,8 @@ func NewStore(path string) (*Store, error) {
 	store := &Store{
 		path:         cleanPath,
 		deliveries:   make(map[string]model.ProactiveDeliveryRecord),
+		seenItems:    make(map[string]model.ProactiveSeenItemRecord),
+		rejections:   make(map[string]model.ProactiveRejectionCooldownRecord),
 		contextOnly:  make([]model.ProactiveContextOnlyRecord, 0),
 		sessionMarks: make(map[string]model.ProactiveSessionMark),
 		anyAction:    make(map[string]model.ProactiveAnyActionQuota),
@@ -118,6 +124,44 @@ func (s *Store) ListProactiveDeliveries(_ context.Context, filter query.Proactiv
 		items = append(items, record)
 	}
 	return items, nil
+}
+
+func (s *Store) SaveProactiveSeenItems(_ context.Context, records []model.ProactiveSeenItemRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, record := range records {
+		if err := record.Validate(); err != nil {
+			return err
+		}
+		s.seenItems[sourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
+	return s.flush()
+}
+
+func (s *Store) FindProactiveSeenItem(_ context.Context, sourceKey string, itemID string) (model.ProactiveSeenItemRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.seenItems[sourceItemKey(sourceKey, itemID)]
+	return record, ok, nil
+}
+
+func (s *Store) SaveProactiveRejectionCooldowns(_ context.Context, records []model.ProactiveRejectionCooldownRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, record := range records {
+		if err := record.Validate(); err != nil {
+			return err
+		}
+		s.rejections[sourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
+	return s.flush()
+}
+
+func (s *Store) FindProactiveRejectionCooldown(_ context.Context, sourceKey string, itemID string) (model.ProactiveRejectionCooldownRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.rejections[sourceItemKey(sourceKey, itemID)]
+	return record, ok, nil
 }
 
 func (s *Store) SaveProactiveContextOnly(_ context.Context, record model.ProactiveContextOnlyRecord) error {
@@ -208,6 +252,18 @@ func (s *Store) load() error {
 		}
 		s.deliveries[key] = record
 	}
+	for _, record := range state.SeenItems {
+		if err := record.Validate(); err != nil {
+			continue
+		}
+		s.seenItems[sourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
+	for _, record := range state.Rejections {
+		if err := record.Validate(); err != nil {
+			continue
+		}
+		s.rejections[sourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
 	for _, record := range state.ContextOnly {
 		if err := record.Validate(); err != nil {
 			continue
@@ -233,6 +289,8 @@ func (s *Store) flush() error {
 	state := persistedState{
 		Version:      storeVersion,
 		Deliveries:   make([]model.ProactiveDeliveryRecord, 0, len(s.deliveryOrder)),
+		SeenItems:    make([]model.ProactiveSeenItemRecord, 0, len(s.seenItems)),
+		Rejections:   make([]model.ProactiveRejectionCooldownRecord, 0, len(s.rejections)),
 		ContextOnly:  append(make([]model.ProactiveContextOnlyRecord, 0, len(s.contextOnly)), s.contextOnly...),
 		SessionMarks: make([]model.ProactiveSessionMark, 0, len(s.sessionMarks)),
 		AnyAction:    make([]model.ProactiveAnyActionQuota, 0, len(s.anyAction)),
@@ -241,6 +299,12 @@ func (s *Store) flush() error {
 		if record, ok := s.deliveries[key]; ok {
 			state.Deliveries = append(state.Deliveries, record)
 		}
+	}
+	for _, record := range s.seenItems {
+		state.SeenItems = append(state.SeenItems, record)
+	}
+	for _, record := range s.rejections {
+		state.Rejections = append(state.Rejections, record)
 	}
 	for _, mark := range s.sessionMarks {
 		state.SessionMarks = append(state.SessionMarks, mark)
@@ -268,6 +332,10 @@ func (s *Store) flush() error {
 
 func deliveryKey(sessionKey string, deliveryKeyValue string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(deliveryKeyValue)
+}
+
+func sourceItemKey(sourceKey string, itemID string) string {
+	return model.NormalizeProactiveSourceKey(sourceKey) + "\x00" + strings.TrimSpace(itemID)
 }
 
 func sessionMarkKey(sessionKey string, key string) string {

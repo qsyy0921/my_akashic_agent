@@ -42,6 +42,23 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
             return _ok({"duplicate": True})
         if request.url.path == "/v1/proactive/deliveries/count":
             return _ok({"count": 2})
+        if request.url.path == "/v1/proactive/seen-items":
+            assert body["entries"] == [
+                {"source_key": "mcp:news:feed-a", "item_id": "item-a"}
+            ]
+            return httpx.Response(202, json={"code": "OK", "data": {"count": 1}})
+        if request.url.path == "/v1/proactive/seen-items/seen":
+            assert params["source_key"] == "mcp:news:feed-b"
+            assert params["item_id"] == "item-a"
+            return _ok({"seen": True, "source_key": "mcp:news", "item_id": "item-a"})
+        if request.url.path == "/v1/proactive/rejection-cooldowns":
+            assert body["hours"] == 2
+            return httpx.Response(202, json={"code": "OK", "data": {"count": 1}})
+        if request.url.path == "/v1/proactive/rejection-cooldowns/cooled":
+            assert params["ttl_hours"] == "2"
+            return _ok(
+                {"cooled": True, "source_key": "qq:group:1", "item_id": "item-b"}
+            )
         if request.url.path == "/v1/proactive/context-only":
             return httpx.Response(202, json={"code": "OK", "data": body})
         if request.url.path == "/v1/proactive/context-only/count":
@@ -67,6 +84,12 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
     assert store.is_delivery_duplicate("telegram:1", "delivery-a", 24, now) is True
     assert store.count_deliveries_in_window("telegram:1", 24, now) == 2
 
+    store.mark_items_seen([("mcp:news:feed-a", "item-a")], now)
+    assert store.is_item_seen("mcp:news:feed-b", "item-a", 24, now) is True
+
+    store.mark_rejection_cooldown([("qq:group:1", "item-b")], 2, now)
+    assert store.is_rejection_cooled("qq:group:1", "item-b", 2, now) is True
+
     store.mark_context_only_send("telegram:1", now)
 
     assert store.count_context_only_in_window("telegram:1", 24, now) == 1
@@ -83,6 +106,10 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         "/v1/proactive/deliveries",
         "/v1/proactive/deliveries/duplicate",
         "/v1/proactive/deliveries/count",
+        "/v1/proactive/seen-items",
+        "/v1/proactive/seen-items/seen",
+        "/v1/proactive/rejection-cooldowns",
+        "/v1/proactive/rejection-cooldowns/cooled",
         "/v1/proactive/context-only",
         "/v1/proactive/context-only/count",
         "/v1/proactive/context-only/last",
@@ -90,6 +117,8 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
         "/v1/proactive/drift-runs/last",
     ]
     assert fallback.count_deliveries_in_window("telegram:1", 24, now) == 1
+    assert fallback.is_item_seen("mcp:news:feed-b", "item-a", 24, now) is True
+    assert fallback.is_rejection_cooled("qq:group:1", "item-b", 2, now) is True
 
     store.close()
 
@@ -110,6 +139,12 @@ def test_agent_runtime_proactive_state_falls_back_to_sqlite_on_runtime_error(tmp
 
     assert store.is_delivery_duplicate("telegram:1", "delivery-a", 24, now) is True
     assert store.count_deliveries_in_window("telegram:1", 24, now) == 1
+
+    store.mark_items_seen([("mcp:news:feed-a", "item-a")], now)
+    assert store.is_item_seen("mcp:news:feed-b", "item-a", 24, now) is True
+
+    store.mark_rejection_cooldown([("qq:group:1", "item-b")], 2, now)
+    assert store.is_rejection_cooled("qq:group:1", "item-b", 2, now) is True
 
     store.mark_context_only_send("telegram:1", now)
     assert store.get_last_context_only_at("telegram:1") == now

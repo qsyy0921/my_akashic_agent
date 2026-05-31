@@ -21,6 +21,36 @@ type CountProactiveDeliveriesCommand struct {
 	Timestamp   time.Time
 }
 
+type ProactiveSourceItemEntry struct {
+	SourceKey string
+	ItemID    string
+}
+
+type CheckProactiveItemSeenCommand struct {
+	SourceKey string
+	ItemID    string
+	TTLHours  int
+	Timestamp time.Time
+}
+
+type MarkProactiveItemsSeenCommand struct {
+	Entries   []ProactiveSourceItemEntry
+	Timestamp time.Time
+}
+
+type CheckProactiveRejectionCooldownCommand struct {
+	SourceKey string
+	ItemID    string
+	TTLHours  int
+	Timestamp time.Time
+}
+
+type MarkProactiveRejectionCooldownCommand struct {
+	Entries   []ProactiveSourceItemEntry
+	Hours     int
+	Timestamp time.Time
+}
+
 type RecordProactiveContextOnlyCommand struct {
 	SessionKey string
 	Timestamp  time.Time

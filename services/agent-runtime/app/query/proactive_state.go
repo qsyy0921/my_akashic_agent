@@ -25,6 +25,30 @@ type ProactiveCountView struct {
 	WindowHours int    `json:"window_hours"`
 }
 
+type ProactiveSeenView struct {
+	Seen       bool   `json:"seen"`
+	SourceKey  string `json:"source_key"`
+	ItemID     string `json:"item_id"`
+	TTLHours   int    `json:"ttl_hours"`
+	SeenAt     string `json:"seen_at,omitempty"`
+	SideEffect string `json:"side_effect"`
+}
+
+type ProactiveRejectionCooldownView struct {
+	Cooled     bool   `json:"cooled"`
+	SourceKey  string `json:"source_key"`
+	ItemID     string `json:"item_id"`
+	TTLHours   int    `json:"ttl_hours"`
+	RejectedAt string `json:"rejected_at,omitempty"`
+	SideEffect string `json:"side_effect"`
+}
+
+type ProactiveMarkItemsView struct {
+	Count      int    `json:"count"`
+	Timestamp  string `json:"timestamp"`
+	SideEffect string `json:"side_effect"`
+}
+
 type ProactiveTimestampView struct {
 	SessionKey string `json:"session_key"`
 	Key        string `json:"key"`

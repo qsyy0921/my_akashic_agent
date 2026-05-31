@@ -2368,6 +2368,37 @@ func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/seen-items", bytes.NewReader([]byte(`{"entries":[{"source_key":"mcp:news:feed","item_id":"item-a"}],"timestamp":"2026-05-30T10:00:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected seen item 202, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/v1/proactive/seen-items/seen?source_key=mcp:news:other&item_id=item-a&ttl_hours=24&timestamp=2026-05-30T11:00:00Z", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected seen check 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"seen":true`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"source_key":"mcp:news"`)) {
+		t.Fatalf("seen response missing normalized hit: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/rejection-cooldowns", bytes.NewReader([]byte(`{"entries":[{"source_key":"qq:group:1","item_id":"item-b"}],"hours":2,"timestamp":"2026-05-30T10:00:00Z"}`))))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected rejection cooldown 202, got %d: %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/v1/proactive/rejection-cooldowns/cooled?source_key=qq:group:1&item_id=item-b&ttl_hours=2&timestamp=2026-05-30T11:00:00Z", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected rejection cooldown check 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"cooled":true`)) {
+		t.Fatalf("cooldown response missing true flag: %s", response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/proactive/context-only", bytes.NewReader([]byte(`{"session_key":"telegram:1","timestamp":"2026-05-30T11:30:00Z"}`))))
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("expected context-only 202, got %d: %s", response.Code, response.Body.String())

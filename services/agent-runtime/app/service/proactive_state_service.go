@@ -90,6 +90,102 @@ func (s *ProactiveStateService) ListDeliveries(ctx context.Context, filter query
 	return assembler.ToProactiveDeliveryViews(items), nil
 }
 
+func (s *ProactiveStateService) IsItemSeen(ctx context.Context, cmd command.CheckProactiveItemSeenCommand) (query.ProactiveSeenView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveSeenView{}, errors.New("proactive state service requires repository")
+	}
+	sourceKey := model.NormalizeProactiveSourceKey(cmd.SourceKey)
+	itemID := strings.TrimSpace(cmd.ItemID)
+	if sourceKey == "" {
+		return query.ProactiveSeenView{}, errors.New("source key required")
+	}
+	if itemID == "" {
+		return query.ProactiveSeenView{}, errors.New("item id required")
+	}
+	ttlHours := positiveHoursOrDefault(cmd.TTLHours, 24)
+	record, ok, err := s.repository.FindProactiveSeenItem(ctx, sourceKey, itemID)
+	if err != nil {
+		return query.ProactiveSeenView{}, err
+	}
+	seen := ok && record.WithinWindow(timestampOrNow(cmd.Timestamp), time.Duration(ttlHours)*time.Hour)
+	if !ok {
+		record = model.ProactiveSeenItemRecord{SourceKey: sourceKey, ItemID: itemID}
+	}
+	return assembler.ToProactiveSeenView(record, seen, ttlHours, "none"), nil
+}
+
+func (s *ProactiveStateService) MarkItemsSeen(ctx context.Context, cmd command.MarkProactiveItemsSeenCommand) (query.ProactiveMarkItemsView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveMarkItemsView{}, errors.New("proactive state service requires repository")
+	}
+	timestamp := timestampOrNow(cmd.Timestamp)
+	records := make([]model.ProactiveSeenItemRecord, 0, len(cmd.Entries))
+	for _, entry := range cmd.Entries {
+		record, err := model.NewProactiveSeenItemRecord(entry.SourceKey, entry.ItemID, timestamp)
+		if err != nil {
+			return query.ProactiveMarkItemsView{}, err
+		}
+		records = append(records, record)
+	}
+	if len(records) == 0 {
+		return assembler.ToProactiveMarkItemsView(0, timestamp, "runtime_state_write"), nil
+	}
+	if err := s.repository.SaveProactiveSeenItems(ctx, records); err != nil {
+		return query.ProactiveMarkItemsView{}, err
+	}
+	return assembler.ToProactiveMarkItemsView(len(records), timestamp, "runtime_state_write"), nil
+}
+
+func (s *ProactiveStateService) IsRejectionCooled(ctx context.Context, cmd command.CheckProactiveRejectionCooldownCommand) (query.ProactiveRejectionCooldownView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveRejectionCooldownView{}, errors.New("proactive state service requires repository")
+	}
+	sourceKey := model.NormalizeProactiveSourceKey(cmd.SourceKey)
+	itemID := strings.TrimSpace(cmd.ItemID)
+	if sourceKey == "" {
+		return query.ProactiveRejectionCooldownView{}, errors.New("source key required")
+	}
+	if itemID == "" {
+		return query.ProactiveRejectionCooldownView{}, errors.New("item id required")
+	}
+	ttlHours := cmd.TTLHours
+	if ttlHours <= 0 {
+		record := model.ProactiveRejectionCooldownRecord{SourceKey: sourceKey, ItemID: itemID}
+		return assembler.ToProactiveRejectionCooldownView(record, false, ttlHours, "none"), nil
+	}
+	record, ok, err := s.repository.FindProactiveRejectionCooldown(ctx, sourceKey, itemID)
+	if err != nil {
+		return query.ProactiveRejectionCooldownView{}, err
+	}
+	cooled := ok && record.WithinWindow(timestampOrNow(cmd.Timestamp), time.Duration(ttlHours)*time.Hour)
+	if !ok {
+		record = model.ProactiveRejectionCooldownRecord{SourceKey: sourceKey, ItemID: itemID}
+	}
+	return assembler.ToProactiveRejectionCooldownView(record, cooled, ttlHours, "none"), nil
+}
+
+func (s *ProactiveStateService) MarkRejectionCooldown(ctx context.Context, cmd command.MarkProactiveRejectionCooldownCommand) (query.ProactiveMarkItemsView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveMarkItemsView{}, errors.New("proactive state service requires repository")
+	}
+	timestamp := timestampOrNow(cmd.Timestamp)
+	if cmd.Hours <= 0 || len(cmd.Entries) == 0 {
+		return assembler.ToProactiveMarkItemsView(0, timestamp, "none"), nil
+	}
+	records := make([]model.ProactiveRejectionCooldownRecord, 0, len(cmd.Entries))
+	for _, entry := range cmd.Entries {
+		record, err := model.NewProactiveRejectionCooldownRecord(entry.SourceKey, entry.ItemID, timestamp)
+		if err != nil {
+			return query.ProactiveMarkItemsView{}, err
+		}
+		records = append(records, record)
+	}
+	if err := s.repository.SaveProactiveRejectionCooldowns(ctx, records); err != nil {
+		return query.ProactiveMarkItemsView{}, err
+	}
+	return assembler.ToProactiveMarkItemsView(len(records), timestamp, "runtime_state_write"), nil
+}
+
 func (s *ProactiveStateService) RecordContextOnly(ctx context.Context, cmd command.RecordProactiveContextOnlyCommand) (query.ProactiveTimestampView, error) {
 	if s == nil || s.repository == nil {
 		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")

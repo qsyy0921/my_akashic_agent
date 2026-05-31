@@ -38,6 +38,8 @@ type Store struct {
 	inboundDedupeRecords   map[string]model.InboundDedupeRecord
 	proactiveDeliveries    map[string]model.ProactiveDeliveryRecord
 	proactiveDeliveryOrder []string
+	proactiveSeenItems     map[string]model.ProactiveSeenItemRecord
+	proactiveRejections    map[string]model.ProactiveRejectionCooldownRecord
 	proactiveContextOnly   []model.ProactiveContextOnlyRecord
 	proactiveSessionMarks  map[string]model.ProactiveSessionMark
 	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
@@ -64,6 +66,8 @@ func NewStore() *Store {
 		agentJobs:             make(map[string]model.AgentJob),
 		inboundDedupeRecords:  make(map[string]model.InboundDedupeRecord),
 		proactiveDeliveries:   make(map[string]model.ProactiveDeliveryRecord),
+		proactiveSeenItems:    make(map[string]model.ProactiveSeenItemRecord),
+		proactiveRejections:   make(map[string]model.ProactiveRejectionCooldownRecord),
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
 	}
@@ -973,6 +977,50 @@ func (s *Store) ListProactiveDeliveries(_ context.Context, filter query.Proactiv
 	return items, nil
 }
 
+func (s *Store) SaveProactiveSeenItems(_ context.Context, records []model.ProactiveSeenItemRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.proactiveSeenItems == nil {
+		s.proactiveSeenItems = make(map[string]model.ProactiveSeenItemRecord)
+	}
+	for _, record := range records {
+		if err := record.Validate(); err != nil {
+			return err
+		}
+		s.proactiveSeenItems[proactiveSourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
+	return nil
+}
+
+func (s *Store) FindProactiveSeenItem(_ context.Context, sourceKey string, itemID string) (model.ProactiveSeenItemRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.proactiveSeenItems[proactiveSourceItemKey(sourceKey, itemID)]
+	return record, ok, nil
+}
+
+func (s *Store) SaveProactiveRejectionCooldowns(_ context.Context, records []model.ProactiveRejectionCooldownRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.proactiveRejections == nil {
+		s.proactiveRejections = make(map[string]model.ProactiveRejectionCooldownRecord)
+	}
+	for _, record := range records {
+		if err := record.Validate(); err != nil {
+			return err
+		}
+		s.proactiveRejections[proactiveSourceItemKey(record.SourceKey, record.ItemID)] = record
+	}
+	return nil
+}
+
+func (s *Store) FindProactiveRejectionCooldown(_ context.Context, sourceKey string, itemID string) (model.ProactiveRejectionCooldownRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.proactiveRejections[proactiveSourceItemKey(sourceKey, itemID)]
+	return record, ok, nil
+}
+
 func (s *Store) SaveProactiveContextOnly(_ context.Context, record model.ProactiveContextOnlyRecord) error {
 	if err := record.Validate(); err != nil {
 		return err
@@ -1040,6 +1088,10 @@ func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) 
 
 func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(deliveryKey)
+}
+
+func proactiveSourceItemKey(sourceKey string, itemID string) string {
+	return model.NormalizeProactiveSourceKey(sourceKey) + "\x00" + strings.TrimSpace(itemID)
 }
 
 func proactiveSessionMarkKey(sessionKey string, key string) string {
