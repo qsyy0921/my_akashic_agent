@@ -293,6 +293,7 @@ func main() {
 		ObserveCapture:       observeCaptureDiagnostics,
 		ReceiverStatuses:     receiverStatuses,
 		ReceiverLeases:       receiverStatuses,
+		SchedulerJobs:        schedulerJobs,
 	})
 
 	mux := http.NewServeMux()

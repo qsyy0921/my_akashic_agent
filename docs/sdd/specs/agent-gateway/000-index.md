@@ -90,4 +90,6 @@ execution.
   background-context main-topic send timestamp.
 - `036-scheduler-job-store.md`: Go-owned durable snapshot store for Python
   scheduler jobs, while Python keeps tick loop and AI execution.
+- `037-scheduler-job-diagnostics.md`: Go-owned read-only scheduler snapshot
+  diagnostics and runtime overview card.
 - Agent architecture boundary specs live under `../agent-architecture/`.

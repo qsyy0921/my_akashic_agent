@@ -682,7 +682,14 @@ fallback.
 ```text
 GET  /v1/scheduler/jobs
 POST /v1/scheduler/jobs/snapshot
+GET  /v1/scheduler/diagnostics?limit=50&due_soon_seconds=300
 ```
+
+`/v1/scheduler/diagnostics` is read-only (`side_effect=none`) and summarizes
+overdue, due-soon, disabled, trigger, tier, and channel counts. It is also
+included in `/v1/runtime-overview` as the `Scheduler Jobs` card. The Python
+runtime overview dashboard consumes that Go aggregate first and only calls this
+diagnostics endpoint as a read-only fallback when the aggregate is unavailable.
 
 Read and advance knowledge/RAG checkpoints:
 

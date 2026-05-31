@@ -2179,6 +2179,21 @@ func TestSchedulerJobEndpointSnapshotsAndListsJobs(t *testing.T) {
 			t.Fatalf("scheduler list missing %s: %s", expected, response.Body.String())
 		}
 	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/scheduler/diagnostics?timestamp=2026-06-01T08:59:00Z&due_soon_seconds=120", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected scheduler diagnostics 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"sampled_jobs":1`,
+		`"due_soon_jobs":1`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("scheduler diagnostics missing %s: %s", expected, response.Body.String())
+		}
+	}
 }
 
 func TestKnowledgeWorkerDiagnosticsEndpointSummarizesJobsAndCheckpoints(t *testing.T) {

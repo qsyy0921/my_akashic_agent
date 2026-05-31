@@ -31,6 +31,7 @@ type RuntimeOverviewDeps struct {
 	ObserveCapture       runtimeObserveCaptureGetter
 	ReceiverStatuses     runtimeReceiverStatusesGetter
 	ReceiverLeases       runtimeReceiverLeasesGetter
+	SchedulerJobs        runtimeSchedulerJobDiagnosticsGetter
 }
 
 type runtimeQueueBackendGetter interface {
@@ -93,6 +94,10 @@ type runtimeReceiverLeasesGetter interface {
 	ListReceiverLeases(ctx context.Context) (query.ReceiverLeasesView, error)
 }
 
+type runtimeSchedulerJobDiagnosticsGetter interface {
+	GetSchedulerJobDiagnostics(ctx context.Context, filter query.SchedulerJobDiagnosticsFilter) (query.SchedulerJobDiagnosticsView, error)
+}
+
 type RuntimeOverviewService struct {
 	deps RuntimeOverviewDeps
 }
@@ -132,6 +137,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeCapture   query.ObserveCaptureDiagnosticsView
 		receiverStatuses query.ReceiverStatusesView
 		receiverLeases   query.ReceiverLeasesView
+		schedulerJobs    query.SchedulerJobDiagnosticsView
 	)
 
 	if s == nil {
@@ -262,6 +268,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		} else {
 			receiverLeases = item
 		}
+
+		if deps.SchedulerJobs == nil {
+			errors = append(errors, runtimeOverviewError("scheduler-diagnostics", fmt.Errorf("scheduler diagnostics disabled")))
+		} else if item, err := deps.SchedulerJobs.GetSchedulerJobDiagnostics(ctx, query.SchedulerJobDiagnosticsFilter{Limit: limit}); err != nil {
+			errors = append(errors, runtimeOverviewError("scheduler-diagnostics", err))
+		} else {
+			schedulerJobs = item
+		}
 	}
 
 	summary := runtimeOverviewSummary(
@@ -280,6 +294,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeCapture,
 		receiverStatuses,
 		receiverLeases,
+		schedulerJobs,
 	)
 	cards := runtimeOverviewCards(
 		summary,
@@ -298,6 +313,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeCapture,
 		receiverStatuses,
 		receiverLeases,
+		schedulerJobs,
 		errors,
 	)
 
@@ -313,6 +329,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		ObserveCapture:    observeCapture,
 		ReceiverStatuses:  receiverStatuses,
 		ReceiverLeases:    receiverLeases,
+		SchedulerJobs:     schedulerJobs,
 		SendLedgerMetrics: sendLedger,
 		InboxMetrics:      inboxMetrics,
 		InboundDedupe:     inboundDedupe,
@@ -344,6 +361,7 @@ func runtimeOverviewSummary(
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
+	schedulerJobs query.SchedulerJobDiagnosticsView,
 ) map[string]any {
 	enabledAdapters := 0
 	for _, item := range deliveryAdapters {
@@ -415,6 +433,13 @@ func runtimeOverviewSummary(
 		"receiver_leases":                           intFromMap(receiverLeases.Totals, "leases"),
 		"receiver_leases_active":                    intFromMap(receiverLeases.Totals, "active"),
 		"receiver_leases_expired":                   intFromMap(receiverLeases.Totals, "expired"),
+		"scheduler_jobs":                            schedulerJobs.SampledJobs,
+		"scheduler_jobs_enabled":                    schedulerJobs.EnabledJobs,
+		"scheduler_jobs_disabled":                   schedulerJobs.DisabledJobs,
+		"scheduler_jobs_overdue":                    schedulerJobs.OverdueJobs,
+		"scheduler_jobs_due_soon":                   schedulerJobs.DueSoonJobs,
+		"scheduler_jobs_soft":                       schedulerJobs.SoftJobs,
+		"scheduler_jobs_instant":                    schedulerJobs.InstantJobs,
 		"send_ledger_records":                       sendLedger.SampledRecords,
 		"send_ledger_repeated_hashes":               sendLedger.RepeatedContentHashes,
 		"inbox_metric_events":                       inboxMetrics.SampledEvents,
@@ -450,6 +475,7 @@ func runtimeOverviewCards(
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
 	receiverLeases query.ReceiverLeasesView,
+	schedulerJobs query.SchedulerJobDiagnosticsView,
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
 	queueValue := fmt.Sprintf("%s/%s", emptyAsUnknown(queueBackend.Provider), emptyAsUnknown(queueBackend.Mode))
@@ -472,6 +498,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
+		runtimeOverviewCard("scheduler_jobs", "Scheduler Jobs", schedulerJobValue(schedulerJobs), schedulerJobStatus(schedulerJobs), map[string]any{"scheduler_jobs": schedulerJobs}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
 		runtimeOverviewCard("inbound_dedupe_metrics", "Inbound Dedupe", intSummary(summary, "inbound_dedupe_duplicate_seen_total"), statusIfPositive(intSummary(summary, "inbound_dedupe_duplicate_seen_total"), "warn", statusIfPositive(intSummary(summary, "inbound_dedupe_records"), "ok", "muted")), map[string]any{"inbound_dedupe_metrics": inboundDedupe}),
@@ -655,6 +682,23 @@ func receiverLeaseStatus(view query.ReceiverLeasesView) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+func schedulerJobStatus(view query.SchedulerJobDiagnosticsView) string {
+	if view.SampledJobs == 0 {
+		return "muted"
+	}
+	if view.OverdueJobs > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func schedulerJobValue(view query.SchedulerJobDiagnosticsView) string {
+	if view.SampledJobs == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d/%d", view.EnabledJobs, view.SampledJobs)
 }
 
 func runtimeConfigStatus(view query.RuntimeConfigView) string {

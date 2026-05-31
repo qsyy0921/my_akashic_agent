@@ -262,6 +262,9 @@ func RegisterSchedulerJobRoutes(
 ) {
 	mux.Handle("/v1/scheduler/jobs", SchedulerJobsHandler(schedulerJobs))
 	mux.Handle("/v1/scheduler/jobs/snapshot", SchedulerJobSnapshotHandler(schedulerJobs))
+	if diagnostics, ok := schedulerJobs.(inport.SchedulerJobDiagnosticsViewer); ok {
+		mux.Handle("/v1/scheduler/diagnostics", SchedulerJobDiagnosticsHandler(diagnostics))
+	}
 }
 
 func HealthHandler() http.Handler {
@@ -530,6 +533,29 @@ func SchedulerJobSnapshotHandler(schedulerJobs inport.SchedulerJobManager) http.
 			return
 		}
 		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func SchedulerJobDiagnosticsHandler(viewer inport.SchedulerJobDiagnosticsViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if viewer == nil {
+			http.Error(w, "scheduler diagnostics disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := viewer.GetSchedulerJobDiagnostics(r.Context(), query.SchedulerJobDiagnosticsFilter{
+			Limit:          parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			Timestamp:      r.URL.Query().Get("timestamp"),
+			DueSoonSeconds: parsePositiveInt(r.URL.Query().Get("due_soon_seconds"), 300, 24*60*60),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
 	})
 }
 

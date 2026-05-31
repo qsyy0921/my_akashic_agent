@@ -130,6 +130,8 @@ It summarizes:
   connected QQ channels and suspended Telegram polling.
 - Go-owned receiver lease totals for single-instance polling control, including
   active/expired leases.
+- Go-owned scheduler job diagnostics for Python scheduler snapshots, including
+  overdue/due-soon/disabled counts and trigger/tier/channel distribution.
 - Go-owned sanitized runtime config state for OneBot aliases, token presence,
   worker flags, and pre-smoke blockers.
 - Manual delivery adapter live health results, including reachable,
@@ -161,6 +163,8 @@ Go owns:
   connected/suspended/failed counters, and `side_effect=none`.
 - receiver lease diagnostics semantics, including active/expired counters,
   token presence without token leakage, and `side_effect=runtime_state_only`.
+- scheduler diagnostics semantics, including snapshot-only read model,
+  overdue/due-soon/disabled classification, and `side_effect=none`.
 - runtime config diagnostics semantics, including secret redaction, expected
   OneBot alias readiness, and side-effect-free preflight blockers.
 

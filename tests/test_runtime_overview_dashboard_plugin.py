@@ -589,6 +589,36 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         },
         "side_effect": "runtime_state_only",
     }
+    scheduler_jobs = {
+        "sampled_jobs": 2,
+        "enabled_jobs": 1,
+        "disabled_jobs": 1,
+        "overdue_jobs": 1,
+        "due_soon_jobs": 0,
+        "instant_jobs": 1,
+        "soft_jobs": 1,
+        "next_fire_at": "2026-06-01T08:58:00Z",
+        "jobs_by_trigger": {"instant": 1, "soft": 1},
+        "jobs_by_tier": {"instant": 1, "soft": 1},
+        "jobs_by_channel": {"telegram": 1, "qq": 1},
+        "jobs_by_status": {"overdue": 1, "disabled": 1},
+        "recent": [
+            {
+                "id": "schedule:overdue",
+                "trigger": "instant",
+                "tier": "instant",
+                "channel": "telegram",
+                "chat_id": "123",
+                "fire_at": "2026-06-01T08:58:00Z",
+                "status": "overdue",
+                "run_count": 0,
+                "enabled": True,
+                "overdue_by_seconds": 60,
+            }
+        ],
+        "due_soon_seconds": 300,
+        "side_effect": "none",
+    }
     go_overview = {
         "summary": {
             "jobs_total": 3,
@@ -636,6 +666,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "receiver_leases": 1,
             "receiver_leases_active": 1,
             "receiver_leases_expired": 0,
+            "scheduler_jobs": 2,
+            "scheduler_jobs_enabled": 1,
+            "scheduler_jobs_disabled": 1,
+            "scheduler_jobs_overdue": 1,
+            "scheduler_jobs_due_soon": 0,
+            "scheduler_jobs_soft": 1,
+            "scheduler_jobs_instant": 1,
             "send_ledger_records": 4,
             "send_ledger_repeated_hashes": 1,
             "inbox_metric_events": 9,
@@ -665,6 +702,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
             {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
+            {
+                "id": "scheduler_jobs",
+                "label": "Scheduler Jobs",
+                "value": "1/2",
+                "status": "warn",
+            },
             {"id": "send_ledger_metrics", "label": "Send Ledger Metrics", "value": 4, "status": "warn"},
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "inbound_dedupe_metrics", "label": "Inbound Dedupe", "value": 1, "status": "warn"},
@@ -678,6 +721,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "observe_capture": observe_capture,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
+        "scheduler_jobs": scheduler_jobs,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "inbound_dedupe_metrics": inbound_dedupe_metrics,
@@ -788,6 +832,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["receiver_leases"] == 1
     assert payload["summary"]["receiver_leases_active"] == 1
+    assert payload["summary"]["scheduler_jobs"] == 2
+    assert payload["summary"]["scheduler_jobs_enabled"] == 1
+    assert payload["summary"]["scheduler_jobs_overdue"] == 1
     assert payload["summary"]["send_ledger_records"] == 4
     assert payload["summary"]["send_ledger_repeated_hashes"] == 1
     assert payload["summary"]["inbox_metric_events"] == 9
@@ -830,6 +877,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert lease_card["status"] == "ok"
     assert payload["receiver_leases"]["leases"][0]["lease_token_present"] is True
     assert payload["receiver_leases"]["side_effect"] == "runtime_state_only"
+    scheduler_card = next(item for item in payload["cards"] if item["id"] == "scheduler_jobs")
+    assert scheduler_card["value"] == "1/2"
+    assert scheduler_card["status"] == "warn"
+    assert payload["scheduler_jobs"]["jobs_by_status"]["overdue"] == 1
+    assert payload["scheduler_jobs"]["recent"][0]["id"] == "schedule:overdue"
+    assert payload["scheduler_jobs"]["side_effect"] == "none"
     send_ledger_card = next(
         item for item in payload["cards"] if item["id"] == "send_ledger_metrics"
     )
@@ -1029,6 +1082,7 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
                     "/v1/observe-capture-diagnostics",
                     "/v1/receiver-statuses",
                     "/v1/receiver-leases",
+                    "/v1/scheduler/diagnostics",
                 }
                 else []
             )
@@ -1083,6 +1137,11 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
                     "/v1/inbox-metrics",
                     "/v1/job-metrics",
                     "/v1/outbox-metrics",
+                    "/v1/observe-targets",
+                    "/v1/observe-capture-diagnostics",
+                    "/v1/receiver-statuses",
+                    "/v1/receiver-leases",
+                    "/v1/scheduler/diagnostics",
                 }
                 else []
             )

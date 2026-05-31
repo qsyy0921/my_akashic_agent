@@ -147,6 +147,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"leases": 1, "active": 1, "expired": 0, "telegram": 1},
 			SideEffect: "runtime_state_only",
 		}},
+		SchedulerJobs: staticSchedulerJobDiagnostics{view: query.SchedulerJobDiagnosticsView{
+			SampledJobs:  2,
+			EnabledJobs:  2,
+			OverdueJobs:  1,
+			DueSoonJobs:  1,
+			InstantJobs:  1,
+			SoftJobs:     1,
+			JobsByStatus: map[string]int{"overdue": 1, "due_soon": 1},
+			SideEffect:   "none",
+		}},
 	})
 
 	view, err := service.Get(context.Background(), query.RuntimeOverviewFilter{
@@ -190,6 +200,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["receiver_leases"] != 1 || view.Summary["receiver_leases_active"] != 1 {
 		t.Fatalf("unexpected receiver lease summary: %#v", view.Summary)
 	}
+	if view.Summary["scheduler_jobs"] != 2 || view.Summary["scheduler_jobs_overdue"] != 1 {
+		t.Fatalf("unexpected scheduler summary: %#v", view.Summary)
+	}
 	if view.Summary["inbound_dedupe_records"] != 2 || view.Summary["inbound_dedupe_duplicate_seen_total"] != 1 {
 		t.Fatalf("unexpected inbound dedupe summary: %#v", view.Summary)
 	}
@@ -201,6 +214,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
@@ -329,5 +343,13 @@ type staticReceiverLeases struct {
 }
 
 func (s staticReceiverLeases) ListReceiverLeases(context.Context) (query.ReceiverLeasesView, error) {
+	return s.view, nil
+}
+
+type staticSchedulerJobDiagnostics struct {
+	view query.SchedulerJobDiagnosticsView
+}
+
+func (s staticSchedulerJobDiagnostics) GetSchedulerJobDiagnostics(context.Context, query.SchedulerJobDiagnosticsFilter) (query.SchedulerJobDiagnosticsView, error) {
 	return s.view, nil
 }

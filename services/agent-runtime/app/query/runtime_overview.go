@@ -38,6 +38,7 @@ type RuntimeOverviewView struct {
 	ObserveCapture    ObserveCaptureDiagnosticsView    `json:"observe_capture"`
 	ReceiverStatuses  ReceiverStatusesView             `json:"receiver_statuses"`
 	ReceiverLeases    ReceiverLeasesView               `json:"receiver_leases"`
+	SchedulerJobs     SchedulerJobDiagnosticsView      `json:"scheduler_jobs"`
 	SendLedgerMetrics SendLedgerMetricsView            `json:"send_ledger_metrics"`
 	InboxMetrics      InboxMetricsView                 `json:"inbox_metrics"`
 	InboundDedupe     InboundDedupeMetricsView         `json:"inbound_dedupe_metrics"`

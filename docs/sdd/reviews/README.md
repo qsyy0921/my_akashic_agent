@@ -136,3 +136,8 @@ Current architecture review sequence:
 - `2026-05-31-phase8-87-agent-job-admission-dedupe.md`
 - `2026-05-31-phase8-88-agent-worker-status.md`
 - `2026-05-31-phase8-89-proactive-anyaction-quota.md`
+- `2026-05-31-phase8-90-proactive-seen-rejection-state.md`
+- `2026-05-31-phase8-91-proactive-retention-cleanup.md`
+- `2026-05-31-phase8-92-proactive-bg-context-global-mark.md`
+- `2026-05-31-phase8-93-scheduler-job-store.md`
+- `2026-05-31-phase8-94-scheduler-diagnostics.md`

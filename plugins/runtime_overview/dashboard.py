@@ -222,6 +222,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        scheduler_jobs_raw, error = self._read_mapping(
+            "/v1/scheduler/diagnostics",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "scheduler-diagnostics", "error": error})
+            scheduler_jobs_raw = {}
+        else:
+            successful_reads += 1
+
         jobs = [_normalize_job(item) for item in jobs_raw if isinstance(item, Mapping)]
         outbox = [_normalize_delivery(item) for item in outbox_raw if isinstance(item, Mapping)]
         checkpoints = [
@@ -253,6 +263,7 @@ class RuntimeOverviewDashboardReader:
         observe_capture = _normalize_observe_capture(observe_capture_raw)
         receiver_statuses = _normalize_receiver_statuses(receiver_statuses_raw)
         receiver_leases = _normalize_receiver_leases(receiver_leases_raw)
+        scheduler_jobs = _normalize_scheduler_job_diagnostics(scheduler_jobs_raw)
 
         job_leases = [item for item in jobs if _has_active_lease(item)]
         outbox_leases = [item for item in outbox if _has_active_lease(item)]
@@ -333,6 +344,13 @@ class RuntimeOverviewDashboardReader:
             "receiver_leases": receiver_leases["totals"]["leases"],
             "receiver_leases_active": receiver_leases["totals"]["active"],
             "receiver_leases_expired": receiver_leases["totals"]["expired"],
+            "scheduler_jobs": scheduler_jobs["sampled_jobs"],
+            "scheduler_jobs_enabled": scheduler_jobs["enabled_jobs"],
+            "scheduler_jobs_disabled": scheduler_jobs["disabled_jobs"],
+            "scheduler_jobs_overdue": scheduler_jobs["overdue_jobs"],
+            "scheduler_jobs_due_soon": scheduler_jobs["due_soon_jobs"],
+            "scheduler_jobs_soft": scheduler_jobs["soft_jobs"],
+            "scheduler_jobs_instant": scheduler_jobs["instant_jobs"],
             "send_ledger_records": send_ledger_metrics["sampled_records"],
             "send_ledger_repeated_hashes": send_ledger_metrics["repeated_content_hashes"],
             "inbox_metric_events": inbox_metrics["sampled_events"],
@@ -365,6 +383,7 @@ class RuntimeOverviewDashboardReader:
             observe_capture=observe_capture,
             receiver_statuses=receiver_statuses,
             receiver_leases=receiver_leases,
+            scheduler_jobs=scheduler_jobs,
             send_ledger_metrics=send_ledger_metrics,
             inbox_metrics=inbox_metrics,
             agent_job_metrics=agent_job_metrics,
@@ -396,6 +415,7 @@ class RuntimeOverviewDashboardReader:
             "observe_capture": observe_capture,
             "receiver_statuses": receiver_statuses,
             "receiver_leases": receiver_leases,
+            "scheduler_jobs": scheduler_jobs,
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -1084,6 +1104,9 @@ def _normalize_go_runtime_overview(
     receiver_leases = _normalize_receiver_leases(
         _mapping_or_empty(item.get("receiver_leases"))
     )
+    scheduler_jobs = _normalize_scheduler_job_diagnostics(
+        _mapping_or_empty(item.get("scheduler_jobs"))
+    )
     runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
@@ -1132,6 +1155,7 @@ def _normalize_go_runtime_overview(
         "observe_capture": observe_capture,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
+        "scheduler_jobs": scheduler_jobs,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "inbound_dedupe_metrics": inbound_dedupe_metrics,
@@ -1200,6 +1224,13 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "receiver_leases": 0,
         "receiver_leases_active": 0,
         "receiver_leases_expired": 0,
+        "scheduler_jobs": 0,
+        "scheduler_jobs_enabled": 0,
+        "scheduler_jobs_disabled": 0,
+        "scheduler_jobs_overdue": 0,
+        "scheduler_jobs_due_soon": 0,
+        "scheduler_jobs_soft": 0,
+        "scheduler_jobs_instant": 0,
         "send_ledger_records": 0,
         "send_ledger_repeated_hashes": 0,
         "inbox_metric_events": 0,
@@ -1532,6 +1563,49 @@ def _normalize_receiver_lease(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_scheduler_job_diagnostics(item: Mapping[str, Any]) -> dict[str, Any]:
+    recent_raw = item.get("recent")
+    if not isinstance(recent_raw, list):
+        recent_raw = []
+    return {
+        "sampled_jobs": _int_value(item.get("sampled_jobs"), fallback=0),
+        "enabled_jobs": _int_value(item.get("enabled_jobs"), fallback=0),
+        "disabled_jobs": _int_value(item.get("disabled_jobs"), fallback=0),
+        "overdue_jobs": _int_value(item.get("overdue_jobs"), fallback=0),
+        "due_soon_jobs": _int_value(item.get("due_soon_jobs"), fallback=0),
+        "instant_jobs": _int_value(item.get("instant_jobs"), fallback=0),
+        "soft_jobs": _int_value(item.get("soft_jobs"), fallback=0),
+        "next_fire_at": _text(item.get("next_fire_at")),
+        "jobs_by_trigger": _mapping_or_empty(item.get("jobs_by_trigger")),
+        "jobs_by_tier": _mapping_or_empty(item.get("jobs_by_tier")),
+        "jobs_by_channel": _mapping_or_empty(item.get("jobs_by_channel")),
+        "jobs_by_status": _mapping_or_empty(item.get("jobs_by_status")),
+        "recent": [
+            _normalize_scheduler_job_sample(value)
+            for value in recent_raw
+            if isinstance(value, Mapping)
+        ],
+        "due_soon_seconds": _int_value(item.get("due_soon_seconds"), fallback=300),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_scheduler_job_sample(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _text(item.get("id")),
+        "trigger": _text(item.get("trigger")),
+        "tier": _text(item.get("tier")),
+        "channel": _text(item.get("channel")),
+        "chat_id": _text(item.get("chat_id")),
+        "fire_at": _text(item.get("fire_at")),
+        "status": _text(item.get("status")),
+        "run_count": _int_value(item.get("run_count"), fallback=0),
+        "enabled": bool(item.get("enabled")),
+        "overdue_by_seconds": _int_value(item.get("overdue_by_seconds"), fallback=0),
+        "due_in_seconds": _int_value(item.get("due_in_seconds"), fallback=0),
+    }
+
+
 def _normalize_go_runtime_card(item: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "id": _text(item.get("id")),
@@ -1583,6 +1657,7 @@ def _overview_cards(
     observe_capture: dict[str, Any],
     receiver_statuses: dict[str, Any],
     receiver_leases: dict[str, Any],
+    scheduler_jobs: dict[str, Any],
     send_ledger_metrics: dict[str, Any],
     inbox_metrics: dict[str, Any],
     agent_job_metrics: dict[str, Any],
@@ -1710,6 +1785,13 @@ def _overview_cards(
             {"receiver_leases": receiver_leases},
         ),
         _card(
+            "scheduler_jobs",
+            "Scheduler Jobs",
+            _scheduler_job_value(summary),
+            _scheduler_job_status(summary),
+            {"scheduler_jobs": scheduler_jobs},
+        ),
+        _card(
             "send_ledger_metrics",
             "Send Ledger Metrics",
             summary.get("send_ledger_records", 0),
@@ -1796,6 +1878,23 @@ def _receiver_lease_status(summary: Mapping[str, Any]) -> str:
     if _int_value(summary.get("receiver_leases_active"), fallback=0) <= 0:
         return "warn"
     return "ok"
+
+
+def _scheduler_job_status(summary: Mapping[str, Any]) -> str:
+    jobs = _int_value(summary.get("scheduler_jobs"), fallback=0)
+    if jobs <= 0:
+        return "muted"
+    if _int_value(summary.get("scheduler_jobs_overdue"), fallback=0) > 0:
+        return "warn"
+    return "ok"
+
+
+def _scheduler_job_value(summary: Mapping[str, Any]) -> object:
+    jobs = _int_value(summary.get("scheduler_jobs"), fallback=0)
+    if jobs <= 0:
+        return 0
+    enabled = _int_value(summary.get("scheduler_jobs_enabled"), fallback=0)
+    return f"{enabled}/{jobs}"
 
 
 def _has_active_lease(item: Mapping[str, Any]) -> bool:
