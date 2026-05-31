@@ -245,6 +245,23 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"targets": 1, "enabled": 1, "ready": 0, "warning": 1, "blocked": 0, "text_covered": 1, "image_covered": 1, "file_covered": 0},
 			SideEffect: "none",
 		}},
+		MediaAssetContent: staticRuntimeMediaAssetContentDiagnostics{view: query.MediaAssetContentDiagnosticsView{
+			Items: []query.MediaAssetContentDiagnosticItemView{
+				{AssetID: "asset:ready", Kind: "image", ContentStatus: "ready", ContentReason: "media_asset_content_ready"},
+				{AssetID: "asset:forbidden", Kind: "image", ContentStatus: "forbidden", ContentReason: "media_asset_content_forbidden"},
+				{AssetID: "asset:missing", Kind: "file", ContentStatus: "unavailable", ContentReason: "media_asset_content_unavailable"},
+				{AssetID: "asset:disabled", Kind: "file", ContentStatus: "disabled", ContentReason: "media_asset_content_disabled"},
+			},
+			Totals: map[string]int{
+				"assets":      4,
+				"ready":       1,
+				"forbidden":   1,
+				"unavailable": 1,
+				"disabled":    1,
+				"error":       0,
+			},
+			SideEffect: "none",
+		}},
 		KnowledgePipelines: staticKnowledgePipelineDiagnostics{view: query.KnowledgePipelineDiagnosticsView{
 			Totals: map[string]int{
 				"targets":                            2,
@@ -583,6 +600,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["observe_capture_targets"] != 1 || view.Summary["observe_capture_warning"] != 1 || view.Summary["observe_capture_file"] != 0 {
 		t.Fatalf("unexpected observe capture summary: %#v", view.Summary)
 	}
+	if view.Summary["media_asset_content_assets"] != 4 ||
+		view.Summary["media_asset_content_ready"] != 1 ||
+		view.Summary["media_asset_content_forbidden"] != 1 ||
+		view.Summary["media_asset_content_unavailable"] != 1 ||
+		view.Summary["media_asset_content_disabled"] != 1 ||
+		view.Summary["media_asset_content_error"] != 0 {
+		t.Fatalf("unexpected media asset content summary: %#v", view.Summary)
+	}
 	if view.Summary["knowledge_pipeline_targets"] != 2 ||
 		view.Summary["knowledge_pipeline_ready"] != 1 ||
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
@@ -704,6 +729,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_targets", "ok")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_content", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_content", "1/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
@@ -748,6 +775,10 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.AgentJobWorkerCoverage[3].CoverageStatus != "warn" ||
 		view.AgentJobWorkerCoverage[3].CoverageReason != "failed_worker_present" {
 		t.Fatalf("unexpected rag_eval coverage item: %+v", view.AgentJobWorkerCoverage[3])
+	}
+	if intFromMap(view.MediaAssetContent.Totals, "assets") != 4 ||
+		intFromMap(view.MediaAssetContent.Totals, "forbidden") != 1 {
+		t.Fatalf("unexpected media asset content detail: %+v", view.MediaAssetContent)
 	}
 	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
 		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
@@ -902,6 +933,14 @@ type staticObserveCaptureDiagnostics struct {
 }
 
 func (s staticObserveCaptureDiagnostics) GetObserveCaptureDiagnostics(context.Context, query.ObserveCaptureDiagnosticsFilter) (query.ObserveCaptureDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeMediaAssetContentDiagnostics struct {
+	view query.MediaAssetContentDiagnosticsView
+}
+
+func (s staticRuntimeMediaAssetContentDiagnostics) ContentDiagnostics(context.Context, query.MediaAssetContentDiagnosticsFilter) (query.MediaAssetContentDiagnosticsView, error) {
 	return s.view, nil
 }
 

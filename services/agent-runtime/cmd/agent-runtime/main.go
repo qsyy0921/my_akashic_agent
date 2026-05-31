@@ -351,6 +351,7 @@ func main() {
 		AgentWorkers:               agentWorkerStatuses,
 		ObserveTargets:             observeTargets,
 		ObserveCapture:             observeCaptureDiagnostics,
+		MediaAssetContent:          mediaAssets,
 		KnowledgePipelines:         knowledgePipelines,
 		KnowledgeJobPlanner:        knowledgeJobPlannerPreview,
 		KnowledgePlannerReady:      knowledgeJobPlannerReadiness,

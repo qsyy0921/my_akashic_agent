@@ -214,4 +214,7 @@ execution.
 - `080-media-asset-content-diagnostics.md`: Go exposes read-only media asset
   content readiness diagnostics for frontend attachment troubleshooting without
   changing content access policy or running multimodal AI.
+- `081-runtime-overview-media-asset-content.md`: Runtime overview aggregates
+  media asset content readiness so dashboard and operators can see attachment
+  display health without running OCR/VLM or changing file access policy.
 - Agent architecture boundary specs live under `../agent-architecture/`.

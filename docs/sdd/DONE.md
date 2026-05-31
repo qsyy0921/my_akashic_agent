@@ -35,6 +35,7 @@
 - 已实现 Telegram 和 QQ/NapCat inbound dedupe，包含 observe-only 群文本、图片、普通群消息、私聊和群文件上传 notice。
 - 已实现 inbound dedupe metrics，并接入 runtime overview/dashboard。
 - 已实现 Go-owned media asset content diagnostics：`/v1/media-assets/content-diagnostics` 可按 asset/filter 输出 ready/forbidden/unavailable/disabled/error，帮助前端定位图片/文件无法显示原因；Go 只做安全根目录访问预检，Python 继续负责 OCR/VLM/文件理解。
+- runtime overview 已聚合 `Media Asset Content`：summary/card/detail 直接展示最近附件内容 ready/forbidden/unavailable/disabled/error 状态，方便 dashboard 定位 QQ 图片/文件显示问题，仍不执行 OCR/VLM/文件解析。
 
 ## AgentJob、队列与 worker 状态
 

@@ -79,6 +79,9 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 				"knowledge_pipeline_configured_rag_dataset_not_started": 1,
 				"knowledge_pipeline_rag_dataset_warning":                1,
 				"knowledge_pipeline_rag_dataset_blocked":                1,
+				"media_asset_content_assets":                            3,
+				"media_asset_content_ready":                             1,
+				"media_asset_content_unavailable":                       1,
 			},
 			Cards: []query.RuntimeOverviewCardView{
 				{
@@ -105,6 +108,16 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 					Value:  "1/2",
 					Status: "danger",
 				},
+				{
+					ID:     "media_asset_content",
+					Label:  "Media Asset Content",
+					Value:  "1/3",
+					Status: "danger",
+				},
+			},
+			MediaAssetContent: query.MediaAssetContentDiagnosticsView{
+				Totals:     map[string]int{"assets": 3, "ready": 1, "unavailable": 1, "disabled": 1},
+				SideEffect: "none",
 			},
 			Status: query.RuntimeOverviewStatusView{
 				RuntimeAvailable: true,
@@ -132,6 +145,12 @@ func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"agent_job_capacity_blocked_job_types":1`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"agent_job_capacity_plan"`)) {
 		t.Fatalf("response missing agent job capacity plan diagnostics: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"media_asset_content_assets":3`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"media_asset_content_unavailable":1`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"id":"media_asset_content"`)) ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"media_asset_content_diagnostics"`)) {
+		t.Fatalf("response missing media asset content diagnostics: %s", response.Body.String())
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_targets":2`)) ||
 		!bytes.Contains(response.Body.Bytes(), []byte(`"knowledge_pipeline_lagging_targets":1`)) ||

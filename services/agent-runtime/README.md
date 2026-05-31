@@ -961,6 +961,11 @@ acknowledgement is moved to NATS result-ack.
 including current, desired and recommended execution owner, decision and blocker
 count before QQ/NapCat delivery ownership is moved to Go local outbox worker or
 NATS external lease.
+`Media Asset Content` summarizes `/v1/media-assets/content-diagnostics`, showing
+how many recent attachments are content-ready versus forbidden, unavailable,
+disabled, or errored. It is only an access-control and local-content readiness
+view; OCR, VLM, file parsing, and semantic extraction remain Python AI worker
+responsibilities.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.
