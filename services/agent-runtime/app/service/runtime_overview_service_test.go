@@ -15,6 +15,17 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			ExternalQueueConfigured: true,
 			ConsumerConcurrency:     8,
 			MaxInFlight:             64,
+			SelectedProviderCapability: &query.QueueProviderCapabilityView{
+				Provider:                    "nats_jetstream",
+				Status:                      "selected",
+				Recommended:                 true,
+				RecommendedPhase:            "first_external_mq",
+				Implemented:                 true,
+				SupportsExternalLease:       true,
+				SupportsAgentJobResultAck:   true,
+				SupportsConcurrentConsumers: true,
+				SupportsDelayedNack:         true,
+			},
 			ExternalLease: &query.QueueExternalLeaseGate{
 				AllowExecution: false,
 				Diagnostics: &query.QueueExternalLeaseDiagnostics{
@@ -210,6 +221,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["queue_backend_provider"] != "nats_jetstream" {
 		t.Fatalf("unexpected queue backend: %#v", view.Summary)
 	}
+	if view.Summary["queue_provider_status"] != "selected" ||
+		view.Summary["queue_provider_recommended"] != true ||
+		view.Summary["queue_provider_recommended_phase"] != "first_external_mq" ||
+		view.Summary["queue_provider_implemented"] != true ||
+		view.Summary["queue_provider_supports_concurrent_consumers"] != true ||
+		view.Summary["queue_provider_supports_delayed_nack"] != true ||
+		view.Summary["queue_provider_supports_external_lease"] != true ||
+		view.Summary["queue_provider_supports_agent_job_result_ack"] != true {
+		t.Fatalf("unexpected queue provider capability summary: %#v", view.Summary)
+	}
 	if view.Summary["queue_external_lease_executed_total"] != 5 ||
 		view.Summary["queue_external_lease_error_total"] != 1 ||
 		view.Summary["queue_external_lease_ack"] != 2 ||
@@ -249,6 +270,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "queue_backend", "nats_jetstream/external_lease (first_external_mq)")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "external_lease_diagnostics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
@@ -262,6 +284,19 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
+}
+
+func assertRuntimeOverviewCardValue(t *testing.T, cards []query.RuntimeOverviewCardView, id string, value string) {
+	t.Helper()
+	for _, card := range cards {
+		if card.ID == id {
+			if card.Value != value {
+				t.Fatalf("card %s value = %#v, want %q", id, card.Value, value)
+			}
+			return
+		}
+	}
+	t.Fatalf("card %s not found in %#v", id, cards)
 }
 
 func assertRuntimeOverviewCardStatus(t *testing.T, cards []query.RuntimeOverviewCardView, id string, status string) {

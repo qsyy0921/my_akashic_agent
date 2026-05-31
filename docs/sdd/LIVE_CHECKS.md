@@ -19,6 +19,7 @@
 - [ ] 验证长任务 worker status 续租：触发一次耗时 image / knowledge / rag_eval / outbox 任务，确认 `/v1/agent-worker-statuses` 中对应 worker 的 `updated_at` 在任务运行期间持续推进，且 `lease_active=true`，不会误判 stale。
 - [ ] 启用 NATS `external_lease` smoke 时观察 `/v1/queue-backend`：`external_lease.diagnostics.executed_total` 应随消费增长，`dispositions` 应反映 ack/nack/term，recent executions 不触发 Python AI job 或真实平台发送。
 - [ ] 查看 `/v1/queue-backend` 的 `provider_capabilities`：当前 provider 应有 `status=selected`；NATS JetStream 应显示 `recommended=true`、`supports_concurrent_consumers=true`、`supports_delayed_nack=true`；Redis Streams / RabbitMQ 不应显示 external lease 已实现。
+- [ ] 查看 `/v1/runtime-overview.summary`：应包含 `queue_provider_status`、`queue_provider_recommended_phase`、`queue_provider_supports_concurrent_consumers`、`queue_provider_supports_delayed_nack`、`queue_provider_supports_external_lease`，且 queue backend card value 应带 NATS 推荐阶段。
 - [ ] 启用 NATS `external_lease` smoke 后观察 `/v1/runtime-overview`：summary 中 `queue_external_lease_*` 应与 `/v1/queue-backend.external_lease.diagnostics` 一致，`external_lease_diagnostics` card 状态应按 error/nack/term 变化。
 - [ ] 压测或人为堆积 outbox 后观察 `/v1/outbox-metrics` 与 `/v1/runtime-overview`：`outbox_pressure_high_accounts`、`max_active`、`max_queued` 应随账号积压增长；该诊断只读，不应阻断真实发送。
 - [ ] 启用 Go local outbox worker 账号节流后做 dry/live smoke：短时间连续发送同一账号 delivery 时，第二条应保持 queued 且不增加 attempts；其它账号 delivery 仍可被租约执行。

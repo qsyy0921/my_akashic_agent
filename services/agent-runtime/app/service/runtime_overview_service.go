@@ -389,94 +389,121 @@ func runtimeOverviewSummary(
 			externalLeaseTerm = queueExternalLeaseCounter(externalLeaseDiagnostics.Dispositions, "term")
 		}
 	}
+	selectedProvider := queueBackend.SelectedProviderCapability
+	queueProviderStatus := ""
+	queueProviderRecommended := false
+	queueProviderRecommendedPhase := ""
+	queueProviderImplemented := false
+	queueProviderSupportsConcurrentConsumers := false
+	queueProviderSupportsDelayedNack := false
+	queueProviderSupportsExternalLease := false
+	queueProviderSupportsAgentJobResultAck := false
+	if selectedProvider != nil {
+		queueProviderStatus = selectedProvider.Status
+		queueProviderRecommended = selectedProvider.Recommended
+		queueProviderRecommendedPhase = selectedProvider.RecommendedPhase
+		queueProviderImplemented = selectedProvider.Implemented
+		queueProviderSupportsConcurrentConsumers = selectedProvider.SupportsConcurrentConsumers
+		queueProviderSupportsDelayedNack = selectedProvider.SupportsDelayedNack
+		queueProviderSupportsExternalLease = selectedProvider.SupportsExternalLease
+		queueProviderSupportsAgentJobResultAck = selectedProvider.SupportsAgentJobResultAck
+	}
 
 	return map[string]any{
-		"jobs_total":                                agentJobMetrics.SampledJobs,
-		"outbox_total":                              outboxMetrics.SampledDeliveries,
-		"checkpoints_total":                         intFromMap(diagnostics.Totals, "checkpoints"),
-		"worker_leases":                             agentJobLeases + outboxLeases,
-		"agent_job_leases":                          agentJobLeases,
-		"outbox_leases":                             outboxLeases,
-		"stale_jobs":                                intFromMap(diagnostics.Totals, "stale_leases"),
-		"dead_letters":                              agentJobMetrics.DeadLetters.CurrentTotal + outboxMetrics.DeadLetters.CurrentTotal,
-		"checkpoint_lag_max":                        checkpointLagMax,
-		"job_events":                                agentJobMetrics.SampledEvents,
-		"outbox_events":                             outboxMetrics.SampledEvents,
-		"rag_eval_failures":                         intFromMap(agentJobMetrics.DeadLetters.ByType, "rag_eval"),
-		"delivery_adapters":                         len(deliveryAdapters),
-		"delivery_adapters_enabled":                 enabledAdapters,
-		"delivery_adapters_disabled":                len(deliveryAdapters) - enabledAdapters,
-		"queue_backend_provider":                    queueBackend.Provider,
-		"queue_backend_mode":                        queueBackend.Mode,
-		"queue_consumer_concurrency":                queueBackend.ConsumerConcurrency,
-		"queue_max_in_flight":                       queueBackend.MaxInFlight,
-		"queue_external_lease_ready":                externalLeaseReady,
-		"queue_external_lease_executed_total":       externalLeaseExecutedTotal,
-		"queue_external_lease_error_total":          externalLeaseErrorTotal,
-		"queue_external_lease_ack":                  externalLeaseAck,
-		"queue_external_lease_nack":                 externalLeaseNack,
-		"queue_external_lease_term":                 externalLeaseTerm,
-		"runtime_config_blockers":                   len(runtimeConfig.Readiness.Blockers),
-		"runtime_config_onebot_missing":             len(runtimeConfig.Delivery.OneBotMissingChannels),
-		"runtime_workers":                           intFromMap(runtimeWorkers.Totals, "workers"),
-		"runtime_workers_enabled":                   intFromMap(runtimeWorkers.Totals, "enabled"),
-		"runtime_workers_running":                   intFromMap(runtimeWorkers.Totals, "running"),
-		"agent_workers":                             intFromMap(agentWorkers.Totals, "workers"),
-		"agent_workers_running":                     intFromMap(agentWorkers.Totals, "running"),
-		"agent_workers_idle":                        intFromMap(agentWorkers.Totals, "idle"),
-		"agent_workers_failed":                      intFromMap(agentWorkers.Totals, "failed"),
-		"agent_workers_stale":                       intFromMap(agentWorkers.Totals, "stale"),
-		"observe_targets":                           intFromMap(observeTargets.Totals, "targets"),
-		"observe_targets_enabled":                   intFromMap(observeTargets.Totals, "enabled"),
-		"observe_targets_observe_only":              intFromMap(observeTargets.Totals, "observe_only"),
-		"observe_targets_reply_allowed":             intFromMap(observeTargets.Totals, "reply_allowed"),
-		"observe_target_groups":                     intFromMap(observeTargets.Totals, "groups"),
-		"observe_capture_targets":                   intFromMap(observeCapture.Totals, "targets"),
-		"observe_capture_ready":                     intFromMap(observeCapture.Totals, "ready"),
-		"observe_capture_warning":                   intFromMap(observeCapture.Totals, "warning"),
-		"observe_capture_blocked":                   intFromMap(observeCapture.Totals, "blocked"),
-		"observe_capture_text":                      intFromMap(observeCapture.Totals, "text_covered"),
-		"observe_capture_image":                     intFromMap(observeCapture.Totals, "image_covered"),
-		"observe_capture_file":                      intFromMap(observeCapture.Totals, "file_covered"),
-		"observe_capture_content_ready":             intFromMap(observeCapture.Totals, "content_ready_assets"),
-		"observe_capture_receiver_connected":        intFromMap(observeCapture.Totals, "receiver_connected"),
-		"observe_capture_receiver_status_connected": intFromMap(observeCapture.Totals, "receiver_status_connected"),
-		"observe_capture_receiver_activity_recent":  intFromMap(observeCapture.Totals, "receiver_activity_recent"),
-		"receiver_statuses":                         intFromMap(receiverStatuses.Totals, "receivers"),
-		"receiver_status_connected":                 intFromMap(receiverStatuses.Totals, "connected"),
-		"receiver_status_suspended":                 intFromMap(receiverStatuses.Totals, "suspended"),
-		"receiver_status_failed":                    intFromMap(receiverStatuses.Totals, "failed"),
-		"receiver_status_qq":                        intFromMap(receiverStatuses.Totals, "qq"),
-		"receiver_status_telegram":                  intFromMap(receiverStatuses.Totals, "telegram"),
-		"receiver_leases":                           intFromMap(receiverLeases.Totals, "leases"),
-		"receiver_leases_active":                    intFromMap(receiverLeases.Totals, "active"),
-		"receiver_leases_expired":                   intFromMap(receiverLeases.Totals, "expired"),
-		"scheduler_jobs":                            schedulerJobs.SampledJobs,
-		"scheduler_jobs_enabled":                    schedulerJobs.EnabledJobs,
-		"scheduler_jobs_disabled":                   schedulerJobs.DisabledJobs,
-		"scheduler_jobs_overdue":                    schedulerJobs.OverdueJobs,
-		"scheduler_jobs_due_soon":                   schedulerJobs.DueSoonJobs,
-		"scheduler_jobs_soft":                       schedulerJobs.SoftJobs,
-		"scheduler_jobs_instant":                    schedulerJobs.InstantJobs,
-		"send_ledger_records":                       sendLedger.SampledRecords,
-		"send_ledger_repeated_hashes":               sendLedger.RepeatedContentHashes,
-		"inbox_metric_events":                       inboxMetrics.SampledEvents,
-		"inbox_metric_observe_only":                 inboxMetrics.ObserveOnlyTotal,
-		"inbox_metric_with_attachments":             inboxMetrics.WithAttachments,
-		"inbound_dedupe_records":                    inboundDedupe.SampledRecords,
-		"inbound_dedupe_active_records":             inboundDedupe.ActiveRecords,
-		"inbound_dedupe_duplicate_records":          inboundDedupe.DuplicateRecords,
-		"inbound_dedupe_seen_total":                 inboundDedupe.SeenTotal,
-		"inbound_dedupe_duplicate_seen_total":       inboundDedupe.DuplicateSeenTotal,
-		"inbound_dedupe_scopes":                     len(inboundDedupe.Scopes),
-		"agent_job_metric_events":                   agentJobMetrics.SampledEvents,
-		"agent_job_metric_dead_letters":             agentJobMetrics.DeadLetters.CurrentTotal,
-		"outbox_metric_events":                      outboxMetrics.SampledEvents,
-		"outbox_metric_dead_letters":                outboxMetrics.DeadLetters.CurrentTotal,
-		"outbox_pressure_accounts":                  outboxMetrics.Pressure.Accounts,
-		"outbox_pressure_high_accounts":             outboxMetrics.Pressure.HighPressureAccounts,
-		"outbox_pressure_max_active":                outboxMetrics.Pressure.MaxActive,
-		"outbox_pressure_max_queued":                outboxMetrics.Pressure.MaxQueued,
+		"jobs_total":                                   agentJobMetrics.SampledJobs,
+		"outbox_total":                                 outboxMetrics.SampledDeliveries,
+		"checkpoints_total":                            intFromMap(diagnostics.Totals, "checkpoints"),
+		"worker_leases":                                agentJobLeases + outboxLeases,
+		"agent_job_leases":                             agentJobLeases,
+		"outbox_leases":                                outboxLeases,
+		"stale_jobs":                                   intFromMap(diagnostics.Totals, "stale_leases"),
+		"dead_letters":                                 agentJobMetrics.DeadLetters.CurrentTotal + outboxMetrics.DeadLetters.CurrentTotal,
+		"checkpoint_lag_max":                           checkpointLagMax,
+		"job_events":                                   agentJobMetrics.SampledEvents,
+		"outbox_events":                                outboxMetrics.SampledEvents,
+		"rag_eval_failures":                            intFromMap(agentJobMetrics.DeadLetters.ByType, "rag_eval"),
+		"delivery_adapters":                            len(deliveryAdapters),
+		"delivery_adapters_enabled":                    enabledAdapters,
+		"delivery_adapters_disabled":                   len(deliveryAdapters) - enabledAdapters,
+		"queue_backend_provider":                       queueBackend.Provider,
+		"queue_backend_mode":                           queueBackend.Mode,
+		"queue_provider_status":                        queueProviderStatus,
+		"queue_provider_recommended":                   queueProviderRecommended,
+		"queue_provider_recommended_phase":             queueProviderRecommendedPhase,
+		"queue_provider_implemented":                   queueProviderImplemented,
+		"queue_provider_supports_concurrent_consumers": queueProviderSupportsConcurrentConsumers,
+		"queue_provider_supports_delayed_nack":         queueProviderSupportsDelayedNack,
+		"queue_provider_supports_external_lease":       queueProviderSupportsExternalLease,
+		"queue_provider_supports_agent_job_result_ack": queueProviderSupportsAgentJobResultAck,
+		"queue_consumer_concurrency":                   queueBackend.ConsumerConcurrency,
+		"queue_max_in_flight":                          queueBackend.MaxInFlight,
+		"queue_external_lease_ready":                   externalLeaseReady,
+		"queue_external_lease_executed_total":          externalLeaseExecutedTotal,
+		"queue_external_lease_error_total":             externalLeaseErrorTotal,
+		"queue_external_lease_ack":                     externalLeaseAck,
+		"queue_external_lease_nack":                    externalLeaseNack,
+		"queue_external_lease_term":                    externalLeaseTerm,
+		"runtime_config_blockers":                      len(runtimeConfig.Readiness.Blockers),
+		"runtime_config_onebot_missing":                len(runtimeConfig.Delivery.OneBotMissingChannels),
+		"runtime_workers":                              intFromMap(runtimeWorkers.Totals, "workers"),
+		"runtime_workers_enabled":                      intFromMap(runtimeWorkers.Totals, "enabled"),
+		"runtime_workers_running":                      intFromMap(runtimeWorkers.Totals, "running"),
+		"agent_workers":                                intFromMap(agentWorkers.Totals, "workers"),
+		"agent_workers_running":                        intFromMap(agentWorkers.Totals, "running"),
+		"agent_workers_idle":                           intFromMap(agentWorkers.Totals, "idle"),
+		"agent_workers_failed":                         intFromMap(agentWorkers.Totals, "failed"),
+		"agent_workers_stale":                          intFromMap(agentWorkers.Totals, "stale"),
+		"observe_targets":                              intFromMap(observeTargets.Totals, "targets"),
+		"observe_targets_enabled":                      intFromMap(observeTargets.Totals, "enabled"),
+		"observe_targets_observe_only":                 intFromMap(observeTargets.Totals, "observe_only"),
+		"observe_targets_reply_allowed":                intFromMap(observeTargets.Totals, "reply_allowed"),
+		"observe_target_groups":                        intFromMap(observeTargets.Totals, "groups"),
+		"observe_capture_targets":                      intFromMap(observeCapture.Totals, "targets"),
+		"observe_capture_ready":                        intFromMap(observeCapture.Totals, "ready"),
+		"observe_capture_warning":                      intFromMap(observeCapture.Totals, "warning"),
+		"observe_capture_blocked":                      intFromMap(observeCapture.Totals, "blocked"),
+		"observe_capture_text":                         intFromMap(observeCapture.Totals, "text_covered"),
+		"observe_capture_image":                        intFromMap(observeCapture.Totals, "image_covered"),
+		"observe_capture_file":                         intFromMap(observeCapture.Totals, "file_covered"),
+		"observe_capture_content_ready":                intFromMap(observeCapture.Totals, "content_ready_assets"),
+		"observe_capture_receiver_connected":           intFromMap(observeCapture.Totals, "receiver_connected"),
+		"observe_capture_receiver_status_connected":    intFromMap(observeCapture.Totals, "receiver_status_connected"),
+		"observe_capture_receiver_activity_recent":     intFromMap(observeCapture.Totals, "receiver_activity_recent"),
+		"receiver_statuses":                            intFromMap(receiverStatuses.Totals, "receivers"),
+		"receiver_status_connected":                    intFromMap(receiverStatuses.Totals, "connected"),
+		"receiver_status_suspended":                    intFromMap(receiverStatuses.Totals, "suspended"),
+		"receiver_status_failed":                       intFromMap(receiverStatuses.Totals, "failed"),
+		"receiver_status_qq":                           intFromMap(receiverStatuses.Totals, "qq"),
+		"receiver_status_telegram":                     intFromMap(receiverStatuses.Totals, "telegram"),
+		"receiver_leases":                              intFromMap(receiverLeases.Totals, "leases"),
+		"receiver_leases_active":                       intFromMap(receiverLeases.Totals, "active"),
+		"receiver_leases_expired":                      intFromMap(receiverLeases.Totals, "expired"),
+		"scheduler_jobs":                               schedulerJobs.SampledJobs,
+		"scheduler_jobs_enabled":                       schedulerJobs.EnabledJobs,
+		"scheduler_jobs_disabled":                      schedulerJobs.DisabledJobs,
+		"scheduler_jobs_overdue":                       schedulerJobs.OverdueJobs,
+		"scheduler_jobs_due_soon":                      schedulerJobs.DueSoonJobs,
+		"scheduler_jobs_soft":                          schedulerJobs.SoftJobs,
+		"scheduler_jobs_instant":                       schedulerJobs.InstantJobs,
+		"send_ledger_records":                          sendLedger.SampledRecords,
+		"send_ledger_repeated_hashes":                  sendLedger.RepeatedContentHashes,
+		"inbox_metric_events":                          inboxMetrics.SampledEvents,
+		"inbox_metric_observe_only":                    inboxMetrics.ObserveOnlyTotal,
+		"inbox_metric_with_attachments":                inboxMetrics.WithAttachments,
+		"inbound_dedupe_records":                       inboundDedupe.SampledRecords,
+		"inbound_dedupe_active_records":                inboundDedupe.ActiveRecords,
+		"inbound_dedupe_duplicate_records":             inboundDedupe.DuplicateRecords,
+		"inbound_dedupe_seen_total":                    inboundDedupe.SeenTotal,
+		"inbound_dedupe_duplicate_seen_total":          inboundDedupe.DuplicateSeenTotal,
+		"inbound_dedupe_scopes":                        len(inboundDedupe.Scopes),
+		"agent_job_metric_events":                      agentJobMetrics.SampledEvents,
+		"agent_job_metric_dead_letters":                agentJobMetrics.DeadLetters.CurrentTotal,
+		"outbox_metric_events":                         outboxMetrics.SampledEvents,
+		"outbox_metric_dead_letters":                   outboxMetrics.DeadLetters.CurrentTotal,
+		"outbox_pressure_accounts":                     outboxMetrics.Pressure.Accounts,
+		"outbox_pressure_high_accounts":                outboxMetrics.Pressure.HighPressureAccounts,
+		"outbox_pressure_max_active":                   outboxMetrics.Pressure.MaxActive,
+		"outbox_pressure_max_queued":                   outboxMetrics.Pressure.MaxQueued,
 	}
 }
 
@@ -500,7 +527,7 @@ func runtimeOverviewCards(
 	schedulerJobs query.SchedulerJobDiagnosticsView,
 	errors []query.RuntimeOverviewErrorView,
 ) []query.RuntimeOverviewCardView {
-	queueValue := fmt.Sprintf("%s/%s", emptyAsUnknown(queueBackend.Provider), emptyAsUnknown(queueBackend.Mode))
+	queueValue := queueBackendCardValue(queueBackend)
 	cards := []query.RuntimeOverviewCardView{
 		runtimeOverviewCard("runtime_health", "Runtime Health", "ok", runtimeHealthStatus(errors), map[string]any{"errors": errors}),
 		runtimeOverviewCard("worker_leases", "Worker Leases", intSummary(summary, "worker_leases"), statusIfPositive(intSummary(summary, "stale_jobs"), "warn", "ok"), map[string]any{"diagnostics": diagnostics}),
@@ -627,6 +654,14 @@ func queueBackendStatus(view query.QueueBackendView) string {
 		return "ok"
 	}
 	return "warn"
+}
+
+func queueBackendCardValue(view query.QueueBackendView) string {
+	value := fmt.Sprintf("%s/%s", emptyAsUnknown(view.Provider), emptyAsUnknown(view.Mode))
+	if view.SelectedProviderCapability != nil && view.SelectedProviderCapability.RecommendedPhase != "" {
+		return fmt.Sprintf("%s (%s)", value, view.SelectedProviderCapability.RecommendedPhase)
+	}
+	return value
 }
 
 func runtimeOutboxPressureStatus(view query.OutboxMetricsView) string {

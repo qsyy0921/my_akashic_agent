@@ -131,4 +131,6 @@ execution.
 - `052-queue-provider-capability-diagnostics.md`: Queue backend provider
   capability matrix for NATS-first MQ selection, concurrent consumers, and
   future Redis/RabbitMQ adapter boundaries.
+- `053-runtime-overview-queue-provider-capability.md`: Runtime overview summary
+  fields for selected queue provider capability and NATS-first MQ visibility.
 - Agent architecture boundary specs live under `../agent-architecture/`.

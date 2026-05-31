@@ -18,6 +18,7 @@
 
 - 基于已完成的 local worker 与 NATS `external_lease` 账号级节流，后续再评估持久化/分布式 rate-limit state、全局 backpressure、平台风控策略参数化和生产 cutover；切换前必须保持可回滚和 observe-only smoke。
 - MQ 方案下一步只做有证据的 adapter 扩展：NATS JetStream 已是当前推荐外部 MQ 且 provider capability matrix 已可见；Redis Streams / RabbitMQ 仅在出现明确部署需求时再实现 infrastructure adapter，并继续保持 domain/provider-neutral。
+- 若前端需要更强队列可视化，再把 provider capability 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview；后续继续收敛 AgentJob lease、ack/fail、重试、外部 MQ result-ack live smoke 和切换门禁。
 
 ## Knowledge / Memory / RAG
