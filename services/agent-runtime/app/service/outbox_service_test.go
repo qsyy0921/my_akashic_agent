@@ -295,6 +295,124 @@ func TestOutboxMetricsServiceSummarizesThroughputAndDeadLetters(t *testing.T) {
 	}
 }
 
+func TestOutboxMetricsServiceSummarizesAccountPressure(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	outbox := appservice.NewOutboxServiceWithEvents(store, store, store)
+	metrics := appservice.NewOutboxMetricsService(store, store)
+	now := time.Date(2026, 5, 31, 8, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 10; i++ {
+		message := sampleOutboxMessage(now.Add(time.Duration(i) * time.Second))
+		message.EventID = "pressure-high-queued-" + string(rune('a'+i))
+		message.Channel.AccountID = "1049511700"
+		message.Channel.ConversationID = "2365524513"
+		delivery, err := model.NewOutboxDelivery(message, 3, message.Timestamp)
+		if err != nil {
+			t.Fatalf("new high-pressure delivery %d: %v", i, err)
+		}
+		if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+			t.Fatalf("save high-pressure delivery %d: %v", i, err)
+		}
+	}
+
+	for i := 0; i < 2; i++ {
+		message := sampleOutboxMessage(now.Add(time.Duration(20+i) * time.Second))
+		message.EventID = "pressure-normal-queued-" + string(rune('a'+i))
+		message.Channel.AccountID = "2365524513"
+		message.Channel.ConversationID = "1049511700"
+		delivery, err := model.NewOutboxDelivery(message, 3, message.Timestamp)
+		if err != nil {
+			t.Fatalf("new normal-pressure delivery %d: %v", i, err)
+		}
+		if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+			t.Fatalf("save normal-pressure delivery %d: %v", i, err)
+		}
+	}
+
+	deadMessage := sampleOutboxMessage(now.Add(30 * time.Second))
+	deadMessage.EventID = "pressure-normal-dead"
+	deadMessage.Channel.AccountID = "2365524513"
+	deadMessage.Channel.ConversationID = "1049511700"
+	dead, err := model.NewOutboxDelivery(deadMessage, 1, deadMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new dead pressure delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, dead); err != nil {
+		t.Fatalf("save dead pressure delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    deadMessage.EventID,
+		WorkerID:   "outbox-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(31 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dead pressure delivery: %v", err)
+	}
+	if _, err := outbox.MarkFailed(ctx, command.MarkOutboxFailedCommand{
+		EventID:      deadMessage.EventID,
+		ErrorKind:    string(model.DeliveryErrorRoute),
+		ErrorMessage: "missing adapter",
+		Timestamp:    now.Add(32 * time.Second),
+	}); err != nil {
+		t.Fatalf("dead-letter pressure delivery: %v", err)
+	}
+
+	dispatchingMessage := sampleOutboxMessage(now.Add(40 * time.Second))
+	dispatchingMessage.EventID = "pressure-dispatching"
+	dispatchingMessage.Channel.AccountID = "2365524513"
+	dispatchingMessage.Channel.ConversationID = "1049511700"
+	dispatching, err := model.NewOutboxDelivery(dispatchingMessage, 3, dispatchingMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new dispatching pressure delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, dispatching); err != nil {
+		t.Fatalf("save dispatching pressure delivery: %v", err)
+	}
+	if _, err := outbox.Lease(ctx, command.LeaseOutboxDeliveryCommand{
+		EventID:    dispatchingMessage.EventID,
+		WorkerID:   "outbox-worker",
+		TTLSeconds: 60,
+		Timestamp:  now.Add(41 * time.Second),
+	}); err != nil {
+		t.Fatalf("lease dispatching pressure delivery: %v", err)
+	}
+
+	view, err := metrics.Get(ctx, query.OutboxMetricsFilter{
+		DeliveryLimit: 50,
+		EventLimit:    50,
+	})
+	if err != nil {
+		t.Fatalf("get metrics: %v", err)
+	}
+	if view.Pressure.Accounts != 2 {
+		t.Fatalf("expected 2 pressure accounts, got %+v", view.Pressure)
+	}
+	if view.Pressure.HighPressureAccounts != 1 {
+		t.Fatalf("expected 1 high-pressure account, got %+v", view.Pressure)
+	}
+	if view.Pressure.MaxActive != 10 || view.Pressure.MaxQueued != 10 {
+		t.Fatalf("unexpected pressure max values: %+v", view.Pressure)
+	}
+	if len(view.Pressure.ByAccount) != 2 {
+		t.Fatalf("expected pressure details for 2 accounts, got %+v", view.Pressure.ByAccount)
+	}
+	high := view.Pressure.ByAccount[0]
+	if high.AccountKey != "qq:1049511700" || !high.HighPressure || high.PressureReason != "active>=10" {
+		t.Fatalf("unexpected high-pressure account: %+v", high)
+	}
+	if high.Queued != 10 || high.Dispatching != 0 || high.Active != 10 || high.DeadLettered != 0 {
+		t.Fatalf("unexpected high-pressure counts: %+v", high)
+	}
+	normal := view.Pressure.ByAccount[1]
+	if normal.AccountKey != "qq:2365524513" || normal.HighPressure {
+		t.Fatalf("unexpected normal-pressure account: %+v", normal)
+	}
+	if normal.Queued != 2 || normal.Dispatching != 1 || normal.Active != 3 || normal.DeadLettered != 1 {
+		t.Fatalf("unexpected normal-pressure counts: %+v", normal)
+	}
+}
+
 func sampleOutboxMessage(timestamp time.Time) model.OutboundMessage {
 	return model.OutboundMessage{
 		EventID: "outbox-1",

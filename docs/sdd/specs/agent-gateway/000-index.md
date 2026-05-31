@@ -121,4 +121,7 @@ execution.
   bounded recent samples.
 - `048-runtime-overview-external-lease-diagnostics.md`: Runtime overview summary
   and card aggregation for external lease execution diagnostics.
+- `049-outbox-account-pressure-diagnostics.md`: Go-owned outbox account pressure
+  diagnostics for queued/dispatching delivery backlog before actual rate-limit
+  enforcement.
 - Agent architecture boundary specs live under `../agent-architecture/`.

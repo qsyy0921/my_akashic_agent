@@ -56,12 +56,13 @@ quality, prompt engineering, tool semantics, and ML/RAG libraries matter.
 | Provider/model routing | `agent/provider.py`, `infra/providers/*` | MiMo, vision model, embedding, fallback, streaming |
 | Tool runtime | `agent/tools/*`, `agent/tool_hooks/*` | Python ecosystem and rich side-effect tools |
 | Memory extraction | `core/memory`, `memory2`, `group_memory` | embeddings, LLM extraction, RAG, summarization |
+| Group knowledge distillation | `group_memory`, future `knowledge/*` workers |攻略/FAQ/决策/经验沉淀需要 LLM 抽取、冲突消解和人工可评审摘要 |
 | Skills/procedures | `skills/*`, `agent/skills.py` | natural-language operational guidance |
 | RAG evaluation | `eval/*` | Python ML/eval ecosystem |
 | Image generation execution | `agent/tools/chatgpt_proxy.py` initially | browser/profile and provider-specific implementation |
 | Proactive reasoning | `proactive_v2/*` initially | LLM scoring and natural-language delivery decisions |
 | Multimodal understanding | vision/OCR adapters and media summarizers | provider-specific OCR/VLM behavior and prompt tuning |
-| Embedding and rerank experiments | memory/RAG adapters and eval scripts | model choice, chunking, recall/precision tradeoffs change frequently |
+| Embedding and rerank experiments | memory/RAG adapters and eval scripts | model choice, chunking, retrieval, recall/precision tradeoffs change frequently |
 | Compatibility mirrors | runtime bridge clients | keep old dashboard/runtime paths alive during migration, not source of truth |
 
 Python should consume Go events through a narrow client:
@@ -143,6 +144,9 @@ Frontend should not infer business state from Python internals.
 - Go never calls an LLM for core routing decisions.
 - Python owns AI-quality decisions, but not durable infrastructure truth once
   the matching Go domain API exists.
+- Python owns model-facing algorithms and provider behavior; Go may schedule,
+  lease, audit, and expose their jobs, but should not embed prompt logic or
+  provider-specific model fallback policy.
 - Python compatibility mirrors are temporary fallback/read-through layers, not
   competing stores for leases, routing, queues, assets, or audit state.
 - Every inbound and outbound event has an idempotency key.

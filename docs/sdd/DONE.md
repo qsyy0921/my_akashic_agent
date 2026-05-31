@@ -7,7 +7,7 @@
 ## 架构与服务边界
 
 - Go 服务边界已统一为 `services/agent-runtime`，采用 DDD + 六边形架构分层。
-- Go 负责 agent runtime/control plane，Python 负责模型调用、prompt、RAG/OCR/VLM、工具执行和快速实验。
+- Go 负责 agent runtime/control plane，Python 负责模型调用、prompt、Memory/RAG/chunking/retrieval、OCR/VLM、工具执行、群知识沉淀和快速实验。
 - Go runtime 默认使用 `.akashic-workspace/agent-runtime` 文件态保存确定性状态，可用 `AKASHIC_RUNTIME_STATE_DIR` 或单项 DSN/PATH 覆盖。
 - SDD 任务文档已拆分为 `TODO.md`、`DONE.md`、`LIVE_CHECKS.md`、`BACKLOG.md`：TODO 只保存本轮必须完成项，避免长期规划导致 TODO 膨胀。
 
@@ -16,6 +16,7 @@
 - 已实现 Go shadow audit、inbox、media asset registry、安全 content 访问和 dashboard 附件代理。
 - 已实现 Go send ledger、private echo 判断和双账号防循环相关只读诊断。
 - 已实现 Go outbox 生命周期、outbox event stream、delivery dispatch plan、readiness、smoke readiness 和 metrics。
+- 已实现 Go outbox account pressure 只读诊断：按 `channel_kind:account_id` 汇总 queued/dispatching/active/dead-letter，并接入 runtime overview，为后续账号级限流提供数据基础。
 - 已实现 Telegram DeliveryAdapter、QQ/NapCat OneBot HTTP/WebSocket DeliveryAdapter、adapter diagnostics、live health 和 runtime config 脱敏诊断。
 - 已加入可选 Go local outbox delivery worker，默认关闭，避免未完成 cutover 时触发真实平台发送。
 
@@ -66,5 +67,5 @@
 
 ## SDD / 迭代治理
 
-- 已补充 Python AI runtime 职责边界：模型/provider、prompt/context、工具执行、Memory/RAG 算法、Embedding/Rerank/OCR/VLM、图片生成执行、评估和快速实验继续归 Python；确定性控制面状态归 Go。
+- 已补充 Python AI runtime 职责边界：模型/provider、prompt/context、工具执行、Memory/RAG 算法、chunking、retrieval、Embedding/Rerank/OCR/VLM、图片生成执行、群知识沉淀、评估和快速实验继续归 Python；确定性控制面状态归 Go。
 - 已沉淀 `docs/sdd/ITERATION_PROMPT.md`，明确每轮迭代必须完成 `TODO.md` 中所有未完成项，不能只提交一个未闭环切片。

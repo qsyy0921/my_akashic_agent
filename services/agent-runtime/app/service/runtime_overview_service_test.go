@@ -90,6 +90,22 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				"dead_lettered": 1,
 			},
 			DeadLetters: query.OutboxDeadLetterMetricsView{CurrentTotal: 1},
+			Pressure: query.OutboxPressureMetricsView{
+				Accounts:             2,
+				HighPressureAccounts: 1,
+				MaxActive:            12,
+				MaxQueued:            10,
+				ByAccount: []query.OutboxAccountPressureView{{
+					AccountKey:     "qq:1049511700",
+					ChannelKind:    "qq",
+					AccountID:      "1049511700",
+					Queued:         10,
+					Dispatching:    2,
+					Active:         12,
+					HighPressure:   true,
+					PressureReason: "active>=10",
+				}},
+			},
 		}},
 		KnowledgeDiagnostics: staticRuntimeKnowledgeDiagnostics{view: query.KnowledgeWorkerDiagnosticsView{
 			Totals: map[string]int{"checkpoints": 1, "stale_leases": 1},
@@ -225,6 +241,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["inbound_dedupe_records"] != 2 || view.Summary["inbound_dedupe_duplicate_seen_total"] != 1 {
 		t.Fatalf("unexpected inbound dedupe summary: %#v", view.Summary)
 	}
+	if view.Summary["outbox_pressure_accounts"] != 2 ||
+		view.Summary["outbox_pressure_high_accounts"] != 1 ||
+		view.Summary["outbox_pressure_max_active"] != 12 ||
+		view.Summary["outbox_pressure_max_queued"] != 10 {
+		t.Fatalf("unexpected outbox pressure summary: %#v", view.Summary)
+	}
 	assertRuntimeOverviewCardStatus(t, view.Cards, "delivery_adapters", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "external_lease_diagnostics", "danger")
@@ -239,6 +261,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
 }
 
 func assertRuntimeOverviewCardStatus(t *testing.T, cards []query.RuntimeOverviewCardView, id string, status string) {

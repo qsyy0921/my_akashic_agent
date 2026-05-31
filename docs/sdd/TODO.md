@@ -17,12 +17,10 @@
 
 当前无未完成项。
 
-下一轮开始前，先从 `BACKLOG.md` 选择能在同一轮闭环的事项写入这里；不要把长期规划或 live 观察项塞回 TODO。
-
 ## 边界约束
 
 - Go 负责确定性基础设施：路由状态、幂等、持久化存储、生命周期、重试、租约、checkpoint、资产和审计。
-- Python 负责 AI runtime：模型/供应商路由、prompt 和上下文管线、工具执行、RAG/Memory 抽取与排序、Embedding/Rerank/OCR/VLM、图片生成执行、评估脚本、策略实验和 provider-specific fallback。
+- Python 负责 AI runtime：模型/供应商路由、prompt 和上下文管线、工具执行、RAG/Memory 抽取、chunking、检索策略、Embedding/Rerank/OCR/VLM、图片生成执行、群知识沉淀、评估脚本、策略实验和 provider-specific fallback。
 - Python 可以持有算法/实验状态的本地 mirror，但一旦某类状态变成确定性控制面、审计、幂等、租约、调度、资产或队列生命周期，就应迁到 Go。
 - 不为架构形式过度拆分服务；优先在 `services/agent-runtime` 内复用现有 DDD/六边形分层，只有当职责和部署边界真正独立时才新增服务。
 - 每完成一轮迭代，都必须更新本中文 TODO，以及对应 SDD spec/review 文档；不要只提交一个未闭环切片。

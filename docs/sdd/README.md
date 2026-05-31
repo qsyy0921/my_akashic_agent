@@ -60,6 +60,7 @@ platform cutover still requires a specific review and rollback plan.
   outbox, leases, retries, dedupe, queue lifecycle, media assets, checkpoints,
   scheduling control plane, audit, and dashboard diagnostics.
 - Python owns AI runtime behavior: model/provider selection, prompt/context
-  construction, tool execution, memory/RAG algorithms, embedding/rerank,
-  OCR/VLM enrichment, image-generation execution, evaluation, and fast
+  construction, tool execution, memory/RAG algorithms, chunking,
+  embedding/rerank, retrieval strategy, OCR/VLM enrichment, image-generation
+  execution, group-knowledge distillation, evaluation, and fast
   provider-specific experiments.

@@ -68,8 +68,11 @@ A change is not accepted if:
   queues, audit, and operational diagnostics.
 - Python owns agent intelligence: model/provider routing, prompt and context
   pipelines, tool execution, memory/RAG extraction and ranking, embeddings,
-  rerank, OCR/VLM, image-generation execution, evaluation scripts, and fast AI
-  experiments.
+  chunking, rerank, OCR/VLM, image-generation execution, group-knowledge
+  distillation, evaluation scripts, and fast AI experiments.
 - Python may keep compatibility mirrors while migrating, but mirrors must not
   become a second source of truth for infrastructure state once Go has the
   matching domain API.
+- If a task touches both sides, Go owns the lifecycle and audit trail while
+  Python owns the AI algorithm and provider behavior. The SDD spec must name
+  both responsibilities explicitly.

@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"time"
 
 	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
@@ -14,6 +16,9 @@ const (
 	defaultOutboxMetricLimit   = 200
 	maxOutboxMetricLimit       = 200
 	maxOutboxDeadLetterSamples = 10
+	outboxPressureQueuedWarn   = 10
+	outboxPressureDispatchWarn = 5
+	outboxPressureActiveWarn   = 10
 )
 
 type OutboxMetricsService struct {
@@ -61,6 +66,7 @@ func summarizeOutboxMetrics(
 	deliveriesByStatus := make(map[string]int)
 	deliveriesByChannelKind := make(map[string]query.OutboxChannelKindMetricsView)
 	deadByChannelKind := make(map[string]int)
+	pressureByAccount := make(map[string]*query.OutboxAccountPressureView)
 	throughput := query.OutboxThroughputMetricsView{
 		EventsByType: make(map[string]int),
 	}
@@ -77,6 +83,15 @@ func summarizeOutboxMetrics(
 		channelMetrics.Total++
 		channelMetrics.ByStatus[status]++
 		deliveriesByChannelKind[channelKind] = channelMetrics
+		pressure := outboxPressureForDelivery(pressureByAccount, delivery)
+		switch delivery.Status {
+		case model.DeliveryQueued:
+			pressure.Queued++
+		case model.DeliveryDispatching:
+			pressure.Dispatching++
+		case model.DeliveryDeadLettered:
+			pressure.DeadLettered++
+		}
 		if delivery.Status == model.DeliveryDeadLettered {
 			deadByChannelKind[channelKind]++
 		}
@@ -131,8 +146,72 @@ func summarizeOutboxMetrics(
 			ByChannelKind: deadByChannelKind,
 			Recent:        recentDeadLetters,
 		},
-		Notes: notes,
+		Pressure: summarizeOutboxPressure(pressureByAccount),
+		Notes:    notes,
 	}
+}
+
+func outboxPressureForDelivery(
+	items map[string]*query.OutboxAccountPressureView,
+	delivery model.OutboxDelivery,
+) *query.OutboxAccountPressureView {
+	channelKind := string(delivery.Message.Channel.Kind)
+	accountID := string(delivery.Message.Channel.AccountID)
+	key := channelKind + ":" + accountID
+	item := items[key]
+	if item == nil {
+		item = &query.OutboxAccountPressureView{
+			AccountKey:  key,
+			ChannelKind: channelKind,
+			AccountID:   accountID,
+		}
+		items[key] = item
+	}
+	return item
+}
+
+func summarizeOutboxPressure(items map[string]*query.OutboxAccountPressureView) query.OutboxPressureMetricsView {
+	if len(items) == 0 {
+		return query.OutboxPressureMetricsView{}
+	}
+	accounts := make([]query.OutboxAccountPressureView, 0, len(items))
+	view := query.OutboxPressureMetricsView{Accounts: len(items)}
+	for _, item := range items {
+		current := *item
+		current.Active = current.Queued + current.Dispatching
+		current.HighPressure, current.PressureReason = outboxPressureStatus(current)
+		if current.HighPressure {
+			view.HighPressureAccounts++
+		}
+		if current.Active > view.MaxActive {
+			view.MaxActive = current.Active
+		}
+		if current.Queued > view.MaxQueued {
+			view.MaxQueued = current.Queued
+		}
+		accounts = append(accounts, current)
+	}
+	sort.Slice(accounts, func(i, j int) bool {
+		if accounts[i].Active == accounts[j].Active {
+			return accounts[i].AccountKey < accounts[j].AccountKey
+		}
+		return accounts[i].Active > accounts[j].Active
+	})
+	view.ByAccount = accounts
+	return view
+}
+
+func outboxPressureStatus(item query.OutboxAccountPressureView) (bool, string) {
+	if item.Active >= outboxPressureActiveWarn {
+		return true, fmt.Sprintf("active>=%d", outboxPressureActiveWarn)
+	}
+	if item.Queued >= outboxPressureQueuedWarn {
+		return true, fmt.Sprintf("queued>=%d", outboxPressureQueuedWarn)
+	}
+	if item.Dispatching >= outboxPressureDispatchWarn {
+		return true, fmt.Sprintf("dispatching>=%d", outboxPressureDispatchWarn)
+	}
+	return false, ""
 }
 
 func isTerminalOutboxStatus(status model.DeliveryStatus) bool {

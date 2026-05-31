@@ -40,6 +40,26 @@ type OutboxDeadLetterMetricsView struct {
 	Recent        []OutboxDeadLetterSampleView `json:"recent"`
 }
 
+type OutboxAccountPressureView struct {
+	AccountKey     string `json:"account_key"`
+	ChannelKind    string `json:"channel_kind"`
+	AccountID      string `json:"account_id"`
+	Queued         int    `json:"queued"`
+	Dispatching    int    `json:"dispatching"`
+	Active         int    `json:"active"`
+	DeadLettered   int    `json:"dead_lettered"`
+	HighPressure   bool   `json:"high_pressure"`
+	PressureReason string `json:"pressure_reason,omitempty"`
+}
+
+type OutboxPressureMetricsView struct {
+	Accounts             int                         `json:"accounts"`
+	HighPressureAccounts int                         `json:"high_pressure_accounts"`
+	MaxActive            int                         `json:"max_active"`
+	MaxQueued            int                         `json:"max_queued"`
+	ByAccount            []OutboxAccountPressureView `json:"by_account,omitempty"`
+}
+
 type OutboxMetricsView struct {
 	SampledDeliveries       int                                     `json:"sampled_deliveries"`
 	SampledEvents           int                                     `json:"sampled_events"`
@@ -47,5 +67,6 @@ type OutboxMetricsView struct {
 	DeliveriesByChannelKind map[string]OutboxChannelKindMetricsView `json:"deliveries_by_channel_kind"`
 	Throughput              OutboxThroughputMetricsView             `json:"throughput"`
 	DeadLetters             OutboxDeadLetterMetricsView             `json:"dead_letters"`
+	Pressure                OutboxPressureMetricsView               `json:"pressure"`
 	Notes                   []string                                `json:"notes,omitempty"`
 }

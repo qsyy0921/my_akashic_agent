@@ -473,6 +473,10 @@ func runtimeOverviewSummary(
 		"agent_job_metric_dead_letters":             agentJobMetrics.DeadLetters.CurrentTotal,
 		"outbox_metric_events":                      outboxMetrics.SampledEvents,
 		"outbox_metric_dead_letters":                outboxMetrics.DeadLetters.CurrentTotal,
+		"outbox_pressure_accounts":                  outboxMetrics.Pressure.Accounts,
+		"outbox_pressure_high_accounts":             outboxMetrics.Pressure.HighPressureAccounts,
+		"outbox_pressure_max_active":                outboxMetrics.Pressure.MaxActive,
+		"outbox_pressure_max_queued":                outboxMetrics.Pressure.MaxQueued,
 	}
 }
 
@@ -506,6 +510,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("job_events", "Job Events", intSummary(summary, "job_events"), statusIfPositive(intSummary(summary, "job_events"), "ok", "muted"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_metrics", "Agent Job Metrics", intSummary(summary, "agent_job_metric_events"), statusIfPositive(intSummary(summary, "agent_job_metric_dead_letters"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("outbox_metrics", "Outbox Metrics", intSummary(summary, "outbox_metric_events"), statusIfPositive(intSummary(summary, "outbox_metric_dead_letters"), "danger", "ok"), map[string]any{"outbox_metrics": outboxMetrics}),
+		runtimeOverviewCard("outbox_pressure", "Outbox Pressure", runtimeOutboxPressureValue(outboxMetrics), runtimeOutboxPressureStatus(outboxMetrics), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("outbox_events", "Outbox Events", intSummary(summary, "outbox_events"), statusIfPositive(intSummary(summary, "outbox_events"), "ok", "muted"), map[string]any{"outbox_metrics": outboxMetrics}),
 		runtimeOverviewCard("rag_eval_failures", "RAG Eval Failures", intSummary(summary, "rag_eval_failures"), statusIfPositive(intSummary(summary, "rag_eval_failures"), "danger", "ok"), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
@@ -622,6 +627,20 @@ func queueBackendStatus(view query.QueueBackendView) string {
 		return "ok"
 	}
 	return "warn"
+}
+
+func runtimeOutboxPressureStatus(view query.OutboxMetricsView) string {
+	if view.Pressure.Accounts == 0 {
+		return "muted"
+	}
+	if view.Pressure.HighPressureAccounts > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func runtimeOutboxPressureValue(view query.OutboxMetricsView) string {
+	return fmt.Sprintf("%d/%d", view.Pressure.HighPressureAccounts, view.Pressure.Accounts)
 }
 
 func externalLeaseStatus(view query.QueueBackendView) string {

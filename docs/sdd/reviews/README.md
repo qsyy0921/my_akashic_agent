@@ -152,3 +152,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-103-agent-worker-status-heartbeat-renewal.md`
 - `2026-05-31-phase8-104-external-lease-execution-diagnostics.md`
 - `2026-05-31-phase8-105-runtime-overview-external-lease-diagnostics.md`
+- `2026-05-31-phase8-106-outbox-account-pressure-diagnostics.md`
