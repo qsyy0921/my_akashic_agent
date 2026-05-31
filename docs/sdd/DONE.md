@@ -53,6 +53,7 @@
 - observe-only knowledge job 定期入队已迁到 Go runtime：新增 `knowledge_job_planner` worker，基于 Go observe targets 创建 `group_memory_extract` / `rag_ingest` AgentJob，并复用现有 dedupe/backpressure；Python knowledge worker 检测到 Go planner 启用后只做 lease 执行。
 - 已实现 Go-owned knowledge job planner preview：`/v1/knowledge-job-planner/preview` 可在不创建 AgentJob 的情况下展示 eligible observe-only QQ 群、跳过原因、计划创建的 `group_memory_extract` / `rag_ingest` job、dedupe key、route、payload 和 dataset 绑定。
 - runtime overview 已聚合 knowledge job planner preview：summary/card/detail 可直接看到计划 admission 的 observe-only QQ targets、groups、`group_memory_extract` jobs 和 `rag_ingest` jobs，仍保持只读且不创建 AgentJob。
+- 已实现 Go-owned knowledge job planner readiness：`/v1/knowledge-job-planner/readiness` 聚合 preview、runtime config、runtime worker 和 Python knowledge worker heartbeat，输出 ready/reason/blockers，作为启用真实 admission 前的只读门禁。
 - 已实现 Go-owned Python AI worker status registry，并接入 runtime overview。
 - Python AI worker status registry 已增加 Go-owned lease/fencing：新 reporter 上报 `instance_id` 和 `lease_ttl_seconds`，Go 拒绝同一 `worker_id` 活跃租约期间的异实例状态覆盖。
 - Python AI workers 已增加 worker status heartbeat renewal：image / knowledge / rag_eval / outbox 长任务运行期间周期上报 `running/current_job_id`，刷新 Go worker-status lease；AgentJob lease 语义不变。

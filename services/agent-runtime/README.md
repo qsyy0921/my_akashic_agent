@@ -451,12 +451,17 @@ Preview the exact planner output before enabling real admission:
 ```text
 GET /v1/knowledge-job-planner/preview
 GET /v1/knowledge-job-planner/preview?timestamp=2026-05-31T08:02:00Z&interval_seconds=60
+GET /v1/knowledge-job-planner/readiness
 ```
 
 The preview is read-only (`side_effect="none"`). It returns eligible
 observe-only QQ groups, skipped targets with reasons, planned
 `group_memory_extract` / `rag_ingest` job ids, routes, payloads, dedupe keys,
 and dataset bindings. It does not create AgentJob records.
+The readiness endpoint combines the same preview with runtime config,
+`knowledge_job_planner` runtime-worker state, and Python `worker_type=knowledge`
+heartbeat status. A disabled planner is treated as preflight, not a blocker; an
+enabled planner that is not running is blocked.
 
 Persist generic job lifecycle events as a JSONL stream:
 

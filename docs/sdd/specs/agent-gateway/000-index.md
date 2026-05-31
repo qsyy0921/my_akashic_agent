@@ -174,4 +174,7 @@ execution.
 - `067-runtime-overview-knowledge-planner-preview.md`: Runtime overview
   aggregates the read-only planner preview so dashboard/operator entrypoints can
   see planned knowledge jobs before enabling real admission.
+- `068-knowledge-job-planner-readiness.md`: Go exposes a read-only planner
+  readiness gate that combines preview, runtime worker state and Python
+  knowledge worker status before enabling real admission.
 - Agent architecture boundary specs live under `../agent-architecture/`.

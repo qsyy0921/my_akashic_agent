@@ -52,3 +52,20 @@ type KnowledgeJobPlannerSkippedView struct {
 	Channel  ObserveTargetChannelView `json:"channel"`
 	Reason   string                   `json:"reason"`
 }
+
+type KnowledgeJobPlannerReadinessView struct {
+	Ready                  bool                           `json:"ready"`
+	Reason                 string                         `json:"reason"`
+	PlannerEnabled         bool                           `json:"planner_enabled"`
+	PlannerRunning         bool                           `json:"planner_running"`
+	KnowledgeWorkerReady   bool                           `json:"knowledge_worker_ready"`
+	KnowledgeWorkerActive  int                            `json:"knowledge_worker_active"`
+	KnowledgeWorkerStale   int                            `json:"knowledge_worker_stale"`
+	KnowledgeWorkerFailed  int                            `json:"knowledge_worker_failed"`
+	KnowledgeWorkerStopped int                            `json:"knowledge_worker_stopped"`
+	Blockers               []string                       `json:"blockers,omitempty"`
+	Preview                KnowledgeJobPlannerPreviewView `json:"preview"`
+	Attributes             map[string]string              `json:"attributes,omitempty"`
+	Notes                  []string                       `json:"notes,omitempty"`
+	SideEffect             string                         `json:"side_effect"`
+}

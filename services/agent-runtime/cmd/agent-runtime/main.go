@@ -272,6 +272,13 @@ func main() {
 	}
 	knowledgeJobPlannerPreview := appservice.NewKnowledgeJobPlannerService(observeTargets, agentJobs)
 	knowledgeJobPlannerPreviewDefaults := knowledgeJobPlannerPreviewCommandFromEnv()
+	knowledgeJobPlannerReadiness := appservice.NewKnowledgeJobPlannerReadinessService(appservice.KnowledgeJobPlannerReadinessDeps{
+		Previewer:      knowledgeJobPlannerPreview,
+		RuntimeConfig:  runtimeConfig,
+		RuntimeWorkers: runtimeWorkers,
+		AgentWorkers:   agentWorkerStatuses,
+		DefaultPlan:    knowledgeJobPlannerPreviewDefaults,
+	})
 	stopKnowledgeJobPlanner, err := startKnowledgeJobPlanner(agentJobs, observeTargets)
 	if err != nil {
 		log.Fatalf("init knowledge job planner: %v", err)
@@ -334,7 +341,7 @@ func main() {
 	httptrigger.RegisterKnowledgeCheckpointRoutes(mux, knowledgeCheckpoints)
 	httptrigger.RegisterKnowledgeDiagnosticsRoutes(mux, knowledgeDiagnostics)
 	httptrigger.RegisterKnowledgePipelineDiagnosticsRoutes(mux, knowledgePipelines)
-	httptrigger.RegisterKnowledgeJobPlannerRoutes(mux, knowledgeJobPlannerPreview, knowledgeJobPlannerPreviewDefaults)
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(mux, knowledgeJobPlannerPreview, knowledgeJobPlannerReadiness, knowledgeJobPlannerPreviewDefaults)
 	httptrigger.RegisterAgentJobEventRoutes(mux, agentJobEvents)
 	httptrigger.RegisterInboxMetricsRoutes(mux, inboxMetrics)
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)

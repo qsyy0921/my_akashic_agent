@@ -11,3 +11,8 @@ type PlanKnowledgeJobsCommand struct {
 	RagParse        bool
 	Timestamp       time.Time
 }
+
+type CheckKnowledgeJobPlannerReadinessCommand struct {
+	Plan              PlanKnowledgeJobsCommand
+	StaleAfterSeconds int
+}

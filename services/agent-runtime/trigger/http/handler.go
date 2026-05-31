@@ -83,9 +83,11 @@ func RegisterKnowledgePipelineDiagnosticsRoutes(
 func RegisterKnowledgeJobPlannerRoutes(
 	mux *http.ServeMux,
 	previewer inport.KnowledgeJobPlannerPreviewer,
+	readiness inport.KnowledgeJobPlannerReadinessChecker,
 	defaults command.PlanKnowledgeJobsCommand,
 ) {
 	mux.Handle("/v1/knowledge-job-planner/preview", KnowledgeJobPlannerPreviewHandler(previewer, defaults))
+	mux.Handle("/v1/knowledge-job-planner/readiness", KnowledgeJobPlannerReadinessHandler(readiness, defaults))
 }
 
 func RegisterAgentJobEventRoutes(
@@ -264,6 +266,39 @@ func KnowledgeJobPlannerPreviewHandler(
 			return
 		}
 		view, err := previewer.PreviewKnowledgeJobs(r.Context(), cmd)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{
+			Code: types.ErrorCodeOK,
+			Data: view,
+		})
+	})
+}
+
+func KnowledgeJobPlannerReadinessHandler(
+	checker inport.KnowledgeJobPlannerReadinessChecker,
+	defaults command.PlanKnowledgeJobsCommand,
+) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if checker == nil {
+			http.Error(w, "knowledge job planner readiness disabled", http.StatusNotImplemented)
+			return
+		}
+		plan, err := knowledgeJobPlannerPreviewCommandFromRequest(r, defaults)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := checker.CheckKnowledgeJobPlannerReadiness(r.Context(), command.CheckKnowledgeJobPlannerReadinessCommand{
+			Plan:              plan,
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

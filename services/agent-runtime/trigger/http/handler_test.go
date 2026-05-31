@@ -258,6 +258,7 @@ func TestKnowledgeJobPlannerPreviewEndpointReturnsReadOnlyPlan(t *testing.T) {
 				SideEffect: "none",
 			},
 		},
+		nil,
 		command.PlanKnowledgeJobsCommand{
 			PlannerID:       "planner-default",
 			AgentID:         "python-knowledge-a",
@@ -287,6 +288,53 @@ func TestKnowledgeJobPlannerPreviewEndpointReturnsReadOnlyPlan(t *testing.T) {
 
 	methodNotAllowed := httptest.NewRecorder()
 	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/knowledge-job-planner/preview", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
+	}
+}
+
+func TestKnowledgeJobPlannerReadinessEndpointReturnsBlockers(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterKnowledgeJobPlannerRoutes(
+		mux,
+		nil,
+		staticKnowledgeJobPlannerReadinessChecker{
+			view: query.KnowledgeJobPlannerReadinessView{
+				Ready:                 false,
+				Reason:                "knowledge_job_planner_not_ready",
+				PlannerEnabled:        true,
+				PlannerRunning:        false,
+				KnowledgeWorkerReady:  false,
+				KnowledgeWorkerStale:  1,
+				KnowledgeWorkerFailed: 1,
+				Blockers:              []string{"knowledge_job_planner_worker_not_running", "knowledge_worker_unavailable"},
+				Preview:               query.KnowledgeJobPlannerPreviewView{TotalJobs: 0, SideEffect: "none"},
+				SideEffect:            "none",
+			},
+		},
+		command.PlanKnowledgeJobsCommand{IntervalSeconds: 60, MaxAttempts: 2, RagMaxMessages: 500},
+	)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/knowledge-job-planner/readiness?stale_after_seconds=60", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"ready":false`,
+		`"reason":"knowledge_job_planner_not_ready"`,
+		`"knowledge_job_planner_worker_not_running"`,
+		`"knowledge_worker_unavailable"`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/knowledge-job-planner/readiness", nil))
 	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
 	}
@@ -3103,6 +3151,14 @@ type staticKnowledgeJobPlannerPreviewer struct {
 }
 
 func (s staticKnowledgeJobPlannerPreviewer) PreviewKnowledgeJobs(context.Context, command.PlanKnowledgeJobsCommand) (query.KnowledgeJobPlannerPreviewView, error) {
+	return s.view, nil
+}
+
+type staticKnowledgeJobPlannerReadinessChecker struct {
+	view query.KnowledgeJobPlannerReadinessView
+}
+
+func (s staticKnowledgeJobPlannerReadinessChecker) CheckKnowledgeJobPlannerReadiness(context.Context, command.CheckKnowledgeJobPlannerReadinessCommand) (query.KnowledgeJobPlannerReadinessView, error) {
 	return s.view, nil
 }
 
