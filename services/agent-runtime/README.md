@@ -351,6 +351,19 @@ planned to available adapters, and either the Go local outbox worker or NATS
 external lease can execute `outbox_delivery`. It does not send platform
 messages, enqueue outbox records, or mutate worker flags.
 
+Build a read-only outbound cutover plan:
+
+```text
+POST /v1/outbound-cutover/plan
+```
+
+The plan endpoint accepts the same smoke matrix fields as readiness plus
+`desired_execution_owner` (`auto`, `go_local_outbox_worker`, or
+`nats_external_lease`). It embeds the readiness result and returns required
+checks, enable steps, verification endpoints, rollback steps, blockers, and
+`side_effect=none`. The endpoint recommends environment keys but never writes
+them, starts workers, enqueues deliveries, or sends QQ/Telegram messages.
+
 Register and query media/file metadata:
 
 ```text

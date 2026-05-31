@@ -178,6 +178,13 @@ func RegisterOutboundCutoverRoutes(
 	mux.Handle("/v1/outbound-cutover/readiness", OutboundCutoverReadinessHandler(checker))
 }
 
+func RegisterOutboundCutoverPlanRoutes(
+	mux *http.ServeMux,
+	planner inport.OutboundCutoverPlanner,
+) {
+	mux.Handle("/v1/outbound-cutover/plan", OutboundCutoverPlanHandler(planner))
+}
+
 func RegisterObserveTargetRoutes(
 	mux *http.ServeMux,
 	manager inport.ObserveTargetManager,
@@ -1394,23 +1401,11 @@ func DeliverySmokeReadinessHandler(checker inport.DeliverySmokeReadinessChecker)
 		}
 
 		var request dto.DeliverySmokeReadinessRequest
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
-		if err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.TrimSpace(string(raw)) != "" {
-			if err := json.Unmarshal(raw, &request); err != nil {
-				http.Error(w, "invalid json body", http.StatusBadRequest)
-				return
-			}
-		}
-		result, err := checker.CheckDeliverySmokeReadiness(r.Context(), command.CheckDeliverySmokeReadinessCommand{
-			Cases:                 deliverySmokeCaseCommands(request.Cases),
-			GroupIDs:              request.GroupIDs,
-			ChannelByAccount:      request.ChannelByAccount,
-			IncludeSyntheticMedia: request.IncludeSyntheticMedia,
-		})
+		result, err := checker.CheckDeliverySmokeReadiness(r.Context(), deliverySmokeReadinessCommand(request))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, types.Result{
 				Code:    types.ErrorCodeInvalidArgument,
@@ -1434,24 +1429,45 @@ func OutboundCutoverReadinessHandler(checker inport.OutboundCutoverReadinessChec
 		}
 
 		var request dto.DeliverySmokeReadinessRequest
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
-		if err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.TrimSpace(string(raw)) != "" {
-			if err := json.Unmarshal(raw, &request); err != nil {
-				http.Error(w, "invalid json body", http.StatusBadRequest)
-				return
-			}
-		}
 		result, err := checker.CheckOutboundCutoverReadiness(r.Context(), command.CheckOutboundCutoverReadinessCommand{
-			Smoke: command.CheckDeliverySmokeReadinessCommand{
-				Cases:                 deliverySmokeCaseCommands(request.Cases),
-				GroupIDs:              request.GroupIDs,
-				ChannelByAccount:      request.ChannelByAccount,
-				IncludeSyntheticMedia: request.IncludeSyntheticMedia,
+			Smoke: deliverySmokeReadinessCommand(request),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{
+				Code:    types.ErrorCodeInvalidArgument,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: result})
+	})
+}
+
+func OutboundCutoverPlanHandler(planner inport.OutboundCutoverPlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "outbound cutover plan disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request dto.OutboundCutoverPlanRequest
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := planner.PlanOutboundCutover(r.Context(), command.PlanOutboundCutoverCommand{
+			Readiness: command.CheckOutboundCutoverReadinessCommand{
+				Smoke: deliverySmokeReadinessCommand(request.DeliverySmokeReadinessRequest),
 			},
+			DesiredExecutionOwner: request.DesiredExecutionOwner,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, types.Result{
@@ -3766,6 +3782,29 @@ func toImageJobResponse(job query.ImageJobView) dto.ImageJobResponse {
 		CreatedAt:    job.CreatedAt.Format(time.RFC3339Nano),
 		UpdatedAt:    job.UpdatedAt.Format(time.RFC3339Nano),
 		Metadata:     job.Metadata,
+	}
+}
+
+func readOptionalJSONBody(r *http.Request, target any) error {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024))
+	if err != nil {
+		return errors.New("invalid request body")
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		return nil
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return errors.New("invalid json body")
+	}
+	return nil
+}
+
+func deliverySmokeReadinessCommand(request dto.DeliverySmokeReadinessRequest) command.CheckDeliverySmokeReadinessCommand {
+	return command.CheckDeliverySmokeReadinessCommand{
+		Cases:                 deliverySmokeCaseCommands(request.Cases),
+		GroupIDs:              request.GroupIDs,
+		ChannelByAccount:      request.ChannelByAccount,
+		IncludeSyntheticMedia: request.IncludeSyntheticMedia,
 	}
 }
 

@@ -7,6 +7,11 @@ type DeliverySmokeReadinessRequest struct {
 	IncludeSyntheticMedia bool                       `json:"include_synthetic_media,omitempty"`
 }
 
+type OutboundCutoverPlanRequest struct {
+	DeliverySmokeReadinessRequest
+	DesiredExecutionOwner string `json:"desired_execution_owner,omitempty"`
+}
+
 type DeliverySmokeCaseRequest struct {
 	Name             string                           `json:"name,omitempty"`
 	ChannelKind      string                           `json:"channel_kind,omitempty"`

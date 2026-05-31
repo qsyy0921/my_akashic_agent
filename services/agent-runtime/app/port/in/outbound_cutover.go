@@ -10,3 +10,7 @@ import (
 type OutboundCutoverReadinessChecker interface {
 	CheckOutboundCutoverReadiness(ctx context.Context, cmd command.CheckOutboundCutoverReadinessCommand) (query.OutboundCutoverReadinessView, error)
 }
+
+type OutboundCutoverPlanner interface {
+	PlanOutboundCutover(ctx context.Context, cmd command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error)
+}

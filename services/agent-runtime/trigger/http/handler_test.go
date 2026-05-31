@@ -1723,6 +1723,60 @@ func TestOutboundCutoverReadinessEndpointReturnsReadOnlyGate(t *testing.T) {
 	}
 }
 
+func TestOutboundCutoverPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterOutboundCutoverPlanRoutes(mux, staticOutboundCutoverPlanner{
+		view: query.OutboundCutoverPlanView{
+			Ready:                     false,
+			Decision:                  "blocked",
+			DesiredExecutionOwner:     "nats_external_lease",
+			RecommendedExecutionOwner: "nats_external_lease",
+			CurrentExecutionOwner:     "go_state_store_api",
+			Readiness: query.OutboundCutoverReadinessView{
+				Ready:          false,
+				Reason:         "outbound_cutover_not_ready",
+				ExecutionOwner: "go_state_store_api",
+				SideEffect:     "none",
+			},
+			EnableSteps: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "enable",
+				Action:    "configure_nats_external_lease",
+				Env:       map[string]string{"AKASHIC_QUEUE_MODE": "external_lease"},
+			}},
+			VerificationSteps: []query.OutboundCutoverPlanStep{{
+				StepIndex: 1,
+				Phase:     "verify",
+				Action:    "read_queue_backend",
+				Method:    http.MethodGet,
+				Endpoint:  "/v1/queue-backend",
+			}},
+			Blockers:   []string{"external_lease_outbox_not_ready"},
+			SideEffect: "none",
+		},
+	})
+
+	request := []byte(`{"desired_execution_owner":"nats_external_lease","cases":[{"name":"qq_private_text","channel_kind":"qq","account_id":"1049511700","conversation_id":"2365524513","conversation_type":"private","content":"hello"}]}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/outbound-cutover/plan", bytes.NewReader(request)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected cutover plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"decision":"blocked"`,
+		`"desired_execution_owner":"nats_external_lease"`,
+		`"current_execution_owner":"go_state_store_api"`,
+		`"action":"configure_nats_external_lease"`,
+		`"AKASHIC_QUEUE_MODE":"external_lease"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("cutover plan response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -3236,6 +3290,14 @@ type staticOutboundCutoverReadinessChecker struct {
 }
 
 func (s staticOutboundCutoverReadinessChecker) CheckOutboundCutoverReadiness(context.Context, command.CheckOutboundCutoverReadinessCommand) (query.OutboundCutoverReadinessView, error) {
+	return s.view, nil
+}
+
+type staticOutboundCutoverPlanner struct {
+	view query.OutboundCutoverPlanView
+}
+
+func (s staticOutboundCutoverPlanner) PlanOutboundCutover(context.Context, command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error) {
 	return s.view, nil
 }
 

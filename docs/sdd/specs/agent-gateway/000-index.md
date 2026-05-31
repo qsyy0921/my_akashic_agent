@@ -186,4 +186,7 @@ execution.
 - `071-outbound-cutover-readiness.md`: Go exposes a read-only outbound cutover
   preflight that combines OneBot config, delivery smoke readiness, queue
   execution owner and runtime worker state before enabling Go platform sends.
+- `072-outbound-cutover-plan.md`: Go exposes a read-only outbound cutover plan
+  with required checks, enable steps, verification endpoints, rollback steps,
+  blockers and explicit Go/Python delivery boundary before operator cutover.
 - Agent architecture boundary specs live under `../agent-architecture/`.
