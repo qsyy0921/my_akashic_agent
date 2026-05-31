@@ -13,6 +13,7 @@ from integrations.agent_gateway import (
     AgentGatewayNoJob,
 )
 from integrations.agent_gateway_heartbeat import AgentJobLeaseHeartbeat
+from integrations.agent_gateway_worker_status import AgentWorkerStatusReporter
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,13 @@ class AgentGatewayImageWorker:
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
         self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
         self._stopped = asyncio.Event()
+        self._status = AgentWorkerStatusReporter(
+            client=client,
+            worker_id=self._worker_id,
+            worker_type="image_generation",
+            logger=logger,
+            label="agent_runtime_image_worker",
+        )
 
     async def process_once(self) -> dict[str, Any]:
         try:
@@ -43,6 +51,7 @@ class AgentGatewayImageWorker:
                 ttl_seconds=self._lease_ttl,
             )
         except AgentGatewayNoJob:
+            await self._status.idle(reason="no_job")
             return {"processed": False, "reason": "no_job"}
 
         job_id = str(job.get("job_id") or "")
@@ -58,6 +67,7 @@ class AgentGatewayImageWorker:
             label="agent_runtime_image_worker",
         )
         try:
+            await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
             if legacy_job_id:
@@ -89,6 +99,7 @@ class AgentGatewayImageWorker:
                     "count": str(len(attachments)),
                 },
             )
+            await self._status.succeeded(last_job_id=job_id)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -100,6 +111,7 @@ class AgentGatewayImageWorker:
             message = str(exc)
             logger.exception("[agent_runtime_image_worker] job failed job_id=%s", job_id)
             await self._safe_fail(job_id, legacy_job_id, lease_token, message)
+            await self._status.failed(last_job_id=job_id, error=message)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -115,6 +127,7 @@ class AgentGatewayImageWorker:
             "[agent_runtime_image_worker] loop started worker_id=%s",
             self._worker_id,
         )
+        await self._status.starting()
         try:
             while not self._stopped.is_set():
                 try:
@@ -133,6 +146,7 @@ class AgentGatewayImageWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
+            await self._status.stopped()
             logger.info("[agent_runtime_image_worker] loop stopped")
 
     def stop(self) -> None:

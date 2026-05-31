@@ -118,6 +118,44 @@ func TestRuntimeWorkerDiagnosticsEndpointReturnsReadOnlyWorkers(t *testing.T) {
 	}
 }
 
+func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
+	manager := appservice.NewAgentWorkerStatusService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentWorkerStatusRoutes(mux, manager)
+
+	body := strings.NewReader(`{
+		"worker_id":"worker-a",
+		"worker_type":"knowledge",
+		"status":"running",
+		"current_job_id":"group-memory-1",
+		"processed_total":2,
+		"failed_total":1,
+		"source":"python",
+		"timestamp":"2026-05-31T10:00:00Z"
+	}`)
+	report := httptest.NewRecorder()
+	mux.ServeHTTP(report, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/report", body))
+
+	if report.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", report.Code, report.Body.String())
+	}
+	list := httptest.NewRecorder()
+	mux.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/v1/agent-worker-statuses", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", list.Code, list.Body.String())
+	}
+	for _, expected := range []string{
+		`"worker_id":"worker-a"`,
+		`"worker_type":"knowledge"`,
+		`"running":1`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(list.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("response missing %s: %s", expected, list.Body.String())
+		}
+	}
+}
+
 func TestRuntimeConfigEndpointReturnsSanitizedReadOnlyConfig(t *testing.T) {
 	viewer := appservice.NewRuntimeConfigService(query.RuntimeConfigView{
 		Runtime: query.RuntimeProcessConfigView{

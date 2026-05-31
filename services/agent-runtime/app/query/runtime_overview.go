@@ -33,6 +33,7 @@ type RuntimeOverviewView struct {
 	QueueBackend      QueueBackendView                 `json:"queue_backend"`
 	RuntimeConfig     RuntimeConfigView                `json:"runtime_config,omitempty"`
 	RuntimeWorkers    RuntimeWorkerDiagnosticsView     `json:"runtime_workers"`
+	AgentWorkers      AgentWorkerStatusesView          `json:"agent_workers"`
 	ObserveTargets    ObserveTargetsView               `json:"observe_targets"`
 	ObserveCapture    ObserveCaptureDiagnosticsView    `json:"observe_capture"`
 	ReceiverStatuses  ReceiverStatusesView             `json:"receiver_statuses"`

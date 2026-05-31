@@ -92,6 +92,12 @@ class _FakeGatewayClient:
         return {"job_id": job_id}
 
 
+class _FakeStatusGatewayClient(_FakeGatewayClient):
+    async def report_agent_worker_status(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("report_agent_worker_status", kwargs))
+        return kwargs
+
+
 def _job() -> dict[str, Any]:
     return {
         "job_id": "img-1",
@@ -169,3 +175,22 @@ async def test_image_worker_returns_idle_when_no_job():
     result = await worker.process_once()
 
     assert result == {"processed": False, "reason": "no_job"}
+
+
+@pytest.mark.asyncio
+async def test_image_worker_reports_worker_status_on_process():
+    client = _FakeStatusGatewayClient(job=None)
+    tool = _FakeImageTool(result={"ok": True, "paths": []})
+    worker = AgentGatewayImageWorker(
+        client=client,  # type: ignore[arg-type]
+        image_tool=tool,
+        worker_id="worker-a",
+    )
+
+    result = await worker.process_once()
+
+    assert result == {"processed": False, "reason": "no_job"}
+    status_call = next(call for call in client.calls if call[0] == "report_agent_worker_status")
+    assert status_call[1]["worker_type"] == "image_generation"
+    assert status_call[1]["status"] == "idle"
+    assert status_call[1]["metadata"] == {"reason": "no_job"}

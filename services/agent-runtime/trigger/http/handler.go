@@ -225,6 +225,14 @@ func RegisterRuntimeWorkerDiagnosticsRoutes(
 	mux.Handle("/v1/runtime-workers", RuntimeWorkerDiagnosticsHandler(viewer))
 }
 
+func RegisterAgentWorkerStatusRoutes(
+	mux *http.ServeMux,
+	manager inport.AgentWorkerStatusManager,
+) {
+	mux.Handle("/v1/agent-worker-statuses/report", AgentWorkerStatusReportHandler(manager))
+	mux.Handle("/v1/agent-worker-statuses", AgentWorkerStatusesHandler(manager))
+}
+
 func RegisterProactiveStateRoutes(
 	mux *http.ServeMux,
 	proactiveState inport.ProactiveStateManager,
@@ -1832,6 +1840,68 @@ func RuntimeWorkerDiagnosticsHandler(viewer inport.RuntimeWorkerDiagnosticsViewe
 			return
 		}
 		item, err := viewer.GetRuntimeWorkers(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func AgentWorkerStatusReportHandler(manager inport.AgentWorkerStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "agent worker status disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.AgentWorkerStatusRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := manager.ReportAgentWorkerStatus(r.Context(), command.ReportAgentWorkerStatusCommand{
+			WorkerID:       request.WorkerID,
+			WorkerType:     request.WorkerType,
+			Status:         request.Status,
+			CurrentJobID:   request.CurrentJobID,
+			LastJobID:      request.LastJobID,
+			LastError:      request.LastError,
+			ProcessedTotal: request.ProcessedTotal,
+			FailedTotal:    request.FailedTotal,
+			Source:         request.Source,
+			Metadata:       request.Metadata,
+			Timestamp:      timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func AgentWorkerStatusesHandler(manager inport.AgentWorkerStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "agent worker status disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		item, err := manager.ListAgentWorkerStatuses(r.Context(), query.AgentWorkerStatusFilter{
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 0, 86400),
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

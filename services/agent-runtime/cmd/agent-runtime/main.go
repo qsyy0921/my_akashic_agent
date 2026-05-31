@@ -15,6 +15,7 @@ import (
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 	agentjobeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobeventstore"
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
+	agentworkerstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentworkerstatusstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inbounddedupestore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
@@ -242,6 +243,10 @@ func main() {
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
 	outboxMetrics := appservice.NewOutboxMetricsService(outboxRepository, outboxEventStore)
 	runtimeWorkers := appservice.NewRuntimeWorkerDiagnosticsService(runtimeWorkersView)
+	agentWorkerStatuses, err := newAgentWorkerStatusService()
+	if err != nil {
+		log.Fatalf("init agent worker status service: %v", err)
+	}
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
 	observeTargets, err := newObserveTargetService()
 	if err != nil {
@@ -277,6 +282,7 @@ func main() {
 		OutboxMetrics:        outboxMetrics,
 		KnowledgeDiagnostics: knowledgeDiagnostics,
 		RuntimeWorkers:       runtimeWorkers,
+		AgentWorkers:         agentWorkerStatuses,
 		ObserveTargets:       observeTargets,
 		ObserveCapture:       observeCaptureDiagnostics,
 		ReceiverStatuses:     receiverStatuses,
@@ -299,6 +305,7 @@ func main() {
 	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, deliveryAdapterHealth)
 	httptrigger.RegisterDeliverySmokeRoutes(mux, deliverySmokeReadiness)
 	httptrigger.RegisterRuntimeWorkerDiagnosticsRoutes(mux, runtimeWorkers)
+	httptrigger.RegisterAgentWorkerStatusRoutes(mux, agentWorkerStatuses)
 	httptrigger.RegisterRuntimeConfigRoutes(mux, runtimeConfig)
 	httptrigger.RegisterObserveTargetRoutes(mux, observeTargets)
 	httptrigger.RegisterObserveCaptureDiagnosticsRoutes(mux, observeCaptureDiagnostics)
@@ -687,6 +694,21 @@ func newReceiverStatusService() (*appservice.ReceiverStatusService, error) {
 	return appservice.NewReceiverStatusServiceWithRepositories(context.Background(), statusRepository, leaseRepository, staleAfter)
 }
 
+func newAgentWorkerStatusService() (*appservice.AgentWorkerStatusService, error) {
+	staleAfter, err := agentWorkerStatusStaleAfterFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	repository, err := newAgentWorkerStatusRepository()
+	if err != nil {
+		return nil, err
+	}
+	if repository == nil {
+		return appservice.NewAgentWorkerStatusService(), nil
+	}
+	return appservice.NewAgentWorkerStatusServiceWithRepository(context.Background(), repository, staleAfter)
+}
+
 func newInboundDedupeRepository() (outport.InboundDedupeRepository, error) {
 	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_INBOUND_DEDUPE_DSN")); dsn != "" {
 		if strings.EqualFold(dsn, "memory") {
@@ -700,6 +722,35 @@ func newInboundDedupeRepository() (outport.InboundDedupeRepository, error) {
 	}
 	if path, ok := defaultRuntimeStatePath("inbound-dedupe.json"); ok {
 		return inbounddedupestore.NewStore(path)
+	}
+	return nil, nil
+}
+
+func newAgentWorkerStatusRepository() (outport.AgentWorkerStatusRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_WORKER_STATUSES_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return nil, nil
+		}
+		store, err := agentworkerstatusstore.NewStore(dsn)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_AGENT_WORKER_STATUSES_PATH")); path != "" {
+		store, err := agentworkerstatusstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
+	}
+	if path, ok := defaultRuntimeStatePath("agent-worker-statuses.json"); ok {
+		store, err := agentworkerstatusstore.NewStore(path)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
 	}
 	return nil, nil
 }
@@ -764,6 +815,20 @@ func newReceiverLeaseRepository() (outport.ReceiverLeaseRepository, error) {
 
 func receiverStatusStaleAfterFromEnv() (time.Duration, error) {
 	seconds, err := positiveIntEnv("AKASHIC_RECEIVER_STATUS_STALE_SECONDS", 180, 3600)
+	if err != nil {
+		return 0, err
+	}
+	if seconds <= 0 {
+		return 0, nil
+	}
+	if seconds < 30 {
+		seconds = 30
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
+func agentWorkerStatusStaleAfterFromEnv() (time.Duration, error) {
+	seconds, err := positiveIntEnv("AKASHIC_AGENT_WORKER_STATUS_STALE_SECONDS", 180, 24*60*60)
 	if err != nil {
 		return 0, err
 	}

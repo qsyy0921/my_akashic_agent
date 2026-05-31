@@ -14,6 +14,7 @@ from integrations.agent_gateway import (
     AgentGatewayNoJob,
 )
 from integrations.agent_gateway_heartbeat import AgentJobLeaseHeartbeat
+from integrations.agent_gateway_worker_status import AgentWorkerStatusReporter
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,13 @@ class AgentGatewayRagEvalWorker:
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
         self._heartbeat_interval = max(5.0, min(float(self._lease_ttl) / 3.0, 60.0))
         self._stopped = asyncio.Event()
+        self._status = AgentWorkerStatusReporter(
+            client=client,
+            worker_id=self._worker_id,
+            worker_type="rag_eval",
+            logger=logger,
+            label="agent_runtime_rag_eval_worker",
+        )
 
     async def process_once(self) -> dict[str, Any]:
         try:
@@ -77,6 +85,7 @@ class AgentGatewayRagEvalWorker:
                 ttl_seconds=self._lease_ttl,
             )
         except AgentGatewayNoJob:
+            await self._status.idle(reason="no_job")
             return {"processed": False, "reason": "no_job"}
 
         job_id = str(job.get("job_id") or "")
@@ -91,6 +100,7 @@ class AgentGatewayRagEvalWorker:
             label="agent_runtime_rag_eval_worker",
         )
         try:
+            await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
             result = await self._evaluator.execute(job)
@@ -99,6 +109,7 @@ class AgentGatewayRagEvalWorker:
                 lease_token=lease_token,
                 result=_string_result(result),
             )
+            await self._status.succeeded(last_job_id=job_id)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -118,6 +129,7 @@ class AgentGatewayRagEvalWorker:
                     lease_token=lease_token,
                     error_message=message,
                 )
+            await self._status.failed(last_job_id=job_id, error=message)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -133,6 +145,7 @@ class AgentGatewayRagEvalWorker:
             "[agent_runtime_rag_eval_worker] loop started worker_id=%s",
             self._worker_id,
         )
+        await self._status.starting()
         try:
             while not self._stopped.is_set():
                 try:
@@ -157,6 +170,7 @@ class AgentGatewayRagEvalWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
+            await self._status.stopped()
             logger.info("[agent_runtime_rag_eval_worker] loop stopped")
 
     def stop(self) -> None:

@@ -267,6 +267,39 @@ class AgentGatewayClient:
             raise AgentGatewayError("agent runtime recover-expired response is not an object")
         return data
 
+    async def report_agent_worker_status(
+        self,
+        *,
+        worker_id: str,
+        worker_type: str,
+        status: str,
+        current_job_id: str = "",
+        last_job_id: str = "",
+        last_error: str = "",
+        processed_total: int = 0,
+        failed_total: int = 0,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            "/v1/agent-worker-statuses/report",
+            json_body={
+                "worker_id": str(worker_id or ""),
+                "worker_type": str(worker_type or ""),
+                "status": str(status or ""),
+                "current_job_id": str(current_job_id or ""),
+                "last_job_id": str(last_job_id or ""),
+                "last_error": str(last_error or ""),
+                "processed_total": max(0, int(processed_total or 0)),
+                "failed_total": max(0, int(failed_total or 0)),
+                "source": "python",
+                "metadata": metadata or {},
+            },
+        )
+        if not isinstance(data, dict):
+            raise AgentGatewayError("agent runtime worker status response is not an object")
+        return data
+
     async def mark_running(
         self,
         job_id: str,

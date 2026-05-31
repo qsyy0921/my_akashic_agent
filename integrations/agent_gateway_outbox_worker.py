@@ -14,6 +14,7 @@ from integrations.agent_gateway import (
     AgentGatewayError,
     AgentGatewayNoJob,
 )
+from integrations.agent_gateway_worker_status import AgentWorkerStatusReporter
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,13 @@ class AgentGatewayOutboxWorker:
         self._lease_ttl = max(10, int(lease_ttl_seconds or 300))
         self._poll_interval = max(0.5, float(poll_interval_seconds or 2.0))
         self._stopped = asyncio.Event()
+        self._status = AgentWorkerStatusReporter(
+            client=client,
+            worker_id=self._worker_id,
+            worker_type="outbox_delivery",
+            logger=logger,
+            label="agent_runtime_outbox_worker",
+        )
 
     async def process_once(self) -> dict[str, Any]:
         try:
@@ -60,12 +68,15 @@ class AgentGatewayOutboxWorker:
                 ttl_seconds=self._lease_ttl,
             )
         except AgentGatewayNoJob:
+            await self._status.idle(reason="no_delivery")
             return {"processed": False, "reason": "no_delivery"}
 
         event_id = str(delivery.get("event_id") or "")
         try:
+            await self._status.running(current_job_id=event_id)
             results = await self._dispatch_delivery(delivery)
             await self._client.mark_outbox_succeeded(event_id)
+            await self._status.succeeded(last_job_id=event_id)
             return {
                 "processed": True,
                 "event_id": event_id,
@@ -78,6 +89,7 @@ class AgentGatewayOutboxWorker:
                 "[agent_runtime_outbox_worker] delivery failed event_id=%s", event_id
             )
             await self._safe_fail(event_id, message, error_kind=str(error_kind))
+            await self._status.failed(last_job_id=event_id, error=message)
             return {
                 "processed": True,
                 "event_id": event_id,
@@ -91,6 +103,7 @@ class AgentGatewayOutboxWorker:
             "[agent_runtime_outbox_worker] loop started worker_id=%s",
             self._worker_id,
         )
+        await self._status.starting()
         try:
             while not self._stopped.is_set():
                 try:
@@ -115,6 +128,7 @@ class AgentGatewayOutboxWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
+            await self._status.stopped()
             logger.info("[agent_runtime_outbox_worker] loop stopped")
 
     def stop(self) -> None:

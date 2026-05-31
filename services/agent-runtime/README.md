@@ -510,6 +510,21 @@ interval, lease TTL, batch size, queue concurrency, max-in-flight, execution
 scope, and channel/account attributes. It is intended for dashboard/live-smoke
 readiness checks and does not start workers or send platform messages.
 
+Inspect Python AI worker liveness reported into Go:
+
+```text
+POST /v1/agent-worker-statuses/report
+GET  /v1/agent-worker-statuses?stale_after_seconds=180
+```
+
+`image_generation`, `knowledge`, `rag_eval`, and compatibility
+`outbox_delivery` Python workers report `starting`, `idle`, `running`,
+`failed`, and `stopped` states best-effort. Go stores the latest state in
+`agent-worker-statuses.json` by default, applies read-time heartbeat stale
+detection, and exposes the result in the runtime overview `Agent Workers` card.
+This endpoint is diagnostic only; it does not execute jobs, poll platforms, or
+send messages.
+
 Inspect external queue backend migration settings:
 
 ```powershell

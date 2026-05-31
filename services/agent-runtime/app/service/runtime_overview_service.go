@@ -26,6 +26,7 @@ type RuntimeOverviewDeps struct {
 	OutboxMetrics        runtimeOutboxMetricsGetter
 	KnowledgeDiagnostics runtimeKnowledgeDiagnosticsGetter
 	RuntimeWorkers       runtimeWorkerDiagnosticsGetter
+	AgentWorkers         runtimeAgentWorkerStatusesGetter
 	ObserveTargets       runtimeObserveTargetsGetter
 	ObserveCapture       runtimeObserveCaptureGetter
 	ReceiverStatuses     runtimeReceiverStatusesGetter
@@ -70,6 +71,10 @@ type runtimeKnowledgeDiagnosticsGetter interface {
 
 type runtimeWorkerDiagnosticsGetter interface {
 	GetRuntimeWorkers(ctx context.Context) (query.RuntimeWorkerDiagnosticsView, error)
+}
+
+type runtimeAgentWorkerStatusesGetter interface {
+	ListAgentWorkerStatuses(ctx context.Context, filter query.AgentWorkerStatusFilter) (query.AgentWorkerStatusesView, error)
 }
 
 type runtimeObserveTargetsGetter interface {
@@ -122,6 +127,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		outboxMetrics    query.OutboxMetricsView
 		diagnostics      query.KnowledgeWorkerDiagnosticsView
 		runtimeWorkers   query.RuntimeWorkerDiagnosticsView
+		agentWorkers     query.AgentWorkerStatusesView
 		observeTargets   query.ObserveTargetsView
 		observeCapture   query.ObserveCaptureDiagnosticsView
 		receiverStatuses query.ReceiverStatusesView
@@ -215,6 +221,16 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			runtimeWorkers = item
 		}
 
+		if deps.AgentWorkers != nil {
+			if item, err := deps.AgentWorkers.ListAgentWorkerStatuses(ctx, query.AgentWorkerStatusFilter{
+				StaleAfterSeconds: staleAfterSeconds,
+			}); err != nil {
+				errors = append(errors, runtimeOverviewError("agent-worker-statuses", err))
+			} else {
+				agentWorkers = item
+			}
+		}
+
 		if deps.ObserveTargets == nil {
 			errors = append(errors, runtimeOverviewError("observe-targets", fmt.Errorf("observe target diagnostics disabled")))
 		} else if item, err := deps.ObserveTargets.ListObserveTargets(ctx); err != nil {
@@ -259,6 +275,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		outboxMetrics,
 		diagnostics,
 		runtimeWorkers,
+		agentWorkers,
 		observeTargets,
 		observeCapture,
 		receiverStatuses,
@@ -276,6 +293,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		outboxMetrics,
 		diagnostics,
 		runtimeWorkers,
+		agentWorkers,
 		observeTargets,
 		observeCapture,
 		receiverStatuses,
@@ -290,6 +308,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		QueueBackend:      queueBackend,
 		RuntimeConfig:     runtimeConfig,
 		RuntimeWorkers:    runtimeWorkers,
+		AgentWorkers:      agentWorkers,
 		ObserveTargets:    observeTargets,
 		ObserveCapture:    observeCapture,
 		ReceiverStatuses:  receiverStatuses,
@@ -320,6 +339,7 @@ func runtimeOverviewSummary(
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
+	agentWorkers query.AgentWorkerStatusesView,
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
@@ -365,6 +385,11 @@ func runtimeOverviewSummary(
 		"runtime_workers":                           intFromMap(runtimeWorkers.Totals, "workers"),
 		"runtime_workers_enabled":                   intFromMap(runtimeWorkers.Totals, "enabled"),
 		"runtime_workers_running":                   intFromMap(runtimeWorkers.Totals, "running"),
+		"agent_workers":                             intFromMap(agentWorkers.Totals, "workers"),
+		"agent_workers_running":                     intFromMap(agentWorkers.Totals, "running"),
+		"agent_workers_idle":                        intFromMap(agentWorkers.Totals, "idle"),
+		"agent_workers_failed":                      intFromMap(agentWorkers.Totals, "failed"),
+		"agent_workers_stale":                       intFromMap(agentWorkers.Totals, "stale"),
 		"observe_targets":                           intFromMap(observeTargets.Totals, "targets"),
 		"observe_targets_enabled":                   intFromMap(observeTargets.Totals, "enabled"),
 		"observe_targets_observe_only":              intFromMap(observeTargets.Totals, "observe_only"),
@@ -420,6 +445,7 @@ func runtimeOverviewCards(
 	outboxMetrics query.OutboxMetricsView,
 	diagnostics query.KnowledgeWorkerDiagnosticsView,
 	runtimeWorkers query.RuntimeWorkerDiagnosticsView,
+	agentWorkers query.AgentWorkerStatusesView,
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	receiverStatuses query.ReceiverStatusesView,
@@ -441,6 +467,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
+		runtimeOverviewCard("agent_workers", "Agent Workers", agentWorkerValue(agentWorkers), agentWorkerStatus(agentWorkers), map[string]any{"agent_workers": agentWorkers}),
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
 		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
@@ -552,6 +579,26 @@ func runtimeWorkerStatus(view query.RuntimeWorkerDiagnosticsView) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+func agentWorkerStatus(view query.AgentWorkerStatusesView) string {
+	if intFromMap(view.Totals, "workers") == 0 {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "failed") > 0 {
+		return "danger"
+	}
+	if intFromMap(view.Totals, "stale") > 0 || intFromMap(view.Totals, "stopped") > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func agentWorkerValue(view query.AgentWorkerStatusesView) string {
+	active := intFromMap(view.Totals, "starting") +
+		intFromMap(view.Totals, "idle") +
+		intFromMap(view.Totals, "running")
+	return fmt.Sprintf("%d/%d", active, intFromMap(view.Totals, "workers"))
 }
 
 func observeTargetStatus(view query.ObserveTargetsView) string {

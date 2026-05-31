@@ -12,6 +12,7 @@ from integrations.agent_gateway import (
     AgentGatewayNoJob,
 )
 from integrations.agent_gateway_heartbeat import AgentJobLeaseHeartbeat
+from integrations.agent_gateway_worker_status import AgentWorkerStatusReporter
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,13 @@ class AgentGatewayKnowledgeWorker:
         self._now_fn = now_fn
         self._stopped = asyncio.Event()
         self._last_enqueue_bucket = -1
+        self._status = AgentWorkerStatusReporter(
+            client=client,
+            worker_id=self._worker_id,
+            worker_type="knowledge",
+            logger=logger,
+            label="agent_runtime_knowledge_worker",
+        )
 
     async def enqueue_once(self) -> dict[str, Any]:
         bucket = int(float(self._now_fn()) // self._enqueue_interval)
@@ -91,6 +99,7 @@ class AgentGatewayKnowledgeWorker:
         try:
             job = await self._lease_next_knowledge_job()
         except AgentGatewayNoJob:
+            await self._status.idle(reason="no_job")
             return {"processed": False, "reason": "no_job"}
 
         job_id = str(job.get("job_id") or "")
@@ -106,6 +115,7 @@ class AgentGatewayKnowledgeWorker:
             label="agent_runtime_knowledge_worker",
         )
         try:
+            await self._status.running(current_job_id=job_id)
             await self._client.mark_running(job_id, lease_token=lease_token)
             heartbeat.start()
             if job_type == "group_memory_extract":
@@ -119,6 +129,7 @@ class AgentGatewayKnowledgeWorker:
                 lease_token=lease_token,
                 result=_string_result(result),
             )
+            await self._status.succeeded(last_job_id=job_id)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -135,6 +146,7 @@ class AgentGatewayKnowledgeWorker:
                     lease_token=lease_token,
                     error_message=message,
                 )
+            await self._status.failed(last_job_id=job_id, error=message)
             return {
                 "processed": True,
                 "job_id": job_id,
@@ -151,6 +163,7 @@ class AgentGatewayKnowledgeWorker:
             self._worker_id,
             sorted(self._group_accounts),
         )
+        await self._status.starting()
         try:
             while not self._stopped.is_set():
                 try:
@@ -173,6 +186,7 @@ class AgentGatewayKnowledgeWorker:
                 except asyncio.TimeoutError:
                     continue
         finally:
+            await self._status.stopped()
             logger.info("[agent_runtime_knowledge_worker] loop stopped")
 
     def stop(self) -> None:

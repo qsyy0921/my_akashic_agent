@@ -77,4 +77,6 @@ execution.
   infer effective receiver connectivity from recent observe-only inbox events.
 - `030-inbound-dedupe-runtime.md`: Go-owned TTL/persistent duplicate detection
   for inbound platform message ids, starting with Telegram receive paths.
+- `031-agent-worker-status.md`: Go-owned liveness/status registry for Python
+  AI workers while Python keeps model and tool execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

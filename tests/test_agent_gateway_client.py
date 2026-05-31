@@ -168,6 +168,39 @@ async def test_agent_gateway_client_recovers_expired_jobs():
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_client_reports_agent_worker_status():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        assert request.method == "POST"
+        assert request.url.path == "/v1/agent-worker-statuses/report"
+        assert body == {
+            "worker_id": "worker-a",
+            "worker_type": "knowledge",
+            "status": "running",
+            "current_job_id": "job-1",
+            "last_job_id": "",
+            "last_error": "",
+            "processed_total": 2,
+            "failed_total": 1,
+            "source": "python",
+            "metadata": {"loop": "knowledge"},
+        }
+        return _ok({"worker_id": "worker-a", "status": "running"})
+
+    result = await _client(handler).report_agent_worker_status(
+        worker_id="worker-a",
+        worker_type="knowledge",
+        status="running",
+        current_job_id="job-1",
+        processed_total=2,
+        failed_total=1,
+        metadata={"loop": "knowledge"},
+    )
+
+    assert result["status"] == "running"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_client_lists_jobs_with_filters():
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
