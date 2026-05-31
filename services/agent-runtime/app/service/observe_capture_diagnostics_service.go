@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	defaultObserveCaptureLimit = 200
-	maxObserveCaptureLimit     = 1000
+	defaultObserveCaptureLimit          = 200
+	maxObserveCaptureLimit              = 1000
+	defaultObserveCaptureActivityWindow = 15 * time.Minute
 )
 
 type observeCaptureTargetLister interface {
@@ -30,6 +31,8 @@ type ObserveCaptureDiagnosticsService struct {
 	inboxEvents    outport.InboxEventRepository
 	mediaAssets    outport.MediaAssetRepository
 	contentReader  outport.MediaAssetContentReader
+	activityWindow time.Duration
+	clock          func() time.Time
 }
 
 func NewObserveCaptureDiagnosticsService(
@@ -45,6 +48,8 @@ func NewObserveCaptureDiagnosticsService(
 		inboxEvents:    inboxEvents,
 		mediaAssets:    mediaAssets,
 		contentReader:  contentReader,
+		activityWindow: defaultObserveCaptureActivityWindow,
+		clock:          time.Now,
 	}
 }
 
@@ -81,7 +86,7 @@ func (s *ObserveCaptureDiagnosticsService) GetObserveCaptureDiagnostics(
 	return query.ObserveCaptureDiagnosticsView{
 		Targets:    items,
 		Totals:     observeCaptureTotals(items),
-		Notes:      []string{"side_effect=none", "runtime_view_only", "content probe opens bounded local media samples only"},
+		Notes:      []string{"side_effect=none", "runtime_view_only", "recent inbox activity can infer receiver connectivity", "content probe opens bounded local media samples only"},
 		SideEffect: "none",
 	}, nil
 }
@@ -103,10 +108,7 @@ func (s *ObserveCaptureDiagnosticsService) targetDiagnostics(
 	if receiver, ok := receiversByAccount[target.Channel.AccountID]; ok {
 		item.ReceiverID = receiver.ReceiverID
 		item.ReceiverStatus = receiver.Status
-		item.ReceiverConnected = receiver.Status == "connected"
-	}
-	if target.Enabled && !item.ReceiverConnected {
-		item.Blockers = append(item.Blockers, "receiver_not_connected")
+		item.ReceiverStatusConnected = receiver.Status == "connected"
 	}
 
 	events, err := s.inboxEvents.ListInboxEvents(ctx, query.InboxEventFilter{
@@ -118,9 +120,21 @@ func (s *ObserveCaptureDiagnosticsService) targetDiagnostics(
 		ObserveOnly:      "true",
 	})
 	if err == nil {
-		applyObserveCaptureInboxEvents(&item, events)
+		latestReceivedAt := applyObserveCaptureInboxEvents(&item, events)
+		item.ReceiverActivityRecent = observeCaptureActivityRecent(latestReceivedAt, s.now(), s.activityWindow)
 	} else {
 		item.Blockers = append(item.Blockers, "inbox_query_failed")
+	}
+
+	item.ReceiverConnected = item.ReceiverStatusConnected || item.ReceiverActivityRecent
+	switch {
+	case item.ReceiverStatusConnected:
+		item.ReceiverConnectionSource = "receiver_status"
+	case item.ReceiverActivityRecent:
+		item.ReceiverConnectionSource = "recent_inbox_activity"
+	}
+	if target.Enabled && !item.ReceiverConnected {
+		item.Blockers = append(item.Blockers, "receiver_not_connected")
 	}
 
 	assets, err := s.mediaAssets.ListMediaAssets(ctx, query.MediaAssetFilter{
@@ -159,7 +173,14 @@ func (s *ObserveCaptureDiagnosticsService) targetDiagnostics(
 	return item
 }
 
-func applyObserveCaptureInboxEvents(item *query.ObserveCaptureTargetDiagnosticsView, events []model.InboxEvent) {
+func (s *ObserveCaptureDiagnosticsService) now() time.Time {
+	if s != nil && s.clock != nil {
+		return s.clock().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func applyObserveCaptureInboxEvents(item *query.ObserveCaptureTargetDiagnosticsView, events []model.InboxEvent) time.Time {
 	item.InboxEvents = len(events)
 	latest := time.Time{}
 	for _, event := range events {
@@ -177,6 +198,7 @@ func applyObserveCaptureInboxEvents(item *query.ObserveCaptureTargetDiagnosticsV
 		}
 	}
 	item.LatestReceivedAt = observeCaptureFormatTime(latest)
+	return latest
 }
 
 func applyObserveCaptureMediaAssets(
@@ -270,6 +292,8 @@ func observeCaptureTotals(items []query.ObserveCaptureTargetDiagnosticsView) map
 		"warning":                    0,
 		"blocked":                    0,
 		"receiver_connected":         0,
+		"receiver_status_connected":  0,
+		"receiver_activity_recent":   0,
 		"text_covered":               0,
 		"attachment_covered":         0,
 		"image_covered":              0,
@@ -301,6 +325,12 @@ func observeCaptureTotals(items []query.ObserveCaptureTargetDiagnosticsView) map
 		if item.ReceiverConnected {
 			totals["receiver_connected"]++
 		}
+		if item.ReceiverStatusConnected {
+			totals["receiver_status_connected"]++
+		}
+		if item.ReceiverActivityRecent {
+			totals["receiver_activity_recent"]++
+		}
 		if item.Coverage.TextSeen {
 			totals["text_covered"]++
 		}
@@ -326,6 +356,20 @@ func observeCaptureTotals(items []query.ObserveCaptureTargetDiagnosticsView) map
 		totals["content_disabled_assets"] += item.ContentDisabledAssets
 	}
 	return totals
+}
+
+func observeCaptureActivityRecent(latest time.Time, now time.Time, window time.Duration) bool {
+	if latest.IsZero() {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if window <= 0 {
+		window = defaultObserveCaptureActivityWindow
+	}
+	age := now.UTC().Sub(latest.UTC())
+	return age >= 0 && age <= window
 }
 
 func boundedObserveCaptureLimit(value int) int {

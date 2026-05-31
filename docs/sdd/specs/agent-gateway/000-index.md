@@ -73,4 +73,6 @@ execution.
   diagnostics.
 - `028-receiver-lease-persistence.md`: durable receiver lease storage and
   Telegram reacquire behavior after `agent-runtime` restarts.
+- `029-observe-capture-activity-inference.md`: Go observe-capture diagnostics
+  infer effective receiver connectivity from recent observe-only inbox events.
 - Agent architecture boundary specs live under `../agent-architecture/`.

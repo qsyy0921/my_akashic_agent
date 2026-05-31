@@ -10,6 +10,9 @@ type ObserveCaptureTargetDiagnosticsView struct {
 	Enabled                  bool                     `json:"enabled"`
 	ObserveOnly              bool                     `json:"observe_only"`
 	ReceiverConnected        bool                     `json:"receiver_connected"`
+	ReceiverStatusConnected  bool                     `json:"receiver_status_connected"`
+	ReceiverActivityRecent   bool                     `json:"receiver_activity_recent"`
+	ReceiverConnectionSource string                   `json:"receiver_connection_source,omitempty"`
 	ReceiverID               string                   `json:"receiver_id,omitempty"`
 	ReceiverStatus           string                   `json:"receiver_status,omitempty"`
 	Status                   string                   `json:"status"`

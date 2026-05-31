@@ -95,6 +95,67 @@ func TestObserveCaptureDiagnosticsServiceWarnsOnMissingMediaCoverage(t *testing.
 	}
 }
 
+func TestObserveCaptureDiagnosticsServiceInfersReceiverFromRecentInboxActivity(t *testing.T) {
+	store := memory.NewStore()
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	syncObserveTarget(t, observeTargets, "27234224")
+	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	saveObserveInboxEventAt(t, store, "msg-recent", "recent group activity", now.Add(-2*time.Minute))
+
+	service := NewObserveCaptureDiagnosticsService(
+		observeTargets,
+		receiverStatuses,
+		store,
+		store,
+		fakeObserveCaptureContentReader{},
+	)
+	service.clock = func() time.Time { return now }
+	view, err := service.GetObserveCaptureDiagnostics(context.Background(), query.ObserveCaptureDiagnosticsFilter{Limit: 50})
+	if err != nil {
+		t.Fatalf("observe capture diagnostics: %v", err)
+	}
+	target := view.Targets[0]
+	if !target.ReceiverConnected || !target.ReceiverActivityRecent || target.ReceiverStatusConnected {
+		t.Fatalf("expected recent inbox activity to infer receiver connectivity: %#v", target)
+	}
+	if target.ReceiverConnectionSource != "recent_inbox_activity" {
+		t.Fatalf("unexpected connection source: %#v", target)
+	}
+	if containsString(target.Blockers, "receiver_not_connected") {
+		t.Fatalf("recent activity should not report receiver_not_connected: %#v", target.Blockers)
+	}
+	if view.Totals["receiver_connected"] != 1 || view.Totals["receiver_activity_recent"] != 1 || view.Totals["receiver_status_connected"] != 0 {
+		t.Fatalf("unexpected receiver totals: %#v", view.Totals)
+	}
+}
+
+func TestObserveCaptureDiagnosticsServiceDoesNotInferReceiverFromStaleInboxActivity(t *testing.T) {
+	store := memory.NewStore()
+	observeTargets := NewObserveTargetService()
+	receiverStatuses := NewReceiverStatusService()
+	syncObserveTarget(t, observeTargets, "27234224")
+	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	saveObserveInboxEventAt(t, store, "msg-stale", "old group activity", now.Add(-30*time.Minute))
+
+	service := NewObserveCaptureDiagnosticsService(
+		observeTargets,
+		receiverStatuses,
+		store,
+		store,
+		fakeObserveCaptureContentReader{},
+	)
+	service.clock = func() time.Time { return now }
+	view, err := service.GetObserveCaptureDiagnostics(context.Background(), query.ObserveCaptureDiagnosticsFilter{Limit: 50})
+	if err != nil {
+		t.Fatalf("observe capture diagnostics: %v", err)
+	}
+	target := view.Targets[0]
+	if target.ReceiverConnected || target.ReceiverActivityRecent || !containsString(target.Blockers, "receiver_not_connected") {
+		t.Fatalf("expected stale activity to keep receiver disconnected blocker: %#v", target)
+	}
+}
+
 func syncObserveTarget(t *testing.T, service *ObserveTargetService, groupID string) {
 	t.Helper()
 	_, err := service.SyncObserveTargets(context.Background(), command.SyncObserveTargetsCommand{
@@ -166,6 +227,35 @@ func ingestObserveMessage(t *testing.T, store *memory.Store, suffix string, cont
 	})
 	if err != nil {
 		t.Fatalf("ingest observe message: %v", err)
+	}
+}
+
+func saveObserveInboxEventAt(t *testing.T, store *memory.Store, suffix string, content string, receivedAt time.Time) {
+	t.Helper()
+	event, err := model.NewInboxEvent(model.MessageEnvelope{
+		EventID: "qq:1049511700:group:27234224:" + suffix,
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Sender: model.SenderRef{
+			ID:   "2948770636",
+			Kind: model.SenderKindHuman,
+		},
+		Content:   content,
+		Timestamp: receivedAt,
+		Metadata: map[string]string{
+			"observe_only": "true",
+			"session_key":  "qq:gqq:27234224",
+		},
+	}, model.LoopDecision{Action: model.LoopActionObserveOnly, Reason: "test"}, receivedAt)
+	if err != nil {
+		t.Fatalf("new inbox event: %v", err)
+	}
+	if err := store.SaveInboxEvent(context.Background(), event); err != nil {
+		t.Fatalf("save inbox event: %v", err)
 	}
 }
 
