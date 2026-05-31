@@ -96,6 +96,64 @@ type ProactiveDriftFinishView struct {
 	SideEffect string                       `json:"side_effect"`
 }
 
+type ProactiveTickLogFilter struct {
+	Limit          int
+	SessionKey     string
+	TerminalAction string
+	GateExit       string
+	Flow           string
+}
+
+type ProactiveTickLogView struct {
+	TickID         string   `json:"tick_id"`
+	SessionKey     string   `json:"session_key"`
+	StartedAt      string   `json:"started_at"`
+	FinishedAt     string   `json:"finished_at,omitempty"`
+	GateExit       string   `json:"gate_exit,omitempty"`
+	TerminalAction string   `json:"terminal_action,omitempty"`
+	SkipReason     string   `json:"skip_reason,omitempty"`
+	StepsTaken     int      `json:"steps_taken"`
+	AlertCount     int      `json:"alert_count"`
+	ContentCount   int      `json:"content_count"`
+	ContextCount   int      `json:"context_count"`
+	InterestingIDs []string `json:"interesting_ids"`
+	DiscardedIDs   []string `json:"discarded_ids"`
+	CitedIDs       []string `json:"cited_ids"`
+	DriftEntered   bool     `json:"drift_entered"`
+	FinalMessage   string   `json:"final_message,omitempty"`
+	Found          bool     `json:"found,omitempty"`
+	SideEffect     string   `json:"side_effect,omitempty"`
+}
+
+type ProactiveTickStepLogView struct {
+	TickID              string         `json:"tick_id"`
+	StepIndex           int            `json:"step_index"`
+	Phase               string         `json:"phase"`
+	ToolName            string         `json:"tool_name"`
+	ToolCallID          string         `json:"tool_call_id"`
+	ToolArgs            map[string]any `json:"tool_args"`
+	ToolResultText      string         `json:"tool_result_text"`
+	TerminalActionAfter string         `json:"terminal_action_after,omitempty"`
+	SkipReasonAfter     string         `json:"skip_reason_after,omitempty"`
+	InterestingIDsAfter []string       `json:"interesting_ids_after"`
+	DiscardedIDsAfter   []string       `json:"discarded_ids_after"`
+	CitedIDsAfter       []string       `json:"cited_ids_after"`
+	FinalMessageAfter   string         `json:"final_message_after,omitempty"`
+	SideEffect          string         `json:"side_effect,omitempty"`
+}
+
+type ProactiveTickLogListView struct {
+	Items      []ProactiveTickLogView `json:"items"`
+	Total      int                    `json:"total"`
+	SideEffect string                 `json:"side_effect"`
+}
+
+type ProactiveTickStepLogListView struct {
+	Items      []ProactiveTickStepLogView `json:"items"`
+	Total      int                        `json:"total"`
+	SideEffect string                     `json:"side_effect"`
+}
+
 type ProactiveAnyActionQuotaView struct {
 	QuotaKey     string `json:"quota_key"`
 	WindowKey    string `json:"window_key"`

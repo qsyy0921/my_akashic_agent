@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/service"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 )
@@ -282,6 +283,77 @@ func TestProactiveStateServiceRecordsDriftFinishAndSummary(t *testing.T) {
 		len(summary.RecentRuns) != 1 ||
 		summary.RecentRuns[0].MessageResult != "sent" {
 		t.Fatalf("unexpected drift summary: %+v", summary)
+	}
+}
+
+func TestProactiveStateServiceRecordsTickLogAndSteps(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	svc := service.NewProactiveStateService(memory.NewStore())
+
+	started, err := svc.RecordTickLogStart(ctx, command.RecordProactiveTickLogStartCommand{
+		TickID:     "tick-1",
+		SessionKey: "telegram:1",
+		StartedAt:  now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.TickID != "tick-1" || started.SideEffect != "runtime_state_write" {
+		t.Fatalf("unexpected tick start: %+v", started)
+	}
+	if _, err := svc.RecordTickStepLog(ctx, command.RecordProactiveTickStepLogCommand{
+		TickID:              "tick-1",
+		StepIndex:           1,
+		Phase:               "loop",
+		ToolName:            "message_push",
+		ToolCallID:          "call-1",
+		ToolArgs:            map[string]any{"message": "hello"},
+		ToolResultText:      `{"ok":true}`,
+		InterestingIDsAfter: []string{"feed:1"},
+		FinalMessageAfter:   "hello",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	finished, err := svc.RecordTickLogFinish(ctx, command.RecordProactiveTickLogFinishCommand{
+		TickID:         "tick-1",
+		SessionKey:     "telegram:1",
+		StartedAt:      now,
+		FinishedAt:     now.Add(time.Second),
+		TerminalAction: "reply",
+		StepsTaken:     1,
+		ContentCount:   1,
+		InterestingIDs: []string{"feed:1"},
+		FinalMessage:   "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.TerminalAction != "reply" || finished.ContentCount != 1 {
+		t.Fatalf("unexpected tick finish: %+v", finished)
+	}
+	list, err := svc.ListTickLogs(ctx, query.ProactiveTickLogFilter{Limit: 10, TerminalAction: "reply"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.Total != 1 || len(list.Items) != 1 || list.Items[0].TickID != "tick-1" {
+		t.Fatalf("unexpected tick log list: %+v", list)
+	}
+	detail, err := svc.TickLog(ctx, "tick-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !detail.Found || detail.FinalMessage != "hello" {
+		t.Fatalf("unexpected tick detail: %+v", detail)
+	}
+	steps, err := svc.TickStepLogs(ctx, "tick-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps.Total != 1 ||
+		steps.Items[0].ToolName != "message_push" ||
+		steps.Items[0].ToolArgs["message"] != "hello" {
+		t.Fatalf("unexpected tick steps: %+v", steps)
 	}
 }
 

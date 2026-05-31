@@ -37,6 +37,20 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
             assert body["session_key"] == "telegram:1"
             assert body["delivery_key"] == "delivery-a"
             return httpx.Response(202, json={"code": "OK", "data": body})
+        if request.url.path == "/v1/proactive/tick-logs/start":
+            assert body["tick_id"] == "tick-1"
+            assert body["session_key"] == "telegram:1"
+            return httpx.Response(202, json={"code": "OK", "data": body})
+        if request.url.path == "/v1/proactive/tick-logs/finish":
+            assert body["tick_id"] == "tick-1"
+            assert body["terminal_action"] == "reply"
+            assert body["interesting_ids"] == ["feed:1"]
+            return httpx.Response(202, json={"code": "OK", "data": body})
+        if request.url.path == "/v1/proactive/tick-steps":
+            assert body["tick_id"] == "tick-1"
+            assert body["tool_name"] == "message_push"
+            assert body["tool_args"] == {"message": "hello"}
+            return httpx.Response(202, json={"code": "OK", "data": body})
         if request.url.path == "/v1/proactive/deliveries/duplicate":
             assert params["window_hours"] == "24"
             return _ok({"duplicate": True})
@@ -125,6 +139,45 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
     now = datetime(2026, 5, 30, 8, 30, tzinfo=timezone.utc)
 
     store.mark_delivery("telegram:1", "delivery-a", now)
+    store.record_tick_log_start(
+        tick_id="tick-1",
+        session_key="telegram:1",
+        started_at=now.isoformat(),
+        gate_exit=None,
+    )
+    store.record_tick_step_log(
+        tick_id="tick-1",
+        step_index=1,
+        phase="loop",
+        tool_name="message_push",
+        tool_call_id="call-1",
+        tool_args={"message": "hello"},
+        tool_result_text='{"ok":true}',
+        terminal_action_after=None,
+        skip_reason_after="",
+        interesting_ids_after=["feed:1"],
+        discarded_ids_after=[],
+        cited_ids_after=[],
+        final_message_after="hello",
+    )
+    store.record_tick_log_finish(
+        tick_id="tick-1",
+        session_key="telegram:1",
+        started_at=now.isoformat(),
+        finished_at=now.isoformat(),
+        gate_exit=None,
+        terminal_action="reply",
+        skip_reason="",
+        steps_taken=1,
+        alert_count=0,
+        content_count=1,
+        context_count=0,
+        interesting_ids=["feed:1"],
+        discarded_ids=[],
+        cited_ids=[],
+        drift_entered=False,
+        final_message="hello",
+    )
 
     assert store.is_delivery_duplicate("telegram:1", "delivery-a", 24, now) is True
     assert store.count_deliveries_in_window("telegram:1", 24, now) == 2
@@ -169,10 +222,15 @@ def test_agent_runtime_proactive_state_uses_go_for_scheduling_calls(tmp_path):
     assert fallback.count_deliveries_in_window("telegram:1", 24, now) == 1
     assert fallback.is_item_seen("mcp:news:feed-b", "item-a", 24, now) is True
     assert fallback.is_rejection_cooled("qq:group:1", "item-b", 2, now) is True
+    assert fallback._count_rows("tick_log") == 1
+    assert fallback._count_rows("tick_step_log") == 1
 
     store.cleanup(24, 48, 72, 2)
     assert [call[1] for call in calls] == [
         "/v1/proactive/deliveries",
+        "/v1/proactive/tick-logs/start",
+        "/v1/proactive/tick-steps",
+        "/v1/proactive/tick-logs/finish",
         "/v1/proactive/deliveries/duplicate",
         "/v1/proactive/deliveries/count",
         "/v1/proactive/seen-items",

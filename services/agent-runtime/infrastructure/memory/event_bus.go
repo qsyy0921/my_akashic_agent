@@ -48,6 +48,9 @@ type Store struct {
 	proactiveDriftSkills   map[string]model.ProactiveDriftSkillState
 	proactiveDriftRuns     []model.ProactiveDriftRecentRun
 	proactiveDriftNote     string
+	proactiveTickLogs      map[string]model.ProactiveTickLog
+	proactiveTickLogOrder  []string
+	proactiveTickSteps     map[string][]model.ProactiveTickStepLog
 	schedulerJobs          map[string]model.SchedulerJob
 	schedulerJobOrder      []string
 	schedulerLeases        map[string]model.SchedulerExecutionLease
@@ -81,6 +84,8 @@ func NewStore() *Store {
 		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
 		proactiveDriftSkills:  make(map[string]model.ProactiveDriftSkillState),
 		proactiveDriftRuns:    make([]model.ProactiveDriftRecentRun, 0),
+		proactiveTickLogs:     make(map[string]model.ProactiveTickLog),
+		proactiveTickSteps:    make(map[string][]model.ProactiveTickStepLog),
 		schedulerJobs:         make(map[string]model.SchedulerJob),
 		schedulerLeases:       make(map[string]model.SchedulerExecutionLease),
 	}
@@ -1169,6 +1174,84 @@ func (s *Store) ListProactiveDriftRecentRuns(_ context.Context, limit int) ([]mo
 	return items, s.proactiveDriftNote, nil
 }
 
+func (s *Store) SaveProactiveTickLogStart(_ context.Context, log model.ProactiveTickLog, retentionLimit int) error {
+	if err := log.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureProactiveTickMapsLocked()
+	if _, exists := s.proactiveTickLogs[log.TickID]; !exists {
+		s.proactiveTickLogOrder = append(s.proactiveTickLogOrder, log.TickID)
+	}
+	s.proactiveTickLogs[log.TickID] = log
+	s.trimProactiveTickLogsLocked(retentionLimit)
+	return nil
+}
+
+func (s *Store) SaveProactiveTickLogFinish(_ context.Context, log model.ProactiveTickLog, retentionLimit int) error {
+	if err := log.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureProactiveTickMapsLocked()
+	if _, exists := s.proactiveTickLogs[log.TickID]; !exists {
+		s.proactiveTickLogOrder = append(s.proactiveTickLogOrder, log.TickID)
+	}
+	s.proactiveTickLogs[log.TickID] = log
+	s.trimProactiveTickLogsLocked(retentionLimit)
+	return nil
+}
+
+func (s *Store) SaveProactiveTickStepLog(_ context.Context, step model.ProactiveTickStepLog, retentionLimit int) error {
+	if err := step.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureProactiveTickMapsLocked()
+	s.proactiveTickSteps[step.TickID] = append(s.proactiveTickSteps[step.TickID], step)
+	s.trimProactiveTickStepsLocked(retentionLimit)
+	return nil
+}
+
+func (s *Store) ListProactiveTickLogs(_ context.Context, filter query.ProactiveTickLogFilter) ([]model.ProactiveTickLog, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	total := 0
+	items := make([]model.ProactiveTickLog, 0, limit)
+	for i := len(s.proactiveTickLogOrder) - 1; i >= 0; i-- {
+		tickID := s.proactiveTickLogOrder[i]
+		log, ok := s.proactiveTickLogs[tickID]
+		if !ok || !matchesProactiveTickLogFilter(log, filter) {
+			continue
+		}
+		total++
+		if len(items) < limit {
+			items = append(items, log)
+		}
+	}
+	return items, total, nil
+}
+
+func (s *Store) FindProactiveTickLog(_ context.Context, tickID string) (model.ProactiveTickLog, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log, ok := s.proactiveTickLogs[strings.TrimSpace(tickID)]
+	return log, ok, nil
+}
+
+func (s *Store) ListProactiveTickStepLogs(_ context.Context, tickID string) ([]model.ProactiveTickStepLog, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]model.ProactiveTickStepLog(nil), s.proactiveTickSteps[strings.TrimSpace(tickID)]...), nil
+}
+
 func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1349,6 +1432,69 @@ func proactiveSourceItemKey(sourceKey string, itemID string) string {
 
 func proactiveSessionMarkKey(sessionKey string, key string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(key)
+}
+
+func matchesProactiveTickLogFilter(log model.ProactiveTickLog, filter query.ProactiveTickLogFilter) bool {
+	if strings.TrimSpace(filter.SessionKey) != "" && log.SessionKey != strings.TrimSpace(filter.SessionKey) {
+		return false
+	}
+	if strings.TrimSpace(filter.TerminalAction) != "" && log.TerminalAction != strings.TrimSpace(filter.TerminalAction) {
+		return false
+	}
+	if strings.TrimSpace(filter.GateExit) != "" && log.GateExit != strings.TrimSpace(filter.GateExit) {
+		return false
+	}
+	switch strings.TrimSpace(filter.Flow) {
+	case "drift":
+		return log.DriftEntered
+	case "proactive":
+		return !log.DriftEntered
+	default:
+		return true
+	}
+}
+
+func (s *Store) ensureProactiveTickMapsLocked() {
+	if s.proactiveTickLogs == nil {
+		s.proactiveTickLogs = make(map[string]model.ProactiveTickLog)
+	}
+	if s.proactiveTickSteps == nil {
+		s.proactiveTickSteps = make(map[string][]model.ProactiveTickStepLog)
+	}
+}
+
+func (s *Store) trimProactiveTickLogsLocked(limit int) {
+	if limit <= 0 || limit > 5000 {
+		limit = 500
+	}
+	for len(s.proactiveTickLogOrder) > limit {
+		tickID := s.proactiveTickLogOrder[0]
+		s.proactiveTickLogOrder = s.proactiveTickLogOrder[1:]
+		delete(s.proactiveTickLogs, tickID)
+		delete(s.proactiveTickSteps, tickID)
+	}
+}
+
+func (s *Store) trimProactiveTickStepsLocked(limit int) {
+	if limit <= 0 || limit > 20000 {
+		limit = 5000
+	}
+	total := 0
+	for _, steps := range s.proactiveTickSteps {
+		total += len(steps)
+	}
+	for total > limit && len(s.proactiveTickLogOrder) > 0 {
+		tickID := s.proactiveTickLogOrder[0]
+		steps := s.proactiveTickSteps[tickID]
+		if len(steps) == 0 {
+			s.proactiveTickLogOrder = s.proactiveTickLogOrder[1:]
+			delete(s.proactiveTickLogs, tickID)
+			delete(s.proactiveTickSteps, tickID)
+			continue
+		}
+		total -= len(steps)
+		delete(s.proactiveTickSteps, tickID)
+	}
 }
 
 func inboundDedupeRecordKey(scope string, messageKey string) string {

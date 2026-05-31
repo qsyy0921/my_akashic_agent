@@ -31,6 +31,9 @@ type Store struct {
 	driftSkills   map[string]model.ProactiveDriftSkillState
 	driftRuns     []model.ProactiveDriftRecentRun
 	driftNote     string
+	tickLogs      map[string]model.ProactiveTickLog
+	tickLogOrder  []string
+	tickSteps     map[string][]model.ProactiveTickStepLog
 }
 
 type persistedState struct {
@@ -45,6 +48,8 @@ type persistedState struct {
 	DriftSkills  []model.ProactiveDriftSkillState         `json:"drift_skills,omitempty"`
 	DriftRuns    []model.ProactiveDriftRecentRun          `json:"drift_recent_runs,omitempty"`
 	DriftNote    string                                   `json:"drift_note,omitempty"`
+	TickLogs     []model.ProactiveTickLog                 `json:"tick_logs,omitempty"`
+	TickSteps    []model.ProactiveTickStepLog             `json:"tick_steps,omitempty"`
 }
 
 func NewStore(path string) (*Store, error) {
@@ -64,6 +69,8 @@ func NewStore(path string) (*Store, error) {
 		anyAction:    make(map[string]model.ProactiveAnyActionQuota),
 		driftSkills:  make(map[string]model.ProactiveDriftSkillState),
 		driftRuns:    make([]model.ProactiveDriftRecentRun, 0),
+		tickLogs:     make(map[string]model.ProactiveTickLog),
+		tickSteps:    make(map[string][]model.ProactiveTickStepLog),
 	}
 	if err := os.MkdirAll(filepath.Dir(cleanPath), 0o755); err != nil {
 		return nil, err
@@ -301,6 +308,82 @@ func (s *Store) ListProactiveDriftRecentRuns(_ context.Context, limit int) ([]mo
 	return items, s.driftNote, nil
 }
 
+func (s *Store) SaveProactiveTickLogStart(_ context.Context, log model.ProactiveTickLog, retentionLimit int) error {
+	if err := log.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tickLogs[log.TickID]; !exists {
+		s.tickLogOrder = append(s.tickLogOrder, log.TickID)
+	}
+	s.tickLogs[log.TickID] = log
+	s.trimTickLogsLocked(retentionLimit)
+	return s.flush()
+}
+
+func (s *Store) SaveProactiveTickLogFinish(_ context.Context, log model.ProactiveTickLog, retentionLimit int) error {
+	if err := log.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tickLogs[log.TickID]; !exists {
+		s.tickLogOrder = append(s.tickLogOrder, log.TickID)
+	}
+	s.tickLogs[log.TickID] = log
+	s.trimTickLogsLocked(retentionLimit)
+	return s.flush()
+}
+
+func (s *Store) SaveProactiveTickStepLog(_ context.Context, step model.ProactiveTickStepLog, retentionLimit int) error {
+	if err := step.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tickSteps[step.TickID] = append(s.tickSteps[step.TickID], step)
+	s.trimTickStepsLocked(retentionLimit)
+	return s.flush()
+}
+
+func (s *Store) ListProactiveTickLogs(_ context.Context, filter query.ProactiveTickLogFilter) ([]model.ProactiveTickLog, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := filter.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	total := 0
+	items := make([]model.ProactiveTickLog, 0, limit)
+	for i := len(s.tickLogOrder) - 1; i >= 0; i-- {
+		tickID := s.tickLogOrder[i]
+		log, ok := s.tickLogs[tickID]
+		if !ok || !matchesProactiveTickLogFilter(log, filter) {
+			continue
+		}
+		total++
+		if len(items) < limit {
+			items = append(items, log)
+		}
+	}
+	return items, total, nil
+}
+
+func (s *Store) FindProactiveTickLog(_ context.Context, tickID string) (model.ProactiveTickLog, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log, ok := s.tickLogs[strings.TrimSpace(tickID)]
+	return log, ok, nil
+}
+
+func (s *Store) ListProactiveTickStepLogs(_ context.Context, tickID string) ([]model.ProactiveTickStepLog, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	steps := append([]model.ProactiveTickStepLog(nil), s.tickSteps[strings.TrimSpace(tickID)]...)
+	return steps, nil
+}
+
 func (s *Store) CleanupProactiveState(_ context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -433,6 +516,21 @@ func (s *Store) load() error {
 		s.driftRuns = append(s.driftRuns, run)
 	}
 	s.driftNote = strings.TrimSpace(state.DriftNote)
+	for _, log := range state.TickLogs {
+		if err := log.Validate(); err != nil {
+			continue
+		}
+		if _, exists := s.tickLogs[log.TickID]; !exists {
+			s.tickLogOrder = append(s.tickLogOrder, log.TickID)
+		}
+		s.tickLogs[log.TickID] = log
+	}
+	for _, step := range state.TickSteps {
+		if err := step.Validate(); err != nil {
+			continue
+		}
+		s.tickSteps[step.TickID] = append(s.tickSteps[step.TickID], step)
+	}
 	return nil
 }
 
@@ -449,6 +547,8 @@ func (s *Store) flush() error {
 		DriftSkills:  make([]model.ProactiveDriftSkillState, 0, len(s.driftSkills)),
 		DriftRuns:    append([]model.ProactiveDriftRecentRun(nil), s.driftRuns...),
 		DriftNote:    s.driftNote,
+		TickLogs:     make([]model.ProactiveTickLog, 0, len(s.tickLogOrder)),
+		TickSteps:    make([]model.ProactiveTickStepLog, 0),
 	}
 	for _, key := range s.deliveryOrder {
 		if record, ok := s.deliveries[key]; ok {
@@ -472,6 +572,12 @@ func (s *Store) flush() error {
 	}
 	for _, skill := range s.driftSkills {
 		state.DriftSkills = append(state.DriftSkills, skill)
+	}
+	for _, tickID := range s.tickLogOrder {
+		if log, ok := s.tickLogs[tickID]; ok {
+			state.TickLogs = append(state.TickLogs, log)
+			state.TickSteps = append(state.TickSteps, s.tickSteps[tickID]...)
+		}
 	}
 
 	payload, err := json.MarshalIndent(state, "", "  ")
@@ -501,4 +607,58 @@ func sourceItemKey(sourceKey string, itemID string) string {
 
 func sessionMarkKey(sessionKey string, key string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(key)
+}
+
+func matchesProactiveTickLogFilter(log model.ProactiveTickLog, filter query.ProactiveTickLogFilter) bool {
+	if strings.TrimSpace(filter.SessionKey) != "" && log.SessionKey != strings.TrimSpace(filter.SessionKey) {
+		return false
+	}
+	if strings.TrimSpace(filter.TerminalAction) != "" && log.TerminalAction != strings.TrimSpace(filter.TerminalAction) {
+		return false
+	}
+	if strings.TrimSpace(filter.GateExit) != "" && log.GateExit != strings.TrimSpace(filter.GateExit) {
+		return false
+	}
+	switch strings.TrimSpace(filter.Flow) {
+	case "drift":
+		return log.DriftEntered
+	case "proactive":
+		return !log.DriftEntered
+	default:
+		return true
+	}
+}
+
+func (s *Store) trimTickLogsLocked(limit int) {
+	if limit <= 0 || limit > 5000 {
+		limit = 500
+	}
+	for len(s.tickLogOrder) > limit {
+		tickID := s.tickLogOrder[0]
+		s.tickLogOrder = s.tickLogOrder[1:]
+		delete(s.tickLogs, tickID)
+		delete(s.tickSteps, tickID)
+	}
+}
+
+func (s *Store) trimTickStepsLocked(limit int) {
+	if limit <= 0 || limit > 20000 {
+		limit = 5000
+	}
+	total := 0
+	for _, steps := range s.tickSteps {
+		total += len(steps)
+	}
+	for total > limit && len(s.tickLogOrder) > 0 {
+		tickID := s.tickLogOrder[0]
+		steps := s.tickSteps[tickID]
+		if len(steps) == 0 {
+			s.tickLogOrder = s.tickLogOrder[1:]
+			delete(s.tickLogs, tickID)
+			delete(s.tickSteps, tickID)
+			continue
+		}
+		total -= len(steps)
+		delete(s.tickSteps, tickID)
+	}
 }

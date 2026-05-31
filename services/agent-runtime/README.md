@@ -642,7 +642,8 @@ $env:AKASHIC_PROACTIVE_STATE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\
 This state is deterministic runtime infrastructure: delivery dedupe,
 delivery-window counts, source item seen dedupe, rejection cooldowns,
 context-only send markers, drift interval markers, drift skill run state,
-drift recent-run summaries, and AnyAction daily quota windows.
+drift recent-run summaries, proactive tick audit logs, proactive tick step
+logs, and AnyAction daily quota windows.
 Python still owns prompt selection, LLM decisions, and final proactive content.
 When `integrations.agent_runtime.enabled=true`, Python `ProactiveLoop` uses these
 routes for scheduling state and keeps SQLite as a compatibility fallback.
@@ -650,6 +651,9 @@ Python `DriftStateStore` also uses the drift routes for `run_count`, `status`,
 `next`, recent runs, and note, while still mirroring to workspace JSON files as
 a fallback. Skill file scanning, `SKILL.md` parsing, and drift tool execution
 remain in Python.
+Python also writes tick start/finish/step audit events to Go first, then keeps
+the existing SQLite `tick_log` / `tick_step_log` mirror for dashboard
+compatibility.
 
 ```text
 POST /v1/proactive/deliveries
@@ -668,6 +672,12 @@ GET  /v1/proactive/drift-runs/last?session_key=telegram:100
 POST /v1/proactive/drift/finish
 GET  /v1/proactive/drift/summary?limit=10
 GET  /v1/proactive/drift/skills/explore-curiosity
+POST /v1/proactive/tick-logs/start
+POST /v1/proactive/tick-logs/finish
+POST /v1/proactive/tick-steps
+GET  /v1/proactive/tick-logs?terminal_action=reply&limit=50
+GET  /v1/proactive/tick-logs/tick-1
+GET  /v1/proactive/tick-logs/tick-1/steps
 POST /v1/proactive/bg-context/main
 GET  /v1/proactive/bg-context/main/last
 GET  /v1/proactive/anyaction/quota?quota_key=default&reset_hour=12&timezone=Asia%2FShanghai

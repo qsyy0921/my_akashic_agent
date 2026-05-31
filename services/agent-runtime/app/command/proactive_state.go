@@ -76,6 +76,48 @@ type RecordProactiveDriftFinishCommand struct {
 	Timestamp     time.Time
 }
 
+type RecordProactiveTickLogStartCommand struct {
+	TickID     string
+	SessionKey string
+	StartedAt  time.Time
+	GateExit   string
+}
+
+type RecordProactiveTickLogFinishCommand struct {
+	TickID         string
+	SessionKey     string
+	StartedAt      time.Time
+	FinishedAt     time.Time
+	GateExit       string
+	TerminalAction string
+	SkipReason     string
+	StepsTaken     int
+	AlertCount     int
+	ContentCount   int
+	ContextCount   int
+	InterestingIDs []string
+	DiscardedIDs   []string
+	CitedIDs       []string
+	DriftEntered   bool
+	FinalMessage   string
+}
+
+type RecordProactiveTickStepLogCommand struct {
+	TickID              string
+	StepIndex           int
+	Phase               string
+	ToolName            string
+	ToolCallID          string
+	ToolArgs            map[string]any
+	ToolResultText      string
+	TerminalActionAfter string
+	SkipReasonAfter     string
+	InterestingIDsAfter []string
+	DiscardedIDsAfter   []string
+	CitedIDsAfter       []string
+	FinalMessageAfter   string
+}
+
 type RecordProactiveBGContextMainCommand struct {
 	Timestamp time.Time
 }

@@ -426,6 +426,188 @@ func normalizeProactiveDriftMessageResult(value string) string {
 	return ProactiveDriftMessageResultSilent
 }
 
+type ProactiveTickLog struct {
+	TickID         string
+	SessionKey     string
+	StartedAt      time.Time
+	FinishedAt     time.Time
+	GateExit       string
+	TerminalAction string
+	SkipReason     string
+	StepsTaken     int
+	AlertCount     int
+	ContentCount   int
+	ContextCount   int
+	InterestingIDs []string
+	DiscardedIDs   []string
+	CitedIDs       []string
+	DriftEntered   bool
+	FinalMessage   string
+}
+
+func NewProactiveTickLogStart(tickID string, sessionKey string, startedAt time.Time, gateExit string) (ProactiveTickLog, error) {
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	log := ProactiveTickLog{
+		TickID:     strings.TrimSpace(tickID),
+		SessionKey: strings.TrimSpace(sessionKey),
+		StartedAt:  startedAt.UTC(),
+		GateExit:   strings.TrimSpace(gateExit),
+	}
+	if err := log.Validate(); err != nil {
+		return ProactiveTickLog{}, err
+	}
+	return log, nil
+}
+
+func NewProactiveTickLogFinish(
+	tickID string,
+	sessionKey string,
+	startedAt time.Time,
+	finishedAt time.Time,
+	gateExit string,
+	terminalAction string,
+	skipReason string,
+	stepsTaken int,
+	alertCount int,
+	contentCount int,
+	contextCount int,
+	interestingIDs []string,
+	discardedIDs []string,
+	citedIDs []string,
+	driftEntered bool,
+	finalMessage string,
+) (ProactiveTickLog, error) {
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	if finishedAt.IsZero() {
+		finishedAt = time.Now().UTC()
+	}
+	log := ProactiveTickLog{
+		TickID:         strings.TrimSpace(tickID),
+		SessionKey:     strings.TrimSpace(sessionKey),
+		StartedAt:      startedAt.UTC(),
+		FinishedAt:     finishedAt.UTC(),
+		GateExit:       strings.TrimSpace(gateExit),
+		TerminalAction: strings.TrimSpace(terminalAction),
+		SkipReason:     strings.TrimSpace(skipReason),
+		StepsTaken:     max(0, stepsTaken),
+		AlertCount:     max(0, alertCount),
+		ContentCount:   max(0, contentCount),
+		ContextCount:   max(0, contextCount),
+		InterestingIDs: sanitizeProactiveStringList(interestingIDs),
+		DiscardedIDs:   sanitizeProactiveStringList(discardedIDs),
+		CitedIDs:       sanitizeProactiveStringList(citedIDs),
+		DriftEntered:   driftEntered,
+		FinalMessage:   strings.TrimSpace(finalMessage),
+	}
+	if err := log.Validate(); err != nil {
+		return ProactiveTickLog{}, err
+	}
+	return log, nil
+}
+
+func (l ProactiveTickLog) Validate() error {
+	if strings.TrimSpace(l.TickID) == "" {
+		return errors.New("proactive tick log requires tick_id")
+	}
+	if l.StartedAt.IsZero() {
+		return errors.New("proactive tick log requires started_at")
+	}
+	if l.StepsTaken < 0 || l.AlertCount < 0 || l.ContentCount < 0 || l.ContextCount < 0 {
+		return errors.New("proactive tick log counters must be non-negative")
+	}
+	return nil
+}
+
+type ProactiveTickStepLog struct {
+	TickID              string
+	StepIndex           int
+	Phase               string
+	ToolName            string
+	ToolCallID          string
+	ToolArgs            map[string]any
+	ToolResultText      string
+	TerminalActionAfter string
+	SkipReasonAfter     string
+	InterestingIDsAfter []string
+	DiscardedIDsAfter   []string
+	CitedIDsAfter       []string
+	FinalMessageAfter   string
+}
+
+func NewProactiveTickStepLog(
+	tickID string,
+	stepIndex int,
+	phase string,
+	toolName string,
+	toolCallID string,
+	toolArgs map[string]any,
+	toolResultText string,
+	terminalActionAfter string,
+	skipReasonAfter string,
+	interestingIDsAfter []string,
+	discardedIDsAfter []string,
+	citedIDsAfter []string,
+	finalMessageAfter string,
+) (ProactiveTickStepLog, error) {
+	if toolArgs == nil {
+		toolArgs = map[string]any{}
+	}
+	step := ProactiveTickStepLog{
+		TickID:              strings.TrimSpace(tickID),
+		StepIndex:           max(0, stepIndex),
+		Phase:               strings.TrimSpace(phase),
+		ToolName:            strings.TrimSpace(toolName),
+		ToolCallID:          strings.TrimSpace(toolCallID),
+		ToolArgs:            toolArgs,
+		ToolResultText:      strings.TrimSpace(toolResultText),
+		TerminalActionAfter: strings.TrimSpace(terminalActionAfter),
+		SkipReasonAfter:     strings.TrimSpace(skipReasonAfter),
+		InterestingIDsAfter: sanitizeProactiveStringList(interestingIDsAfter),
+		DiscardedIDsAfter:   sanitizeProactiveStringList(discardedIDsAfter),
+		CitedIDsAfter:       sanitizeProactiveStringList(citedIDsAfter),
+		FinalMessageAfter:   strings.TrimSpace(finalMessageAfter),
+	}
+	if err := step.Validate(); err != nil {
+		return ProactiveTickStepLog{}, err
+	}
+	return step, nil
+}
+
+func (s ProactiveTickStepLog) Validate() error {
+	if strings.TrimSpace(s.TickID) == "" {
+		return errors.New("proactive tick step requires tick_id")
+	}
+	if s.StepIndex < 0 {
+		return errors.New("proactive tick step requires non-negative step_index")
+	}
+	if strings.TrimSpace(s.Phase) == "" {
+		return errors.New("proactive tick step requires phase")
+	}
+	if strings.TrimSpace(s.ToolName) == "" {
+		return errors.New("proactive tick step requires tool_name")
+	}
+	if strings.TrimSpace(s.ToolCallID) == "" {
+		return errors.New("proactive tick step requires tool_call_id")
+	}
+	return nil
+}
+
+func sanitizeProactiveStringList(values []string) []string {
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		items = append(items, value)
+	}
+	return items
+}
+
 func NormalizeProactiveSourceKey(value string) string {
 	value = strings.TrimSpace(value)
 	if !strings.HasPrefix(value, "mcp:") {

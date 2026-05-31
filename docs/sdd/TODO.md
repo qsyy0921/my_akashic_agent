@@ -2,130 +2,18 @@
 
 最后更新：2026-05-31
 
-## 已完成
+## 使用规则
 
-- [x] 将 Go 服务边界重命名为 `services/agent-runtime`。
-- [x] Go 代码统一放在 `services/agent-runtime`，并保持 DDD + 六边形架构分层。
-- [x] 增加 Go 侧 shadow audit 入站记录与查询 API。
-- [x] 增加 Go 侧媒体资产注册表和安全内容访问。
-- [x] 通过 Go media asset 路由为 dashboard 提供附件链接。
-- [x] 增加 Go 侧 send ledger，用于 recent-send 和 echo-loop 防护。
-- [x] 增加 Go 侧 outbox 生命周期、持久化、租约、重试和失败分类。
-- [x] 增加 Go 侧通用 `AgentJob` 生命周期和持久化。
-- [x] 将 observe-only 群记忆抽取生命周期迁移到 Go generic jobs，Python 继续作为抽取 worker。
-- [x] 将 group-memory 和 RAGFlow 的源消息回放迁移到 Go inbox API。
-- [x] 增加 Go 侧 knowledge checkpoints，用于 RAGFlow `rag_ingest` 游标。
-- [x] 修复 Go runtime JSON 响应的 UTF-8 声明，避免 PowerShell 中文乱码。
-- [x] 增加 Go-owned knowledge checkpoints 的 dashboard 可见性。
-- [x] 修复 Windows 本地启动时 Go media content 安全根目录发现问题，让 QQ 图片/文件附件可从 dashboard 打开。
-- [x] 增加 Go-owned memory/RAG worker 诊断接口，聚合 generic job 与 checkpoint 状态。
-- [x] 在 generic job leasing 后增加 Go-owned durable stream，使用 JSONL 记录 job 生命周期事件。
-- [x] 修复 dashboard 媒体附件缩略图回退逻辑，前端可根据 `asset_id` 直接生成 Go media content 代理链接。
-- [x] 增加 Go-owned proactive scheduling state API 和 JSON 持久化，覆盖 delivery 去重、窗口计数、context-only 节流和 drift 间隔标记。
-- [x] 将 Python proactive loop 接入 Go proactive scheduling state，并保留 SQLite fallback。
-- [x] 修复 dashboard 旧附件链接兼容问题：Go media content 404/403 时，仅对 workspace uploads 内的文件名做安全回退。
-- [x] 强化 dashboard 媒体附件兜底：Go media content 403/404 时，可根据 runtime asset 元数据回退到 workspace uploads 内的同名本地镜像，避免 QQ 图片/文件在前端显示为 broken image。
-- [x] 增加 Go-owned DeliveryAdapter dispatch plan：Go 负责 outbox 路由解析、附件拆分和 file URI 规范化，Python 兼容 worker 只执行平台发送。
-- [x] 增加 Go-owned Telegram DeliveryAdapter：Go 通过 Telegram Bot API 执行 outbox text/photo/document 发送，Python worker 对 Telegram 优先走 Go，adapter 不可用时回退旧发送链路。
-- [x] 将普通 `message_push` / `OutboundPort` 发送路径接入 Go `/v1/outbound` + outbox worker；当前仅 Telegram 进入 Go outbound，QQ/NapCat 继续保留 Python direct fallback，避免未完成适配器导致双发或漏发。
-- [x] 增加 Go-owned QQ/NapCat OneBot HTTP `DeliveryAdapter`：Go 可按 `qq_1049511700` / `qq_2365524513` 等 channel alias 执行私聊/群聊文本、图片、文件发送；默认仍需显式配置 endpoint 后才启用，避免影响现有观察群链路。
-- [x] 确认当前两个 NapCat 容器只启用了 OneBot WebSocket server，普通 HTTP 请求返回 `426 Upgrade Required` 是预期现象；Go OneBot adapter 已扩展支持 WebSocket action，并用只读 `get_login_info` 验证 3001=1049511700、3002=2365524513 在线。
-- [x] 将 Python outbox worker 的 Go dispatch 尝试范围改为读取 `integrations.agent_runtime.outbound_channels`，QQ channel alias 只有显式加入该列表后才会走 Go OneBot adapter。
-- [x] 增加 Go/Python contract fixtures，覆盖 checkpoint、inbox replay、outbox delivery、media asset content、job event stream，并用两端测试校验关键边界字段。
-- [x] 基于新增 contract fixtures 增加 dashboard/worker contract smoke：checkpoint dashboard 可计算 lag，media content 经 dashboard 代理返回，job event stream 可经 dashboard API 读取，knowledge worker 使用真实 checkpoint cursor。
-- [x] 将 RAG evaluation jobs 做成 Go-owned 生命周期记录，Python 作为 opt-in eval worker 执行离线 group-memory/RAG fixture 并回写指标。
-- [x] 增加运行态 dashboard 总览面板，聚合 runtime health、worker leases、stale jobs、dead letters、checkpoint lag、job event stream 和 `rag_eval` 失败摘要。
-- [x] 为 dashboard 增加 `rag_eval` 结果趋势与质量门摘要面板，区分质量门失败和基础设施失败，并展示 per-question 评测结果。
-- [x] 将 outbox delivery state 接入 Go-owned durable lifecycle event stream，新增 `/v1/outbox-events`、JSONL 持久化和 runtime overview 聚合。
-- [x] 评估并设计外部队列后端：确定 NATS JetStream 作为第一实现目标，支持后续多 goroutine 并发消费，保留 Redis Streams/RabbitMQ 适配边界，并新增 `/v1/queue-backend` 只读迁移诊断。
-- [x] 实现 NATS JetStream `shadow_publish` 适配器：创建 outbox/generic job 时先写 Go state store，再发布 work notification；当前不执行外部租约。
-- [x] 增加 NATS JetStream `shadow_publish` 诊断对账：记录发布成功/失败、按 subject 的通知数，并在 `/v1/queue-backend` 中对比 Go state store 与 event stream 的样本差异。
-- [x] 实现 NATS JetStream `dual_read_compare`：Go 以多 goroutine 消费 MQ work notification，并只读校验 queue candidate 与 Go outbox/job 权威状态，不执行发送或 Python worker 副作用。
-- [x] 增加 NATS JetStream `external_lease` 切换门诊断：明确 ack/nack、retry、dead-letter、rollback 策略和必过条件；当前保持阻断，不新增服务、不执行真实外部租约。
-- [x] 完成本地 NATS JetStream live smoke：在 `dual_read_compare` 模式下验证 `shadow_publish` 成功 1 次、compare 匹配 1 次、mismatch 为 0，并确认 `AKASHIC_QUEUE_CONSUMER_CONCURRENCY=2` 生效。
-- [x] 实现最小化 NATS JetStream `external_lease` outbox 执行器：Go 按 queue work id 租约 outbox、调用 Go DeliveryAdapter dispatch、按 Go 生命周期结果执行 ack/nack/term；默认仍需显式 cutover 与 smoke flag，不新增独立服务。
-- [x] 完成 `external_lease` 本地 smoke：使用 NATS + fake adapter 验证 outbox 成功 ack、可重试失败延迟 nack、终态失败 ack、unsupported work term；不触发真实 QQ/Telegram 发送。
-- [x] 配置并验证本机开发镜像源：Go 使用 `GOPROXY=https://goproxy.cn,direct` 和 `GOSUMDB=sum.golang.google.cn`，Docker Desktop 用户级配置加入 `docker.m.daocloud.io` / `docker.1ms.run` registry mirror，并通过镜像域名直拉 `nats:2-alpine` 验证可用。
-- [x] 完成 `agent_job` 外部租约评估并固化 Go 诊断门禁：`external_lease` 目前只允许 `outbox_delivery`，`agent_job` 继续走 Go state-store lease，直到补齐精确 job_id lease token、Python worker 心跳、幂等结果回写和 ack-after-result 协议。
-- [x] 实现 `agent_job` result-ack 第一阶段：Go 生成并持久化 `lease_token`，HTTP 返回给 Python worker；running/succeeded/failed 支持 token fencing，Python image/knowledge/rag_eval worker 自动回传 token，旧 worker 不带 token 仍保持兼容。
-- [x] 实现 `agent_job` heartbeat / lease renew：Go 增加 `/v1/jobs/{job_id}/renew` 和 `renewed` 生命周期事件，Python image/knowledge/rag_eval worker 在长任务执行期间后台续租，续租必须携带当前 `lease_token`。
-- [x] 增加 `agent_job` 严格 token 模式：`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` 时 running/succeeded/failed 必须携带当前 `lease_token`，默认保持兼容模式，作为后续 NATS external lease cutover gate。
-- [x] 增加 `agent_job` queue work id 精确租约入口：`POST /v1/jobs/lease-work` 按 `work_id`/`aggregate_id` 精确租约指定 job，不再依赖 `lease-next` 按类型抢任务，为 NATS work notification 驱动作准备。
-- [x] 增加 `agent_job` 过期租约恢复入口：`POST /v1/jobs/recover-expired` 扫描 leased/running 且 lease 已过期的 job，未耗尽尝试次数则回到 pending，耗尽则 dead-letter，并写入 `lease_expired` 生命周期事件。
-- [x] 增加 `agent_job` external lease result-ack 映射：Go 不抢占执行 Python 任务，只按 AgentJob 权威状态对队列通知做 ack/nack/term；pending/running 延迟 nack，terminal ack，missing term，failed 自动 retry 后 nack，expired lease 先恢复再决定 nack/ack，并覆盖重复终态投递单元 smoke。
-- [x] 增加 `agent_job` NATS subject 显式扩容门禁：默认 external lease consumer 仍只订阅 outbox；只有 `AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED=true`、`AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED=true`、`AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true`、`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN=true` 和基础 cutover 门禁全部满足时，才扩展为 `outbox_delivery_and_agent_job_result_ack`。
-- [x] 完成 `agent_job` NATS 级 duplicate terminal delivery smoke：临时启动本地 NATS JetStream 容器，发布同一 terminal AgentJob 的两条不同 queue notification，验证两条都 ack 且不会触发 Python/平台副作用。
-- [x] 增加可选 Go runtime `agent_job` 过期租约后台恢复 runner：默认关闭；开启 `AKASHIC_AGENT_JOB_RECOVERY_ENABLED=true` 后定时触发同一 `RecoverExpiredLeases` 用例，支持 interval、limit、run-on-start 配置，并保持领域规则只在 domain/app 层。
-- [x] 完成 `agent_job` NATS result-ack 状态流 dry-run：临时本地 NATS JetStream 中验证同一 job 的 pending 通知 delayed nack、running 通知 delayed nack、Python-style succeeded 写回后 terminal ack；并新增 `AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED=true` 作为 live subject 扩容门禁。
-- [x] 增加 Go-owned delivery adapter 只读诊断接口 `GET /v1/delivery-adapters`：可查看 Telegram/OneBot channel alias、transport、endpoint 是否配置、token 是否配置和脱敏 endpoint，用于替代只看日志确认 adapter enabled，且不会触发真实平台发送。
-- [x] 增加 Go-owned 私聊 echo 只读判断接口 `GET /v1/send-ledger/private-echo`：Go 统一处理文本回流以及空文本图片/文件/转发 marker 回流判断，Python QQ channel 优先调用该接口并保留旧 `recently_sent` fallback。
-- [x] 将 Go-owned delivery adapter 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可直接看到 Telegram/OneBot adapter enabled/disabled 状态，不需要依赖日志确认。
-- [x] 将 Go-owned queue backend 诊断接入 Python `AgentGatewayClient` 和 runtime overview dashboard：前端可查看 NATS/本地队列 provider、mode、多 goroutine consumer concurrency、max-in-flight 与 external lease gate 阻断原因。
-- [x] 增加 Go-owned delivery dispatch readiness 只读接口 `POST /v1/delivery-dispatch/readiness`：Go 统一判断 outbox 路由计划是否有可用 DeliveryAdapter，返回 missing channel 和 side_effect=none，Python client 可读取但不改变现有发送行为。
-- [x] 将 Python outbox worker 的 Go dispatch 决策接入 Go readiness：配置为 Go dispatch 候选的 channel 会先由 Go 判断 adapter 是否 ready；若缺失 adapter，则直接执行 Go readiness 返回的 plan，不再先尝试必然失败的 runtime dispatch。
-- [x] 将 outbox dashboard 详情接入 Go dispatch readiness：详情页只读展示 adapter ready/missing channel、side_effect=none 和 dispatch plan，便于 QQ/NapCat adapter cutover 前诊断缺失 channel，不触发真实发送。
-- [x] 将 `agent_job` 过期租约恢复接入 Agent Jobs dashboard：前端可触发 Go `/v1/jobs/recover-expired`，展示扫描/恢复/死信结果，并只暴露 `lease_token_present` 避免泄漏 token 值。
-- [x] 增加 Go-owned `agent_job` metrics endpoint `GET /v1/job-metrics`：Go 聚合 job 状态、类型分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
-- [x] 增加 Go-owned outbox metrics endpoint `GET /v1/outbox-metrics`：Go 聚合投递状态、channel 分布、生命周期吞吐和 dead-letter 趋势，runtime overview dashboard 只读展示该 Go 指标口径。
-- [x] 增加 Go-owned inbox metrics endpoint `GET /v1/inbox-metrics`：Go 聚合原始观察消息、observe-only 占比、附件采集、会话 sender 和 seq cursor，用于 runtime overview 观察 QQ 群数据采集质量。
-- [x] 增加 Go-owned send ledger metrics endpoint `GET /v1/send-ledger/metrics`：Go 聚合 recent-send 防循环记录、bot/conversation 分布和重复 content hash，用于 runtime overview 审计双账号互聊回流风险。
-- [x] 增加 Go-owned runtime overview aggregate endpoint `GET /v1/runtime-overview`：Go 聚合 adapter、queue、send ledger、inbox、agent job、outbox 和 knowledge diagnostics，Python dashboard 优先读取该聚合口并保留旧多接口 fallback。
-- [x] 增加可选 Go-owned local outbox delivery worker：默认关闭；开启 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 后由 Go state-store lease outbox、调用 Go DeliveryAdapter dispatch 并回写 succeeded/failed，减少 Python outbox worker 的确定性基础设施职责。
-- [x] 增加 Go-owned runtime worker diagnostics endpoint `GET /v1/runtime-workers`：Go 汇总 agent job recovery、local outbox worker、NATS shadow/dual-read/external-lease worker 的 enabled/running/config 状态，并接入 runtime overview dashboard。
-- [x] 增加 Go-owned delivery adapter live health endpoint `GET /v1/delivery-adapters/health`：Go 只读调用 OneBot `get_login_info` 与 Telegram `getMe`，返回 channel alias 是否 reachable/authenticated/account_id，side_effect 固定为 none，便于 QQ/NapCat live send 前验证连接。
-- [x] 将 delivery adapter live health 接入 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-adapter-health` 代理和 `Delivery Adapters` 详情页 Probe Health 按钮；不会在概览加载时自动 ping QQ/Telegram。
-- [x] 增加 Go-owned runtime config 只读诊断 `GET /v1/runtime-config`：脱敏展示当前进程地址、bot ids、OneBot/Telegram env、预期 QQ channel alias、缺失项、worker/cutover 开关，并接入 `GET /v1/runtime-overview` 的 Runtime Config 卡片。
-- [x] 配置并验证当前运行态 OneBot/Telegram adapter：重建并重启 `agent-runtime`，启用 `qq`、`qq_1049511700`、`qq_2365524513` WebSocket alias，确认 `/v1/runtime-config`、`/v1/delivery-adapters`、`/v1/delivery-adapters/health`、`/v1/runtime-workers`、`/v1/runtime-overview` 和 dashboard runtime overview 均可用；Go outbox delivery worker 仍保持关闭，未执行真实发送。
-- [x] 强化 `GET /v1/runtime-config` 脱敏策略：token/secret 类环境变量只返回 `redacted` 或 `channel=redacted`，不再暴露首尾片段；`AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN` 作为布尔配置保留 true/false 可见性。
-- [x] 增加 Go-owned delivery smoke readiness 矩阵 `POST /v1/delivery-smoke/readiness`：在未创建 outbox、未触发 QQ/Telegram 平台发送的情况下，复用 Go dispatch planner 检查双 QQ 私聊、可选群文本、合成图片和文件 case 是否有可用 DeliveryAdapter，并返回 `side_effect=none`、missing channel 与阻断原因。
-- [x] 将 delivery smoke readiness 接入 Python `AgentGatewayClient` 和 runtime overview dashboard：新增手动 `/api/dashboard/runtime-overview/delivery-smoke-readiness` 代理与 `Delivery Adapters` 详情页 Smoke Readiness 操作，可输入群号并触发 Go 只读预检，仍不执行平台发送。
-- [x] 增加 Go-owned observe target diagnostics：Python 启动时将 `config.toml` 中 observe-only QQ 群同步到 Go `/v1/observe-targets/sync`，Go 负责 source-bound 保存、校验、`GET /v1/observe-targets` 查询和 runtime overview `Observe Targets` 卡片；不改变当前 QQ 收消息和回复逻辑。
-- [x] 重建并重启当前本地 Go `agent-runtime` 与 dashboard，确认 runtime overview 显示 6 个 observe-only QQ 群：`164369633`、`187890369`、`27234224`、`284331268`、`3219982`、`956393163`，`side_effect=none`。
-- [x] 恢复当前本地 QQ 观察链路：Docker API 已恢复，两个 NapCat 容器在线；重启 Python 主服务后 `1049511700 -> ws://localhost:3001`、`2365524513 -> ws://localhost:3002` 均成功启动，Go delivery adapter health 显示 OneBot/Telegram 4 个 adapter 全部 authenticated，runtime overview 已记录 `3219982` 的 observe-only 群消息。
-- [x] 增加 Go-owned receiver status diagnostics：Python QQ/Telegram 接收端启动、失败和 Telegram polling conflict 会上报到 Go `/v1/receiver-statuses/report`；Go 负责校验、聚合、`GET /v1/receiver-statuses` 和 runtime overview `Receiver Statuses` 卡片。当前 live smoke 显示两个 QQ receiver connected：`qq:1049511700:qq`、`qq:2365524513:qq_2365524513`，并正确记录 Telegram `status=suspended`、`reason=getupdates_conflict`。
-- [x] 增加 Go-owned receiver lease control：Go 提供 `/v1/receiver-leases/acquire|renew|release` 和 `GET /v1/receiver-leases`，Telegram polling 启动前先获取租约、运行中续租、停止或 conflict 时释放；runtime overview/dashboard 展示 active/expired lease 计数，列表响应只暴露 `lease_token_present` 不泄漏 token 值。当前 live smoke 显示 `telegram:7689386159:telegram` 有 1 个 active lease，两个 QQ receiver 和 Telegram receiver 均为 connected。
-- [x] 增加 Go-owned observe capture diagnostics：Go 提供 `GET /v1/observe-capture-diagnostics`，聚合 observe targets、receiver status、inbox events、media assets 和安全 media content probe，给出每个观察群的文本/图片/文件覆盖、content ready 数量和 blockers，并接入 runtime overview/dashboard。当前 live smoke 显示 6 个 QQ observe-only 群均由 `qq:1049511700:qq` 连接，但因重启后暂无新样本，文本/图片/文件覆盖均为待验证 warn。
-- [x] 将 Go runtime 未显式配置的确定性状态默认改为文件持久化：`agent-runtime` 自动使用 `.akashic-workspace/agent-runtime` 保存 observe targets、AgentJob、job events、media assets、send ledger、outbox、outbox events、inbox、knowledge checkpoints 和 proactive state；`AKASHIC_RUNTIME_STATE_DIR` 可统一覆盖，`AKASHIC_RUNTIME_STATE_DIR=memory` 或单项 `*_DSN=memory` 可显式回到内存态，避免重启后 observe capture 样本和观察群配置丢失。
-- [x] 补 receiver status 的重启恢复策略：Go 增加默认文件态 `receiver-statuses.json`、`AKASHIC_RECEIVER_STATUS_STALE_SECONDS` stale TTL 和 read-time stale 降级；Python QQ/NapCat 与 Telegram receiver 增加定时 `connected` heartbeat，正常停止上报 `stopped`，Telegram `getUpdates` 冲突仍保持 `suspended`，避免只重启 Go 后 observe capture 长时间误报 receiver 不在线。
-- [x] 补 receiver lease 的重启恢复策略：Go 增加默认文件态 `receiver-leases.json`、`AKASHIC_RECEIVER_LEASES_DSN/PATH` 覆盖和 renew 过期拒绝；Telegram Python receiver 在续租遇到 lease missing/expired/token mismatch 时先尝试 reacquire，若被其他 holder 占用则停止 polling 并上报 `suspended`，避免只重启 Go 后租约控制面丢失。
-- [x] 增强 Go observe capture 诊断的接收链路判断：当 receiver heartbeat 暂时缺失但同一 QQ 观察群存在 15 分钟内新 inbox 事件时，Go 以 `recent_inbox_activity` 推断 `receiver_connected=true`，同时保留 `receiver_status_connected` / `receiver_activity_recent` 细分字段，避免观察群正在收消息却被误报 `receiver_not_connected`。
-- [x] 增加 Go-owned 入站消息去重状态：Go 提供 `/v1/inbound-dedupe/check` 和 `/v1/inbound-dedupe/records`，默认文件态保存到 `inbound-dedupe.json`，`AKASHIC_RUNTIME_STATE_DIR=memory` 时仍提供内存态；Telegram 接收端本地去重 miss 后调用 Go，重复消息在 typing、下载附件和发布到 bus 前被丢弃。
-- [x] 将 QQ/NapCat 私聊、普通群聊、observe-only 群聊和 `/stop` 入站事件接入 Go inbound dedupe：使用 `qq:{channel}:{bot_uin}` scope 和 `private|group:{conversation_id}:{message_id}` key，重复事件会在 bus publish、观察群 session 写入、附件下载或中断回复前被丢弃；无稳定 `message_id` 的群文件上传 notice 暂不纳入。
-- [x] 将 QQ/NapCat observe-only 群文件上传 notice 接入 Go inbound dedupe：单独使用 `group_file_message` / `group_file_id` / `group_file_fingerprint` 文件事件 key，重复 notice 会在 session 写入、文件 URL 获取、下载和预览前被丢弃；无法推导稳定 key 时保留旧行为。
-- [x] 增加 Go-owned inbound dedupe metrics：Go 提供只读 `GET /v1/inbound-dedupe/metrics`，按 scope 汇总采样记录、active/expired、重复记录和 duplicate seen 次数，并接入 runtime overview/dashboard；该路径 `side_effect=none`，不清理 TTL、不触发平台发送。
-- [x] 增加 Go-owned `AgentJob` admission dedupe：`POST /v1/jobs` 支持 `dedupe_key`，Go 在创建前查同类型 pending/leased/running job，命中则返回已有 active job，不再写 created event 或发布 MQ work；Python knowledge worker 为 `group_memory_extract` / `rag_ingest` 提交稳定 dedupe key，避免 worker 停止或积压时按分钟堆积重复 observe-only jobs。
-- [x] 增加 Go-owned Python AI worker status registry：Go 提供 `POST /v1/agent-worker-statuses/report` 和 `GET /v1/agent-worker-statuses`，默认文件态保存 `agent-worker-statuses.json`，对 image/knowledge/rag_eval/outbox Python worker 做 liveness、当前任务、成功/失败计数、最近错误和 stale 判断，并接入 runtime overview `Agent Workers` 卡片；Python 仍只执行模型、RAGFlow、图片生成和兼容发送 pipeline。
-- [x] 将 proactive AnyAction quota 状态迁移到 Go：Go 在 `ProactiveStateService` 中新增 `GET /v1/proactive/anyaction/quota` 和 `POST /v1/proactive/anyaction/actions`，负责每日窗口、reset_hour/timezone rollover、used 计数和 last_action_at 持久化；Python `AnyActionGate` 仍负责概率判断，`AgentRuntimeAnyActionQuotaStore` 优先走 Go，失败回退原 `proactive_quota.json`。
-- [x] 将 proactive source item seen 去重和 rejection cooldown 状态迁移到 Go：Go 新增 `POST /v1/proactive/seen-items`、`GET /v1/proactive/seen-items/seen`、`POST /v1/proactive/rejection-cooldowns`、`GET /v1/proactive/rejection-cooldowns/cooled`，负责 MCP source key 归一、TTL 判断和文件态持久化；Python `AgentRuntimeProactiveStateStore` 优先走 Go，未命中或失败时回退 SQLite，semantic items 与 tick log 继续留在 Python。
-- [x] 增加 Go-owned proactive retention cleanup：Go 新增 `POST /v1/proactive/cleanup`，按 TTL 清理 delivery、seen items、context-only timestamp 和 rejection cooldown JSON/file state，并返回删除计数；Python `AgentRuntimeProactiveStateStore.cleanup` 先清 Go 再清 SQLite fallback，semantic items 与 tick log 仍由 Python SQLite 管理。
-- [x] 将 proactive background context 主 topic 时间戳迁移到 Go：Go 新增 `POST /v1/proactive/bg-context/main` 和 `GET /v1/proactive/bg-context/main/last`，用显式白名单 `ProactiveGlobalMark` 持久化 `bg_context_last_main_at`；Python bridge 写入时双写 Go/SQLite，读取时取较新时间，避免迁移期间放宽节流。
-- [x] 将 Python scheduler 的 durable job snapshot 迁移到 Go：Go 新增 `GET /v1/scheduler/jobs` 和 `POST /v1/scheduler/jobs/snapshot`，默认文件态保存 `scheduler-jobs.json`；Python `JobStore` 保存时同步 Go snapshot、读取时优先 Go 并保留本地 `schedules.json` fallback，tick loop、cron/latency 和 AI 执行仍留在 Python。
-- [x] 增加 Go-owned scheduler diagnostics：Go 新增只读 `GET /v1/scheduler/diagnostics`，按 overdue/due-soon/disabled/future、trigger、tier、channel 聚合 scheduler snapshot，并接入 `GET /v1/runtime-overview` 的 `Scheduler Jobs` 卡片；不改变 Python tick loop，不触发 QQ/Telegram 发送。
-- [x] 增加 Go-owned scheduler execution lease：Go 新增 `/v1/scheduler/leases/acquire|renew|release|list`，默认文件态保存 `scheduler-leases.json`；Python scheduler 执行前 acquire、执行中 renew、保存 snapshot 后 release，避免多 Python scheduler 进程重复执行同一个 due job；Go 不执行 AI、cron 推进或平台发送。
-- [x] 增加 Go-owned scheduler job CRUD：Go 新增 `/v1/scheduler/jobs/upsert` 和 `DELETE /v1/scheduler/jobs/{job_id}`，Python `schedule` / `cancel_schedule` 的新增和取消优先走单任务 upsert/delete，减少多进程全量 snapshot 覆盖风险；执行后重排仍暂时走 snapshot replace，AI 和平台发送仍留在 Python。
-- [x] 增加 Go-owned scheduler completion mutation：Go 新增 `POST /v1/scheduler/jobs/{job_id}/complete`，按 `holder_id + lease_token` 校验 active execution lease 后执行 recurring reschedule 或 one-shot delete，并在成功后释放 lease；Python 执行完成后不再全量替换 Go snapshot，AI、next fire 计算和平台发送仍留在 Python。
-- [x] 补齐 scheduler startup recovery 与 Go-owned job state 的一致性：Python `load_and_recover()` 对 missed recurring job 的 fire_at 推进通过 Go `/v1/scheduler/jobs/upsert` 回写，对超过 grace 的 one-shot job 通过 `DELETE /v1/scheduler/jobs/{job_id}` 删除；mutation 在完整 recovered map 构造后执行，避免本地 mirror 写半成品，启动恢复不触发 QQ/Telegram 发送。
-- [x] 将 proactive drift 完成态和 skill runtime state 迁移到 Go：Go 在现有 `ProactiveStateService` 中新增 `/v1/proactive/drift/finish`、`/v1/proactive/drift/summary`、`/v1/proactive/drift/skills/{skill_name}`，负责 recent runs、note、per-skill `run_count/status/next/last_run_at` 的文件态持久化；Python `DriftStateStore` 优先读写 Go 并继续写 workspace JSON mirror，skill 文件扫描、LLM 决策、MCP/tool 执行仍留在 Python。
+- 本文件只保留本轮迭代必须全部完成的短待办，原则上不超过 10 条。
+- 已完成迁移记录放到 `docs/sdd/DONE.md`。
+- 运行态观察、live smoke 和人工验证项放到 `docs/sdd/LIVE_CHECKS.md`。
+- 长期规划、未来想法、非本轮任务放到 `docs/sdd/BACKLOG.md`，不要堆在本文件。
+- 每轮结束前，本文件必须清空，或者只保留明确阻塞项并写明阻塞原因。
+- 每完成一个迁移切片：更新本 TODO、补 SDD spec/review，并把完成项归档到 DONE。
 
-## 下一步
+## 本轮未完成
 
-- [ ] 继续验证 QQ 群实时采集质量：当前 Go `/v1/observe-capture-diagnostics` 已显示 6 个观察群都有文本和图片覆盖、media content ready；4 个群因 15 分钟内有新 inbox 活动可推断 receiver connected，2 个群因近期无消息仍保留 receiver blocker。后续让任一观察群产生一个文件后，再确认 file coverage 从 0 变为 covered，且 observe-only 不回复。
-- [ ] 若 Telegram `getUpdates` conflict 再次出现，先看 Go `/v1/receiver-statuses` 是否显示 `status=suspended`、`reason=getupdates_conflict`，并确认 `/v1/receiver-leases` 是否没有重复 Akashic receiver；如果仍冲突，说明外部非 Akashic polling 进程占用 token，需要停止外部进程或改成 webhook。
-- [ ] 做 QQ/NapCat Go adapter live send smoke：覆盖 1049511700/2365524513 双账号私聊文本、群文本、图片、文件；通过后再把对应 QQ channel alias 加入 `integrations.agent_runtime.outbound_channels`，或改由 `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true` 的 Go local outbox worker 接管，并确认 recent-send / bot protocol 防循环仍生效。
-- [ ] 继续观察 QQ/NapCat `message_id` 和 group upload file 字段在真实重连/重投场景的稳定性；如果 NapCat 暴露新的文件 notice 字段名，将其补进 `_file_meta_from_notice` 和 file-event key metadata。
-- [ ] 观察 Go `AgentJob` admission dedupe live 效果：重启 Python knowledge worker 后确认 `group_memory_extract`/`rag_ingest` pending 数不再随每个 bucket 无界增长，enqueue summary 的 `suppressed_by_runtime_dedupe` 会在已有 active job 时递增；若仍积压，需要补 recovery/cancel 策略而不是放宽 Python 创建频率。
-- [ ] 观察 Go `Agent Workers` live 状态：重启 Python 主服务后确认 image/knowledge/rag_eval/outbox worker 至少上报 `starting`/`idle`，执行任务时切到 `running`，完成后回到 `idle`，停服后变为 `stopped` 或 stale；如果发现同一 worker_id 多进程抢占，需要后续补 worker lease/fencing，而不是仅靠状态覆盖。
-- [ ] 观察 proactive AnyAction quota live 状态：主动推送实际触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中 `anyaction_quotas.used` 增长，且原 `proactive_quota.json` fallback 不会让 quota 放宽；如果后续要跨进程统一随机 draw，再单独设计 Go-owned admission decision。
-- [ ] 观察 proactive seen/rejection/cleanup live 状态：主动推送候选流运行后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `seen_items` 或 `rejection_cooldowns`，并在 cleanup 触发后确认过期记录减少，且 SQLite fallback 不会放宽去重。
-- [ ] 观察 proactive background context live 状态：background context 主 topic 触发后确认 `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `global_marks` / `bg_context_last_main_at`，且 SQLite fallback 不会让节流时间回退。
-- [ ] 观察 proactive drift state live 状态：启用 drift 后完成一次 `finish_drift`，确认 Go `.akashic-workspace/agent-runtime/proactive-state.json` 中出现 `drift_skills`、`drift_recent_runs` 和可选 `drift_note`，同时 workspace `drift/skills/<skill>/state.json` 与 `drift/drift.json` 仍作为 mirror 写入；如果 runtime 不可用，旧 JSON fallback 行为应保持。
-- [ ] 观察 scheduler job snapshot live 状态：通过 schedule tool 创建一个只读/测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-jobs.json` 出现对应 job，取消或执行后 Go snapshot 同步移除或重排，同时本地 `schedules.json` fallback 仍存在，且不触发额外 QQ/Telegram 发送。
-- [ ] 观察 scheduler diagnostics live 状态：创建一个测试提醒后确认 `GET /v1/scheduler/diagnostics` 与 `GET /v1/runtime-overview` 的 `scheduler_jobs_*` summary 同步变化；如出现 overdue，应结合 Python scheduler 进程状态判断，不直接认为任务执行失败。
-- [ ] 观察 scheduler execution lease live 状态：创建测试提醒后确认 `.akashic-workspace/agent-runtime/scheduler-leases.json` 只在执行中短暂出现 lease，`GET /v1/scheduler/leases` 不泄漏 token；多 Python 进程场景应看到后来的进程因 `active_lease_held` 跳过同一 job。
-- [ ] 观察 scheduler job CRUD live 状态：用 `schedule` 创建一个测试提醒后确认 Go `/v1/scheduler/jobs/upsert` 写入 `.akashic-workspace/agent-runtime/scheduler-jobs.json`，再用 `cancel_schedule` 确认 `DELETE /v1/scheduler/jobs/{job_id}` 移除对应 job；期间不应出现整库 snapshot 覆盖其它未执行 job。
-- [ ] 观察 scheduler completion live 状态：创建一个短周期测试提醒后确认执行完成路径调用 Go `/v1/scheduler/jobs/{job_id}/complete`，recurring job 只更新自身 fire_at/run_count，one-shot job 只删除自身，且 `scheduler-leases.json` 中对应 lease 被释放；token mismatch 应拒绝并不改 job。
-- [ ] 观察 scheduler recovery reconciliation live 状态：手工准备一个过期 recurring 测试 job 和一个超过 grace 的 one-shot 测试 job，重启 Python scheduler 后确认 Go `scheduler-jobs.json` 中 recurring fire_at 被单任务 upsert 到未来时间、expired one-shot 被单任务 delete，且没有触发 QQ/Telegram 发送或全量 snapshot 覆盖其它 job。
-- [ ] 继续收敛 Go/Python 分工：检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑仍散落在 Python，能迁移则按 SDD 切片迁移。
+- 当前无未完成项。下一轮开始时，从 `docs/sdd/BACKLOG.md` 选择本轮可完成的任务，再写入本文件。
 
 ## 边界约束
 

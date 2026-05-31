@@ -80,6 +80,51 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if err := store.SaveProactiveDriftFinish(ctx, driftState, driftRun, "note", 10); err != nil {
 		t.Fatal(err)
 	}
+	tick, err := model.NewProactiveTickLogFinish(
+		"tick-1",
+		"telegram:1",
+		now.Add(5*time.Minute),
+		now.Add(5*time.Minute+time.Second),
+		"",
+		"reply",
+		"",
+		1,
+		0,
+		1,
+		0,
+		[]string{"feed:1"},
+		nil,
+		[]string{"feed:1"},
+		false,
+		"hello",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveTickLogFinish(ctx, tick, 500); err != nil {
+		t.Fatal(err)
+	}
+	step, err := model.NewProactiveTickStepLog(
+		"tick-1",
+		1,
+		"loop",
+		"message_push",
+		"call-1",
+		map[string]any{"message": "hello"},
+		`{"ok":true}`,
+		"reply",
+		"",
+		[]string{"feed:1"},
+		nil,
+		[]string{"feed:1"},
+		"hello",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveTickStepLog(ctx, step, 5000); err != nil {
+		t.Fatal(err)
+	}
 
 	reloaded, err := proactivestate.NewStore(path)
 	if err != nil {
@@ -161,6 +206,20 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	}
 	if driftNote != "note" || len(driftRuns) != 1 || driftRuns[0].OneLine != "did work" {
 		t.Fatalf("expected persisted drift runs, note=%q runs=%+v", driftNote, driftRuns)
+	}
+	tickLogs, totalTicks, err := reloaded.ListProactiveTickLogs(ctx, query.ProactiveTickLogFilter{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if totalTicks != 1 || len(tickLogs) != 1 || tickLogs[0].FinalMessage != "hello" {
+		t.Fatalf("expected persisted tick log, total=%d logs=%+v", totalTicks, tickLogs)
+	}
+	tickSteps, err := reloaded.ListProactiveTickStepLogs(ctx, "tick-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tickSteps) != 1 || tickSteps[0].ToolName != "message_push" {
+		t.Fatalf("expected persisted tick step, steps=%+v", tickSteps)
 	}
 
 	result, err := reloaded.CleanupProactiveState(ctx, model.ProactiveStateRetentionCutoffs{

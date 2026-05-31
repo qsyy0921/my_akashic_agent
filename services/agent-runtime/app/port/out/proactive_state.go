@@ -36,5 +36,12 @@ type ProactiveStateRepository interface {
 	FindProactiveDriftSkillState(ctx context.Context, skillName string) (model.ProactiveDriftSkillState, bool, error)
 	ListProactiveDriftRecentRuns(ctx context.Context, limit int) ([]model.ProactiveDriftRecentRun, string, error)
 
+	SaveProactiveTickLogStart(ctx context.Context, log model.ProactiveTickLog, retentionLimit int) error
+	SaveProactiveTickLogFinish(ctx context.Context, log model.ProactiveTickLog, retentionLimit int) error
+	SaveProactiveTickStepLog(ctx context.Context, step model.ProactiveTickStepLog, retentionLimit int) error
+	ListProactiveTickLogs(ctx context.Context, filter query.ProactiveTickLogFilter) ([]model.ProactiveTickLog, int, error)
+	FindProactiveTickLog(ctx context.Context, tickID string) (model.ProactiveTickLog, bool, error)
+	ListProactiveTickStepLogs(ctx context.Context, tickID string) ([]model.ProactiveTickStepLog, error)
+
 	CleanupProactiveState(ctx context.Context, cutoffs model.ProactiveStateRetentionCutoffs) (model.ProactiveStateCleanupResult, error)
 }

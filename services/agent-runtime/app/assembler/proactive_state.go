@@ -128,6 +128,84 @@ func ToProactiveDriftFinishView(state model.ProactiveDriftSkillState, run model.
 	}
 }
 
+func ToProactiveTickLogView(log model.ProactiveTickLog, found bool, sideEffect string) query.ProactiveTickLogView {
+	return query.ProactiveTickLogView{
+		TickID:         log.TickID,
+		SessionKey:     log.SessionKey,
+		StartedAt:      formatProactiveTime(log.StartedAt),
+		FinishedAt:     formatProactiveTime(log.FinishedAt),
+		GateExit:       log.GateExit,
+		TerminalAction: log.TerminalAction,
+		SkipReason:     log.SkipReason,
+		StepsTaken:     log.StepsTaken,
+		AlertCount:     log.AlertCount,
+		ContentCount:   log.ContentCount,
+		ContextCount:   log.ContextCount,
+		InterestingIDs: append([]string(nil), log.InterestingIDs...),
+		DiscardedIDs:   append([]string(nil), log.DiscardedIDs...),
+		CitedIDs:       append([]string(nil), log.CitedIDs...),
+		DriftEntered:   log.DriftEntered,
+		FinalMessage:   log.FinalMessage,
+		Found:          found,
+		SideEffect:     sideEffect,
+	}
+}
+
+func ToProactiveTickLogViews(items []model.ProactiveTickLog) []query.ProactiveTickLogView {
+	views := make([]query.ProactiveTickLogView, 0, len(items))
+	for _, item := range items {
+		views = append(views, ToProactiveTickLogView(item, true, "none"))
+	}
+	return views
+}
+
+func ToProactiveTickStepLogView(step model.ProactiveTickStepLog, sideEffect string) query.ProactiveTickStepLogView {
+	toolArgs := map[string]any{}
+	for key, value := range step.ToolArgs {
+		toolArgs[key] = value
+	}
+	return query.ProactiveTickStepLogView{
+		TickID:              step.TickID,
+		StepIndex:           step.StepIndex,
+		Phase:               step.Phase,
+		ToolName:            step.ToolName,
+		ToolCallID:          step.ToolCallID,
+		ToolArgs:            toolArgs,
+		ToolResultText:      step.ToolResultText,
+		TerminalActionAfter: step.TerminalActionAfter,
+		SkipReasonAfter:     step.SkipReasonAfter,
+		InterestingIDsAfter: append([]string(nil), step.InterestingIDsAfter...),
+		DiscardedIDsAfter:   append([]string(nil), step.DiscardedIDsAfter...),
+		CitedIDsAfter:       append([]string(nil), step.CitedIDsAfter...),
+		FinalMessageAfter:   step.FinalMessageAfter,
+		SideEffect:          sideEffect,
+	}
+}
+
+func ToProactiveTickStepLogViews(items []model.ProactiveTickStepLog) []query.ProactiveTickStepLogView {
+	views := make([]query.ProactiveTickStepLogView, 0, len(items))
+	for _, item := range items {
+		views = append(views, ToProactiveTickStepLogView(item, "none"))
+	}
+	return views
+}
+
+func ToProactiveTickLogListView(items []model.ProactiveTickLog, total int, sideEffect string) query.ProactiveTickLogListView {
+	return query.ProactiveTickLogListView{
+		Items:      ToProactiveTickLogViews(items),
+		Total:      total,
+		SideEffect: sideEffect,
+	}
+}
+
+func ToProactiveTickStepLogListView(items []model.ProactiveTickStepLog, sideEffect string) query.ProactiveTickStepLogListView {
+	return query.ProactiveTickStepLogListView{
+		Items:      ToProactiveTickStepLogViews(items),
+		Total:      len(items),
+		SideEffect: sideEffect,
+	}
+}
+
 func ToProactiveAnyActionQuotaView(record model.ProactiveAnyActionQuota, found bool, sideEffect string) query.ProactiveAnyActionQuotaView {
 	return query.ProactiveAnyActionQuotaView{
 		QuotaKey:     record.QuotaKey,

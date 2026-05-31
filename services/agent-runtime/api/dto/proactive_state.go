@@ -20,6 +20,48 @@ type RecordProactiveDriftFinishRequest struct {
 	Timestamp     string `json:"timestamp,omitempty"`
 }
 
+type RecordProactiveTickLogStartRequest struct {
+	TickID     string `json:"tick_id"`
+	SessionKey string `json:"session_key"`
+	StartedAt  string `json:"started_at,omitempty"`
+	GateExit   string `json:"gate_exit,omitempty"`
+}
+
+type RecordProactiveTickLogFinishRequest struct {
+	TickID         string   `json:"tick_id"`
+	SessionKey     string   `json:"session_key"`
+	StartedAt      string   `json:"started_at,omitempty"`
+	FinishedAt     string   `json:"finished_at,omitempty"`
+	GateExit       string   `json:"gate_exit,omitempty"`
+	TerminalAction string   `json:"terminal_action,omitempty"`
+	SkipReason     string   `json:"skip_reason,omitempty"`
+	StepsTaken     int      `json:"steps_taken,omitempty"`
+	AlertCount     int      `json:"alert_count,omitempty"`
+	ContentCount   int      `json:"content_count,omitempty"`
+	ContextCount   int      `json:"context_count,omitempty"`
+	InterestingIDs []string `json:"interesting_ids,omitempty"`
+	DiscardedIDs   []string `json:"discarded_ids,omitempty"`
+	CitedIDs       []string `json:"cited_ids,omitempty"`
+	DriftEntered   bool     `json:"drift_entered,omitempty"`
+	FinalMessage   string   `json:"final_message,omitempty"`
+}
+
+type RecordProactiveTickStepLogRequest struct {
+	TickID              string         `json:"tick_id"`
+	StepIndex           int            `json:"step_index"`
+	Phase               string         `json:"phase"`
+	ToolName            string         `json:"tool_name"`
+	ToolCallID          string         `json:"tool_call_id"`
+	ToolArgs            map[string]any `json:"tool_args,omitempty"`
+	ToolResultText      string         `json:"tool_result_text,omitempty"`
+	TerminalActionAfter string         `json:"terminal_action_after,omitempty"`
+	SkipReasonAfter     string         `json:"skip_reason_after,omitempty"`
+	InterestingIDsAfter []string       `json:"interesting_ids_after,omitempty"`
+	DiscardedIDsAfter   []string       `json:"discarded_ids_after,omitempty"`
+	CitedIDsAfter       []string       `json:"cited_ids_after,omitempty"`
+	FinalMessageAfter   string         `json:"final_message_after,omitempty"`
+}
+
 type RecordProactiveTimestampRequest struct {
 	Timestamp string `json:"timestamp,omitempty"`
 }

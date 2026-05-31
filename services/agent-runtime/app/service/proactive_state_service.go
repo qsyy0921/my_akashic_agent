@@ -18,6 +18,11 @@ type ProactiveStateService struct {
 	repository outport.ProactiveStateRepository
 }
 
+const (
+	proactiveTickLogRetentionLimit  = 500
+	proactiveTickStepRetentionLimit = 5000
+)
+
 func NewProactiveStateService(repository outport.ProactiveStateRepository) *ProactiveStateService {
 	return &ProactiveStateService{repository: repository}
 }
@@ -325,6 +330,128 @@ func (s *ProactiveStateService) DriftSkillState(ctx context.Context, skillName s
 		}
 	}
 	return assembler.ToProactiveDriftSkillStateView(state, found, "none"), nil
+}
+
+func (s *ProactiveStateService) RecordTickLogStart(ctx context.Context, cmd command.RecordProactiveTickLogStartCommand) (query.ProactiveTickLogView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickLogView{}, errors.New("proactive state service requires repository")
+	}
+	log, err := model.NewProactiveTickLogStart(
+		clipProactiveText(cmd.TickID, 120),
+		clipProactiveText(cmd.SessionKey, 180),
+		timestampOrNow(cmd.StartedAt),
+		clipProactiveText(cmd.GateExit, 80),
+	)
+	if err != nil {
+		return query.ProactiveTickLogView{}, err
+	}
+	if err := s.repository.SaveProactiveTickLogStart(ctx, log, proactiveTickLogRetentionLimit); err != nil {
+		return query.ProactiveTickLogView{}, err
+	}
+	return assembler.ToProactiveTickLogView(log, true, "runtime_state_write"), nil
+}
+
+func (s *ProactiveStateService) RecordTickLogFinish(ctx context.Context, cmd command.RecordProactiveTickLogFinishCommand) (query.ProactiveTickLogView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickLogView{}, errors.New("proactive state service requires repository")
+	}
+	log, err := model.NewProactiveTickLogFinish(
+		clipProactiveText(cmd.TickID, 120),
+		clipProactiveText(cmd.SessionKey, 180),
+		timestampOrNow(cmd.StartedAt),
+		timestampOrNow(cmd.FinishedAt),
+		clipProactiveText(cmd.GateExit, 80),
+		clipProactiveText(cmd.TerminalAction, 80),
+		clipProactiveText(cmd.SkipReason, 120),
+		cmd.StepsTaken,
+		cmd.AlertCount,
+		cmd.ContentCount,
+		cmd.ContextCount,
+		cmd.InterestingIDs,
+		cmd.DiscardedIDs,
+		cmd.CitedIDs,
+		cmd.DriftEntered,
+		clipProactiveText(cmd.FinalMessage, 1000),
+	)
+	if err != nil {
+		return query.ProactiveTickLogView{}, err
+	}
+	if err := s.repository.SaveProactiveTickLogFinish(ctx, log, proactiveTickLogRetentionLimit); err != nil {
+		return query.ProactiveTickLogView{}, err
+	}
+	return assembler.ToProactiveTickLogView(log, true, "runtime_state_write"), nil
+}
+
+func (s *ProactiveStateService) RecordTickStepLog(ctx context.Context, cmd command.RecordProactiveTickStepLogCommand) (query.ProactiveTickStepLogView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickStepLogView{}, errors.New("proactive state service requires repository")
+	}
+	step, err := model.NewProactiveTickStepLog(
+		clipProactiveText(cmd.TickID, 120),
+		cmd.StepIndex,
+		clipProactiveText(cmd.Phase, 80),
+		clipProactiveText(cmd.ToolName, 120),
+		clipProactiveText(cmd.ToolCallID, 180),
+		cmd.ToolArgs,
+		clipProactiveText(cmd.ToolResultText, 2000),
+		clipProactiveText(cmd.TerminalActionAfter, 80),
+		clipProactiveText(cmd.SkipReasonAfter, 120),
+		cmd.InterestingIDsAfter,
+		cmd.DiscardedIDsAfter,
+		cmd.CitedIDsAfter,
+		clipProactiveText(cmd.FinalMessageAfter, 1000),
+	)
+	if err != nil {
+		return query.ProactiveTickStepLogView{}, err
+	}
+	if err := s.repository.SaveProactiveTickStepLog(ctx, step, proactiveTickStepRetentionLimit); err != nil {
+		return query.ProactiveTickStepLogView{}, err
+	}
+	return assembler.ToProactiveTickStepLogView(step, "runtime_state_write"), nil
+}
+
+func (s *ProactiveStateService) ListTickLogs(ctx context.Context, filter query.ProactiveTickLogFilter) (query.ProactiveTickLogListView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickLogListView{}, errors.New("proactive state service requires repository")
+	}
+	items, total, err := s.repository.ListProactiveTickLogs(ctx, filter)
+	if err != nil {
+		return query.ProactiveTickLogListView{}, err
+	}
+	return assembler.ToProactiveTickLogListView(items, total, "none"), nil
+}
+
+func (s *ProactiveStateService) TickLog(ctx context.Context, tickID string) (query.ProactiveTickLogView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickLogView{}, errors.New("proactive state service requires repository")
+	}
+	tickID = clipProactiveText(tickID, 120)
+	if tickID == "" {
+		return query.ProactiveTickLogView{}, errors.New("tick_id required")
+	}
+	log, found, err := s.repository.FindProactiveTickLog(ctx, tickID)
+	if err != nil {
+		return query.ProactiveTickLogView{}, err
+	}
+	if !found {
+		log = model.ProactiveTickLog{TickID: tickID}
+	}
+	return assembler.ToProactiveTickLogView(log, found, "none"), nil
+}
+
+func (s *ProactiveStateService) TickStepLogs(ctx context.Context, tickID string) (query.ProactiveTickStepLogListView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveTickStepLogListView{}, errors.New("proactive state service requires repository")
+	}
+	tickID = clipProactiveText(tickID, 120)
+	if tickID == "" {
+		return query.ProactiveTickStepLogListView{}, errors.New("tick_id required")
+	}
+	items, err := s.repository.ListProactiveTickStepLogs(ctx, tickID)
+	if err != nil {
+		return query.ProactiveTickStepLogListView{}, err
+	}
+	return assembler.ToProactiveTickStepLogListView(items, "none"), nil
 }
 
 func (s *ProactiveStateService) RecordBGContextMain(ctx context.Context, cmd command.RecordProactiveBGContextMainCommand) (query.ProactiveTimestampView, error) {

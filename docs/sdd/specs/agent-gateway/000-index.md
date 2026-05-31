@@ -104,4 +104,7 @@ execution.
 - `042-proactive-drift-state.md`: Go-owned proactive drift skill state and
   recent-run summary, with Python retaining skill file scanning and AI/tool
   execution.
+- `043-proactive-tick-log-state.md`: Go-owned proactive tick start/finish/step
+  audit state, with Python retaining proactive behavior and SQLite dashboard
+  mirror.
 - Agent architecture boundary specs live under `../agent-architecture/`.

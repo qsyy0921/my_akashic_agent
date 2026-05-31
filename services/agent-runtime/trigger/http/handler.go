@@ -252,6 +252,11 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/drift/finish", ProactiveDriftFinishHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift/summary", ProactiveDriftSummaryHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift/skills/", ProactiveDriftSkillStateHandler(proactiveState))
+	mux.Handle("/v1/proactive/tick-logs", ProactiveTickLogsHandler(proactiveState))
+	mux.Handle("/v1/proactive/tick-logs/start", ProactiveTickLogStartHandler(proactiveState))
+	mux.Handle("/v1/proactive/tick-logs/finish", ProactiveTickLogFinishHandler(proactiveState))
+	mux.Handle("/v1/proactive/tick-steps", ProactiveTickStepLogHandler(proactiveState))
+	mux.Handle("/v1/proactive/tick-logs/", ProactiveTickLogDetailHandler(proactiveState))
 	mux.Handle("/v1/proactive/bg-context/main", ProactiveBGContextMainHandler(proactiveState))
 	mux.Handle("/v1/proactive/bg-context/main/last", ProactiveBGContextMainLastHandler(proactiveState))
 	mux.Handle("/v1/proactive/anyaction/quota", ProactiveAnyActionQuotaHandler(proactiveState))
@@ -2680,6 +2685,207 @@ func ProactiveDriftSkillStateHandler(proactiveState inport.ProactiveStateManager
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
+}
+
+func ProactiveTickLogsHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := proactiveState.ListTickLogs(r.Context(), query.ProactiveTickLogFilter{
+			Limit:          parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			SessionKey:     r.URL.Query().Get("session_key"),
+			TerminalAction: r.URL.Query().Get("terminal_action"),
+			GateExit:       r.URL.Query().Get("gate_exit"),
+			Flow:           r.URL.Query().Get("flow"),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveTickLogStartHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveTickLogStartRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		startedAt, err := parseOptionalTimestamp(request.StartedAt)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := proactiveState.RecordTickLogStart(r.Context(), command.RecordProactiveTickLogStartCommand{
+			TickID:     request.TickID,
+			SessionKey: request.SessionKey,
+			StartedAt:  startedAt,
+			GateExit:   request.GateExit,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveTickLogFinishHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveTickLogFinishRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		startedAt, err := parseOptionalTimestamp(request.StartedAt)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		finishedAt, err := parseOptionalTimestamp(request.FinishedAt)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := proactiveState.RecordTickLogFinish(r.Context(), command.RecordProactiveTickLogFinishCommand{
+			TickID:         request.TickID,
+			SessionKey:     request.SessionKey,
+			StartedAt:      startedAt,
+			FinishedAt:     finishedAt,
+			GateExit:       request.GateExit,
+			TerminalAction: request.TerminalAction,
+			SkipReason:     request.SkipReason,
+			StepsTaken:     request.StepsTaken,
+			AlertCount:     request.AlertCount,
+			ContentCount:   request.ContentCount,
+			ContextCount:   request.ContextCount,
+			InterestingIDs: request.InterestingIDs,
+			DiscardedIDs:   request.DiscardedIDs,
+			CitedIDs:       request.CitedIDs,
+			DriftEntered:   request.DriftEntered,
+			FinalMessage:   request.FinalMessage,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveTickStepLogHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.RecordProactiveTickStepLogRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		view, err := proactiveState.RecordTickStepLog(r.Context(), command.RecordProactiveTickStepLogCommand{
+			TickID:              request.TickID,
+			StepIndex:           request.StepIndex,
+			Phase:               request.Phase,
+			ToolName:            request.ToolName,
+			ToolCallID:          request.ToolCallID,
+			ToolArgs:            request.ToolArgs,
+			ToolResultText:      request.ToolResultText,
+			TerminalActionAfter: request.TerminalActionAfter,
+			SkipReasonAfter:     request.SkipReasonAfter,
+			InterestingIDsAfter: request.InterestingIDsAfter,
+			DiscardedIDsAfter:   request.DiscardedIDsAfter,
+			CitedIDsAfter:       request.CitedIDsAfter,
+			FinalMessageAfter:   request.FinalMessageAfter,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ProactiveTickLogDetailHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		tickID, steps := parseProactiveTickLogPath(r.URL.Path)
+		if tickID == "" {
+			http.Error(w, "tick_id required", http.StatusBadRequest)
+			return
+		}
+		if steps {
+			view, err := proactiveState.TickStepLogs(r.Context(), tickID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+			return
+		}
+		view, err := proactiveState.TickLog(r.Context(), tickID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !view.Found {
+			http.Error(w, "tick log not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func parseProactiveTickLogPath(path string) (string, bool) {
+	raw := strings.TrimPrefix(path, "/v1/proactive/tick-logs/")
+	if raw == "" || raw == path {
+		return "", false
+	}
+	steps := false
+	if strings.HasSuffix(raw, "/steps") {
+		steps = true
+		raw = strings.TrimSuffix(raw, "/steps")
+	}
+	if decoded, err := url.PathUnescape(raw); err == nil {
+		raw = decoded
+	}
+	return strings.TrimSpace(raw), steps
 }
 
 func ProactiveBGContextMainHandler(proactiveState inport.ProactiveStateManager) http.Handler {

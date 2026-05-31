@@ -233,6 +233,84 @@ func TestProactiveAnyActionQuotaEndpointSnapshotsAndRecords(t *testing.T) {
 	}
 }
 
+func TestProactiveTickLogEndpointsRecordAndQuery(t *testing.T) {
+	manager := appservice.NewProactiveStateService(memory.NewStore())
+	mux := http.NewServeMux()
+	httptrigger.RegisterProactiveStateRoutes(mux, manager)
+
+	start := httptest.NewRecorder()
+	mux.ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/v1/proactive/tick-logs/start", strings.NewReader(`{
+		"tick_id":"tick-1",
+		"session_key":"telegram:1",
+		"started_at":"2026-05-31T10:00:00Z"
+	}`)))
+	if start.Code != http.StatusAccepted {
+		t.Fatalf("expected start 202, got %d: %s", start.Code, start.Body.String())
+	}
+
+	step := httptest.NewRecorder()
+	mux.ServeHTTP(step, httptest.NewRequest(http.MethodPost, "/v1/proactive/tick-steps", strings.NewReader(`{
+		"tick_id":"tick-1",
+		"step_index":1,
+		"phase":"loop",
+		"tool_name":"message_push",
+		"tool_call_id":"call-1",
+		"tool_args":{"message":"hello"},
+		"tool_result_text":"{\"ok\":true}",
+		"interesting_ids_after":["feed:1"],
+		"final_message_after":"hello"
+	}`)))
+	if step.Code != http.StatusAccepted {
+		t.Fatalf("expected step 202, got %d: %s", step.Code, step.Body.String())
+	}
+
+	finish := httptest.NewRecorder()
+	mux.ServeHTTP(finish, httptest.NewRequest(http.MethodPost, "/v1/proactive/tick-logs/finish", strings.NewReader(`{
+		"tick_id":"tick-1",
+		"session_key":"telegram:1",
+		"started_at":"2026-05-31T10:00:00Z",
+		"finished_at":"2026-05-31T10:00:01Z",
+		"terminal_action":"reply",
+		"steps_taken":1,
+		"content_count":1,
+		"interesting_ids":["feed:1"],
+		"cited_ids":["feed:1"],
+		"final_message":"hello"
+	}`)))
+	if finish.Code != http.StatusAccepted {
+		t.Fatalf("expected finish 202, got %d: %s", finish.Code, finish.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	mux.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/v1/proactive/tick-logs?terminal_action=reply", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", list.Code, list.Body.String())
+	}
+	for _, expected := range []string{
+		`"total":1`,
+		`"tick_id":"tick-1"`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(list.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("list response missing %s: %s", expected, list.Body.String())
+		}
+	}
+
+	detail := httptest.NewRecorder()
+	mux.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, "/v1/proactive/tick-logs/tick-1", nil))
+	if detail.Code != http.StatusOK || !bytes.Contains(detail.Body.Bytes(), []byte(`"final_message":"hello"`)) {
+		t.Fatalf("unexpected detail response code=%d body=%s", detail.Code, detail.Body.String())
+	}
+
+	steps := httptest.NewRecorder()
+	mux.ServeHTTP(steps, httptest.NewRequest(http.MethodGet, "/v1/proactive/tick-logs/tick-1/steps", nil))
+	if steps.Code != http.StatusOK ||
+		!bytes.Contains(steps.Body.Bytes(), []byte(`"tool_name":"message_push"`)) ||
+		!bytes.Contains(steps.Body.Bytes(), []byte(`"message":"hello"`)) {
+		t.Fatalf("unexpected steps response code=%d body=%s", steps.Code, steps.Body.String())
+	}
+}
+
 func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
 		{

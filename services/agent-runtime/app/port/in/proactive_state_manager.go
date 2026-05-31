@@ -29,6 +29,13 @@ type ProactiveStateManager interface {
 	DriftSummary(ctx context.Context, limit int) (query.ProactiveDriftSummaryView, error)
 	DriftSkillState(ctx context.Context, skillName string) (query.ProactiveDriftSkillStateView, error)
 
+	RecordTickLogStart(ctx context.Context, cmd command.RecordProactiveTickLogStartCommand) (query.ProactiveTickLogView, error)
+	RecordTickLogFinish(ctx context.Context, cmd command.RecordProactiveTickLogFinishCommand) (query.ProactiveTickLogView, error)
+	RecordTickStepLog(ctx context.Context, cmd command.RecordProactiveTickStepLogCommand) (query.ProactiveTickStepLogView, error)
+	ListTickLogs(ctx context.Context, filter query.ProactiveTickLogFilter) (query.ProactiveTickLogListView, error)
+	TickLog(ctx context.Context, tickID string) (query.ProactiveTickLogView, error)
+	TickStepLogs(ctx context.Context, tickID string) (query.ProactiveTickStepLogListView, error)
+
 	RecordBGContextMain(ctx context.Context, cmd command.RecordProactiveBGContextMainCommand) (query.ProactiveTimestampView, error)
 	LastBGContextMain(ctx context.Context) (query.ProactiveTimestampView, error)
 

@@ -43,12 +43,74 @@ class AgentRuntimeProactiveStateStore:
         return AgentRuntimeAnyActionQuotaStore(self, fallback)
 
     def record_tick_log_start(self, **kwargs: Any) -> None:
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/tick-logs/start",
+                json_body={
+                    "tick_id": kwargs.get("tick_id", ""),
+                    "session_key": kwargs.get("session_key", ""),
+                    "started_at": kwargs.get("started_at", ""),
+                    "gate_exit": kwargs.get("gate_exit") or "",
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("record_tick_log_start", exc)
         self._fallback.record_tick_log_start(**kwargs)
 
     def record_tick_log_finish(self, **kwargs: Any) -> None:
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/tick-logs/finish",
+                json_body={
+                    "tick_id": kwargs.get("tick_id", ""),
+                    "session_key": kwargs.get("session_key", ""),
+                    "started_at": kwargs.get("started_at", ""),
+                    "finished_at": kwargs.get("finished_at", ""),
+                    "gate_exit": kwargs.get("gate_exit") or "",
+                    "terminal_action": kwargs.get("terminal_action") or "",
+                    "skip_reason": kwargs.get("skip_reason") or "",
+                    "steps_taken": int(kwargs.get("steps_taken") or 0),
+                    "alert_count": int(kwargs.get("alert_count") or 0),
+                    "content_count": int(kwargs.get("content_count") or 0),
+                    "context_count": int(kwargs.get("context_count") or 0),
+                    "interesting_ids": list(kwargs.get("interesting_ids") or []),
+                    "discarded_ids": list(kwargs.get("discarded_ids") or []),
+                    "cited_ids": list(kwargs.get("cited_ids") or []),
+                    "drift_entered": bool(kwargs.get("drift_entered")),
+                    "final_message": kwargs.get("final_message") or "",
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("record_tick_log_finish", exc)
         self._fallback.record_tick_log_finish(**kwargs)
 
     def record_tick_step_log(self, **kwargs: Any) -> None:
+        try:
+            self._request(
+                "POST",
+                "/v1/proactive/tick-steps",
+                json_body={
+                    "tick_id": kwargs.get("tick_id", ""),
+                    "step_index": int(kwargs.get("step_index") or 0),
+                    "phase": kwargs.get("phase", ""),
+                    "tool_name": kwargs.get("tool_name", ""),
+                    "tool_call_id": kwargs.get("tool_call_id", ""),
+                    "tool_args": dict(kwargs.get("tool_args") or {}),
+                    "tool_result_text": kwargs.get("tool_result_text") or "",
+                    "terminal_action_after": kwargs.get("terminal_action_after") or "",
+                    "skip_reason_after": kwargs.get("skip_reason_after") or "",
+                    "interesting_ids_after": list(
+                        kwargs.get("interesting_ids_after") or []
+                    ),
+                    "discarded_ids_after": list(kwargs.get("discarded_ids_after") or []),
+                    "cited_ids_after": list(kwargs.get("cited_ids_after") or []),
+                    "final_message_after": kwargs.get("final_message_after") or "",
+                },
+            )
+        except Exception as exc:
+            self._log_fallback("record_tick_step_log", exc)
         self._fallback.record_tick_step_log(**kwargs)
 
     def is_item_seen(
