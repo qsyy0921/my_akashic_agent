@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	jobtrigger "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/trigger/job"
 )
 
 func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query.RuntimeWorkerDiagnosticsView, error) {
@@ -38,7 +40,7 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 			LeaseTTLSeconds: outboxDelivery.LeaseTTLSeconds,
 			BatchSize:       outboxDelivery.BatchSize,
 			RunOnStart:      outboxDelivery.RunOnStart,
-			Attributes:      outboxDelivery.ChannelByAccount,
+			Attributes:      outboxDeliveryWorkerAttributes(outboxDelivery),
 			Notes:           []string{"leases the Go outbox state store and dispatches through Go delivery adapters"},
 		},
 	}
@@ -48,6 +50,24 @@ func runtimeWorkerDiagnosticsFromEnv(queueBackend query.QueueBackendView) (query
 		Workers: workers,
 		Notes:   []string{"read-only runtime diagnostics; use endpoint status plus logs for live failure details"},
 	}, nil
+}
+
+func outboxDeliveryWorkerAttributes(config jobtrigger.OutboxDeliveryWorkerConfig) map[string]string {
+	attributes := make(map[string]string)
+	for key, value := range config.ChannelByAccount {
+		attributes[key] = value
+	}
+	if config.AccountMinInterval > 0 {
+		attributes["account_min_interval_seconds"] = fmt.Sprintf("%d", int(config.AccountMinInterval/time.Second))
+	}
+	if config.AccountMaxDispatchesInWindow > 0 {
+		attributes["account_window_seconds"] = fmt.Sprintf("%d", int(config.AccountWindow/time.Second))
+		attributes["account_max_dispatches_in_window"] = fmt.Sprintf("%d", config.AccountMaxDispatchesInWindow)
+	}
+	if len(attributes) == 0 {
+		return nil
+	}
+	return attributes
 }
 
 func queueRuntimeWorkerViews(queueBackend query.QueueBackendView) []query.RuntimeWorkerView {

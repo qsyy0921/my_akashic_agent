@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 )
 
@@ -94,17 +95,21 @@ func (s *Store) ListOutboxDeliveries(_ context.Context, limit int) ([]model.Outb
 	return items, nil
 }
 
-func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, now time.Time) (model.OutboxDelivery, bool, error) {
+func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, filter outport.OutboxLeaseFilter) (model.OutboxDelivery, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := filter.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	for _, eventID := range s.queue {
-		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) {
+		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) && filter.Allows(delivery) {
 			return delivery, true, nil
 		}
 	}
 	for _, eventID := range s.order {
-		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) {
+		if delivery, ok := s.deliveries[eventID]; ok && delivery.CanLease(now) && filter.Allows(delivery) {
 			return delivery, true, nil
 		}
 	}

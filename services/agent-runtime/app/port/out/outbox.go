@@ -12,7 +12,20 @@ type OutboxRepository interface {
 	SaveOutboxDelivery(ctx context.Context, delivery model.OutboxDelivery) error
 	FindOutboxDelivery(ctx context.Context, eventID string) (model.OutboxDelivery, bool, error)
 	ListOutboxDeliveries(ctx context.Context, limit int) ([]model.OutboxDelivery, error)
-	FindLeaseableOutboxDelivery(ctx context.Context, now time.Time) (model.OutboxDelivery, bool, error)
+	FindLeaseableOutboxDelivery(ctx context.Context, filter OutboxLeaseFilter) (model.OutboxDelivery, bool, error)
+}
+
+type OutboxLeaseFilter struct {
+	Now                time.Time
+	BlockedAccountKeys map[string]struct{}
+}
+
+func (f OutboxLeaseFilter) Allows(delivery model.OutboxDelivery) bool {
+	if len(f.BlockedAccountKeys) == 0 {
+		return true
+	}
+	_, blocked := f.BlockedAccountKeys[delivery.Message.Channel.AccountKey()]
+	return !blocked
 }
 
 type OutboxQueue interface {

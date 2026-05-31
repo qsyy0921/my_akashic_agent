@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	store "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 )
@@ -135,7 +136,7 @@ func TestOutboxStoreFindLeaseableAndPersistsLease(t *testing.T) {
 	if err := repo.EnqueueOutboxDelivery(ctx, delivery); err != nil {
 		t.Fatalf("enqueue delivery: %v", err)
 	}
-	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, now.Add(time.Second))
+	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{Now: now.Add(time.Second)})
 	if err != nil {
 		t.Fatalf("find leaseable: %v", err)
 	}
@@ -169,12 +170,12 @@ func TestOutboxStoreFindLeaseableAndPersistsLease(t *testing.T) {
 	if stored.LeaseExpiresAt.IsZero() {
 		t.Fatalf("expected lease expiry to persist")
 	}
-	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, now.Add(30*time.Second)); err != nil {
+	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{Now: now.Add(30 * time.Second)}); err != nil {
 		t.Fatalf("find active lease: %v", err)
 	} else if ok {
 		t.Fatalf("active lease should not be leaseable")
 	}
-	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, now.Add(2*time.Minute)); err != nil {
+	if _, ok, err := reloaded.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{Now: now.Add(2 * time.Minute)}); err != nil {
 		t.Fatalf("find expired lease: %v", err)
 	} else if !ok {
 		t.Fatalf("expired lease should be leaseable")

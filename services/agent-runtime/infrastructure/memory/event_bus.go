@@ -221,17 +221,21 @@ func (s *Store) ListOutboxDeliveries(_ context.Context, limit int) ([]model.Outb
 	return items, nil
 }
 
-func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, now time.Time) (model.OutboxDelivery, bool, error) {
+func (s *Store) FindLeaseableOutboxDelivery(_ context.Context, filter outport.OutboxLeaseFilter) (model.OutboxDelivery, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := filter.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	for _, eventID := range s.outboxQueue {
-		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) {
+		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) && filter.Allows(delivery) {
 			return delivery, true, nil
 		}
 	}
 	for _, eventID := range s.outboxOrder {
-		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) {
+		if delivery, ok := s.outbox[eventID]; ok && delivery.CanLease(now) && filter.Allows(delivery) {
 			return delivery, true, nil
 		}
 	}

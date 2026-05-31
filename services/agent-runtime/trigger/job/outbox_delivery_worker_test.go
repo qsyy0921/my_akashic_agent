@@ -99,9 +99,72 @@ func TestOutboxDeliveryWorkerReturnsIdleWhenNoDelivery(t *testing.T) {
 	}
 }
 
+func TestOutboxDeliveryWorkerRateLimitSkipsBlockedAccount(t *testing.T) {
+	now := time.Date(2026, 5, 31, 9, 30, 0, 0, time.UTC)
+	timestamps := []time.Time{
+		now,
+		now.Add(time.Second),
+		now.Add(2 * time.Second),
+		now.Add(3 * time.Second),
+		now.Add(4 * time.Second),
+		now.Add(5 * time.Second),
+	}
+	nextNow := func() time.Time {
+		if len(timestamps) == 0 {
+			return now.Add(10 * time.Second)
+		}
+		current := timestamps[0]
+		timestamps = timestamps[1:]
+		return current
+	}
+	outbox := &fakeOutboxDeliveryManager{
+		lease: query.OutboxDeliveryView{
+			EventID: "outbox:rate-limited",
+			Channel: query.OutboxChannelView{
+				Kind:      "qq",
+				AccountID: "1049511700",
+			},
+		},
+		respectBlockedAccounts: true,
+	}
+	dispatcher := &fakeOutboxDeliveryDispatcher{
+		result: query.DeliveryDispatchResultView{EventID: "outbox:rate-limited", StepCount: 1},
+	}
+	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
+		AccountMinInterval: time.Minute,
+		Now:                nextNow,
+	})
+	if err != nil {
+		t.Fatalf("new worker: %v", err)
+	}
+
+	first, err := worker.ProcessOnce(context.Background())
+	if err != nil {
+		t.Fatalf("first process once: %v", err)
+	}
+	if !first.Processed || dispatcher.calls != 1 || outbox.markSucceededCalls != 1 {
+		t.Fatalf("expected first dispatch success, result=%+v dispatcher=%d outbox=%+v", first, dispatcher.calls, outbox)
+	}
+
+	second, err := worker.ProcessOnce(context.Background())
+	if err != nil {
+		t.Fatalf("second process once: %v", err)
+	}
+	if second.Processed || second.Reason != "no_delivery_or_rate_limited" {
+		t.Fatalf("expected rate-limited idle result, got %+v", second)
+	}
+	if len(second.BlockedAccountKeys) != 1 || second.BlockedAccountKeys[0] != "qq:1049511700" {
+		t.Fatalf("unexpected blocked account keys: %+v", second.BlockedAccountKeys)
+	}
+	if dispatcher.calls != 1 || outbox.markDispatchingCalls != 1 || outbox.markSucceededCalls != 1 || outbox.markFailedCalls != 0 {
+		t.Fatalf("rate-limited delivery should not dispatch or mutate state again: dispatcher=%d outbox=%+v", dispatcher.calls, outbox)
+	}
+}
+
 type fakeOutboxDeliveryManager struct {
-	lease    query.OutboxDeliveryView
-	leaseErr error
+	lease                  query.OutboxDeliveryView
+	leaseErr               error
+	respectBlockedAccounts bool
 
 	leaseNextCalls       int
 	markDispatchingCalls int
@@ -118,6 +181,9 @@ func (f *fakeOutboxDeliveryManager) LeaseNext(
 ) (query.OutboxDeliveryView, error) {
 	f.leaseNextCalls++
 	f.lastLease = cmd
+	if f.respectBlockedAccounts && outboxTestAccountBlocked(f.lease, cmd.BlockedAccountKeys) {
+		return query.OutboxDeliveryView{}, errors.New("no leaseable outbox delivery")
+	}
 	return f.lease, f.leaseErr
 }
 
@@ -175,4 +241,14 @@ func (e fakeDeliveryDispatchError) Error() string {
 
 func (e fakeDeliveryDispatchError) DeliveryErrorKind() string {
 	return e.kind
+}
+
+func outboxTestAccountBlocked(delivery query.OutboxDeliveryView, blocked []string) bool {
+	accountKey := delivery.Channel.Kind + ":" + delivery.Channel.AccountID
+	for _, item := range blocked {
+		if item == accountKey {
+			return true
+		}
+	}
+	return false
 }

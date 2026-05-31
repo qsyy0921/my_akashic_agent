@@ -59,7 +59,10 @@ func (s *OutboxService) LeaseNext(ctx context.Context, cmd command.LeaseNextOutb
 		cmd.Timestamp = time.Now().UTC()
 	}
 	ttl := time.Duration(cmd.TTLSeconds) * time.Second
-	delivery, ok, err := s.repository.FindLeaseableOutboxDelivery(ctx, cmd.Timestamp)
+	delivery, ok, err := s.repository.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{
+		Now:                cmd.Timestamp,
+		BlockedAccountKeys: outboxBlockedAccountKeySet(cmd.BlockedAccountKeys),
+	})
 	if err != nil {
 		return query.OutboxDeliveryView{}, err
 	}
@@ -76,6 +79,24 @@ func (s *OutboxService) LeaseNext(ctx context.Context, cmd command.LeaseNextOutb
 		return query.OutboxDeliveryView{}, err
 	}
 	return assembler.ToOutboxDeliveryView(delivery), nil
+}
+
+func outboxBlockedAccountKeySet(items []string) map[string]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		result[item] = struct{}{}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func (s *OutboxService) Lease(ctx context.Context, cmd command.LeaseOutboxDeliveryCommand) (query.OutboxDeliveryView, error) {

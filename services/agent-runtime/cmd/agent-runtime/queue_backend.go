@@ -135,6 +135,21 @@ func positiveIntEnv(key string, fallback int, maxValue int) (int, error) {
 	return parsed, nil
 }
 
+func nonNegativeIntEnv(key string, fallback int, maxValue int) (int, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer", key)
+	}
+	if maxValue > 0 && parsed > maxValue {
+		return 0, fmt.Errorf("%s must be <= %d", key, maxValue)
+	}
+	return parsed, nil
+}
+
 func queueMigrationPhase(provider string, mode string) string {
 	if provider == "local" {
 		return "local_only"

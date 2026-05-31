@@ -476,8 +476,9 @@ GET /v1/outbox-metrics?delivery_limit=200&event_limit=200
 
 The metrics response summarizes the bounded delivery sample by status and
 channel kind, recent lifecycle throughput by event type, current dead-letter
-totals, and recent dead-letter samples. It is read-only and does not lease
-deliveries, send platform messages, or acknowledge external queue messages.
+totals, recent dead-letter samples, and account-level pressure by
+`channel_kind:account_id`. It is read-only and does not lease deliveries, send
+platform messages, or acknowledge external queue messages.
 
 Optionally let Go own local outbox delivery dispatch from the state store:
 
@@ -488,14 +489,19 @@ $env:AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE = "1"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_ID = "agent-runtime-outbox-worker"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS = "300"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START = "true"
+$env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS = "3"
+$env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS = "60"
+$env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW = "5"
 $env:AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT = "1049511700=qq_1049511700,2365524513=qq_2365524513"
 ```
 
 The worker is disabled by default. When enabled, it leases outbox deliveries
 from Go state storage, marks them dispatching, calls Go `DeliveryAdapter`
 dispatch, and writes succeeded/failed state back through the outbox application
-service. Do not enable it together with a live NATS `external_lease` outbox
-consumer, because both are side-effecting delivery executors.
+service. Optional account throttling skips rate-limited account keys before
+leasing so blocked deliveries stay queued and other accounts can continue.
+Do not enable it together with a live NATS `external_lease` outbox consumer,
+because both are side-effecting delivery executors.
 
 Inspect Go-owned runtime worker diagnostics:
 

@@ -117,6 +117,64 @@ func TestOutboxServiceLeaseNextMarksDeliveryDispatching(t *testing.T) {
 	}
 }
 
+func TestOutboxServiceLeaseNextSkipsBlockedAccountKeys(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewOutboxService(store, store)
+	now := time.Date(2026, 5, 31, 9, 0, 0, 0, time.UTC)
+
+	blockedMessage := sampleOutboxMessage(now)
+	blockedMessage.EventID = "outbox-blocked-account"
+	blockedMessage.Channel.AccountID = "1049511700"
+	blockedMessage.Channel.ConversationID = "2365524513"
+	blocked, err := model.NewOutboxDelivery(blockedMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new blocked delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, blocked); err != nil {
+		t.Fatalf("save blocked delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, blocked); err != nil {
+		t.Fatalf("enqueue blocked delivery: %v", err)
+	}
+
+	allowedMessage := sampleOutboxMessage(now.Add(time.Second))
+	allowedMessage.EventID = "outbox-allowed-account"
+	allowedMessage.Channel.AccountID = "2365524513"
+	allowedMessage.Channel.ConversationID = "1049511700"
+	allowed, err := model.NewOutboxDelivery(allowedMessage, 2, allowedMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new allowed delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, allowed); err != nil {
+		t.Fatalf("save allowed delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, allowed); err != nil {
+		t.Fatalf("enqueue allowed delivery: %v", err)
+	}
+
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:           "qq-dispatcher",
+		TTLSeconds:         60,
+		Timestamp:          now.Add(2 * time.Second),
+		BlockedAccountKeys: []string{"qq:1049511700"},
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.EventID != "outbox-allowed-account" || leased.Channel.AccountID != "2365524513" {
+		t.Fatalf("expected allowed account delivery, got %+v", leased)
+	}
+
+	stillQueued, err := service.Get(ctx, "outbox-blocked-account")
+	if err != nil {
+		t.Fatalf("get blocked delivery: %v", err)
+	}
+	if stillQueued.Status != string(model.DeliveryQueued) || stillQueued.Attempts != 0 {
+		t.Fatalf("blocked account delivery should remain queued without attempts, got %+v", stillQueued)
+	}
+}
+
 func TestOutboxServiceDeadLettersNonRetryableFailureKind(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

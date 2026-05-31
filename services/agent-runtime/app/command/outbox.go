@@ -25,9 +25,10 @@ type RetryOutboxCommand struct {
 }
 
 type LeaseNextOutboxCommand struct {
-	WorkerID   string
-	TTLSeconds int
-	Timestamp  time.Time
+	WorkerID           string
+	TTLSeconds         int
+	Timestamp          time.Time
+	BlockedAccountKeys []string
 }
 
 type LeaseOutboxDeliveryCommand struct {

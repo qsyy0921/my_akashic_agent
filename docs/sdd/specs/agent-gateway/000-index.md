@@ -124,4 +124,6 @@ execution.
 - `049-outbox-account-pressure-diagnostics.md`: Go-owned outbox account pressure
   diagnostics for queued/dispatching delivery backlog before actual rate-limit
   enforcement.
+- `050-outbox-account-rate-limit.md`: Go local outbox delivery worker
+  account-level send throttling with lease-time blocked-account skip.
 - Agent architecture boundary specs live under `../agent-architecture/`.

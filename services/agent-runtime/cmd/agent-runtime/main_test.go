@@ -729,6 +729,9 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "runtime-outbox-a")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS", "120")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", "false")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", "3")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", "60")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", "5")
 	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700,2365524513=qq_2365524513")
 
 	config, enabled, err := outboxDeliveryWorkerConfigFromEnv()
@@ -742,6 +745,9 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 		config.BatchSize != 3 ||
 		config.WorkerID != "runtime-outbox-a" ||
 		config.LeaseTTLSeconds != 120 ||
+		config.AccountMinInterval != 3*time.Second ||
+		config.AccountWindow != 60*time.Second ||
+		config.AccountMaxDispatchesInWindow != 5 ||
 		config.RunOnStart {
 		t.Fatalf("unexpected outbox worker config: %+v", config)
 	}
@@ -761,6 +767,9 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE", "3")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "runtime-outbox-a")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS", "120")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", "3")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", "60")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", "5")
 	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700")
 
 	view, err := runtimeWorkerDiagnosticsFromEnv(query.QueueBackendView{
@@ -788,6 +797,11 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	}
 	if outbox.Attributes["1049511700"] != "qq_1049511700" {
 		t.Fatalf("unexpected outbox channel attributes: %#v", outbox.Attributes)
+	}
+	if outbox.Attributes["account_min_interval_seconds"] != "3" ||
+		outbox.Attributes["account_window_seconds"] != "60" ||
+		outbox.Attributes["account_max_dispatches_in_window"] != "5" {
+		t.Fatalf("unexpected outbox rate-limit attributes: %#v", outbox.Attributes)
 	}
 	compare := findRuntimeWorker(t, view.Workers, "nats_dual_read_compare")
 	if !compare.Enabled || !compare.Running || compare.ConsumerConcurrency != 4 || compare.MaxInFlight != 16 {

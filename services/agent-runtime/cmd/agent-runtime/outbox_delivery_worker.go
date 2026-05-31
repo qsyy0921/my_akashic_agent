@@ -64,12 +64,27 @@ func outboxDeliveryWorkerConfigFromEnv() (jobtrigger.OutboxDeliveryWorkerConfig,
 	if err != nil {
 		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
 	}
+	accountMinIntervalSeconds, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", 0, 86400)
+	if err != nil {
+		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
+	}
+	accountWindowSeconds, err := positiveIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", 60, 86400)
+	if err != nil {
+		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
+	}
+	accountMaxPerWindow, err := nonNegativeIntEnv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", 0, 100000)
+	if err != nil {
+		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
+	}
 	return jobtrigger.OutboxDeliveryWorkerConfig{
-		Interval:         time.Duration(intervalSeconds) * time.Second,
-		BatchSize:        batchSize,
-		WorkerID:         envOrDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "agent-runtime-outbox-worker"),
-		LeaseTTLSeconds:  leaseTTLSeconds,
-		RunOnStart:       boolEnvDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", true),
-		ChannelByAccount: keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+		Interval:                     time.Duration(intervalSeconds) * time.Second,
+		BatchSize:                    batchSize,
+		WorkerID:                     envOrDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "agent-runtime-outbox-worker"),
+		LeaseTTLSeconds:              leaseTTLSeconds,
+		RunOnStart:                   boolEnvDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", true),
+		ChannelByAccount:             keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+		AccountMinInterval:           time.Duration(accountMinIntervalSeconds) * time.Second,
+		AccountWindow:                time.Duration(accountWindowSeconds) * time.Second,
+		AccountMaxDispatchesInWindow: accountMaxPerWindow,
 	}, true, nil
 }
