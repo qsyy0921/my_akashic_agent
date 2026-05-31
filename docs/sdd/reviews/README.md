@@ -159,3 +159,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-110-runtime-overview-queue-provider-capability.md`
 - `2026-05-31-phase8-111-external-lease-local-worker-conflict-gate.md`
 - `2026-05-31-phase8-112-queue-execution-owner-diagnostics.md`
+- `2026-05-31-phase8-113-agent-job-pressure-diagnostics.md`

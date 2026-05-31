@@ -137,4 +137,7 @@ execution.
   gate blocks when the local outbox delivery worker is still enabled.
 - `055-queue-execution-owner-diagnostics.md`: Queue backend and runtime
   overview expose current outbox and agent_job execution owners.
+- `056-agent-job-pressure-diagnostics.md`: Go-owned AgentJob backlog and
+  pressure diagnostics for pending/active job-type buildup, especially
+  knowledge and RAG workers.
 - Agent architecture boundary specs live under `../agent-architecture/`.

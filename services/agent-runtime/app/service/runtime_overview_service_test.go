@@ -94,6 +94,21 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				CurrentTotal: 1,
 				ByType:       map[string]int{"rag_eval": 1},
 			},
+			Pressure: query.AgentJobPressureMetricsView{
+				JobTypes:                2,
+				HighPressureJobTypes:    1,
+				MaxPending:              11,
+				MaxActive:               2,
+				OldestPendingAgeSeconds: 1800,
+				ByType: []query.AgentJobTypePressureView{{
+					JobType:                 "group_memory_extract",
+					Pending:                 11,
+					Active:                  0,
+					OldestPendingAgeSeconds: 1800,
+					HighPressure:            true,
+					PressureReason:          "pending>=10",
+				}},
+			},
 		}},
 		OutboxMetrics: staticRuntimeOutboxMetrics{view: query.OutboxMetricsView{
 			SampledDeliveries: 2,
@@ -268,6 +283,13 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["inbound_dedupe_records"] != 2 || view.Summary["inbound_dedupe_duplicate_seen_total"] != 1 {
 		t.Fatalf("unexpected inbound dedupe summary: %#v", view.Summary)
 	}
+	if view.Summary["agent_job_pressure_job_types"] != 2 ||
+		view.Summary["agent_job_pressure_high_job_types"] != 1 ||
+		view.Summary["agent_job_pressure_max_pending"] != 11 ||
+		view.Summary["agent_job_pressure_max_active"] != 2 ||
+		view.Summary["agent_job_pressure_oldest_pending_age_seconds"] != 1800 {
+		t.Fatalf("unexpected agent job pressure summary: %#v", view.Summary)
+	}
 	if view.Summary["outbox_pressure_accounts"] != 2 ||
 		view.Summary["outbox_pressure_high_accounts"] != 1 ||
 		view.Summary["outbox_pressure_max_active"] != 12 ||
@@ -288,6 +310,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_metrics", "danger")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_pressure", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_pressure", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
 }

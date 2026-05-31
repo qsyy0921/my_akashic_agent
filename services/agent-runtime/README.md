@@ -447,9 +447,13 @@ GET /v1/job-metrics?job_limit=200&event_limit=200
 ```
 
 The metrics response summarizes the bounded job sample by status and type,
-recent lifecycle throughput by event type, current dead-letter totals, and
-recent dead-letter samples. It is read-only and does not lease jobs, execute
-Python workers, or acknowledge external queue messages.
+recent lifecycle throughput by event type, current dead-letter totals, recent
+dead-letter samples, and job-type pressure for pending / leased / running
+backlog. Pressure is read-only: Go reports `pending`, `active`,
+`oldest_pending_age_seconds`, and high-pressure reasons by `job_type`, but does
+not auto-scale Python workers, reject enqueue, or change retry/lease behavior.
+It is read-only and does not lease jobs, execute Python workers, or acknowledge
+external queue messages.
 
 Persist outbox delivery lifecycle events as a JSONL stream:
 
@@ -793,6 +797,9 @@ This read-only endpoint combines delivery adapter diagnostics, queue backend
 state, runtime config diagnostics, runtime worker diagnostics, send ledger
 metrics, inbox metrics, agent job metrics, outbox metrics, and knowledge worker
 diagnostics into the same summary/card shape consumed by the Python dashboard.
+`Agent Job Pressure` highlights job-type backlog pressure separately from
+dead-letter and event throughput so knowledge/RAG buildup can be seen without
+inspecting multiple endpoints manually.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

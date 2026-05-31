@@ -1897,6 +1897,7 @@ func TestAgentJobMetricsEndpointReturnsLifecycleSummary(t *testing.T) {
 		`"succeeded":1`,
 		`"failed":1`,
 		`"current_total":1`,
+		`"pressure":{"job_types":2`,
 		`"job_id":"job-metrics-http-dead"`,
 	} {
 		if !strings.Contains(body, expected) {

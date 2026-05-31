@@ -713,6 +713,91 @@ func TestAgentJobMetricsServiceSummarizesThroughputAndDeadLetters(t *testing.T) 
 	}
 }
 
+func TestAgentJobMetricsServiceSummarizesPressureByJobType(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	jobs := appservice.NewAgentJobService(store)
+	metrics := appservice.NewAgentJobMetricsService(store, nil)
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+
+	for index := 0; index < 10; index++ {
+		cmd := sampleKnowledgeJobCommand(
+			"group_memory_extract:qq:27234224:"+string(rune('a'+index)),
+			"group_memory_extract",
+			"27234224",
+			map[string]string{"group_id": "27234224"},
+			now.Add(-20*time.Minute).Add(time.Duration(index)*time.Second),
+		)
+		if _, err := jobs.Create(ctx, cmd); err != nil {
+			t.Fatalf("create group memory pending job %d: %v", index, err)
+		}
+	}
+
+	for index := 0; index < 5; index++ {
+		cmd := sampleKnowledgeJobCommand(
+			"rag_ingest:qq:3219982:ds1:"+string(rune('a'+index)),
+			"rag_ingest",
+			"3219982",
+			map[string]string{"group_id": "3219982", "dataset_id": "ds1"},
+			now.Add(-5*time.Minute).Add(time.Duration(index)*time.Second),
+		)
+		created, err := jobs.Create(ctx, cmd)
+		if err != nil {
+			t.Fatalf("create rag ingest job %d: %v", index, err)
+		}
+		leased, err := jobs.Lease(ctx, command.AgentJobLeaseCommand{
+			JobID:      created.JobID,
+			WorkerID:   "knowledge-worker",
+			LeaseToken: created.JobID + "-lease",
+			TTLSeconds: 300,
+			Timestamp:  now.Add(time.Duration(index) * time.Second),
+		})
+		if err != nil {
+			t.Fatalf("lease rag ingest job %d: %v", index, err)
+		}
+		if index < 2 {
+			if _, err := jobs.MarkRunning(ctx, command.MarkAgentJobRunningCommand{
+				JobID:      leased.JobID,
+				LeaseToken: leased.LeaseToken,
+				Timestamp:  now.Add(time.Duration(index)*time.Second + time.Second),
+			}); err != nil {
+				t.Fatalf("run rag ingest job %d: %v", index, err)
+			}
+		}
+	}
+
+	view, err := metrics.Get(ctx, query.AgentJobMetricsFilter{
+		JobLimit: 20,
+		Now:      now,
+	})
+	if err != nil {
+		t.Fatalf("get metrics: %v", err)
+	}
+	if view.Pressure.JobTypes != 2 || view.Pressure.HighPressureJobTypes != 2 {
+		t.Fatalf("unexpected pressure summary: %+v", view.Pressure)
+	}
+	if view.Pressure.MaxPending != 10 || view.Pressure.MaxActive != 5 {
+		t.Fatalf("unexpected pressure max values: %+v", view.Pressure)
+	}
+	if view.Pressure.OldestPendingAgeSeconds < 20*60 {
+		t.Fatalf("expected oldest pending age >= 20m, got %+v", view.Pressure)
+	}
+	if len(view.Pressure.ByType) != 2 {
+		t.Fatalf("expected two pressure items, got %+v", view.Pressure.ByType)
+	}
+	first := view.Pressure.ByType[0]
+	if first.JobType != "group_memory_extract" || first.Pending != 10 || first.Active != 0 || !first.HighPressure || first.PressureReason != "pending>=10" {
+		t.Fatalf("unexpected first pressure item: %+v", first)
+	}
+	second := view.Pressure.ByType[1]
+	if second.JobType != "rag_ingest" || second.Pending != 0 || second.Leased != 3 || second.Running != 2 || second.Active != 5 || !second.HighPressure || second.PressureReason != "active>=5" {
+		t.Fatalf("unexpected second pressure item: %+v", second)
+	}
+	if len(view.Notes) != 1 || view.Notes[0] != "agent job event stream unavailable" {
+		t.Fatalf("unexpected notes: %+v", view.Notes)
+	}
+}
+
 func sampleCreateAgentJobCommand(timestamp time.Time) command.CreateAgentJobCommand {
 	return command.CreateAgentJobCommand{
 		JobID:   "job-svc-1",
