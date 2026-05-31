@@ -357,6 +357,52 @@ func TestProactiveStateServiceRecordsTickLogAndSteps(t *testing.T) {
 	}
 }
 
+func TestProactiveStateServiceListsTickLogsForDashboardFilters(t *testing.T) {
+	ctx := context.Background()
+	svc := service.NewProactiveStateService(memory.NewStore())
+	base := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	for idx, tickID := range []string{"tick-1", "tick-2", "tick-3"} {
+		if _, err := svc.RecordTickLogFinish(ctx, command.RecordProactiveTickLogFinishCommand{
+			TickID:         tickID,
+			SessionKey:     "telegram:1",
+			StartedAt:      base.Add(time.Duration(idx) * time.Minute),
+			FinishedAt:     base.Add(time.Duration(idx)*time.Minute + time.Second),
+			TerminalAction: "reply",
+			StepsTaken:     idx,
+			DriftEntered:   tickID == "tick-3",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, err := svc.ListTickLogs(ctx, query.ProactiveTickLogFilter{
+		Limit:       1,
+		Offset:      1,
+		SessionKey:  "telegram:1",
+		StartedFrom: base.Add(time.Minute),
+		StartedTo:   base.Add(2 * time.Minute),
+		SortBy:      "started_at",
+		SortOrder:   "asc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.Total != 2 || len(list.Items) != 1 || list.Items[0].TickID != "tick-3" {
+		t.Fatalf("unexpected paged tick logs: %+v", list)
+	}
+
+	drift, err := svc.ListTickLogs(ctx, query.ProactiveTickLogFilter{
+		Limit: 10,
+		Flow:  "drift",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drift.Total != 1 || drift.Items[0].TickID != "tick-3" {
+		t.Fatalf("unexpected drift tick logs: %+v", drift)
+	}
+}
+
 func TestProactiveStateServiceAnyActionQuotaRolloverAndRecord(t *testing.T) {
 	ctx := context.Background()
 	svc := service.NewProactiveStateService(memory.NewStore())

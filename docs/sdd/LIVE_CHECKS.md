@@ -24,6 +24,7 @@
 - [ ] 观察 background context：主 topic 触发后确认 `global_marks` / `bg_context_last_main_at` 出现在 Go proactive state，SQLite fallback 不让节流回退。
 - [ ] 观察 drift state：启用 drift 后完成一次 `finish_drift`，确认 Go proactive state 中出现 `drift_skills`、`drift_recent_runs` 和可选 `drift_note`，workspace JSON mirror 仍写入。
 - [ ] 观察 tick log：完成一次 proactive tick 后确认 Go proactive state 中出现 `tick_logs` 和可选 `tick_steps`，SQLite `tick_log` / `tick_step_log` mirror 仍写入。
+- [ ] 验证 dashboard fallback：临时清空或隔离 SQLite `tick_log` mirror 后，`/api/dashboard/proactive/tick_logs` 能从 Go runtime 返回 tick list/detail/steps；runtime 不可用时仍回到 SQLite/404。
 
 ## Scheduler
 

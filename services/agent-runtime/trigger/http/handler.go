@@ -2697,12 +2697,27 @@ func ProactiveTickLogsHandler(proactiveState inport.ProactiveStateManager) http.
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		startedFrom, err := parseOptionalTimestamp(r.URL.Query().Get("started_from"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		startedTo, err := parseOptionalTimestamp(r.URL.Query().Get("started_to"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		view, err := proactiveState.ListTickLogs(r.Context(), query.ProactiveTickLogFilter{
 			Limit:          parsePositiveInt(r.URL.Query().Get("limit"), 50, 200),
+			Offset:         parseNonNegativeInt(r.URL.Query().Get("offset"), 0),
 			SessionKey:     r.URL.Query().Get("session_key"),
 			TerminalAction: r.URL.Query().Get("terminal_action"),
 			GateExit:       r.URL.Query().Get("gate_exit"),
 			Flow:           r.URL.Query().Get("flow"),
+			StartedFrom:    startedFrom,
+			StartedTo:      startedTo,
+			SortBy:         r.URL.Query().Get("sort_by"),
+			SortOrder:      r.URL.Query().Get("sort_order"),
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

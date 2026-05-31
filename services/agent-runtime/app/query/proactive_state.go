@@ -1,5 +1,7 @@
 package query
 
+import "time"
+
 type ProactiveDeliveryFilter struct {
 	Limit       int
 	SessionKey  string
@@ -98,10 +100,15 @@ type ProactiveDriftFinishView struct {
 
 type ProactiveTickLogFilter struct {
 	Limit          int
+	Offset         int
 	SessionKey     string
 	TerminalAction string
 	GateExit       string
 	Flow           string
+	StartedFrom    time.Time
+	StartedTo      time.Time
+	SortBy         string
+	SortOrder      string
 }
 
 type ProactiveTickLogView struct {

@@ -1035,6 +1035,104 @@ def test_proactive_dashboard_endpoints(tmp_path) -> None:
         assert tick_steps_resp.json()["items"][1]["terminal_action_after"] == "reply"
 
 
+def test_proactive_dashboard_tick_logs_fall_back_to_agent_runtime(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _seed_workspace(tmp_path)
+    calls: list[str] = []
+
+    runtime_tick = {
+        "tick_id": "runtime-tick",
+        "session_key": "runtime:room",
+        "started_at": "2026-05-31T10:00:00Z",
+        "finished_at": "2026-05-31T10:00:02Z",
+        "terminal_action": "reply",
+        "steps_taken": 2,
+        "alert_count": 1,
+        "content_count": 1,
+        "context_count": 0,
+        "interesting_ids": ["runtime:feed:1"],
+        "discarded_ids": [],
+        "cited_ids": ["runtime:feed:1"],
+        "drift_entered": False,
+        "final_message": "runtime hello",
+        "found": True,
+    }
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        calls.append(parsed.path)
+        assert timeout <= 0.5
+        if parsed.path == "/v1/proactive/tick-logs":
+            query = parse_qs(parsed.query)
+            assert query["session_key"] == ["runtime:room"]
+            assert query["limit"] == ["25"]
+            assert query["offset"] == ["0"]
+            assert query["sort_by"] == ["started_at"]
+            assert query["sort_order"] == ["desc"]
+            return _fake_urlopen_response(
+                {"code": "OK", "data": {"items": [runtime_tick], "total": 1}}
+            )
+        if parsed.path == "/v1/proactive/tick-logs/runtime-tick":
+            return _fake_urlopen_response({"code": "OK", "data": runtime_tick})
+        if parsed.path == "/v1/proactive/tick-logs/runtime-tick/steps":
+            return _fake_urlopen_response(
+                {
+                    "code": "OK",
+                    "data": {
+                        "items": [
+                            {
+                                "tick_id": "runtime-tick",
+                                "step_index": 1,
+                                "phase": "loop",
+                                "tool_name": "message_push",
+                                "tool_call_id": "call-runtime",
+                                "tool_args": {"message": "runtime hello"},
+                                "tool_result_text": '{"ok":true}',
+                                "interesting_ids_after": ["runtime:feed:1"],
+                                "discarded_ids_after": [],
+                                "cited_ids_after": ["runtime:feed:1"],
+                                "terminal_action_after": "reply",
+                                "final_message_after": "runtime hello",
+                            }
+                        ],
+                        "total": 1,
+                    },
+                }
+            )
+        raise AssertionError(f"unexpected runtime path: {parsed.path}")
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        list_resp = client.get(
+            "/api/dashboard/proactive/tick_logs",
+            params={"session_key": "runtime:room", "page_size": 25},
+        )
+        detail_resp = client.get(
+            "/api/dashboard/proactive/tick_logs/runtime-tick",
+        )
+        steps_resp = client.get(
+            "/api/dashboard/proactive/tick_logs/runtime-tick/steps",
+        )
+
+    assert list_resp.status_code == 200
+    assert list_resp.json()["total"] == 1
+    assert list_resp.json()["items"][0]["tick_id"] == "runtime-tick"
+    assert detail_resp.status_code == 200
+    assert detail_resp.json()["final_message"] == "runtime hello"
+    assert steps_resp.status_code == 200
+    assert steps_resp.json()["items"][0]["tool_args"]["message"] == "runtime hello"
+    assert calls == [
+        "/v1/proactive/tick-logs",
+        "/v1/proactive/tick-logs/runtime-tick",
+        "/v1/proactive/tick-logs/runtime-tick",
+        "/v1/proactive/tick-logs/runtime-tick/steps",
+    ]
+
+
 def test_status_commands_kvcache_dashboard_uses_workspace_observe(tmp_path) -> None:
     _seed_workspace(tmp_path)
     observe_dir = tmp_path / "observe"

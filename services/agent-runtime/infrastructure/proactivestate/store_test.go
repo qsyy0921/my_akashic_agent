@@ -245,3 +245,65 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 		t.Fatalf("expected seen item cleanup, ok=%v err=%v", ok, err)
 	}
 }
+
+func TestStoreListsProactiveTickLogsWithDashboardFilters(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "proactive-state.json")
+	store, err := proactivestate.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
+	for idx, tickID := range []string{"tick-1", "tick-2", "tick-3"} {
+		log, err := model.NewProactiveTickLogFinish(
+			tickID,
+			"telegram:1",
+			base.Add(time.Duration(idx)*time.Minute),
+			base.Add(time.Duration(idx)*time.Minute+time.Second),
+			"",
+			"reply",
+			"",
+			idx,
+			0,
+			0,
+			0,
+			nil,
+			nil,
+			nil,
+			tickID == "tick-3",
+			"",
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SaveProactiveTickLogFinish(ctx, log, 10); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, total, err := store.ListProactiveTickLogs(ctx, query.ProactiveTickLogFilter{
+		Limit:       1,
+		Offset:      1,
+		StartedFrom: base.Add(time.Minute),
+		StartedTo:   base.Add(2 * time.Minute),
+		SortBy:      "started_at",
+		SortOrder:   "asc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(items) != 1 || items[0].TickID != "tick-3" {
+		t.Fatalf("unexpected paged tick logs: total=%d items=%+v", total, items)
+	}
+
+	drift, driftTotal, err := store.ListProactiveTickLogs(ctx, query.ProactiveTickLogFilter{
+		Limit: 10,
+		Flow:  "drift",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if driftTotal != 1 || len(drift) != 1 || drift[0].TickID != "tick-3" {
+		t.Fatalf("unexpected drift tick logs: total=%d items=%+v", driftTotal, drift)
+	}
+}

@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 _DASHBOARD_ACCESS_PREFIXES = ("/api/dashboard", "/assets", "/plugins/")
 _DEFAULT_AGENT_RUNTIME_BASE_URL = "http://127.0.0.1:8780"
 _AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS = 8.0
+_AGENT_RUNTIME_DASHBOARD_READ_TIMEOUT_SECONDS = 0.5
 
 
 def _is_plugin_disabled(plugin_dir: Path) -> bool:
@@ -338,6 +339,182 @@ def _first_text(*values: object) -> str:
         if text:
             return text
     return ""
+
+
+class ProactiveRuntimeTickLogReader:
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        request_timeout_seconds: float = _AGENT_RUNTIME_DASHBOARD_READ_TIMEOUT_SECONDS,
+    ) -> None:
+        self.base_url = (base_url or _agent_runtime_base_url()).strip().rstrip("/")
+        self.request_timeout_seconds = max(0.05, float(request_timeout_seconds))
+
+    def list_tick_logs(
+        self,
+        *,
+        session_key: str = "",
+        terminal_action: str = "",
+        gate_exit: str = "",
+        flow: str = "",
+        started_from: str = "",
+        started_to: str = "",
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: str = "started_at",
+        sort_order: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int] | None:
+        safe_page = max(1, page)
+        safe_page_size = max(1, min(page_size, 200))
+        params: dict[str, str] = {
+            "limit": str(safe_page_size),
+            "offset": str((safe_page - 1) * safe_page_size),
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+        }
+        for key, value in {
+            "session_key": session_key,
+            "terminal_action": terminal_action,
+            "gate_exit": gate_exit,
+            "flow": flow,
+            "started_from": started_from,
+            "started_to": started_to,
+        }.items():
+            if str(value or "").strip():
+                params[key] = str(value).strip()
+        data = self._get_json("/v1/proactive/tick-logs", params)
+        if not isinstance(data, Mapping):
+            return None
+        raw_items = data.get("items")
+        if not isinstance(raw_items, list):
+            return None
+        items = [
+            self._normalize_tick_log(item)
+            for item in raw_items
+            if isinstance(item, Mapping)
+        ]
+        return items, self._as_int(data.get("total"), len(items))
+
+    def get_tick_log(self, tick_id: str) -> dict[str, Any] | None:
+        tick_id = str(tick_id or "").strip()
+        if not tick_id:
+            return None
+        encoded = urllib.parse.quote(tick_id, safe="")
+        data = self._get_json(f"/v1/proactive/tick-logs/{encoded}")
+        if not isinstance(data, Mapping):
+            return None
+        if data.get("found") is False:
+            return None
+        return self._normalize_tick_log(data)
+
+    def list_tick_steps(self, tick_id: str) -> list[dict[str, Any]] | None:
+        tick_id = str(tick_id or "").strip()
+        if not tick_id:
+            return None
+        encoded = urllib.parse.quote(tick_id, safe="")
+        data = self._get_json(f"/v1/proactive/tick-logs/{encoded}/steps")
+        if not isinstance(data, Mapping):
+            return None
+        raw_items = data.get("items")
+        if not isinstance(raw_items, list):
+            return None
+        return [
+            self._normalize_tick_step(item)
+            for item in raw_items
+            if isinstance(item, Mapping)
+        ]
+
+    def _get_json(
+        self,
+        path: str,
+        params: Mapping[str, str] | None = None,
+    ) -> Any | None:
+        if not self.base_url:
+            return None
+        query = f"?{urllib.parse.urlencode(params)}" if params else ""
+        url = f"{self.base_url}{path}{query}"
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=self.request_timeout_seconds,
+            ) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            OSError,
+            TimeoutError,
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            json.JSONDecodeError,
+        ) as exc:
+            logger.debug("agent-runtime proactive tick read failed: %s", exc)
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        data = payload.get("data") if "data" in payload else payload
+        return data
+
+    @classmethod
+    def _normalize_tick_log(cls, item: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "tick_id": _first_text(item.get("tick_id")),
+            "session_key": _first_text(item.get("session_key")),
+            "started_at": _first_text(item.get("started_at")),
+            "finished_at": _first_text(item.get("finished_at")),
+            "gate_exit": _first_text(item.get("gate_exit")),
+            "terminal_action": _first_text(item.get("terminal_action")),
+            "skip_reason": _first_text(item.get("skip_reason")),
+            "steps_taken": cls._as_int(item.get("steps_taken"), 0),
+            "alert_count": cls._as_int(item.get("alert_count"), 0),
+            "content_count": cls._as_int(item.get("content_count"), 0),
+            "context_count": cls._as_int(item.get("context_count"), 0),
+            "interesting_ids": cls._as_text_list(item.get("interesting_ids")),
+            "discarded_ids": cls._as_text_list(item.get("discarded_ids")),
+            "cited_ids": cls._as_text_list(item.get("cited_ids")),
+            "drift_entered": cls._as_bool(item.get("drift_entered")),
+            "final_message": _first_text(item.get("final_message")),
+        }
+
+    @classmethod
+    def _normalize_tick_step(cls, item: Mapping[str, Any]) -> dict[str, Any]:
+        tool_args = item.get("tool_args")
+        return {
+            "step_index": cls._as_int(item.get("step_index"), 0),
+            "phase": _first_text(item.get("phase")),
+            "tool_name": _first_text(item.get("tool_name")),
+            "tool_call_id": _first_text(item.get("tool_call_id")),
+            "tool_args": dict(tool_args) if isinstance(tool_args, Mapping) else {},
+            "tool_result_text": _first_text(item.get("tool_result_text")),
+            "terminal_action_after": _first_text(item.get("terminal_action_after")),
+            "skip_reason_after": _first_text(item.get("skip_reason_after")),
+            "interesting_ids_after": cls._as_text_list(
+                item.get("interesting_ids_after")
+            ),
+            "discarded_ids_after": cls._as_text_list(item.get("discarded_ids_after")),
+            "cited_ids_after": cls._as_text_list(item.get("cited_ids_after")),
+            "final_message_after": _first_text(item.get("final_message_after")),
+        }
+
+    @staticmethod
+    def _as_text_list(value: Any) -> list[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return []
+
+    @staticmethod
+    def _as_int(value: Any, fallback: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return fallback
+
+    @staticmethod
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+        return bool(value)
 
 
 class SessionUpdatePayload(BaseModel):
@@ -1005,6 +1182,7 @@ def create_dashboard_app(
     workspace.mkdir(parents=True, exist_ok=True)
     store = SessionStore(workspace / "sessions.db")
     proactive_reader: ProactiveDashboardReader | None = None
+    proactive_runtime_tick_reader: ProactiveRuntimeTickLogReader | None = None
     optimizer_task: asyncio.Task[None] | None = None
     optimizer_last_status = "idle"
     optimizer_last_error: str | None = None
@@ -1019,6 +1197,12 @@ def create_dashboard_app(
             ProactiveStateStore(workspace / "proactive.db").close()
             proactive_reader = ProactiveDashboardReader(workspace / "proactive.db")
         return proactive_reader
+
+    def get_proactive_runtime_tick_reader() -> ProactiveRuntimeTickLogReader:
+        nonlocal proactive_runtime_tick_reader
+        if proactive_runtime_tick_reader is None:
+            proactive_runtime_tick_reader = ProactiveRuntimeTickLogReader()
+        return proactive_runtime_tick_reader
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -1668,6 +1852,21 @@ def create_dashboard_app(
             sort_by=sort_by,
             sort_order=sort_order,
         )
+        if total == 0:
+            runtime_result = get_proactive_runtime_tick_reader().list_tick_logs(
+                session_key=session_key,
+                terminal_action=terminal_action,
+                gate_exit=gate_exit,
+                flow=flow,
+                started_from=started_from,
+                started_to=started_to,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            )
+            if runtime_result is not None:
+                items, total = runtime_result
         return {
             "items": items,
             "total": total,
@@ -1679,15 +1878,25 @@ def create_dashboard_app(
     def get_proactive_tick_log(tick_id: str) -> dict[str, Any]:
         item = get_proactive_reader().get_tick_log(tick_id)
         if item is None:
+            item = get_proactive_runtime_tick_reader().get_tick_log(tick_id)
+        if item is None:
             raise HTTPException(status_code=404, detail="tick 不存在")
         return item
 
     @app.get("/api/dashboard/proactive/tick_logs/{tick_id}/steps")
     def list_proactive_tick_steps(tick_id: str) -> dict[str, Any]:
         item = get_proactive_reader().get_tick_log(tick_id)
+        use_runtime_item = False
+        if item is None:
+            item = get_proactive_runtime_tick_reader().get_tick_log(tick_id)
+            use_runtime_item = item is not None
         if item is None:
             raise HTTPException(status_code=404, detail="tick 不存在")
-        steps = get_proactive_reader().list_tick_steps(tick_id)
+        steps = [] if use_runtime_item else get_proactive_reader().list_tick_steps(tick_id)
+        if not steps:
+            runtime_steps = get_proactive_runtime_tick_reader().list_tick_steps(tick_id)
+            if runtime_steps is not None:
+                steps = runtime_steps
         return {
             "items": steps,
             "total": len(steps),

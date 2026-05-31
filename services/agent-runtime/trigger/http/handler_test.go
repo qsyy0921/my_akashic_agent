@@ -281,19 +281,42 @@ func TestProactiveTickLogEndpointsRecordAndQuery(t *testing.T) {
 		t.Fatalf("expected finish 202, got %d: %s", finish.Code, finish.Body.String())
 	}
 
+	finishSecond := httptest.NewRecorder()
+	mux.ServeHTTP(finishSecond, httptest.NewRequest(http.MethodPost, "/v1/proactive/tick-logs/finish", strings.NewReader(`{
+		"tick_id":"tick-2",
+		"session_key":"telegram:1",
+		"started_at":"2026-05-31T10:01:00Z",
+		"finished_at":"2026-05-31T10:01:01Z",
+		"terminal_action":"reply",
+		"steps_taken":2,
+		"content_count":2
+	}`)))
+	if finishSecond.Code != http.StatusAccepted {
+		t.Fatalf("expected second finish 202, got %d: %s", finishSecond.Code, finishSecond.Body.String())
+	}
+
 	list := httptest.NewRecorder()
 	mux.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/v1/proactive/tick-logs?terminal_action=reply", nil))
 	if list.Code != http.StatusOK {
 		t.Fatalf("expected list 200, got %d: %s", list.Code, list.Body.String())
 	}
 	for _, expected := range []string{
-		`"total":1`,
+		`"total":2`,
 		`"tick_id":"tick-1"`,
 		`"side_effect":"none"`,
 	} {
 		if !bytes.Contains(list.Body.Bytes(), []byte(expected)) {
 			t.Fatalf("list response missing %s: %s", expected, list.Body.String())
 		}
+	}
+
+	paged := httptest.NewRecorder()
+	mux.ServeHTTP(paged, httptest.NewRequest(http.MethodGet, "/v1/proactive/tick-logs?terminal_action=reply&started_from=2026-05-31T10:00:00Z&started_to=2026-05-31T10:01:00Z&sort_by=started_at&sort_order=asc&offset=1&limit=1", nil))
+	if paged.Code != http.StatusOK ||
+		!bytes.Contains(paged.Body.Bytes(), []byte(`"total":2`)) ||
+		!bytes.Contains(paged.Body.Bytes(), []byte(`"tick_id":"tick-2"`)) ||
+		bytes.Contains(paged.Body.Bytes(), []byte(`"tick_id":"tick-1"`)) {
+		t.Fatalf("unexpected paged list response code=%d body=%s", paged.Code, paged.Body.String())
 	}
 
 	detail := httptest.NewRecorder()

@@ -653,7 +653,8 @@ a fallback. Skill file scanning, `SKILL.md` parsing, and drift tool execution
 remain in Python.
 Python also writes tick start/finish/step audit events to Go first, then keeps
 the existing SQLite `tick_log` / `tick_step_log` mirror for dashboard
-compatibility.
+compatibility. The dashboard keeps SQLite as the primary read path and falls
+back to Go tick list/detail/steps when SQLite has no matching records.
 
 ```text
 POST /v1/proactive/deliveries
@@ -675,7 +676,7 @@ GET  /v1/proactive/drift/skills/explore-curiosity
 POST /v1/proactive/tick-logs/start
 POST /v1/proactive/tick-logs/finish
 POST /v1/proactive/tick-steps
-GET  /v1/proactive/tick-logs?terminal_action=reply&limit=50
+GET  /v1/proactive/tick-logs?terminal_action=reply&limit=50&offset=0&sort_by=started_at&sort_order=desc
 GET  /v1/proactive/tick-logs/tick-1
 GET  /v1/proactive/tick-logs/tick-1/steps
 POST /v1/proactive/bg-context/main

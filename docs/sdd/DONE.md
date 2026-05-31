@@ -48,6 +48,7 @@
 - AnyAction quota、seen items、rejection cooldown、retention cleanup、background context global mark 已迁到 Go。
 - proactive drift 完成态、recent runs 和 per-skill runtime state 已迁到 Go，Python 保留 workspace JSON mirror。
 - proactive tick start/finish/step 审计状态已迁到 Go，Python 保留 SQLite `tick_log` / `tick_step_log` mirror 供现有 dashboard 兼容读取。
+- dashboard proactive tick log 读路径已增加 Go fallback：SQLite 无匹配 tick 时读取 Go `/v1/proactive/tick-logs`、detail 和 steps；Go 查询支持 dashboard 所需分页、时间区间和排序。
 
 ## Scheduler Runtime State
 

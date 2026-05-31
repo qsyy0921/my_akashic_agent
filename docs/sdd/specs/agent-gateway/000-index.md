@@ -107,4 +107,7 @@ execution.
 - `043-proactive-tick-log-state.md`: Go-owned proactive tick start/finish/step
   audit state, with Python retaining proactive behavior and SQLite dashboard
   mirror.
+- `044-dashboard-proactive-tick-log-runtime-fallback.md`: Dashboard proactive
+  tick log read fallback to Go runtime when SQLite mirror has no matching
+  records, plus Go query pagination/sort filters.
 - Agent architecture boundary specs live under `../agent-architecture/`.

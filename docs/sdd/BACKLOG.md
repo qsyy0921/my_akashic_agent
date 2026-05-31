@@ -8,7 +8,6 @@
 
 - 继续检查是否还有确定性 runtime 状态、幂等、调度、资产、队列、审计逻辑散落在 Python；能迁移则按 SDD 切片推进到 Go `services/agent-runtime`。
 - 评估 proactive semantic items 是否继续留在 Python：它涉及语义候选、embedding/RAG 试错，原则上不急着迁 Go；如果迁移，也只考虑元数据、诊断或审计层。
-- 评估 dashboard proactive 页面是否增加 Go tick log 读取 fallback：当前 Python SQLite mirror 仍兼容；等 Go tick log live 稳定后再切换读路径。
 
 ## QQ / Telegram / Observe
 

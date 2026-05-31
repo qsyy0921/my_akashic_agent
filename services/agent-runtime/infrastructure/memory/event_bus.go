@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1223,20 +1224,32 @@ func (s *Store) ListProactiveTickLogs(_ context.Context, filter query.ProactiveT
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	total := 0
-	items := make([]model.ProactiveTickLog, 0, limit)
-	for i := len(s.proactiveTickLogOrder) - 1; i >= 0; i-- {
-		tickID := s.proactiveTickLogOrder[i]
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	items := make([]orderedProactiveTickLog, 0, len(s.proactiveTickLogOrder))
+	for i, tickID := range s.proactiveTickLogOrder {
 		log, ok := s.proactiveTickLogs[tickID]
 		if !ok || !matchesProactiveTickLogFilter(log, filter) {
 			continue
 		}
-		total++
-		if len(items) < limit {
-			items = append(items, log)
-		}
+		items = append(items, orderedProactiveTickLog{log: log, order: i})
 	}
-	return items, total, nil
+	sortProactiveTickLogs(items, filter)
+	total := len(items)
+	if offset >= total {
+		return []model.ProactiveTickLog{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	page := make([]model.ProactiveTickLog, 0, end-offset)
+	for _, item := range items[offset:end] {
+		page = append(page, item.log)
+	}
+	return page, total, nil
 }
 
 func (s *Store) FindProactiveTickLog(_ context.Context, tickID string) (model.ProactiveTickLog, bool, error) {
@@ -1434,6 +1447,91 @@ func proactiveSessionMarkKey(sessionKey string, key string) string {
 	return strings.TrimSpace(sessionKey) + "\x00" + strings.TrimSpace(key)
 }
 
+type orderedProactiveTickLog struct {
+	log   model.ProactiveTickLog
+	order int
+}
+
+func sortProactiveTickLogs(items []orderedProactiveTickLog, filter query.ProactiveTickLogFilter) {
+	sortBy := strings.TrimSpace(filter.SortBy)
+	switch sortBy {
+	case "session_key", "started_at", "finished_at", "terminal_action", "gate_exit", "steps_taken", "alert_count", "content_count", "context_count", "drift_entered":
+	default:
+		sortBy = "started_at"
+	}
+	desc := strings.ToLower(strings.TrimSpace(filter.SortOrder)) != "asc"
+	sort.SliceStable(items, func(i, j int) bool {
+		cmp := compareProactiveTickLog(items[i].log, items[j].log, sortBy)
+		if cmp == 0 {
+			if desc {
+				return items[i].order > items[j].order
+			}
+			return items[i].order < items[j].order
+		}
+		if desc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+}
+
+func compareProactiveTickLog(left model.ProactiveTickLog, right model.ProactiveTickLog, sortBy string) int {
+	switch sortBy {
+	case "session_key":
+		return strings.Compare(left.SessionKey, right.SessionKey)
+	case "finished_at":
+		return compareProactiveTime(left.FinishedAt, right.FinishedAt)
+	case "terminal_action":
+		return strings.Compare(left.TerminalAction, right.TerminalAction)
+	case "gate_exit":
+		return strings.Compare(left.GateExit, right.GateExit)
+	case "steps_taken":
+		return compareProactiveInt(left.StepsTaken, right.StepsTaken)
+	case "alert_count":
+		return compareProactiveInt(left.AlertCount, right.AlertCount)
+	case "content_count":
+		return compareProactiveInt(left.ContentCount, right.ContentCount)
+	case "context_count":
+		return compareProactiveInt(left.ContextCount, right.ContextCount)
+	case "drift_entered":
+		return compareProactiveBool(left.DriftEntered, right.DriftEntered)
+	default:
+		return compareProactiveTime(left.StartedAt, right.StartedAt)
+	}
+}
+
+func compareProactiveTime(left time.Time, right time.Time) int {
+	if left.Equal(right) {
+		return 0
+	}
+	if left.Before(right) {
+		return -1
+	}
+	return 1
+}
+
+func compareProactiveInt(left int, right int) int {
+	switch {
+	case left < right:
+		return -1
+	case left > right:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareProactiveBool(left bool, right bool) int {
+	switch {
+	case left == right:
+		return 0
+	case !left && right:
+		return -1
+	default:
+		return 1
+	}
+}
+
 func matchesProactiveTickLogFilter(log model.ProactiveTickLog, filter query.ProactiveTickLogFilter) bool {
 	if strings.TrimSpace(filter.SessionKey) != "" && log.SessionKey != strings.TrimSpace(filter.SessionKey) {
 		return false
@@ -1442,6 +1540,12 @@ func matchesProactiveTickLogFilter(log model.ProactiveTickLog, filter query.Proa
 		return false
 	}
 	if strings.TrimSpace(filter.GateExit) != "" && log.GateExit != strings.TrimSpace(filter.GateExit) {
+		return false
+	}
+	if !filter.StartedFrom.IsZero() && log.StartedAt.Before(filter.StartedFrom) {
+		return false
+	}
+	if !filter.StartedTo.IsZero() && log.StartedAt.After(filter.StartedTo) {
 		return false
 	}
 	switch strings.TrimSpace(filter.Flow) {
