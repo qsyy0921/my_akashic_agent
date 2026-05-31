@@ -24,6 +24,7 @@ type Store struct {
 	deliveryOrder []string
 	contextOnly   []model.ProactiveContextOnlyRecord
 	sessionMarks  map[string]model.ProactiveSessionMark
+	anyAction     map[string]model.ProactiveAnyActionQuota
 }
 
 type persistedState struct {
@@ -31,6 +32,7 @@ type persistedState struct {
 	Deliveries   []model.ProactiveDeliveryRecord    `json:"deliveries"`
 	ContextOnly  []model.ProactiveContextOnlyRecord `json:"context_only"`
 	SessionMarks []model.ProactiveSessionMark       `json:"session_marks"`
+	AnyAction    []model.ProactiveAnyActionQuota    `json:"anyaction_quotas,omitempty"`
 }
 
 func NewStore(path string) (*Store, error) {
@@ -44,6 +46,7 @@ func NewStore(path string) (*Store, error) {
 		deliveries:   make(map[string]model.ProactiveDeliveryRecord),
 		contextOnly:  make([]model.ProactiveContextOnlyRecord, 0),
 		sessionMarks: make(map[string]model.ProactiveSessionMark),
+		anyAction:    make(map[string]model.ProactiveAnyActionQuota),
 	}
 	if err := os.MkdirAll(filepath.Dir(cleanPath), 0o755); err != nil {
 		return nil, err
@@ -162,6 +165,23 @@ func (s *Store) FindProactiveSessionMark(_ context.Context, sessionKey string, k
 	return mark, ok, nil
 }
 
+func (s *Store) SaveProactiveAnyActionQuota(_ context.Context, quota model.ProactiveAnyActionQuota) error {
+	if err := quota.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.anyAction[quota.QuotaKey] = quota
+	return s.flush()
+}
+
+func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) (model.ProactiveAnyActionQuota, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	quota, ok := s.anyAction[strings.TrimSpace(quotaKey)]
+	return quota, ok, nil
+}
+
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -200,6 +220,12 @@ func (s *Store) load() error {
 		}
 		s.sessionMarks[sessionMarkKey(mark.SessionKey, mark.Key)] = mark
 	}
+	for _, quota := range state.AnyAction {
+		if err := quota.Validate(); err != nil {
+			continue
+		}
+		s.anyAction[quota.QuotaKey] = quota
+	}
 	return nil
 }
 
@@ -209,6 +235,7 @@ func (s *Store) flush() error {
 		Deliveries:   make([]model.ProactiveDeliveryRecord, 0, len(s.deliveryOrder)),
 		ContextOnly:  append(make([]model.ProactiveContextOnlyRecord, 0, len(s.contextOnly)), s.contextOnly...),
 		SessionMarks: make([]model.ProactiveSessionMark, 0, len(s.sessionMarks)),
+		AnyAction:    make([]model.ProactiveAnyActionQuota, 0, len(s.anyAction)),
 	}
 	for _, key := range s.deliveryOrder {
 		if record, ok := s.deliveries[key]; ok {
@@ -217,6 +244,9 @@ func (s *Store) flush() error {
 	}
 	for _, mark := range s.sessionMarks {
 		state.SessionMarks = append(state.SessionMarks, mark)
+	}
+	for _, quota := range s.anyAction {
+		state.AnyAction = append(state.AnyAction, quota)
 	}
 
 	payload, err := json.MarshalIndent(state, "", "  ")

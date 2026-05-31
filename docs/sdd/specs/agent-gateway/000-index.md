@@ -79,4 +79,6 @@ execution.
   for inbound platform message ids, starting with Telegram receive paths.
 - `031-agent-worker-status.md`: Go-owned liveness/status registry for Python
   AI workers while Python keeps model and tool execution.
+- `032-proactive-anyaction-quota.md`: Go-owned deterministic AnyAction quota
+  window state for proactive admission, with Python retaining probability logic.
 - Agent architecture boundary specs live under `../agent-architecture/`.

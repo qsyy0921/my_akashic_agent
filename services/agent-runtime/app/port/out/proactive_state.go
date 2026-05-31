@@ -19,4 +19,7 @@ type ProactiveStateRepository interface {
 
 	SaveProactiveSessionMark(ctx context.Context, mark model.ProactiveSessionMark) error
 	FindProactiveSessionMark(ctx context.Context, sessionKey string, key string) (model.ProactiveSessionMark, bool, error)
+
+	SaveProactiveAnyActionQuota(ctx context.Context, quota model.ProactiveAnyActionQuota) error
+	FindProactiveAnyActionQuota(ctx context.Context, quotaKey string) (model.ProactiveAnyActionQuota, bool, error)
 }

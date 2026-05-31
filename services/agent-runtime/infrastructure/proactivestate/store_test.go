@@ -41,6 +41,13 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	if err := store.SaveProactiveSessionMark(ctx, mark); err != nil {
 		t.Fatal(err)
 	}
+	quota, err := model.NewProactiveAnyActionQuota("default", "2026-05-30@12@Asia/Shanghai", now.Add(24*time.Hour), 2, now.Add(3*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProactiveAnyActionQuota(ctx, quota); err != nil {
+		t.Fatal(err)
+	}
 
 	reloaded, err := proactivestate.NewStore(path)
 	if err != nil {
@@ -80,5 +87,12 @@ func TestStorePersistsProactiveSchedulingState(t *testing.T) {
 	}
 	if len(listed) != 1 {
 		t.Fatalf("unexpected listed deliveries: %d", len(listed))
+	}
+	foundQuota, ok, err := reloaded.FindProactiveAnyActionQuota(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || foundQuota.Used != 2 {
+		t.Fatalf("expected persisted quota, got ok=%v quota=%+v", ok, foundQuota)
 	}
 }

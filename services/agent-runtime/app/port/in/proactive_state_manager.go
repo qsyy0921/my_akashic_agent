@@ -19,4 +19,7 @@ type ProactiveStateManager interface {
 
 	RecordDriftRun(ctx context.Context, cmd command.RecordProactiveDriftRunCommand) (query.ProactiveTimestampView, error)
 	LastDriftRun(ctx context.Context, sessionKey string) (query.ProactiveTimestampView, error)
+
+	SnapshotAnyActionQuota(ctx context.Context, cmd command.SnapshotProactiveAnyActionQuotaCommand) (query.ProactiveAnyActionQuotaView, error)
+	RecordAnyAction(ctx context.Context, cmd command.RecordProactiveAnyActionCommand) (query.ProactiveAnyActionQuotaView, error)
 }

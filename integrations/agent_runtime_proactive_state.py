@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from agent.config_models import AgentRuntimeIntegrationConfig
 from core.common.timekit import parse_iso as _parse_iso, utcnow as _utcnow
+from proactive_v2.anyaction import QuotaSnapshot, QuotaStore
 from proactive_v2.state import ProactiveStateStore
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,9 @@ class AgentRuntimeProactiveStateStore:
 
     def close(self) -> None:
         self._fallback.close()
+
+    def anyaction_quota_store(self, fallback: QuotaStore) -> "AgentRuntimeAnyActionQuotaStore":
+        return AgentRuntimeAnyActionQuotaStore(self, fallback)
 
     def record_tick_log_start(self, **kwargs: Any) -> None:
         self._fallback.record_tick_log_start(**kwargs)
@@ -366,6 +371,105 @@ class AgentRuntimeProactiveStateStore:
             method,
             exc,
         )
+
+
+class AgentRuntimeAnyActionQuotaStore:
+    """Runtime-backed AnyAction quota state with JSON fallback compatibility."""
+
+    def __init__(
+        self,
+        runtime_state: AgentRuntimeProactiveStateStore,
+        fallback: QuotaStore,
+    ) -> None:
+        self.path: Path = fallback.path
+        self._runtime = runtime_state
+        self._fallback = fallback
+
+    def snapshot(
+        self,
+        *,
+        now_utc: datetime,
+        reset_hour: int,
+        timezone_name: str,
+    ) -> QuotaSnapshot:
+        try:
+            data = self._runtime._request(
+                "GET",
+                "/v1/proactive/anyaction/quota",
+                params={
+                    "quota_key": "default",
+                    "reset_hour": int(reset_hour),
+                    "timezone": timezone_name,
+                    "timestamp": now_utc.isoformat(),
+                },
+            )
+            if not isinstance(data, dict):
+                raise AgentRuntimeProactiveStateError("quota response is not an object")
+            runtime_snapshot = _quota_snapshot_from_runtime(data, now_utc)
+            fallback_snapshot = self._fallback.snapshot(
+                now_utc=now_utc,
+                reset_hour=reset_hour,
+                timezone_name=timezone_name,
+            )
+            return _max_quota_snapshot(runtime_snapshot, fallback_snapshot)
+        except Exception as exc:
+            self._runtime._log_fallback("anyaction_quota_snapshot", exc)
+            return self._fallback.snapshot(
+                now_utc=now_utc,
+                reset_hour=reset_hour,
+                timezone_name=timezone_name,
+            )
+
+    def record_action(
+        self,
+        *,
+        now_utc: datetime,
+        reset_hour: int,
+        timezone_name: str,
+    ) -> None:
+        try:
+            self._runtime._request(
+                "POST",
+                "/v1/proactive/anyaction/actions",
+                json_body={
+                    "quota_key": "default",
+                    "reset_hour": int(reset_hour),
+                    "timezone": timezone_name,
+                    "timestamp": now_utc.isoformat(),
+                },
+            )
+        except Exception as exc:
+            self._runtime._log_fallback("anyaction_record_action", exc)
+        self._fallback.record_action(
+            now_utc=now_utc,
+            reset_hour=reset_hour,
+            timezone_name=timezone_name,
+        )
+
+
+def _quota_snapshot_from_runtime(data: dict[str, Any], fallback_now: datetime) -> QuotaSnapshot:
+    next_reset_at = _parse_iso(str(data.get("next_reset_at") or ""))
+    if next_reset_at is None:
+        next_reset_at = fallback_now
+    return QuotaSnapshot(
+        window_key=str(data.get("window_key") or ""),
+        next_reset_at=next_reset_at,
+        used=max(0, int(data.get("used") or 0)),
+        last_action_at=_parse_iso(str(data.get("last_action_at") or "")),
+    )
+
+
+def _max_quota_snapshot(left: QuotaSnapshot, right: QuotaSnapshot) -> QuotaSnapshot:
+    if left.window_key != right.window_key:
+        return left
+    left_last = left.last_action_at or datetime.min.replace(tzinfo=left.next_reset_at.tzinfo)
+    right_last = right.last_action_at or datetime.min.replace(tzinfo=right.next_reset_at.tzinfo)
+    return QuotaSnapshot(
+        window_key=left.window_key,
+        next_reset_at=max(left.next_reset_at, right.next_reset_at),
+        used=max(left.used, right.used),
+        last_action_at=left.last_action_at if left_last >= right_last else right.last_action_at,
+    )
 
 
 def _max_datetime(left: datetime | None, right: datetime | None) -> datetime | None:

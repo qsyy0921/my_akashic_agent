@@ -208,6 +208,31 @@ func TestRuntimeConfigEndpointReturnsSanitizedReadOnlyConfig(t *testing.T) {
 	}
 }
 
+func TestProactiveAnyActionQuotaEndpointSnapshotsAndRecords(t *testing.T) {
+	manager := appservice.NewProactiveStateService(memory.NewStore())
+	mux := http.NewServeMux()
+	httptrigger.RegisterProactiveStateRoutes(mux, manager)
+
+	snapshot := httptest.NewRecorder()
+	mux.ServeHTTP(snapshot, httptest.NewRequest(http.MethodGet, "/v1/proactive/anyaction/quota?reset_hour=12&timezone=Asia%2FShanghai&timestamp=2026-05-30T03:00:00Z", nil))
+	if snapshot.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", snapshot.Code, snapshot.Body.String())
+	}
+	if !bytes.Contains(snapshot.Body.Bytes(), []byte(`"window_key":"2026-05-29@12@Asia/Shanghai"`)) {
+		t.Fatalf("response missing window key: %s", snapshot.Body.String())
+	}
+
+	record := httptest.NewRecorder()
+	body := strings.NewReader(`{"reset_hour":12,"timezone":"Asia/Shanghai","timestamp":"2026-05-30T03:01:00Z"}`)
+	mux.ServeHTTP(record, httptest.NewRequest(http.MethodPost, "/v1/proactive/anyaction/actions", body))
+	if record.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", record.Code, record.Body.String())
+	}
+	if !bytes.Contains(record.Body.Bytes(), []byte(`"used":1`)) {
+		t.Fatalf("response missing used count: %s", record.Body.String())
+	}
+}
+
 func TestDeliveryAdaptersEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterDiagnosticsService([]query.DeliveryAdapterDiagnosticsView{
 		{

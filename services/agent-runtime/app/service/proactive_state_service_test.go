@@ -91,3 +91,51 @@ func TestProactiveStateServiceRecordsContextAndDriftMarks(t *testing.T) {
 		t.Fatalf("expected drift mark, got %+v", lastDrift)
 	}
 }
+
+func TestProactiveStateServiceAnyActionQuotaRolloverAndRecord(t *testing.T) {
+	ctx := context.Background()
+	svc := service.NewProactiveStateService(memory.NewStore())
+	now := time.Date(2026, 5, 30, 3, 0, 0, 0, time.UTC)
+
+	snapshot, err := svc.SnapshotAnyActionQuota(ctx, command.SnapshotProactiveAnyActionQuotaCommand{
+		ResetHour: 12,
+		Timezone:  "Asia/Shanghai",
+		Timestamp: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.WindowKey != "2026-05-29@12@Asia/Shanghai" {
+		t.Fatalf("unexpected window key: %s", snapshot.WindowKey)
+	}
+	if snapshot.Used != 0 {
+		t.Fatalf("unexpected initial used: %d", snapshot.Used)
+	}
+
+	recorded, err := svc.RecordAnyAction(ctx, command.RecordProactiveAnyActionCommand{
+		ResetHour: 12,
+		Timezone:  "Asia/Shanghai",
+		Timestamp: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded.Used != 1 || recorded.LastActionAt == "" {
+		t.Fatalf("expected recorded quota, got %+v", recorded)
+	}
+
+	rolled, err := svc.SnapshotAnyActionQuota(ctx, command.SnapshotProactiveAnyActionQuotaCommand{
+		ResetHour: 12,
+		Timezone:  "Asia/Shanghai",
+		Timestamp: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rolled.Used != 0 {
+		t.Fatalf("expected rollover to reset used, got %d", rolled.Used)
+	}
+	if rolled.LastActionAt == "" {
+		t.Fatalf("expected rollover to preserve last action timestamp")
+	}
+}

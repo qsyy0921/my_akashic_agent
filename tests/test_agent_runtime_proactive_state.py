@@ -10,6 +10,7 @@ import httpx
 from agent.config_models import AgentRuntimeIntegrationConfig
 from bootstrap.proactive import _build_proactive_state_store
 from integrations.agent_runtime_proactive_state import AgentRuntimeProactiveStateStore
+from proactive_v2.anyaction import QuotaStore
 from proactive_v2.state import ProactiveStateStore
 
 
@@ -116,6 +117,67 @@ def test_agent_runtime_proactive_state_falls_back_to_sqlite_on_runtime_error(tmp
     store.mark_drift_run("telegram:1", now)
     assert store.get_last_drift_at("telegram:1") == now
 
+    store.close()
+
+
+def test_agent_runtime_proactive_state_uses_go_for_anyaction_quota(tmp_path):
+    calls: list[tuple[str, str, dict[str, str], dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode() or "{}")
+        params = dict(request.url.params)
+        calls.append((request.method, request.url.path, params, body))
+        if request.url.path == "/v1/proactive/anyaction/quota":
+            assert params["quota_key"] == "default"
+            assert params["reset_hour"] == "12"
+            assert params["timezone"] == "Asia/Shanghai"
+            return _ok(
+                {
+                    "quota_key": "default",
+                    "window_key": "2026-05-30@12@Asia/Shanghai",
+                    "next_reset_at": "2026-05-31T04:00:00Z",
+                    "used": 2,
+                    "last_action_at": "2026-05-30T08:00:00Z",
+                }
+            )
+        if request.url.path == "/v1/proactive/anyaction/actions":
+            assert body["quota_key"] == "default"
+            assert body["reset_hour"] == 12
+            assert body["timezone"] == "Asia/Shanghai"
+            return httpx.Response(202, json={"code": "OK", "data": body})
+        return httpx.Response(404, text="not found")
+
+    fallback = ProactiveStateStore(tmp_path / "proactive.db")
+    store = AgentRuntimeProactiveStateStore(
+        _config(),
+        fallback,
+        transport=httpx.MockTransport(handler),
+    )
+    quota = store.anyaction_quota_store(QuotaStore(tmp_path / "quota.json"))
+    now = datetime(2026, 5, 30, 8, 30, tzinfo=timezone.utc)
+
+    snapshot = quota.snapshot(
+        now_utc=now,
+        reset_hour=12,
+        timezone_name="Asia/Shanghai",
+    )
+    quota.record_action(
+        now_utc=now,
+        reset_hour=12,
+        timezone_name="Asia/Shanghai",
+    )
+
+    assert snapshot.used == 2
+    assert snapshot.window_key == "2026-05-30@12@Asia/Shanghai"
+    assert [call[1] for call in calls] == [
+        "/v1/proactive/anyaction/quota",
+        "/v1/proactive/anyaction/actions",
+    ]
+    assert QuotaStore(tmp_path / "quota.json").snapshot(
+        now_utc=now,
+        reset_hour=12,
+        timezone_name="Asia/Shanghai",
+    ).used == 1
     store.close()
 
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -149,6 +150,63 @@ func (s *ProactiveStateService) LastDriftRun(ctx context.Context, sessionKey str
 	return s.lastSessionMark(ctx, sessionKey, model.ProactiveSessionMarkDriftLastAt)
 }
 
+func (s *ProactiveStateService) SnapshotAnyActionQuota(ctx context.Context, cmd command.SnapshotProactiveAnyActionQuotaCommand) (query.ProactiveAnyActionQuotaView, error) {
+	if s == nil || s.repository == nil {
+		return query.ProactiveAnyActionQuotaView{}, errors.New("proactive state service requires repository")
+	}
+	quotaKey := proactiveQuotaKey(cmd.QuotaKey)
+	now := timestampOrNow(cmd.Timestamp)
+	windowKey, nextResetAt, err := proactiveAnyActionWindow(now, cmd.ResetHour, cmd.Timezone)
+	if err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	existing, found, err := s.repository.FindProactiveAnyActionQuota(ctx, quotaKey)
+	if err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	if found && existing.WindowKey == windowKey {
+		return assembler.ToProactiveAnyActionQuotaView(existing, true, "runtime_state_read_rollover_if_needed"), nil
+	}
+	lastActionAt := time.Time{}
+	if found {
+		lastActionAt = existing.LastActionAt
+	}
+	quota, err := model.NewProactiveAnyActionQuotaForWindow(quotaKey, windowKey, nextResetAt, lastActionAt)
+	if err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	if err := s.repository.SaveProactiveAnyActionQuota(ctx, quota); err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	return assembler.ToProactiveAnyActionQuotaView(quota, found, "runtime_state_rollover"), nil
+}
+
+func (s *ProactiveStateService) RecordAnyAction(ctx context.Context, cmd command.RecordProactiveAnyActionCommand) (query.ProactiveAnyActionQuotaView, error) {
+	if _, err := s.SnapshotAnyActionQuota(ctx, command.SnapshotProactiveAnyActionQuotaCommand{
+		QuotaKey:  cmd.QuotaKey,
+		ResetHour: cmd.ResetHour,
+		Timezone:  cmd.Timezone,
+		Timestamp: cmd.Timestamp,
+	}); err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	quota, found, err := s.repository.FindProactiveAnyActionQuota(ctx, proactiveQuotaKey(cmd.QuotaKey))
+	if err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	if !found {
+		return query.ProactiveAnyActionQuotaView{}, errors.New("proactive anyaction quota not found after snapshot")
+	}
+	updated, err := quota.WithAction(timestampOrNow(cmd.Timestamp))
+	if err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	if err := s.repository.SaveProactiveAnyActionQuota(ctx, updated); err != nil {
+		return query.ProactiveAnyActionQuotaView{}, err
+	}
+	return assembler.ToProactiveAnyActionQuotaView(updated, true, "runtime_state_write"), nil
+}
+
 func (s *ProactiveStateService) lastSessionMark(ctx context.Context, sessionKey string, key string) (query.ProactiveTimestampView, error) {
 	if s == nil || s.repository == nil {
 		return query.ProactiveTimestampView{}, errors.New("proactive state service requires repository")
@@ -179,4 +237,42 @@ func positiveHoursOrDefault(value int, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+func proactiveQuotaKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "default"
+	}
+	return value
+}
+
+func proactiveAnyActionWindow(now time.Time, resetHour int, timezoneName string) (string, time.Time, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if resetHour < 0 || resetHour > 23 {
+		return "", time.Time{}, errors.New("reset_hour must be between 0 and 23")
+	}
+	timezoneName = strings.TrimSpace(timezoneName)
+	if timezoneName == "" {
+		timezoneName = "Asia/Shanghai"
+	}
+	location, err := time.LoadLocation(timezoneName)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	localNow := now.In(location)
+	resetToday := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), resetHour, 0, 0, 0, location)
+	var start time.Time
+	var nextReset time.Time
+	if !localNow.Before(resetToday) {
+		start = resetToday
+		nextReset = resetToday.AddDate(0, 0, 1)
+	} else {
+		start = resetToday.AddDate(0, 0, -1)
+		nextReset = resetToday
+	}
+	windowKey := fmt.Sprintf("%s@%02d@%s", start.Format("2006-01-02"), resetHour, timezoneName)
+	return windowKey, nextReset.UTC(), nil
 }

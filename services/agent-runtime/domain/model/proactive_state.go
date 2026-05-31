@@ -119,3 +119,63 @@ func (m ProactiveSessionMark) Validate() error {
 	}
 	return nil
 }
+
+type ProactiveAnyActionQuota struct {
+	QuotaKey     string
+	WindowKey    string
+	NextResetAt  time.Time
+	Used         int
+	LastActionAt time.Time
+}
+
+func NewProactiveAnyActionQuota(quotaKey string, windowKey string, nextResetAt time.Time, used int, lastActionAt time.Time) (ProactiveAnyActionQuota, error) {
+	quota := ProactiveAnyActionQuota{
+		QuotaKey:     proactiveQuotaKeyOrDefault(quotaKey),
+		WindowKey:    strings.TrimSpace(windowKey),
+		NextResetAt:  nextResetAt.UTC(),
+		Used:         used,
+		LastActionAt: lastActionAt.UTC(),
+	}
+	if err := quota.Validate(); err != nil {
+		return ProactiveAnyActionQuota{}, err
+	}
+	return quota, nil
+}
+
+func (q ProactiveAnyActionQuota) Validate() error {
+	if strings.TrimSpace(q.QuotaKey) == "" {
+		return errors.New("proactive anyaction quota requires quota key")
+	}
+	if strings.TrimSpace(q.WindowKey) == "" {
+		return errors.New("proactive anyaction quota requires window key")
+	}
+	if q.NextResetAt.IsZero() {
+		return errors.New("proactive anyaction quota requires next_reset_at")
+	}
+	if q.Used < 0 {
+		return errors.New("proactive anyaction quota requires non-negative used")
+	}
+	return nil
+}
+
+func (q ProactiveAnyActionQuota) WithAction(timestamp time.Time) (ProactiveAnyActionQuota, error) {
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	next := q
+	next.Used++
+	next.LastActionAt = timestamp.UTC()
+	return next, next.Validate()
+}
+
+func NewProactiveAnyActionQuotaForWindow(quotaKey string, windowKey string, nextResetAt time.Time, lastActionAt time.Time) (ProactiveAnyActionQuota, error) {
+	return NewProactiveAnyActionQuota(quotaKey, windowKey, nextResetAt, 0, lastActionAt)
+}
+
+func proactiveQuotaKeyOrDefault(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "default"
+	}
+	return value
+}

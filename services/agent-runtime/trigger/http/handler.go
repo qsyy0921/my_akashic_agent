@@ -245,6 +245,8 @@ func RegisterProactiveStateRoutes(
 	mux.Handle("/v1/proactive/context-only/count", ProactiveContextOnlyCountHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs", ProactiveDriftRunsHandler(proactiveState))
 	mux.Handle("/v1/proactive/drift-runs/last", ProactiveDriftRunLastHandler(proactiveState))
+	mux.Handle("/v1/proactive/anyaction/quota", ProactiveAnyActionQuotaHandler(proactiveState))
+	mux.Handle("/v1/proactive/anyaction/actions", ProactiveAnyActionRecordHandler(proactiveState))
 }
 
 func HealthHandler() http.Handler {
@@ -2139,6 +2141,69 @@ func ProactiveDriftRunLastHandler(proactiveState inport.ProactiveStateManager) h
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: mark})
+	})
+}
+
+func ProactiveAnyActionQuotaHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(r.URL.Query().Get("timestamp"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		record, err := proactiveState.SnapshotAnyActionQuota(r.Context(), command.SnapshotProactiveAnyActionQuotaCommand{
+			QuotaKey:  r.URL.Query().Get("quota_key"),
+			ResetHour: parseNonNegativeInt(r.URL.Query().Get("reset_hour"), 12),
+			Timezone:  r.URL.Query().Get("timezone"),
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: record})
+	})
+}
+
+func ProactiveAnyActionRecordHandler(proactiveState inport.ProactiveStateManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if proactiveState == nil {
+			http.Error(w, "proactive state disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.ProactiveAnyActionQuotaRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		record, err := proactiveState.RecordAnyAction(r.Context(), command.RecordProactiveAnyActionCommand{
+			QuotaKey:  request.QuotaKey,
+			ResetHour: request.ResetHour,
+			Timezone:  request.Timezone,
+			Timestamp: timestamp,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: record})
 	})
 }
 

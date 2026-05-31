@@ -145,9 +145,13 @@ class ProactiveLoop:
 
     def _build_anyaction_gate(self) -> AnyActionGate:
         quota_path = Path(self._state.workspace_dir) / "proactive_quota.json"
+        quota_store: Any = QuotaStore(quota_path)
+        runtime_quota_store = getattr(self._state, "anyaction_quota_store", None)
+        if callable(runtime_quota_store):
+            quota_store = runtime_quota_store(quota_store)
         return AnyActionGate(
             cfg=self._cfg,
-            quota_store=QuotaStore(quota_path),
+            quota_store=quota_store,
             rng=self._rng,
         )
 

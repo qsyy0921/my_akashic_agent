@@ -135,3 +135,4 @@ Current architecture review sequence:
 - `2026-05-31-phase8-86-inbound-dedupe-metrics.md`
 - `2026-05-31-phase8-87-agent-job-admission-dedupe.md`
 - `2026-05-31-phase8-88-agent-worker-status.md`
+- `2026-05-31-phase8-89-proactive-anyaction-quota.md`

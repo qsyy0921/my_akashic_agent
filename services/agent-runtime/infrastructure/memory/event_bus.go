@@ -40,6 +40,7 @@ type Store struct {
 	proactiveDeliveryOrder []string
 	proactiveContextOnly   []model.ProactiveContextOnlyRecord
 	proactiveSessionMarks  map[string]model.ProactiveSessionMark
+	proactiveAnyAction     map[string]model.ProactiveAnyActionQuota
 }
 
 type ObservedEvent struct {
@@ -64,6 +65,7 @@ func NewStore() *Store {
 		inboundDedupeRecords:  make(map[string]model.InboundDedupeRecord),
 		proactiveDeliveries:   make(map[string]model.ProactiveDeliveryRecord),
 		proactiveSessionMarks: make(map[string]model.ProactiveSessionMark),
+		proactiveAnyAction:    make(map[string]model.ProactiveAnyActionQuota),
 	}
 }
 
@@ -1014,6 +1016,26 @@ func (s *Store) FindProactiveSessionMark(_ context.Context, sessionKey string, k
 
 	mark, ok := s.proactiveSessionMarks[proactiveSessionMarkKey(sessionKey, key)]
 	return mark, ok, nil
+}
+
+func (s *Store) SaveProactiveAnyActionQuota(_ context.Context, quota model.ProactiveAnyActionQuota) error {
+	if err := quota.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.proactiveAnyAction == nil {
+		s.proactiveAnyAction = make(map[string]model.ProactiveAnyActionQuota)
+	}
+	s.proactiveAnyAction[quota.QuotaKey] = quota
+	return nil
+}
+
+func (s *Store) FindProactiveAnyActionQuota(_ context.Context, quotaKey string) (model.ProactiveAnyActionQuota, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	quota, ok := s.proactiveAnyAction[strings.TrimSpace(quotaKey)]
+	return quota, ok, nil
 }
 
 func proactiveDeliveryKey(sessionKey string, deliveryKey string) string {

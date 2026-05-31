@@ -36,3 +36,17 @@ type RecordProactiveDriftRunCommand struct {
 	SessionKey string
 	Timestamp  time.Time
 }
+
+type SnapshotProactiveAnyActionQuotaCommand struct {
+	QuotaKey  string
+	ResetHour int
+	Timezone  string
+	Timestamp time.Time
+}
+
+type RecordProactiveAnyActionCommand struct {
+	QuotaKey  string
+	ResetHour int
+	Timezone  string
+	Timestamp time.Time
+}

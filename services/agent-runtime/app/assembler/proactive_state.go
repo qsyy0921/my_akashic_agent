@@ -32,6 +32,18 @@ func ToProactiveTimestampView(sessionKey string, key string, timestamp time.Time
 	}
 }
 
+func ToProactiveAnyActionQuotaView(record model.ProactiveAnyActionQuota, found bool, sideEffect string) query.ProactiveAnyActionQuotaView {
+	return query.ProactiveAnyActionQuotaView{
+		QuotaKey:     record.QuotaKey,
+		WindowKey:    record.WindowKey,
+		NextResetAt:  formatProactiveTime(record.NextResetAt),
+		Used:         record.Used,
+		LastActionAt: formatProactiveTime(record.LastActionAt),
+		Found:        found,
+		SideEffect:   sideEffect,
+	}
+}
+
 func formatProactiveTime(value time.Time) string {
 	if value.IsZero() {
 		return ""

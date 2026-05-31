@@ -31,3 +31,13 @@ type ProactiveTimestampView struct {
 	Timestamp  string `json:"timestamp"`
 	Found      bool   `json:"found"`
 }
+
+type ProactiveAnyActionQuotaView struct {
+	QuotaKey     string `json:"quota_key"`
+	WindowKey    string `json:"window_key"`
+	NextResetAt  string `json:"next_reset_at"`
+	Used         int    `json:"used"`
+	LastActionAt string `json:"last_action_at"`
+	Found        bool   `json:"found"`
+	SideEffect   string `json:"side_effect"`
+}
