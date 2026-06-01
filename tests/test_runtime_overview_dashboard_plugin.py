@@ -693,6 +693,15 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_retention_plan_assets": 3,
             "media_asset_retention_plan_candidates": 1,
             "media_asset_retention_plan_required_steps": 2,
+            "media_asset_retention_cleanup_ready": True,
+            "media_asset_retention_cleanup_reason": (
+                "media_asset_retention_cleanup_candidates_ready"
+            ),
+            "media_asset_retention_cleanup_blockers": 0,
+            "media_asset_retention_cleanup_candidates": 1,
+            "media_asset_retention_cleanup_applied": 1,
+            "media_asset_retention_cleanup_failed": 0,
+            "media_asset_retention_cleanup_recent_audits": 1,
             "agent_job_capacity_ready": False,
             "agent_job_capacity_reason": "agent_job_capacity_attention_required",
             "agent_job_capacity_blockers": 3,
@@ -753,9 +762,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "operator_approvals_approved": 1,
             "operator_approvals_rejected": 1,
             "operator_approvals_revoked": 0,
-            "control_mutations_total": 2,
+            "control_mutations_total": 3,
             "control_mutations_planned": 1,
-            "control_mutations_applied": 0,
+            "control_mutations_applied": 1,
             "control_mutations_failed": 1,
             "control_mutations_rolled_back": 0,
             "knowledge_job_planner_cutover_plan_ready": False,
@@ -825,6 +834,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
             {"id": "media_asset_retention", "label": "Media Asset Retention", "value": "1/3", "status": "warn"},
             {"id": "media_asset_retention_plan", "label": "Media Asset Retention Plan", "value": "1/3", "status": "warn"},
+            {
+                "id": "media_asset_retention_cleanup",
+                "label": "Media Asset Retention Cleanup",
+                "value": "1/1",
+                "status": "warn",
+            },
             {
                 "id": "agent_job_capacity_plan",
                 "label": "Agent Job Capacity",
@@ -917,11 +932,21 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                                 "rollback_ref": "manual",
                                 "created_at": "2026-06-01T12:03:00Z",
                             },
+                            {
+                                "mutation_id": "mutation-media-cleanup",
+                                "target_kind": "media_asset_retention",
+                                "target_id": "default-observed-group",
+                                "action": "cleanup_expired",
+                                "status": "applied",
+                                "operator_id": "qsyy",
+                                "approval_id": "approval-media",
+                                "created_at": "2026-06-01T12:04:00Z",
+                            },
                         ],
                         "totals": {
-                            "mutations": 2,
+                            "mutations": 3,
                             "planned": 1,
-                            "applied": 0,
+                            "applied": 1,
                             "failed": 1,
                             "rolled_back": 0,
                         },
@@ -1208,6 +1233,39 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "items": [],
                 "side_effect": "none",
             },
+            "side_effect": "none",
+        },
+        "media_asset_retention_cleanup": {
+            "ready": True,
+            "reason": "media_asset_retention_cleanup_candidates_ready",
+            "asset_count": 3,
+            "candidate_count": 1,
+            "recent_audits": [
+                {
+                    "mutation_id": "mutation-media-cleanup",
+                    "target_kind": "media_asset_retention",
+                    "target_id": "default-observed-group",
+                    "action": "cleanup_expired",
+                    "status": "applied",
+                    "operator_id": "qsyy",
+                    "approval_id": "approval-media",
+                    "created_at": "2026-06-01T12:04:00Z",
+                    "metadata": {"cleanup_scope": "metadata_only"},
+                }
+            ],
+            "totals": {
+                "audits": 1,
+                "planned": 0,
+                "applied": 1,
+                "failed": 0,
+                "rolled_back": 0,
+            },
+            "endpoints": {
+                "plan": "/v1/media-assets/retention-plan",
+                "preflight": "/v1/media-assets/retention-cleanup/preflight",
+                "cleanup": "/v1/media-assets/retention-cleanup",
+            },
+            "notes": ["read-only"],
             "side_effect": "none",
         },
         "agent_job_capacity_plan": {
@@ -1753,6 +1811,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     )
     assert payload["summary"]["media_asset_retention_plan_candidates"] == 1
     assert payload["summary"]["media_asset_retention_plan_required_steps"] == 2
+    assert payload["summary"]["media_asset_retention_cleanup_ready"] is True
+    assert payload["summary"]["media_asset_retention_cleanup_reason"] == (
+        "media_asset_retention_cleanup_candidates_ready"
+    )
+    assert payload["summary"]["media_asset_retention_cleanup_candidates"] == 1
+    assert payload["summary"]["media_asset_retention_cleanup_applied"] == 1
+    assert payload["summary"]["media_asset_retention_cleanup_failed"] == 0
+    assert payload["summary"]["media_asset_retention_cleanup_recent_audits"] == 1
     assert payload["summary"]["agent_job_capacity_ready"] is False
     assert payload["summary"]["agent_job_capacity_reason"] == (
         "agent_job_capacity_attention_required"
@@ -1805,8 +1871,9 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["operator_approvals_active"] == 1
     assert payload["summary"]["operator_approvals_approved"] == 1
     assert payload["summary"]["operator_approvals_rejected"] == 1
-    assert payload["summary"]["control_mutations_total"] == 2
+    assert payload["summary"]["control_mutations_total"] == 3
     assert payload["summary"]["control_mutations_planned"] == 1
+    assert payload["summary"]["control_mutations_applied"] == 1
     assert payload["summary"]["control_mutations_failed"] == 1
     assert payload["summary"]["knowledge_job_planner_cutover_plan_ready"] is False
     assert payload["summary"]["knowledge_job_planner_cutover_plan_decision"] == "blocked"
@@ -1908,6 +1975,18 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "/v1/operator-approvals"
     )
     assert payload["media_asset_retention_plan"]["side_effect"] == "none"
+    cleanup_card = next(
+        item for item in payload["cards"] if item["id"] == "media_asset_retention_cleanup"
+    )
+    assert cleanup_card["value"] == "1/1"
+    assert cleanup_card["status"] == "warn"
+    cleanup = payload["media_asset_retention_cleanup"]
+    assert cleanup["ready"] is True
+    assert cleanup["candidate_count"] == 1
+    assert cleanup["totals"]["applied"] == 1
+    assert cleanup["recent_audits"][0]["mutation_id"] == "mutation-media-cleanup"
+    assert cleanup["endpoints"]["cleanup"] == "/v1/media-assets/retention-cleanup"
+    assert cleanup["side_effect"] == "none"
     assert (
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"

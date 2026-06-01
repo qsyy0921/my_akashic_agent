@@ -287,6 +287,10 @@ class RuntimeOverviewDashboardReader:
         media_asset_retention_plan = _normalize_media_asset_retention_plan(
             media_asset_retention_plan_raw
         )
+        media_asset_retention_cleanup = _normalize_media_asset_retention_cleanup(
+            {},
+            plan=media_asset_retention_plan,
+        )
         receiver_statuses = _normalize_receiver_statuses(receiver_statuses_raw)
         receiver_leases = _normalize_receiver_leases(receiver_leases_raw)
         scheduler_jobs = _normalize_scheduler_job_diagnostics(scheduler_jobs_raw)
@@ -379,6 +383,27 @@ class RuntimeOverviewDashboardReader:
             "media_asset_retention_plan_required_steps": len(
                 media_asset_retention_plan["required_steps"]
             ),
+            "media_asset_retention_cleanup_ready": media_asset_retention_cleanup[
+                "ready"
+            ],
+            "media_asset_retention_cleanup_reason": media_asset_retention_cleanup[
+                "reason"
+            ],
+            "media_asset_retention_cleanup_blockers": len(
+                media_asset_retention_cleanup["blockers"]
+            ),
+            "media_asset_retention_cleanup_candidates": media_asset_retention_cleanup[
+                "candidate_count"
+            ],
+            "media_asset_retention_cleanup_applied": media_asset_retention_cleanup[
+                "totals"
+            ]["applied"],
+            "media_asset_retention_cleanup_failed": media_asset_retention_cleanup[
+                "totals"
+            ]["failed"],
+            "media_asset_retention_cleanup_recent_audits": len(
+                media_asset_retention_cleanup["recent_audits"]
+            ),
             "receiver_statuses": receiver_statuses["totals"]["receivers"],
             "receiver_status_connected": receiver_statuses["totals"]["connected"],
             "receiver_status_suspended": receiver_statuses["totals"]["suspended"],
@@ -429,6 +454,7 @@ class RuntimeOverviewDashboardReader:
             observe_capture=observe_capture,
             media_asset_retention=media_asset_retention,
             media_asset_retention_plan=media_asset_retention_plan,
+            media_asset_retention_cleanup=media_asset_retention_cleanup,
             receiver_statuses=receiver_statuses,
             receiver_leases=receiver_leases,
             scheduler_jobs=scheduler_jobs,
@@ -463,6 +489,7 @@ class RuntimeOverviewDashboardReader:
             "observe_capture": observe_capture,
             "media_asset_retention_diagnostics": media_asset_retention,
             "media_asset_retention_plan": media_asset_retention_plan,
+            "media_asset_retention_cleanup": media_asset_retention_cleanup,
             "receiver_statuses": receiver_statuses,
             "receiver_leases": receiver_leases,
             "scheduler_jobs": scheduler_jobs,
@@ -1191,6 +1218,10 @@ def _normalize_go_runtime_overview(
     media_asset_retention_plan = _normalize_media_asset_retention_plan(
         _mapping_or_empty(item.get("media_asset_retention_plan"))
     )
+    media_asset_retention_cleanup = _normalize_media_asset_retention_cleanup(
+        _mapping_or_empty(item.get("media_asset_retention_cleanup")),
+        plan=media_asset_retention_plan,
+    )
     agent_job_capacity_plan = _normalize_agent_job_capacity_plan(
         _mapping_or_empty(item.get("agent_job_capacity_plan"))
     )
@@ -1273,6 +1304,7 @@ def _normalize_go_runtime_overview(
         "media_asset_content_diagnostics": media_asset_content,
         "media_asset_retention_diagnostics": media_asset_retention,
         "media_asset_retention_plan": media_asset_retention_plan,
+        "media_asset_retention_cleanup": media_asset_retention_cleanup,
         "agent_job_capacity_plan": agent_job_capacity_plan,
         "agent_job_priority_plan": agent_job_priority_plan,
         "agent_job_external_lease_readiness": agent_job_external_lease_readiness,
@@ -1376,6 +1408,13 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "media_asset_retention_plan_assets": 0,
         "media_asset_retention_plan_candidates": 0,
         "media_asset_retention_plan_required_steps": 0,
+        "media_asset_retention_cleanup_ready": False,
+        "media_asset_retention_cleanup_reason": "unknown",
+        "media_asset_retention_cleanup_blockers": 0,
+        "media_asset_retention_cleanup_candidates": 0,
+        "media_asset_retention_cleanup_applied": 0,
+        "media_asset_retention_cleanup_failed": 0,
+        "media_asset_retention_cleanup_recent_audits": 0,
         "agent_job_capacity_ready": False,
         "agent_job_capacity_reason": "unknown",
         "agent_job_capacity_blockers": 0,
@@ -1885,6 +1924,70 @@ def _normalize_media_asset_retention_plan_step(
         "endpoint": _text(item.get("endpoint")),
         "method": _text(item.get("method")),
         "metadata": dict(_mapping_or_empty(item.get("metadata"))),
+    }
+
+
+def _normalize_media_asset_retention_cleanup(
+    item: Mapping[str, Any],
+    *,
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    audits_raw = item.get("recent_audits")
+    if not isinstance(audits_raw, list):
+        audits_raw = []
+    recent_audits = [
+        _normalize_control_mutation(value)
+        for value in audits_raw
+        if isinstance(value, Mapping)
+    ]
+    totals = _mapping_or_empty(item.get("totals"))
+    endpoints = _mapping_or_empty(item.get("endpoints"))
+    return {
+        "ready": bool(item.get("ready", plan.get("ready", False))),
+        "reason": _text(item.get("reason") or plan.get("reason") or "unknown"),
+        "blockers": _string_list(item.get("blockers") or plan.get("blockers")),
+        "asset_count": _int_value(
+            item.get("asset_count"),
+            fallback=_int_value(plan.get("asset_count"), fallback=0),
+        ),
+        "candidate_count": _int_value(
+            item.get("candidate_count"),
+            fallback=_int_value(plan.get("candidate_count"), fallback=0),
+        ),
+        "recent_audits": recent_audits,
+        "totals": {
+            "audits": _int_value(totals.get("audits"), fallback=len(recent_audits)),
+            "planned": _int_value(
+                totals.get("planned"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "planned"),
+            ),
+            "applied": _int_value(
+                totals.get("applied"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "applied"),
+            ),
+            "failed": _int_value(
+                totals.get("failed"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "failed"),
+            ),
+            "rolled_back": _int_value(
+                totals.get("rolled_back"),
+                fallback=sum(
+                    1 for value in recent_audits if value["status"] == "rolled_back"
+                ),
+            ),
+        },
+        "endpoints": {
+            "plan": _text(endpoints.get("plan") or "/v1/media-assets/retention-plan"),
+            "preflight": _text(
+                endpoints.get("preflight")
+                or "/v1/media-assets/retention-cleanup/preflight"
+            ),
+            "cleanup": _text(
+                endpoints.get("cleanup") or "/v1/media-assets/retention-cleanup"
+            ),
+        },
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
     }
 
 
@@ -2572,6 +2675,7 @@ def _overview_cards(
     observe_capture: dict[str, Any],
     media_asset_retention: dict[str, Any],
     media_asset_retention_plan: dict[str, Any],
+    media_asset_retention_cleanup: dict[str, Any],
     receiver_statuses: dict[str, Any],
     receiver_leases: dict[str, Any],
     scheduler_jobs: dict[str, Any],
@@ -2700,6 +2804,13 @@ def _overview_cards(
             _media_asset_retention_plan_value(summary),
             _media_asset_retention_plan_status(summary),
             {"media_asset_retention_plan": media_asset_retention_plan},
+        ),
+        _card(
+            "media_asset_retention_cleanup",
+            "Media Asset Retention Cleanup",
+            _media_asset_retention_cleanup_value(summary),
+            _media_asset_retention_cleanup_status(summary),
+            {"media_asset_retention_cleanup": media_asset_retention_cleanup},
         ),
         _card(
             "receiver_statuses",
@@ -2832,6 +2943,29 @@ def _media_asset_retention_plan_value(summary: Mapping[str, Any]) -> str:
     return (
         f"{reason}:"
         f"{_int_value(summary.get('media_asset_retention_plan_blockers'), fallback=0)}"
+    )
+
+
+def _media_asset_retention_cleanup_status(summary: Mapping[str, Any]) -> str:
+    reason = _text(summary.get("media_asset_retention_cleanup_reason"))
+    if reason == "unknown":
+        return "muted"
+    if _int_value(summary.get("media_asset_retention_cleanup_failed"), fallback=0) > 0:
+        return "danger"
+    if _int_value(summary.get("media_asset_retention_cleanup_candidates"), fallback=0) > 0:
+        return "warn"
+    if _int_value(summary.get("media_asset_retention_cleanup_applied"), fallback=0) > 0:
+        return "ok"
+    return "muted"
+
+
+def _media_asset_retention_cleanup_value(summary: Mapping[str, Any]) -> str:
+    reason = _text(summary.get("media_asset_retention_cleanup_reason"))
+    if reason == "unknown":
+        return "unknown"
+    return (
+        f"{_int_value(summary.get('media_asset_retention_cleanup_candidates'), fallback=0)}/"
+        f"{_int_value(summary.get('media_asset_retention_cleanup_applied'), fallback=0)}"
     )
 
 
