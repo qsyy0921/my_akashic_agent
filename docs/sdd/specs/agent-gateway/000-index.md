@@ -315,4 +315,6 @@ execution.
   shared media content access plan fixture.
 - `120-sdd-spec-index-guard.md`: Repository tests require agent-gateway specs
   to be referenced by exact filename in this index.
+- `121-go-runtime-package-guard.md`: Go architecture tests require runtime
+  source files to stay under intentional DDD/hexagonal top-level roots.
 - Agent architecture boundary specs live under `../agent-architecture/`.

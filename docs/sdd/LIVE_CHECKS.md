@@ -110,3 +110,4 @@
 ## SDD Governance
 
 - [ ] 新增或重命名 `docs/sdd/specs/agent-gateway/[0-9][0-9][0-9]-*.md` 后，必须同步更新 `docs/sdd/specs/agent-gateway/000-index.md`，并运行 `uv run pytest tests/test_sdd_spec_index.py -q`。
+- [ ] 新增 `services/agent-runtime` Go 源码目录前，先确认它属于 `api/app/cmd/domain/infrastructure/smoke/trigger/types` 之一；否则需要先更新 SDD package 设计并让 `go test .` 的架构守卫通过。

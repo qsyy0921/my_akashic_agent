@@ -143,3 +143,4 @@
 - 已补充 Python AI runtime 职责边界：模型/provider、prompt/context、工具执行、Memory/RAG 算法、chunking、retrieval、Embedding/Rerank/OCR/VLM、图片生成执行、群知识沉淀、评估和快速实验继续归 Python；确定性控制面状态归 Go。
 - 已沉淀 `docs/sdd/ITERATION_PROMPT.md`，明确每轮迭代必须完成 `TODO.md` 中所有未完成项，不能只提交一个未闭环切片；用户在迭代中追加的本轮要求也必须先写入 TODO 并一起闭环。
 - 已新增 SDD spec index guard：`tests/test_sdd_spec_index.py` 会要求 `docs/sdd/specs/agent-gateway/000-index.md` 逐名引用所有 agent-gateway spec 文件，并补齐当前缺失索引，防止 Go 化迁移设计记录漂移。
+- 已增强 Go runtime 架构守卫：`services/agent-runtime/architecture_test.go` 现在同时约束源码只能落在 `api/app/cmd/domain/infrastructure/smoke/trigger/types` 顶层根目录，防止新增随意 Go package 破坏 DDD + 六边形结构。

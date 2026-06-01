@@ -224,3 +224,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-175-agent-runtime-media-api-docs.md`
 - `2026-06-01-phase8-176-go-contract-test-media-access-plan.md`
 - `2026-06-01-phase8-177-sdd-spec-index-guard.md`
+- `2026-06-01-phase8-178-go-runtime-package-guard.md`

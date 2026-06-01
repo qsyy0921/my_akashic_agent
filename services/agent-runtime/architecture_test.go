@@ -1,4 +1,4 @@
-﻿package agentruntime_test
+package agentruntime_test
 
 import (
 	"go/parser"
@@ -44,6 +44,17 @@ var forbiddenImports = map[string]map[string]struct{}{
 		"infrastructure": {},
 		"trigger":        {},
 	},
+}
+
+var allowedSourceRoots = map[string]struct{}{
+	"api":            {},
+	"app":            {},
+	"cmd":            {},
+	"domain":         {},
+	"infrastructure": {},
+	"smoke":          {},
+	"trigger":        {},
+	"types":          {},
 }
 
 func TestLayerDependencyRules(t *testing.T) {
@@ -95,6 +106,39 @@ func TestLayerDependencyRules(t *testing.T) {
 	}
 }
 
+func TestGoSourceFilesStayInKnownRuntimeRoots(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			name := entry.Name()
+			if name == ".git" || name == "vendor" || name == ".tmp" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		layer := topLevelDir(root, path)
+		if _, ok := allowedSourceRoots[layer]; !ok {
+			rel, _ := filepath.Rel(root, path)
+			t.Errorf("%s lives under unknown top-level runtime root %q", filepath.ToSlash(rel), layer)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func topLevelDir(root string, path string) string {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
@@ -106,4 +150,3 @@ func topLevelDir(root string, path string) string {
 	}
 	return parts[0]
 }
-
