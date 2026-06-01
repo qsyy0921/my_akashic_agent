@@ -101,7 +101,10 @@ type MediaAssetContentAccessPlanView struct {
 	Blockers         []string                      `json:"blockers,omitempty"`
 	AssetID          string                        `json:"asset_id,omitempty"`
 	Asset            *MediaAssetView               `json:"asset,omitempty"`
+	RuntimePath      string                        `json:"runtime_path,omitempty"`
+	DashboardPath    string                        `json:"dashboard_path,omitempty"`
 	ContentEndpoint  string                        `json:"content_endpoint,omitempty"`
+	ContentURL       string                        `json:"content_url,omitempty"`
 	ContentMimeType  string                        `json:"content_mime_type,omitempty"`
 	ContentSizeBytes int64                         `json:"content_size_bytes,omitempty"`
 	RequiredSteps    []MediaAssetContentAccessStep `json:"required_steps"`

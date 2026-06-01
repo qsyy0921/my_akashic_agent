@@ -117,7 +117,10 @@ func TestMediaAssetServiceContentAccessPlanExplainsReadyAndBlockedStates(t *test
 	}
 	if !ready.Ready ||
 		ready.Reason != "media_asset_content_ready" ||
+		ready.RuntimePath != "/v1/media-assets/content-access-plan?asset_id=asset%3Aready" ||
+		ready.DashboardPath != "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aready" ||
 		ready.ContentEndpoint != "/v1/media-assets/asset:ready/content" ||
+		ready.ContentURL != "/api/dashboard/media-assets/content?asset_id=asset%3Aready" ||
 		ready.ContentSizeBytes <= 0 ||
 		ready.SideEffect != "none" ||
 		len(ready.RequiredSteps) < 2 {
@@ -131,6 +134,9 @@ func TestMediaAssetServiceContentAccessPlanExplainsReadyAndBlockedStates(t *test
 	if forbidden.Ready ||
 		forbidden.Reason != "media_asset_content_forbidden" ||
 		len(forbidden.Blockers) == 0 ||
+		forbidden.RuntimePath != "/v1/media-assets/content-access-plan?asset_id=asset%3Aforbidden" ||
+		forbidden.DashboardPath != "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aforbidden" ||
+		forbidden.ContentURL != "/api/dashboard/media-assets/content?asset_id=asset%3Aforbidden" ||
 		forbidden.ContentEndpoint != "/v1/media-assets/asset:forbidden/content" {
 		t.Fatalf("unexpected forbidden plan: %+v", forbidden)
 	}
@@ -165,6 +171,9 @@ func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *
 	if missingID.Ready || missingID.Reason != "media_asset_content_asset_id_required" || len(missingID.Blockers) == 0 {
 		t.Fatalf("unexpected missing id plan: %+v", missingID)
 	}
+	if missingID.RuntimePath != "" || missingID.DashboardPath != "" || missingID.ContentURL != "" {
+		t.Fatalf("missing id plan should not expose URL hints: %+v", missingID)
+	}
 
 	disabled, err := service.ContentAccessPlan(ctx, "asset:disabled")
 	if err != nil {
@@ -173,6 +182,9 @@ func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *
 	if disabled.Ready ||
 		disabled.Reason != "media_asset_content_disabled" ||
 		disabled.Asset == nil ||
+		disabled.RuntimePath != "/v1/media-assets/content-access-plan?asset_id=asset%3Adisabled" ||
+		disabled.DashboardPath != "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Adisabled" ||
+		disabled.ContentURL != "/api/dashboard/media-assets/content?asset_id=asset%3Adisabled" ||
 		disabled.ContentEndpoint != "/v1/media-assets/asset:disabled/content" ||
 		disabled.SideEffect != "none" {
 		t.Fatalf("unexpected disabled plan: %+v", disabled)

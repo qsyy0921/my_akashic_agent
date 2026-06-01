@@ -85,6 +85,7 @@
 - dashboard 消息列表/详情的 `media_assets` 已新增 `content_access_plan_url`：前端可从每条消息的媒体资产直接跳到 Go-owned access plan 代理，Python 不主动批量拉取 plan、不复制访问策略、不触发 OCR/VLM/RAG/AI。
 - 已新增 `MediaAssetContentAccessPlan` 合同 fixture：固化 Go `/v1/media-assets/content-access-plan` 与 dashboard `/api/dashboard/media-assets/content-access-plan` 的字段边界，包括 ready/reason/blockers/content endpoint/dashboard path/side_effect。
 - Go contract fixture tests 已覆盖 `MediaAssetContentAccessPlan`：Go 侧现在会加载 `media_asset_content_access_plan.qq.image.json`，并校验 ready/reason/path/content endpoint/side_effect/required steps，防止 Go/Python access plan 字段漂移。
+- Go `MediaAssetContentAccessPlan` response 已补齐 `runtime_path`、`dashboard_path`、`content_url`：前端和 dashboard 可直接消费 Go 生成的确定性链接，Python 仍只做代理/展示，不复制媒体访问策略或触发 OCR/VLM/RAG/AI。
 - Go media content diagnostics item 已新增 `content_access_plan_endpoint`，Python runtime overview dashboard 会规范化并在旧 runtime 未返回时按 asset id fallback 生成，使批量诊断可直接跳到单资产 access plan。
 - `services/agent-runtime/README.md` 和 SDD index 已同步当前 Go media asset API：content diagnostics/access plan、retention diagnostics/plan、cleanup preflight/executor 及各自 side-effect 边界。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
@@ -144,3 +145,4 @@
 - 已沉淀 `docs/sdd/ITERATION_PROMPT.md`，明确每轮迭代必须完成 `TODO.md` 中所有未完成项，不能只提交一个未闭环切片；用户在迭代中追加的本轮要求也必须先写入 TODO 并一起闭环。
 - 已新增 SDD spec index guard：`tests/test_sdd_spec_index.py` 会要求 `docs/sdd/specs/agent-gateway/000-index.md` 逐名引用所有 agent-gateway spec 文件，并补齐当前缺失索引，防止 Go 化迁移设计记录漂移。
 - 已增强 Go runtime 架构守卫：`services/agent-runtime/architecture_test.go` 现在同时约束源码只能落在 `api/app/cmd/domain/infrastructure/smoke/trigger/types` 顶层根目录，防止新增随意 Go package 破坏 DDD + 六边形结构。
+- 已新增 `docs/sdd/OPEN_ISSUES.md` 未解决问题总账，并用 `tests/test_sdd_governance_docs.py` 固化 TODO/DONE/BACKLOG/LIVE_CHECKS/OPEN_ISSUES 的职责边界，防止待解决问题继续堆进本轮 TODO。

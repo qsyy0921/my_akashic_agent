@@ -225,3 +225,5 @@ Current architecture review sequence:
 - `2026-06-01-phase8-176-go-contract-test-media-access-plan.md`
 - `2026-06-01-phase8-177-sdd-spec-index-guard.md`
 - `2026-06-01-phase8-178-go-runtime-package-guard.md`
+- `2026-06-01-phase8-179-media-content-access-plan-url-fields.md`
+- `2026-06-01-phase8-180-open-issues-register.md`

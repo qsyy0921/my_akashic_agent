@@ -317,4 +317,8 @@ execution.
   to be referenced by exact filename in this index.
 - `121-go-runtime-package-guard.md`: Go architecture tests require runtime
   source files to stay under intentional DDD/hexagonal top-level roots.
+- `122-media-content-access-plan-url-fields.md`: Go access plans expose
+  runtime/dashboard URL hints while Python remains a read-only proxy.
+- `123-open-issues-register.md`: SDD adds a canonical unresolved issue ledger
+  separate from current-iteration TODO and future backlog.
 - Agent architecture boundary specs live under `../agent-architecture/`.

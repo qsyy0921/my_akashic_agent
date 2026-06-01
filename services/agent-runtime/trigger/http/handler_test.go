@@ -2404,7 +2404,10 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 		`"ready":true`,
 		`"reason":"media_asset_content_ready"`,
 		`"asset_id":"` + assetID + `"`,
+		`"runtime_path":"/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
+		`"dashboard_path":"/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
 		`"content_endpoint":"/v1/media-assets/asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1/content"`,
+		`"content_url":"/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
 		`"name":"open-content-endpoint"`,
 		`"side_effect":"none"`,
 	} {

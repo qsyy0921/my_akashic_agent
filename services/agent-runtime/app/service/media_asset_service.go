@@ -568,13 +568,19 @@ func mediaAssetContentAccessPlan(
 	blockers []string,
 ) query.MediaAssetContentAccessPlanView {
 	ready := reason == "media_asset_content_ready"
+	runtimePath := mediaAssetContentAccessPlanEndpoint(assetID)
+	dashboardPath := mediaAssetDashboardContentAccessPlanPath(assetID)
+	contentURL := mediaAssetDashboardContentURL(assetID)
 	return query.MediaAssetContentAccessPlanView{
 		Ready:            ready,
 		Reason:           reason,
 		Blockers:         blockers,
 		AssetID:          assetID,
 		Asset:            asset,
+		RuntimePath:      runtimePath,
+		DashboardPath:    dashboardPath,
 		ContentEndpoint:  endpoint,
+		ContentURL:       contentURL,
 		ContentMimeType:  contentMimeType,
 		ContentSizeBytes: contentSizeBytes,
 		RequiredSteps:    mediaAssetContentAccessRequiredSteps(assetID, endpoint, ready),
@@ -660,6 +666,20 @@ func mediaAssetContentAccessPlanEndpoint(assetID string) string {
 		return ""
 	}
 	return "/v1/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID)
+}
+
+func mediaAssetDashboardContentAccessPlanPath(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/api/dashboard/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID)
+}
+
+func mediaAssetDashboardContentURL(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/api/dashboard/media-assets/content?asset_id=" + url.QueryEscape(assetID)
 }
 
 func generatedAssetID(cmd command.RegisterMediaAssetCommand) string {

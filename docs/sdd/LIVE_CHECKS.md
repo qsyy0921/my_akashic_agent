@@ -55,6 +55,7 @@
 - [ ] 点击前查看 `GET /v1/media-assets/content-access-plan?asset_id=...`：ready 资产应返回 content endpoint 和 `media_asset_content_ready`；forbidden/unavailable/disabled/missing id/missing asset 应返回稳定 blockers，调用后不得流式传输内容、不得下载远程媒体、不得触发 OCR/VLM/RAG/AI。
 - [ ] 在浏览器打开 `/api/dashboard/media-assets/content?asset_id=...`：若 Go content route 失败且 workspace fallback 找不到本地文件，应返回 JSON detail，其中包含 Go `content_access_plan.reason/blockers/side_effect`；调用后不得改变 Go content policy、不得下载远程媒体、不得触发 OCR/VLM/RAG/AI。
 - [ ] 在浏览器直接请求 `/api/dashboard/media-assets/content-access-plan?asset_id=...`：应返回 Go plan 的 ready/reason/blockers/content endpoint/side_effect，且不打开内容流、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
+- [ ] 查看 Go `/v1/media-assets/content-access-plan?asset_id=...`：响应应包含 `runtime_path`、`dashboard_path`、`content_url`，且这些字段与 dashboard proxy URL 一致；调用后不得打开内容流、下载远程媒体或触发 OCR/VLM/RAG/AI。
 - [ ] 查看 dashboard 消息列表/详情的 `media_assets`：每个带 `asset_id` 的媒体资产应同时包含 `content_url` 和 `content_access_plan_url`，列表加载时不得批量请求 access plan、不得触发 OCR/VLM/RAG/AI。
 - [ ] 修改 Go media content access plan 或 dashboard proxy 字段前，先更新 `media_asset_content_access_plan.qq.image.json` 合同 fixture，并确认 `tests/test_sdd_contract_fixtures.py` 通过，避免 Go/Python 字段漂移。
 - [ ] 修改 `MediaAssetContentAccessPlan` 字段前，同时运行 `go test ./...`（`services/agent-runtime`）和 `uv run pytest tests/test_sdd_contract_fixtures.py -q`，确认 Go/Python 双侧合同 fixture 都能捕获 ready/reason/path/content endpoint/side_effect/steps 漂移。
@@ -111,3 +112,4 @@
 
 - [ ] 新增或重命名 `docs/sdd/specs/agent-gateway/[0-9][0-9][0-9]-*.md` 后，必须同步更新 `docs/sdd/specs/agent-gateway/000-index.md`，并运行 `uv run pytest tests/test_sdd_spec_index.py -q`。
 - [ ] 新增 `services/agent-runtime` Go 源码目录前，先确认它属于 `api/app/cmd/domain/infrastructure/smoke/trigger/types` 之一；否则需要先更新 SDD package 设计并让 `go test .` 的架构守卫通过。
+- [ ] 每轮结束前检查 `docs/sdd/OPEN_ISSUES.md`：新增未解决风险、待决策项或长期缺口应进 OPEN_ISSUES；只有本轮承诺解决的拆解任务才进入 `TODO.md`。
