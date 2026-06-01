@@ -679,6 +679,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_content_unavailable": 1,
             "media_asset_content_disabled": 0,
             "media_asset_content_error": 0,
+            "media_asset_retention_assets": 3,
+            "media_asset_retention_cleanup_due": 1,
+            "media_asset_retention_permanent": 1,
+            "media_asset_retention_default": 1,
+            "media_asset_retention_ephemeral": 1,
+            "media_asset_retention_unknown": 0,
             "agent_job_capacity_ready": False,
             "agent_job_capacity_reason": "agent_job_capacity_attention_required",
             "agent_job_capacity_blockers": 3,
@@ -809,6 +815,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
+            {"id": "media_asset_retention", "label": "Media Asset Retention", "value": "1/3", "status": "warn"},
             {
                 "id": "agent_job_capacity_plan",
                 "label": "Agent Job Capacity",
@@ -1082,6 +1089,56 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "unavailable": 1,
                 "disabled": 0,
                 "error": 0,
+            },
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "media_asset_retention_diagnostics": {
+            "items": [
+                {
+                    "asset_id": "asset:qq:1049511700:group:27234224:1",
+                    "channel": {
+                        "kind": "qq",
+                        "account_id": "1049511700",
+                        "conversation_id": "27234224",
+                        "conversation_type": "group",
+                    },
+                    "source_message_id": "qq:gqq:27234224:119",
+                    "sender_id": "2952887906",
+                    "kind": "image",
+                    "retention": "default-observed-group",
+                    "retention_class": "default",
+                    "cleanup_due": False,
+                    "age_seconds": 3600,
+                    "ttl_seconds": 2592000,
+                    "cleanup_reason": "media_asset_retention_not_due",
+                    "created_at": "2026-05-31T12:00:00Z",
+                    "updated_at": "2026-05-31T12:00:00Z",
+                },
+                {
+                    "asset_id": "asset:old",
+                    "channel": {"kind": "qq"},
+                    "retention": "ephemeral",
+                    "retention_class": "ephemeral",
+                    "cleanup_due": True,
+                    "cleanup_reason": "media_asset_retention_due",
+                },
+                {
+                    "asset_id": "asset:keep",
+                    "channel": {"kind": "qq"},
+                    "retention": "permanent",
+                    "retention_class": "permanent",
+                    "cleanup_due": False,
+                    "cleanup_reason": "media_asset_retention_permanent",
+                },
+            ],
+            "totals": {
+                "assets": 3,
+                "cleanup_due": 1,
+                "permanent": 1,
+                "default": 1,
+                "ephemeral": 1,
+                "unknown": 0,
             },
             "notes": ["read-only"],
             "side_effect": "none",
@@ -1618,6 +1675,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["media_asset_content_ready"] == 1
     assert payload["summary"]["media_asset_content_forbidden"] == 1
     assert payload["summary"]["media_asset_content_unavailable"] == 1
+    assert payload["summary"]["media_asset_retention_assets"] == 3
+    assert payload["summary"]["media_asset_retention_cleanup_due"] == 1
+    assert payload["summary"]["media_asset_retention_permanent"] == 1
+    assert payload["summary"]["media_asset_retention_default"] == 1
+    assert payload["summary"]["media_asset_retention_ephemeral"] == 1
     assert payload["summary"]["agent_job_capacity_ready"] is False
     assert payload["summary"]["agent_job_capacity_reason"] == (
         "agent_job_capacity_attention_required"
@@ -1754,7 +1816,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     media_card = next(item for item in payload["cards"] if item["id"] == "media_asset_content")
     assert media_card["value"] == "1/3"
     assert media_card["status"] == "danger"
+    media_retention_card = next(
+        item for item in payload["cards"] if item["id"] == "media_asset_retention"
+    )
+    assert media_retention_card["value"] == "1/3"
+    assert media_retention_card["status"] == "warn"
     assert payload["media_asset_content_diagnostics"]["totals"]["forbidden"] == 1
+    assert payload["media_asset_retention_diagnostics"]["totals"]["cleanup_due"] == 1
+    assert payload["media_asset_retention_diagnostics"]["items"][1]["asset_id"] == "asset:old"
     assert (
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"

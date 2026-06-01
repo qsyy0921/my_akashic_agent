@@ -306,6 +306,22 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			},
 			SideEffect: "none",
 		}},
+		MediaAssetRetention: staticRuntimeMediaAssetRetentionDiagnostics{view: query.MediaAssetRetentionDiagnosticsView{
+			Items: []query.MediaAssetRetentionDiagnosticItemView{
+				{AssetID: "asset:ready", Kind: "image", RetentionClass: "default", CleanupDue: false},
+				{AssetID: "asset:old", Kind: "image", RetentionClass: "ephemeral", CleanupDue: true},
+				{AssetID: "asset:keep", Kind: "file", RetentionClass: "permanent", CleanupDue: false},
+			},
+			Totals: map[string]int{
+				"assets":      3,
+				"cleanup_due": 1,
+				"permanent":   1,
+				"default":     1,
+				"ephemeral":   1,
+				"unknown":     0,
+			},
+			SideEffect: "none",
+		}},
 		KnowledgePipelines: staticKnowledgePipelineDiagnostics{view: query.KnowledgePipelineDiagnosticsView{
 			Totals: map[string]int{
 				"targets":                            2,
@@ -765,6 +781,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["media_asset_content_error"] != 0 {
 		t.Fatalf("unexpected media asset content summary: %#v", view.Summary)
 	}
+	if view.Summary["media_asset_retention_assets"] != 3 ||
+		view.Summary["media_asset_retention_cleanup_due"] != 1 ||
+		view.Summary["media_asset_retention_permanent"] != 1 ||
+		view.Summary["media_asset_retention_default"] != 1 ||
+		view.Summary["media_asset_retention_ephemeral"] != 1 ||
+		view.Summary["media_asset_retention_unknown"] != 0 {
+		t.Fatalf("unexpected media asset retention summary: %#v", view.Summary)
+	}
 	if view.Summary["knowledge_pipeline_targets"] != 2 ||
 		view.Summary["knowledge_pipeline_ready"] != 1 ||
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
@@ -939,6 +963,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "observe_capture", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_content", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_content", "1/4")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_retention", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention", "1/3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
@@ -1004,6 +1030,10 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if intFromMap(view.MediaAssetContent.Totals, "assets") != 4 ||
 		intFromMap(view.MediaAssetContent.Totals, "forbidden") != 1 {
 		t.Fatalf("unexpected media asset content detail: %+v", view.MediaAssetContent)
+	}
+	if intFromMap(view.MediaAssetRetention.Totals, "cleanup_due") != 1 ||
+		view.MediaAssetRetention.Items[1].AssetID != "asset:old" {
+		t.Fatalf("unexpected media asset retention detail: %+v", view.MediaAssetRetention)
 	}
 	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
 		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
@@ -1204,6 +1234,14 @@ type staticRuntimeMediaAssetContentDiagnostics struct {
 }
 
 func (s staticRuntimeMediaAssetContentDiagnostics) ContentDiagnostics(context.Context, query.MediaAssetContentDiagnosticsFilter) (query.MediaAssetContentDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeMediaAssetRetentionDiagnostics struct {
+	view query.MediaAssetRetentionDiagnosticsView
+}
+
+func (s staticRuntimeMediaAssetRetentionDiagnostics) RetentionDiagnostics(context.Context, query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionDiagnosticsView, error) {
 	return s.view, nil
 }
 

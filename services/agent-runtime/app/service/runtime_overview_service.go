@@ -33,6 +33,7 @@ type RuntimeOverviewDeps struct {
 	ObserveTargets             runtimeObserveTargetsGetter
 	ObserveCapture             runtimeObserveCaptureGetter
 	MediaAssetContent          runtimeMediaAssetContentDiagnosticsGetter
+	MediaAssetRetention        runtimeMediaAssetRetentionDiagnosticsGetter
 	KnowledgePipelines         runtimeKnowledgePipelineDiagnosticsGetter
 	KnowledgeJobPlanner        runtimeKnowledgeJobPlannerPreviewer
 	KnowledgePlannerReady      runtimeKnowledgeJobPlannerReadinessChecker
@@ -113,6 +114,10 @@ type runtimeObserveCaptureGetter interface {
 
 type runtimeMediaAssetContentDiagnosticsGetter interface {
 	ContentDiagnostics(ctx context.Context, filter query.MediaAssetContentDiagnosticsFilter) (query.MediaAssetContentDiagnosticsView, error)
+}
+
+type runtimeMediaAssetRetentionDiagnosticsGetter interface {
+	RetentionDiagnostics(ctx context.Context, filter query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionDiagnosticsView, error)
 }
 
 type runtimeKnowledgePipelineDiagnosticsGetter interface {
@@ -215,6 +220,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets        query.ObserveTargetsView
 		observeCapture        query.ObserveCaptureDiagnosticsView
 		mediaAssetContent     query.MediaAssetContentDiagnosticsView
+		mediaAssetRetention   query.MediaAssetRetentionDiagnosticsView
 		knowledgePipelines    query.KnowledgePipelineDiagnosticsView
 		knowledgePlanner      query.KnowledgeJobPlannerPreviewView
 		knowledgeReady        query.KnowledgeJobPlannerReadinessView
@@ -366,6 +372,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 				errors = append(errors, runtimeOverviewError("media-asset-content-diagnostics", err))
 			} else {
 				mediaAssetContent = item
+			}
+		}
+
+		if deps.MediaAssetRetention != nil {
+			if item, err := deps.MediaAssetRetention.RetentionDiagnostics(ctx, query.MediaAssetRetentionDiagnosticsFilter{Limit: limit}); err != nil {
+				errors = append(errors, runtimeOverviewError("media-asset-retention-diagnostics", err))
+			} else {
+				mediaAssetRetention = item
 			}
 		}
 
@@ -537,6 +551,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets,
 		observeCapture,
 		mediaAssetContent,
+		mediaAssetRetention,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -572,6 +587,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		observeTargets,
 		observeCapture,
 		mediaAssetContent,
+		mediaAssetRetention,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -604,6 +620,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		ObserveTargets:          observeTargets,
 		ObserveCapture:          observeCapture,
 		MediaAssetContent:       mediaAssetContent,
+		MediaAssetRetention:     mediaAssetRetention,
 		KnowledgePipelines:      knowledgePipelines,
 		KnowledgeJobPlanner:     knowledgePlanner,
 		KnowledgePlannerReady:   knowledgeReady,
@@ -652,6 +669,7 @@ func runtimeOverviewSummary(
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	mediaAssetContent query.MediaAssetContentDiagnosticsView,
+	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -797,6 +815,12 @@ func runtimeOverviewSummary(
 		"media_asset_content_unavailable":                       intFromMap(mediaAssetContent.Totals, "unavailable"),
 		"media_asset_content_disabled":                          intFromMap(mediaAssetContent.Totals, "disabled"),
 		"media_asset_content_error":                             intFromMap(mediaAssetContent.Totals, "error"),
+		"media_asset_retention_assets":                          intFromMap(mediaAssetRetention.Totals, "assets"),
+		"media_asset_retention_cleanup_due":                     intFromMap(mediaAssetRetention.Totals, "cleanup_due"),
+		"media_asset_retention_permanent":                       intFromMap(mediaAssetRetention.Totals, "permanent"),
+		"media_asset_retention_default":                         intFromMap(mediaAssetRetention.Totals, "default"),
+		"media_asset_retention_ephemeral":                       intFromMap(mediaAssetRetention.Totals, "ephemeral"),
+		"media_asset_retention_unknown":                         intFromMap(mediaAssetRetention.Totals, "unknown"),
 		"knowledge_pipeline_targets":                            intFromMap(knowledgePipelines.Totals, "targets"),
 		"knowledge_pipeline_ready":                              intFromMap(knowledgePipelines.Totals, "ready"),
 		"knowledge_pipeline_warning":                            intFromMap(knowledgePipelines.Totals, "warning"),
@@ -968,6 +992,7 @@ func runtimeOverviewCards(
 	observeTargets query.ObserveTargetsView,
 	observeCapture query.ObserveCaptureDiagnosticsView,
 	mediaAssetContent query.MediaAssetContentDiagnosticsView,
+	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -1015,6 +1040,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("observe_targets", "Observe Targets", intSummary(summary, "observe_targets_enabled"), observeTargetStatus(observeTargets), map[string]any{"observe_targets": observeTargets}),
 		runtimeOverviewCard("observe_capture", "Observe Capture", observeCaptureValue(observeCapture), observeCaptureStatus(observeCapture), map[string]any{"observe_capture": observeCapture}),
 		runtimeOverviewCard("media_asset_content", "Media Asset Content", mediaAssetContentValue(mediaAssetContent), mediaAssetContentStatus(mediaAssetContent), map[string]any{"media_asset_content_diagnostics": mediaAssetContent}),
+		runtimeOverviewCard("media_asset_retention", "Media Asset Retention", mediaAssetRetentionValue(mediaAssetRetention), mediaAssetRetentionStatus(mediaAssetRetention), map[string]any{"media_asset_retention_diagnostics": mediaAssetRetention}),
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
@@ -1456,6 +1482,20 @@ func mediaAssetContentStatus(view query.MediaAssetContentDiagnosticsView) string
 
 func mediaAssetContentValue(view query.MediaAssetContentDiagnosticsView) string {
 	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "ready"), intFromMap(view.Totals, "assets"))
+}
+
+func mediaAssetRetentionStatus(view query.MediaAssetRetentionDiagnosticsView) string {
+	if intFromMap(view.Totals, "assets") == 0 {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "cleanup_due") > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func mediaAssetRetentionValue(view query.MediaAssetRetentionDiagnosticsView) string {
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "cleanup_due"), intFromMap(view.Totals, "assets"))
 }
 
 func knowledgePipelineCardStatus(view query.KnowledgePipelineDiagnosticsView) string {
