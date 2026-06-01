@@ -29,6 +29,7 @@ REQUIRED_CONTRACTS = {
     "outbox_delivery.qq.private.text.json",
     "outbox_delivery_event.qq.text.json",
     "media_asset_content.qq.image.json",
+    "media_asset_content_access_plan.qq.image.json",
     "agent_job_event_stream.rag_ingest.json",
     "group_thread.hardware.json",
     "group_thread.game_guide.json",
@@ -117,6 +118,10 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
             "kind": "MediaAssetContent",
             "required_keys": {"asset_id", "content_access"},
         },
+        "media_asset_content_access_plan.qq.image.json": {
+            "kind": "MediaAssetContentAccessPlan",
+            "required_keys": {"asset_id", "content_access_plan"},
+        },
         "agent_job_event_stream.rag_ingest.json": {
             "kind": "AgentJobEventStream",
             "required_keys": {"job_type", "events"},
@@ -157,6 +162,20 @@ def test_runtime_boundary_fixtures_cover_current_go_owned_contracts() -> None:
     )
     assert media_content["content_access"]["runtime_path"].startswith("/v1/media-assets/")
     assert media_content["content_access"]["preview_ready"] is True
+
+    access_plan = _load_json(CONTRACT_DIR / "media_asset_content_access_plan.qq.image.json")
+    plan = access_plan["content_access_plan"]
+    assert plan["ready"] is True
+    assert plan["reason"] == "media_asset_content_ready"
+    assert plan["blockers"] == []
+    assert plan["side_effect"] == "none"
+    assert plan["dashboard_path"].startswith(
+        "/api/dashboard/media-assets/content-access-plan"
+    )
+    assert plan["runtime_path"].startswith("/v1/media-assets/content-access-plan")
+    assert plan["content_endpoint"].endswith("/content")
+    assert plan["content_url"].startswith("/api/dashboard/media-assets/content")
+    assert "inspect-content-diagnostics" in plan["required_steps"]
 
     event_stream = _load_json(CONTRACT_DIR / "agent_job_event_stream.rag_ingest.json")
     assert [event["sequence"] for event in event_stream["events"]] == [1, 2, 3]

@@ -1,0 +1,48 @@
+{
+  "schema_version": "2026-06-01.v1",
+  "kind": "MediaAssetContentAccessPlan",
+  "event_id": "asset-content-plan:qq:image:27234224:msg-0498:1",
+  "asset_id": "asset:qq:image:27234224:msg-0498:1",
+  "platform": "qq",
+  "account_id": "2365524513",
+  "conversation_id": "27234224",
+  "conversation_type": "group",
+  "agent_id": "hardware-observer",
+  "content_access_plan": {
+    "ready": true,
+    "reason": "media_asset_content_ready",
+    "blockers": [],
+    "asset_id": "asset:qq:image:27234224:msg-0498:1",
+    "dashboard_path": "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1",
+    "runtime_path": "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1",
+    "content_endpoint": "/v1/media-assets/asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1/content",
+    "content_url": "/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3Aimage%3A27234224%3Amsg-0498%3A1",
+    "content_mime_type": "image/png",
+    "content_size_bytes": 184320,
+    "required_steps": [
+      "inspect-content-diagnostics",
+      "open-content-endpoint"
+    ],
+    "verify_steps": [
+      "rerun-content-access-plan",
+      "verify-content-route"
+    ],
+    "fallback_steps": [
+      "check-local-media-roots",
+      "restore-or-redownload-content"
+    ],
+    "side_effect": "none"
+  },
+  "timestamp": "2026-06-01T09:12:00+08:00",
+  "source_message_ids": [
+    "qq:2365524513:group:27234224:msg-0498"
+  ],
+  "source_asset_ids": [
+    "asset:qq:image:27234224:msg-0498:1"
+  ],
+  "metadata": {
+    "owner": "agent-runtime",
+    "dashboard_proxy": true,
+    "policy_source": "go"
+  }
+}
