@@ -15,6 +15,8 @@ all unchecked current-iteration items must be completed, moved back to
 - `PROCESS.md`: the workflow for spec, implementation, review, and acceptance.
 - `PROJECT_STATUS.md`: one-page project status ledger that links current TODO,
   completed work, open issues, backlog, live checks, and ownership boundaries.
+- `OPEN_ISSUES.md`: unresolved issues, risks, decisions, and follow-up gaps
+  that must remain visible across iterations.
 - `ITERATION_PROMPT.md`: resume prompt for future Codex sessions, including
   TODO closure and Go/Python ownership rules.
 - `templates/spec-template.md`: required structure for a feature spec.
@@ -38,6 +40,8 @@ Every non-trivial feature should include:
 2. Tests linked from the spec acceptance section.
 3. A review note under `reviews/` when AI-generated code is involved.
 4. An ADR when the change creates or changes an architectural boundary.
+5. An `OPEN_ISSUES.md` update when the change leaves a risk, gap, blocker, or
+   follow-up decision unresolved.
 
 ## Current Focus
 

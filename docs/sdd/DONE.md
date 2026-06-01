@@ -9,7 +9,8 @@
 - Go 服务边界已统一为 `services/agent-runtime`，采用 DDD + 六边形架构分层。
 - Go 负责 agent runtime/control plane，Python 负责模型调用、prompt、Memory/RAG/chunking/retrieval、OCR/VLM、工具执行、群知识沉淀和快速实验。
 - Go runtime 默认使用 `.akashic-workspace/agent-runtime` 文件态保存确定性状态，可用 `AKASHIC_RUNTIME_STATE_DIR` 或单项 DSN/PATH 覆盖。
-- SDD 任务文档已拆分为 `TODO.md`、`DONE.md`、`LIVE_CHECKS.md`、`BACKLOG.md`：TODO 只保存本轮必须完成项，避免长期规划导致 TODO 膨胀。
+- SDD 任务文档已拆分为 `TODO.md`、`DONE.md`、`LIVE_CHECKS.md`、`OPEN_ISSUES.md`、`BACKLOG.md`：TODO 只保存本轮必须完成项，OPEN_ISSUES 记录所有未解决问题，避免长期规划或风险缺口导致 TODO 膨胀。
+- `OPEN_ISSUES.md` 已纳入 SDD 入口说明、迭代流程和 review gate：每轮开始必须读取，留下风险、缺口、阻塞或待决策项时必须同步更新。
 
 ## 消息、资产与发送链路
 
