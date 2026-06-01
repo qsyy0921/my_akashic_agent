@@ -373,6 +373,7 @@ GET  /v1/media-assets/content-diagnostics?limit=50
 GET  /v1/media-assets/content-diagnostics?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A...
+GET  /v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3A...&operator_id=qsyy&approval_id=...
 GET  /v1/media-assets/retention-diagnostics?limit=50
 GET  /v1/media-assets/retention-plan?limit=50
 GET  /v1/media-assets/retention-cleanup/preflight?target_id=default-observed-group&operator_id=qsyy&approval_id=...
@@ -993,8 +994,12 @@ disabled, or errored. It is only an access-control and local-content readiness
 view; each item links to `/v1/media-assets/content-access-plan` for single-asset
 drilldown. `/v1/media-assets/content-recovery-plan` explains disabled,
 forbidden, unavailable, or probe-error recovery steps and future executor scope
-without downloading, restoring, streaming, parsing, or invoking AI. OCR, VLM,
-file parsing, and semantic extraction remain Python AI worker responsibilities.
+without downloading, restoring, streaming, parsing, or invoking AI.
+`/v1/media-assets/content-recovery/preflight` then binds an actionable recovery
+candidate to `media_asset_content/recover_content` control mutation preflight
+and an active operator approval; it still does not create approval/mutation
+records or execute any download/restore/cache operation. OCR, VLM, file parsing,
+and semantic extraction remain Python AI worker responsibilities.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

@@ -220,6 +220,99 @@ func TestMediaAssetServiceContentRecoveryPlanExplainsRecoveryPaths(t *testing.T)
 	}
 }
 
+func TestMediaAssetContentRecoveryPreflightRequiresApprovedControlMutation(t *testing.T) {
+	ctx := context.Background()
+	assetRoot := t.TempDir()
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, mediaAssets, "asset:missing", filepath.Join(assetRoot, "missing.txt"), "missing.txt")
+
+	approvals := appservice.NewOperatorApprovalService()
+	controlPreflight := appservice.NewControlMutationPreflightService(approvals)
+	service := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, controlPreflight)
+
+	blocked, err := service.CheckMediaAssetContentRecoveryPreflight(ctx, query.MediaAssetContentRecoveryPreflightFilter{
+		AssetID:    "asset:missing",
+		TargetID:   "asset:missing",
+		OperatorID: "qsyy",
+	})
+	if err != nil {
+		t.Fatalf("content recovery preflight blocked: %v", err)
+	}
+	if blocked.Ready ||
+		blocked.Reason != "missing_approval_id" ||
+		blocked.TargetKind != "media_asset_content" ||
+		blocked.Action != "recover_content" ||
+		!blocked.RecoveryNeeded ||
+		blocked.ExecutorScope != "media_content_cache_executor" ||
+		blocked.SideEffect != "none" {
+		t.Fatalf("unexpected blocked preflight: %+v", blocked)
+	}
+
+	approval, err := approvals.RecordOperatorApproval(ctx, command.RecordOperatorApprovalCommand{
+		TargetKind: "media_asset_content",
+		TargetID:   "asset:missing",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	ready, err := service.CheckMediaAssetContentRecoveryPreflight(ctx, query.MediaAssetContentRecoveryPreflightFilter{
+		AssetID:    "asset:missing",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+	})
+	if err != nil {
+		t.Fatalf("content recovery preflight ready: %v", err)
+	}
+	if !ready.Ready ||
+		ready.Reason != "media_asset_content_recovery_preflight_ready" ||
+		ready.SuggestedAudit == nil ||
+		ready.SuggestedAudit.TargetKind != "media_asset_content" ||
+		ready.SuggestedAudit.Action != "recover_content" ||
+		ready.SuggestedAudit.Status != "planned" ||
+		ready.SideEffect != "none" {
+		t.Fatalf("unexpected ready preflight: %+v", ready)
+	}
+}
+
+func TestMediaAssetContentRecoveryPreflightBlocksWhenRecoveryNotRequired(t *testing.T) {
+	ctx := context.Background()
+	assetRoot := t.TempDir()
+	readyPath := filepath.Join(assetRoot, "ready.txt")
+	if err := writeTestFile(readyPath, "ready bytes"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, mediaAssets, "asset:ready", readyPath, "ready.txt")
+	service := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, nil)
+
+	view, err := service.CheckMediaAssetContentRecoveryPreflight(ctx, query.MediaAssetContentRecoveryPreflightFilter{
+		AssetID: "asset:ready",
+	})
+	if err != nil {
+		t.Fatalf("content recovery preflight: %v", err)
+	}
+	if view.Ready ||
+		view.Reason != "media_asset_content_recovery_not_required" ||
+		view.RecoveryNeeded ||
+		len(view.Blockers) == 0 ||
+		view.SideEffect != "none" {
+		t.Fatalf("unexpected not-required preflight: %+v", view)
+	}
+}
+
 func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

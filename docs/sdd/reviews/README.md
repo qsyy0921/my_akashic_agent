@@ -234,3 +234,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-185-runtime-overview-queue-topology-table.md`
 - `2026-06-01-phase8-186-runtime-overview-control-audit-table.md`
 - `2026-06-01-phase8-187-runtime-overview-control-mutation-policy-table.md`
+- `2026-06-01-phase8-188-media-content-recovery-preflight.md`

@@ -25,6 +25,10 @@ func TestControlMutationPolicyServiceListsPolicy(t *testing.T) {
 	if len(mediaRetention.Actions) != 1 || mediaRetention.Actions[0] != "cleanup_expired" {
 		t.Fatalf("unexpected media retention actions: %+v", mediaRetention.Actions)
 	}
+	mediaContent := findControlMutationPolicyIntent(t, view.Intents, "media_asset_content")
+	if len(mediaContent.Actions) != 1 || mediaContent.Actions[0] != "recover_content" {
+		t.Fatalf("unexpected media content actions: %+v", mediaContent.Actions)
+	}
 }
 
 func TestControlMutationPolicyServiceFiltersMediaRetentionTarget(t *testing.T) {

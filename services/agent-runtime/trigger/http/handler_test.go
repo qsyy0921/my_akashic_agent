@@ -2570,6 +2570,96 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	}
 }
 
+func TestMediaAssetContentRecoveryPreflightEndpointRequiresApproval(t *testing.T) {
+	assetRoot := t.TempDir()
+	contentReader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, contentReader)
+	_, err = mediaAssets.Register(context.Background(), command.RegisterMediaAssetCommand{
+		AssetID: "asset:missing",
+		Channel: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		SourceMessageID: "qq:gqq:27234224:500",
+		SenderID:        "2948770636",
+		Kind:            "image",
+		URL:             filepath.Join(assetRoot, "missing.txt"),
+		MimeType:        "text/plain",
+		Name:            "missing.txt",
+		Timestamp:       time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("register missing media asset: %v", err)
+	}
+	approvals := appservice.NewOperatorApprovalService()
+	controlPreflight := appservice.NewControlMutationPreflightService(approvals)
+	recoveryPreflight := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, controlPreflight)
+	mux := http.NewServeMux()
+	httptrigger.RegisterMediaAssetContentRecoveryRoutes(mux, recoveryPreflight)
+
+	response := httptest.NewRecorder()
+	preflightURL := "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Amissing&operator_id=qsyy"
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, preflightURL, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content recovery preflight 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"ready":false`,
+		`"reason":"missing_approval_id"`,
+		`"target_kind":"media_asset_content"`,
+		`"action":"recover_content"`,
+		`"recovery_needed":true`,
+		`"executor_scope":"media_content_cache_executor"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("content recovery preflight response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	approval, err := approvals.RecordOperatorApproval(context.Background(), command.RecordOperatorApprovalCommand{
+		TargetKind: "media_asset_content",
+		TargetID:   "asset:missing",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("record media content approval: %v", err)
+	}
+	response = httptest.NewRecorder()
+	preflightURL += "&approval_id=" + url.QueryEscape(approval.ApprovalID)
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, preflightURL, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected approved content recovery preflight 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"media_asset_content_recovery_preflight_ready"`,
+		`"suggested_audit"`,
+		`"status":"planned"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("approved content recovery preflight response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-recovery/preflight", nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected content recovery preflight 405, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 type fakeDeliveryAdapter struct {
 	channel string
 	steps   []model.DeliveryDispatchStep

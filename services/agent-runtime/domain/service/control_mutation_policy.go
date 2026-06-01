@@ -46,6 +46,9 @@ func NewControlMutationPolicy() ControlMutationPolicy {
 			"media_asset_retention": {
 				"cleanup_expired": {},
 			},
+			"media_asset_content": {
+				"recover_content": {},
+			},
 		},
 	}
 }

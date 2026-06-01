@@ -132,6 +132,32 @@ type MediaAssetContentRecoveryPlanView struct {
 	Notes               []string                        `json:"notes,omitempty"`
 }
 
+type MediaAssetContentRecoveryPreflightFilter struct {
+	AssetID    string
+	TargetID   string
+	OperatorID string
+	ApprovalID string
+}
+
+type MediaAssetContentRecoveryPreflightView struct {
+	Ready            bool                               `json:"ready"`
+	Reason           string                             `json:"reason"`
+	Blockers         []string                           `json:"blockers,omitempty"`
+	TargetKind       string                             `json:"target_kind"`
+	TargetID         string                             `json:"target_id"`
+	Action           string                             `json:"action"`
+	OperatorID       string                             `json:"operator_id"`
+	ApprovalID       string                             `json:"approval_id"`
+	AssetID          string                             `json:"asset_id,omitempty"`
+	RecoveryNeeded   bool                               `json:"recovery_needed"`
+	ExecutorScope    string                             `json:"executor_scope,omitempty"`
+	Plan             MediaAssetContentRecoveryPlanView  `json:"plan"`
+	ControlPreflight ControlMutationPreflightView       `json:"control_preflight"`
+	SuggestedAudit   *ControlMutationSuggestedAuditView `json:"suggested_audit,omitempty"`
+	Notes            []string                           `json:"notes,omitempty"`
+	SideEffect       string                             `json:"side_effect"`
+}
+
 type MediaAssetRetentionDiagnosticItemView struct {
 	AssetID         string                `json:"asset_id"`
 	Channel         MediaAssetChannelView `json:"channel"`

@@ -20,12 +20,12 @@
 
 当前 `TODO.md` 已清空。最近完成的切片是 runtime overview dashboard 可读性收口：
 
-- `Control Mutation Policy` drilldown 已把 Go-owned mutation allowlist 从原始 JSON 提升为只读表格。
-- 保留 raw JSON fallback，且不加入 policy edit、approval/mutation、cutover、worker、MQ、media 或 AI 副作用。
+- `Media Content Recovery Preflight` 已把 media content recovery plan 绑定到 Go-owned control mutation policy、operator approval check 和 suggested planned audit。
+- 该 preflight 仍保持 `side_effect=none`，不下载、不恢复、不缓存、不创建 approval/mutation、不触发 OCR/VLM/RAG/AI。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/130-runtime-overview-control-mutation-policy-table.md`
+- `docs/sdd/specs/agent-gateway/131-media-content-recovery-preflight.md`
 
 ## 当前已完成主线
 

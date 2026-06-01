@@ -341,4 +341,7 @@ execution.
 - `130-runtime-overview-control-mutation-policy-table.md`: Runtime overview
   dashboard renders Go-owned control mutation target/action allowlist as a
   read-only table while preserving JSON fallback.
+- `131-media-content-recovery-preflight.md`: Go exposes a read-only
+  approval-bound media content recovery preflight for future recovery/download
+  executors without restoring files or invoking AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.

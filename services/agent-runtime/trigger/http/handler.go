@@ -288,6 +288,13 @@ func RegisterMediaAssetRetentionCleanupRoutes(
 	mux.Handle("/v1/media-assets/retention-cleanup", MediaAssetRetentionCleanupHandler(cleaner))
 }
 
+func RegisterMediaAssetContentRecoveryRoutes(
+	mux *http.ServeMux,
+	checker inport.MediaAssetContentRecoveryPreflightChecker,
+) {
+	mux.Handle("/v1/media-assets/content-recovery/preflight", MediaAssetContentRecoveryPreflightHandler(checker))
+}
+
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -513,6 +520,25 @@ func MediaAssetRetentionCleanupPreflightHandler(checker inport.MediaAssetRetenti
 	})
 }
 
+func MediaAssetContentRecoveryPreflightHandler(checker inport.MediaAssetContentRecoveryPreflightChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if checker == nil {
+			http.Error(w, "media asset content recovery preflight disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := checker.CheckMediaAssetContentRecoveryPreflight(r.Context(), mediaAssetContentRecoveryPreflightFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
 type mediaAssetRetentionCleanupRequest struct {
 	AssetID               string `json:"asset_id"`
 	Limit                 int    `json:"limit"`
@@ -582,6 +608,16 @@ func mediaAssetRetentionCleanupPreflightFilterFromQuery(r *http.Request) query.M
 		TargetID:        strings.TrimSpace(values.Get("target_id")),
 		OperatorID:      strings.TrimSpace(values.Get("operator_id")),
 		ApprovalID:      strings.TrimSpace(values.Get("approval_id")),
+	}
+}
+
+func mediaAssetContentRecoveryPreflightFilterFromQuery(r *http.Request) query.MediaAssetContentRecoveryPreflightFilter {
+	values := r.URL.Query()
+	return query.MediaAssetContentRecoveryPreflightFilter{
+		AssetID:    strings.TrimSpace(values.Get("asset_id")),
+		TargetID:   strings.TrimSpace(values.Get("target_id")),
+		OperatorID: strings.TrimSpace(values.Get("operator_id")),
+		ApprovalID: strings.TrimSpace(values.Get("approval_id")),
 	}
 }
 

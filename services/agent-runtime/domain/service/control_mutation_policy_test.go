@@ -16,6 +16,11 @@ func TestControlMutationPolicyAllowsSupportedIntent(t *testing.T) {
 	if len(result.SupportedActions) != 2 || result.SupportedActions[0] != "enable" || result.SupportedActions[1] != "rollback" {
 		t.Fatalf("unexpected supported actions: %+v", result.SupportedActions)
 	}
+
+	mediaRecovery := policy.Check("media_asset_content", "recover_content")
+	if !mediaRecovery.Allowed || mediaRecovery.Reason != "control_mutation_supported" {
+		t.Fatalf("expected media content recovery intent, got %+v", mediaRecovery)
+	}
 }
 
 func TestControlMutationPolicyListsSupportedIntentsDeterministically(t *testing.T) {
