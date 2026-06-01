@@ -551,21 +551,22 @@ func (s *MediaAssetService) contentDiagnosticItem(
 	}
 	view := assembler.ToMediaAssetView(asset)
 	return query.MediaAssetContentDiagnosticItemView{
-		AssetID:                   view.AssetID,
-		Channel:                   view.Channel,
-		SourceMessageID:           view.SourceMessageID,
-		SenderID:                  view.SenderID,
-		Kind:                      view.Kind,
-		MimeType:                  view.MimeType,
-		Name:                      view.Name,
-		SizeBytes:                 view.SizeBytes,
-		ContentStatus:             status,
-		ContentReason:             reason,
-		ContentEndpoint:           mediaAssetContentEndpoint(view.AssetID),
-		ContentAccessPlanEndpoint: mediaAssetContentAccessPlanEndpoint(view.AssetID),
-		ContentMimeType:           contentMimeType,
-		ContentSizeBytes:          contentSizeBytes,
-		UpdatedAt:                 view.UpdatedAt,
+		AssetID:                     view.AssetID,
+		Channel:                     view.Channel,
+		SourceMessageID:             view.SourceMessageID,
+		SenderID:                    view.SenderID,
+		Kind:                        view.Kind,
+		MimeType:                    view.MimeType,
+		Name:                        view.Name,
+		SizeBytes:                   view.SizeBytes,
+		ContentStatus:               status,
+		ContentReason:               reason,
+		ContentEndpoint:             mediaAssetContentEndpoint(view.AssetID),
+		ContentAccessPlanEndpoint:   mediaAssetContentAccessPlanEndpoint(view.AssetID),
+		ContentRecoveryPlanEndpoint: mediaAssetContentRecoveryPlanEndpoint(view.AssetID),
+		ContentMimeType:             contentMimeType,
+		ContentSizeBytes:            contentSizeBytes,
+		UpdatedAt:                   view.UpdatedAt,
 	}
 }
 

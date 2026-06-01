@@ -88,6 +88,7 @@
 - Go `MediaAssetContentAccessPlan` response 已补齐 `runtime_path`、`dashboard_path`、`content_url`：前端和 dashboard 可直接消费 Go 生成的确定性链接，Python 仍只做代理/展示，不复制媒体访问策略或触发 OCR/VLM/RAG/AI。
 - 已实现 Go-owned media content recovery plan：`GET /v1/media-assets/content-recovery-plan?asset_id=...` 基于 access plan 输出 disabled/forbidden/unavailable/error 的只读恢复步骤、future executor scope 和 URL hints，保持 `side_effect=none`，不下载/恢复/流式传输内容、不触发 OCR/VLM/RAG/AI。
 - Python dashboard 已新增 media content recovery plan 只读代理：`/api/dashboard/media-assets/content-recovery-plan?asset_id=...` 透传 Go plan detail，浏览器可直接查看恢复建议，Python 不复制访问策略、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
+- Go media content diagnostics item 已新增 `content_recovery_plan_endpoint`，dashboard 消息列表/详情的 `media_assets` 已新增 `content_recovery_plan_url`，前端可从每条附件直接进入 Go-owned recovery plan；列表/详情渲染不主动请求 plan、不下载媒体、不触发 OCR/VLM/RAG/AI。
 - Go media content diagnostics item 已新增 `content_access_plan_endpoint`，Python runtime overview dashboard 会规范化并在旧 runtime 未返回时按 asset id fallback 生成，使批量诊断可直接跳到单资产 access plan。
 - `services/agent-runtime/README.md` 和 SDD index 已同步当前 Go media asset API：content diagnostics/access plan、retention diagnostics/plan、cleanup preflight/executor 及各自 side-effect 边界。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。

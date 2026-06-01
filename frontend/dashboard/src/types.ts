@@ -43,6 +43,8 @@ export interface MessageRow {
 export interface MessageMediaAsset {
   asset_id: string;
   content_url?: string;
+  content_access_plan_url?: string;
+  content_recovery_plan_url?: string;
   url?: string;
   kind?: string;
   mime_type?: string;

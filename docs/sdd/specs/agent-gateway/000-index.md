@@ -326,4 +326,7 @@ execution.
 - `125-media-content-recovery-plan.md`: Go exposes a read-only media content
   recovery plan and Python dashboard proxies it without downloading,
   restoring, parsing or invoking AI.
+- `126-media-recovery-plan-drilldown-url.md`: Go diagnostics and Python
+  dashboard message media entries expose deterministic recovery-plan drilldown
+  links without fetching the plan during list/detail rendering.
 - Agent architecture boundary specs live under `../agent-architecture/`.

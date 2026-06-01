@@ -229,3 +229,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-180-open-issues-register.md`
 - `2026-06-01-phase8-181-open-issues-registry-guard.md`
 - `2026-06-01-phase8-182-media-content-recovery-plan.md`
+- `2026-06-01-phase8-183-media-recovery-plan-drilldown-url.md`

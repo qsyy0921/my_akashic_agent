@@ -63,21 +63,22 @@ type MediaAssetView struct {
 }
 
 type MediaAssetContentDiagnosticItemView struct {
-	AssetID                   string                `json:"asset_id"`
-	Channel                   MediaAssetChannelView `json:"channel"`
-	SourceMessageID           string                `json:"source_message_id"`
-	SenderID                  string                `json:"sender_id"`
-	Kind                      string                `json:"kind"`
-	MimeType                  string                `json:"mime_type,omitempty"`
-	Name                      string                `json:"name,omitempty"`
-	SizeBytes                 int64                 `json:"size_bytes,omitempty"`
-	ContentStatus             string                `json:"content_status"`
-	ContentReason             string                `json:"content_reason"`
-	ContentEndpoint           string                `json:"content_endpoint"`
-	ContentAccessPlanEndpoint string                `json:"content_access_plan_endpoint"`
-	ContentMimeType           string                `json:"content_mime_type,omitempty"`
-	ContentSizeBytes          int64                 `json:"content_size_bytes,omitempty"`
-	UpdatedAt                 string                `json:"updated_at"`
+	AssetID                     string                `json:"asset_id"`
+	Channel                     MediaAssetChannelView `json:"channel"`
+	SourceMessageID             string                `json:"source_message_id"`
+	SenderID                    string                `json:"sender_id"`
+	Kind                        string                `json:"kind"`
+	MimeType                    string                `json:"mime_type,omitempty"`
+	Name                        string                `json:"name,omitempty"`
+	SizeBytes                   int64                 `json:"size_bytes,omitempty"`
+	ContentStatus               string                `json:"content_status"`
+	ContentReason               string                `json:"content_reason"`
+	ContentEndpoint             string                `json:"content_endpoint"`
+	ContentAccessPlanEndpoint   string                `json:"content_access_plan_endpoint"`
+	ContentRecoveryPlanEndpoint string                `json:"content_recovery_plan_endpoint"`
+	ContentMimeType             string                `json:"content_mime_type,omitempty"`
+	ContentSizeBytes            int64                 `json:"content_size_bytes,omitempty"`
+	UpdatedAt                   string                `json:"updated_at"`
 }
 
 type MediaAssetContentDiagnosticsView struct {

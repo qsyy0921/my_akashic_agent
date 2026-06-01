@@ -391,12 +391,13 @@ will serve them.
 
 The content diagnostics endpoint is read-only and classifies each asset as
 `ready`, `forbidden`, `unavailable`, `disabled`, or `error`. Each item includes
-the stable content route and the single-asset `content_access_plan_endpoint` for
-dashboard drilldown. It does not run OCR/VLM, parse files, upload to RAG, or
-change the `/content` access policy. The content access plan endpoint is also
-read-only: it probes deterministic availability, immediately closes any opened
-file, returns ready/reason/blockers and operational steps, and does not stream
-content to the caller.
+the stable content route plus single-asset `content_access_plan_endpoint` and
+`content_recovery_plan_endpoint` fields for dashboard drilldown. It does not run
+OCR/VLM, parse files, upload to RAG, or change the `/content` access policy. The
+content access and recovery plan endpoints are also read-only: they probe
+deterministic availability, immediately close any opened file, return
+ready/reason/blockers and operational steps, and do not stream content to the
+caller.
 
 Retention diagnostics and retention plan are read-only: they report cleanup
 candidates and operator approval / control mutation audit steps, but do not

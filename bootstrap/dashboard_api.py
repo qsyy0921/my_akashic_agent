@@ -332,6 +332,10 @@ def _fetch_media_assets_from_runtime(params: Mapping[str, str]) -> list[dict[str
             asset["content_access_plan_url"] = _media_asset_content_access_plan_url(
                 asset_id
             )
+        if asset_id and not _first_text(asset.get("content_recovery_plan_url")):
+            asset["content_recovery_plan_url"] = (
+                _media_asset_content_recovery_plan_url(asset_id)
+            )
         assets.append(asset)
     return assets
 
