@@ -222,3 +222,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-173-media-content-access-plan-contract.md`
 - `2026-06-01-phase8-174-media-content-diagnostics-access-plan-endpoint.md`
 - `2026-06-01-phase8-175-agent-runtime-media-api-docs.md`
+- `2026-06-01-phase8-176-go-contract-test-media-access-plan.md`

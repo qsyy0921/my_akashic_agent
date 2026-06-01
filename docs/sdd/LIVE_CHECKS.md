@@ -57,6 +57,7 @@
 - [ ] 在浏览器直接请求 `/api/dashboard/media-assets/content-access-plan?asset_id=...`：应返回 Go plan 的 ready/reason/blockers/content endpoint/side_effect，且不打开内容流、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
 - [ ] 查看 dashboard 消息列表/详情的 `media_assets`：每个带 `asset_id` 的媒体资产应同时包含 `content_url` 和 `content_access_plan_url`，列表加载时不得批量请求 access plan、不得触发 OCR/VLM/RAG/AI。
 - [ ] 修改 Go media content access plan 或 dashboard proxy 字段前，先更新 `media_asset_content_access_plan.qq.image.json` 合同 fixture，并确认 `tests/test_sdd_contract_fixtures.py` 通过，避免 Go/Python 字段漂移。
+- [ ] 修改 `MediaAssetContentAccessPlan` 字段前，同时运行 `go test ./...`（`services/agent-runtime`）和 `uv run pytest tests/test_sdd_contract_fixtures.py -q`，确认 Go/Python 双侧合同 fixture 都能捕获 ready/reason/path/content endpoint/side_effect/steps 漂移。
 - [ ] 查看 `/v1/media-assets/content-diagnostics?limit=50` 和 Python dashboard `/api/dashboard/runtime-overview` 的 `media_asset_content_diagnostics.items`：每个带 asset id 的 item 应有 `content_access_plan_endpoint`，调用后不得批量请求 access plan、不得打开内容流、不得触发 OCR/VLM/RAG/AI。
 - [ ] 修改 media asset runtime API 时，同步检查 `services/agent-runtime/README.md` 与 `docs/sdd/specs/agent-gateway/000-index.md`，确保 endpoint、side-effect 和 Go/Python 边界说明没有落后于代码。
 - [ ] 通过 `GET /v1/media-assets/retention-cleanup/preflight?target_id=...&operator_id=...&approval_id=...` 校验媒体保留清理前置条件：有 cleanup candidates 且 approval active 时应返回 `ready=true/reason=media_asset_retention_cleanup_preflight_ready/suggested_audit.status=planned/side_effect=none`；无候选、approval 缺失/过期/不匹配时应返回稳定 blockers，且调用后不得新增 approval/mutation 记录、不得删除媒体 metadata/文件、不得触发 OCR/VLM/RAG/AI。

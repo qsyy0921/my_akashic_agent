@@ -27,6 +27,7 @@ var requiredContractFixtures = []string{
 	"outbox_delivery.qq.private.text.json",
 	"outbox_delivery_event.qq.text.json",
 	"media_asset_content.qq.image.json",
+	"media_asset_content_access_plan.qq.image.json",
 	"agent_job_event_stream.rag_ingest.json",
 	"group_thread.hardware.json",
 	"group_thread.game_guide.json",
@@ -98,6 +99,10 @@ func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
 			"asset_id",
 			"content_access",
 		},
+		"media_asset_content_access_plan.qq.image.json": {
+			"asset_id",
+			"content_access_plan",
+		},
 		"agent_job_event_stream.rag_ingest.json": {
 			"job_type",
 			"events",
@@ -119,6 +124,34 @@ func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMediaAssetContentAccessPlanContractShape(t *testing.T) {
+	fixture := loadContractFixture(t, filepath.Join(
+		contractFixtureDir(t),
+		"media_asset_content_access_plan.qq.image.json",
+	))
+	raw, ok := fixture.Extra["content_access_plan"]
+	if !ok {
+		t.Fatal("missing content_access_plan")
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(raw, &plan); err != nil {
+		t.Fatalf("content_access_plan must be an object: %v", err)
+	}
+	if ready, ok := plan["ready"].(bool); !ok || !ready {
+		t.Fatalf("unexpected ready value: %#v", plan["ready"])
+	}
+	assertExtraString(t, plan, "reason", "media_asset_content_ready")
+	assertExtraString(t, plan, "side_effect", "none")
+	assertExtraStringPrefix(t, plan, "dashboard_path", "/api/dashboard/media-assets/content-access-plan")
+	assertExtraStringPrefix(t, plan, "runtime_path", "/v1/media-assets/content-access-plan")
+	assertExtraStringSuffix(t, plan, "content_endpoint", "/content")
+	assertExtraStringPrefix(t, plan, "content_url", "/api/dashboard/media-assets/content")
+	assertStringListContains(t, plan, "required_steps", "inspect-content-diagnostics")
+	assertStringListContains(t, plan, "required_steps", "open-content-endpoint")
+	assertStringListContains(t, plan, "verify_steps", "rerun-content-access-plan")
+	assertStringListContains(t, plan, "fallback_steps", "check-local-media-roots")
 }
 
 func TestMessageEnvelopeFixturesMatchGatewayDTO(t *testing.T) {
@@ -180,4 +213,42 @@ func assertNonEmpty(t *testing.T, value string, field string) {
 	if value == "" {
 		t.Fatalf("%s is required", field)
 	}
+}
+
+func assertExtraString(t *testing.T, data map[string]any, key string, expected string) {
+	t.Helper()
+	value, ok := data[key].(string)
+	if !ok || value != expected {
+		t.Fatalf("unexpected %s: %#v", key, data[key])
+	}
+}
+
+func assertExtraStringPrefix(t *testing.T, data map[string]any, key string, prefix string) {
+	t.Helper()
+	value, ok := data[key].(string)
+	if !ok || len(value) < len(prefix) || value[:len(prefix)] != prefix {
+		t.Fatalf("unexpected %s prefix: %#v", key, data[key])
+	}
+}
+
+func assertExtraStringSuffix(t *testing.T, data map[string]any, key string, suffix string) {
+	t.Helper()
+	value, ok := data[key].(string)
+	if !ok || len(value) < len(suffix) || value[len(value)-len(suffix):] != suffix {
+		t.Fatalf("unexpected %s suffix: %#v", key, data[key])
+	}
+}
+
+func assertStringListContains(t *testing.T, data map[string]any, key string, expected string) {
+	t.Helper()
+	raw, ok := data[key].([]any)
+	if !ok {
+		t.Fatalf("%s must be a list: %#v", key, data[key])
+	}
+	for _, item := range raw {
+		if value, ok := item.(string); ok && value == expected {
+			return
+		}
+	}
+	t.Fatalf("%s missing %q: %#v", key, expected, data[key])
 }
