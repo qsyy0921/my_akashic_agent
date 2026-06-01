@@ -43,6 +43,7 @@ type RuntimeOverviewDeps struct {
 	AgentJobExternalLeaseReady runtimeAgentJobExternalLeaseReadinessChecker
 	AgentJobExternalLeasePlan  runtimeAgentJobExternalLeasePlanner
 	OutboundCutoverPlan        runtimeOutboundCutoverPlanner
+	ControlMutationPolicy      runtimeControlMutationPolicyViewer
 	OperatorApprovals          runtimeOperatorApprovalsLister
 	ControlMutations           runtimeControlMutationsLister
 	ReceiverStatuses           runtimeReceiverStatusesGetter
@@ -150,6 +151,10 @@ type runtimeOutboundCutoverPlanner interface {
 	PlanOutboundCutover(ctx context.Context, cmd command.PlanOutboundCutoverCommand) (query.OutboundCutoverPlanView, error)
 }
 
+type runtimeControlMutationPolicyViewer interface {
+	GetControlMutationPolicy(ctx context.Context, filter query.ControlMutationPolicyFilter) (query.ControlMutationPolicyView, error)
+}
+
 type runtimeOperatorApprovalsLister interface {
 	ListOperatorApprovals(ctx context.Context, filter query.OperatorApprovalFilter) (query.OperatorApprovalsView, error)
 }
@@ -219,6 +224,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobExternalLease query.AgentJobExternalLeaseReadinessView
 		agentJobExternalPlan  query.AgentJobExternalLeasePlanView
 		outboundCutover       query.OutboundCutoverPlanView
+		controlMutationPolicy query.ControlMutationPolicyView
 		operatorApprovals     query.OperatorApprovalsView
 		controlMutations      query.ControlMutationAuditsView
 		receiverStatuses      query.ReceiverStatusesView
@@ -464,6 +470,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.ControlMutationPolicy != nil {
+			if item, err := deps.ControlMutationPolicy.GetControlMutationPolicy(ctx, query.ControlMutationPolicyFilter{}); err != nil {
+				errors = append(errors, runtimeOverviewError("control-mutation-policy", err))
+			} else {
+				controlMutationPolicy = item
+			}
+		}
+
 		if deps.OperatorApprovals != nil {
 			if item, err := deps.OperatorApprovals.ListOperatorApprovals(ctx, query.OperatorApprovalFilter{Limit: eventLimit}); err != nil {
 				errors = append(errors, runtimeOverviewError("operator-approvals", err))
@@ -532,6 +546,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
+		controlMutationPolicy,
 		operatorApprovals,
 		controlMutations,
 		receiverStatuses,
@@ -566,6 +581,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
+		controlMutationPolicy,
 		operatorApprovals,
 		controlMutations,
 		receiverStatuses,
@@ -597,6 +613,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		AgentJobExternalLease:   agentJobExternalLease,
 		AgentJobExternalPlan:    agentJobExternalPlan,
 		OutboundCutoverPlan:     outboundCutover,
+		ControlMutationPolicy:   controlMutationPolicy,
 		OperatorApprovals:       operatorApprovals,
 		ControlMutations:        controlMutations,
 		ReceiverStatuses:        receiverStatuses,
@@ -644,6 +661,7 @@ func runtimeOverviewSummary(
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
+	controlMutationPolicy query.ControlMutationPolicyView,
 	operatorApprovals query.OperatorApprovalsView,
 	controlMutations query.ControlMutationAuditsView,
 	receiverStatuses query.ReceiverStatusesView,
@@ -913,6 +931,10 @@ func runtimeOverviewSummary(
 		"outbound_cutover_plan_current_owner":             outboundCutover.CurrentExecutionOwner,
 		"outbound_cutover_plan_desired_owner":             outboundCutover.DesiredExecutionOwner,
 		"outbound_cutover_plan_recommended_owner":         outboundCutover.RecommendedExecutionOwner,
+		"control_mutation_policy_allowed":                 controlMutationPolicy.Allowed,
+		"control_mutation_policy_reason":                  controlMutationPolicy.Reason,
+		"control_mutation_policy_targets":                 len(controlMutationPolicy.Intents),
+		"control_mutation_policy_actions":                 controlMutationPolicyActionCount(controlMutationPolicy.Intents),
 		"operator_approvals_total":                        intFromMap(operatorApprovals.Totals, "approvals"),
 		"operator_approvals_active":                       intFromMap(operatorApprovals.Totals, "active"),
 		"operator_approvals_approved":                     intFromMap(operatorApprovals.Totals, "approved"),
@@ -953,6 +975,7 @@ func runtimeOverviewCards(
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
+	controlMutationPolicy query.ControlMutationPolicyView,
 	operatorApprovals query.OperatorApprovalsView,
 	controlMutations query.ControlMutationAuditsView,
 	receiverStatuses query.ReceiverStatusesView,
@@ -995,6 +1018,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
 		runtimeOverviewCard("knowledge_job_planner_cutover_plan", "Knowledge Planner Cutover", knowledgePlannerCutoverPlanValue(knowledgeCutover), knowledgePlannerCutoverPlanStatus(knowledgeCutover), map[string]any{"knowledge_job_planner_cutover_plan": knowledgeCutover}),
 		runtimeOverviewCard("outbound_cutover_plan", "Outbound Cutover", outboundCutoverPlanValue(outboundCutover), outboundCutoverPlanStatus(outboundCutover), map[string]any{"outbound_cutover_plan": outboundCutover}),
+		runtimeOverviewCard("control_mutation_policy", "Control Mutation Policy", controlMutationPolicyValue(controlMutationPolicy), controlMutationPolicyStatus(controlMutationPolicy), map[string]any{"control_mutation_policy": controlMutationPolicy}),
 		runtimeOverviewCard("control_audit", "Control Audit", controlAuditValue(summary), controlAuditStatus(operatorApprovals, controlMutations), map[string]any{"operator_approvals": operatorApprovals, "control_mutations": controlMutations}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
 		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
@@ -1015,6 +1039,34 @@ func runtimeOverviewCard(id string, label string, value any, status string, deta
 
 func controlAuditValue(summary map[string]any) string {
 	return fmt.Sprintf("%d/%d", intSummary(summary, "operator_approvals_active"), intSummary(summary, "control_mutations_total"))
+}
+
+func controlMutationPolicyActionCount(intents []query.ControlMutationPolicyIntentView) int {
+	total := 0
+	for _, intent := range intents {
+		total += len(intent.Actions)
+	}
+	return total
+}
+
+func controlMutationPolicyStatus(view query.ControlMutationPolicyView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if !view.Allowed || len(view.Blockers) > 0 {
+		return "warn"
+	}
+	if len(view.Intents) == 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func controlMutationPolicyValue(view query.ControlMutationPolicyView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d/%d", len(view.Intents), controlMutationPolicyActionCount(view.Intents))
 }
 
 func controlAuditStatus(approvals query.OperatorApprovalsView, mutations query.ControlMutationAuditsView) string {

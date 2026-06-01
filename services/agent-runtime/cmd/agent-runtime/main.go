@@ -392,6 +392,7 @@ func main() {
 		AgentJobExternalLeaseReady: agentJobExternalLeaseReadiness,
 		AgentJobExternalLeasePlan:  agentJobExternalLeasePlan,
 		OutboundCutoverPlan:        outboundCutoverPlan,
+		ControlMutationPolicy:      controlMutationPolicy,
 		OperatorApprovals:          operatorApprovals,
 		ControlMutations:           controlMutations,
 		ReceiverStatuses:           receiverStatuses,

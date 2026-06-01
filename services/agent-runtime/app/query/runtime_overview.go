@@ -62,6 +62,7 @@ type RuntimeOverviewView struct {
 	AgentJobExternalLease   AgentJobExternalLeaseReadinessView `json:"agent_job_external_lease_readiness,omitempty"`
 	AgentJobExternalPlan    AgentJobExternalLeasePlanView      `json:"agent_job_external_lease_plan,omitempty"`
 	OutboundCutoverPlan     OutboundCutoverPlanView            `json:"outbound_cutover_plan,omitempty"`
+	ControlMutationPolicy   ControlMutationPolicyView          `json:"control_mutation_policy,omitempty"`
 	OperatorApprovals       OperatorApprovalsView              `json:"operator_approvals,omitempty"`
 	ControlMutations        ControlMutationAuditsView          `json:"control_mutations,omitempty"`
 	ReceiverStatuses        ReceiverStatusesView               `json:"receiver_statuses"`

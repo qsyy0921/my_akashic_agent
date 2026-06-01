@@ -643,6 +643,15 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Totals:     map[string]int{"mutations": 2, "planned": 1, "applied": 0, "failed": 1, "rolled_back": 0},
 			SideEffect: "runtime_state_only",
 		}},
+		ControlMutationPolicy: staticControlMutationPolicy{view: query.ControlMutationPolicyView{
+			Allowed: true,
+			Reason:  "control_mutation_policy_listed",
+			Intents: []query.ControlMutationPolicyIntentView{
+				{TargetKind: "agent_job_capacity", Actions: []string{"apply", "rollback"}},
+				{TargetKind: "outbound_cutover", Actions: []string{"enable", "rollback"}},
+			},
+			SideEffect: "none",
+		}},
 		ReceiverStatuses: staticReceiverStatuses{view: query.ReceiverStatusesView{
 			Receivers: []query.ReceiverStatusView{
 				{ReceiverID: "qq:1049511700:qq", Kind: "qq", ChannelName: "qq", AccountID: "1049511700", Status: "connected"},
@@ -848,7 +857,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["outbound_cutover_plan_recommended_owner"] != "nats_external_lease" {
 		t.Fatalf("unexpected outbound cutover plan summary: %#v", view.Summary)
 	}
-	if view.Summary["operator_approvals_total"] != 2 ||
+	if view.Summary["control_mutation_policy_allowed"] != true ||
+		view.Summary["control_mutation_policy_reason"] != "control_mutation_policy_listed" ||
+		view.Summary["control_mutation_policy_targets"] != 2 ||
+		view.Summary["control_mutation_policy_actions"] != 4 ||
+		view.Summary["operator_approvals_total"] != 2 ||
 		view.Summary["operator_approvals_active"] != 1 ||
 		view.Summary["operator_approvals_approved"] != 1 ||
 		view.Summary["operator_approvals_rejected"] != 1 ||
@@ -928,6 +941,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_external_lease_plan", "blocked:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbound_cutover_plan", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "outbound_cutover_plan", "blocked:2")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "control_mutation_policy", "ok")
+	assertRuntimeOverviewCardValue(t, view.Cards, "control_mutation_policy", "2/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "control_audit", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "control_audit", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
@@ -1011,6 +1026,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	}
 	if view.OutboundCutoverPlan.Decision != "blocked" || len(view.OutboundCutoverPlan.RollbackSteps) == 0 {
 		t.Fatalf("unexpected outbound cutover plan detail: %+v", view.OutboundCutoverPlan)
+	}
+	if len(view.ControlMutationPolicy.Intents) != 2 ||
+		view.ControlMutationPolicy.Intents[1].TargetKind != "outbound_cutover" ||
+		view.ControlMutationPolicy.SideEffect != "none" {
+		t.Fatalf("unexpected control mutation policy detail: %+v", view.ControlMutationPolicy)
 	}
 	if len(view.OperatorApprovals.Approvals) != 2 || view.OperatorApprovals.Approvals[0].ApprovalID != "approval-a" {
 		t.Fatalf("unexpected operator approvals detail: %+v", view.OperatorApprovals)
@@ -1259,6 +1279,14 @@ type staticRuntimeControlMutations struct {
 }
 
 func (s staticRuntimeControlMutations) ListControlMutationAudits(context.Context, query.ControlMutationAuditFilter) (query.ControlMutationAuditsView, error) {
+	return s.view, nil
+}
+
+type staticControlMutationPolicy struct {
+	view query.ControlMutationPolicyView
+}
+
+func (s staticControlMutationPolicy) GetControlMutationPolicy(context.Context, query.ControlMutationPolicyFilter) (query.ControlMutationPolicyView, error) {
 	return s.view, nil
 }
 

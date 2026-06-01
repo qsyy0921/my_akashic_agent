@@ -65,6 +65,7 @@
 - 已实现 Go-owned `Control Mutation Preflight`：`GET /v1/control-mutations/preflight` 可在真实控制面变更前校验 active approved approval，返回 blockers 和建议 planned mutation audit 绑定信息，明确 `side_effect=none`，不创建审计、不修改配置、不执行 cutover、不启动 worker、不 ack/nack MQ、不触发 Python AI。
 - 已实现 Go-owned `Control Mutation Policy`：preflight 现在会在 approval 校验前先按 domain policy 校验支持的 target/action，unsupported target/action 返回稳定 blocker，防止后续控制面执行器误把任意字符串变成可执行 mutation。
 - 已实现 Go-owned `Control Mutation Policy API`：`GET /v1/control-mutations/policy` 可只读查询当前支持的控制面 mutation target/action，支持按 `target_kind` 过滤，返回 `side_effect=none`，避免 Python/dashboard 复制 allowlist。
+- runtime overview 已聚合 Go-owned control mutation policy：summary/card/detail 可直接看到 allowlist target/action 数量与只读 policy 明细，Python/dashboard 不需要维护控制面 mutation allowlist。
 - runtime overview 已聚合 Go-owned control audit：summary/card/detail 可直接看到 operator approvals、active approvals、control mutations、failed/rolled_back mutation audits 和 bounded recent records，仍保持只读且不记录 approval/mutation、不执行任何控制面变更。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
