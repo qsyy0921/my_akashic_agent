@@ -77,6 +77,60 @@
     </div>
   `;
   }
+  function _renderMediaAssetContentRecoveryDetail(detail) {
+    const recovery = _record(detail.media_asset_content_recovery || detail);
+    const totals = _record(recovery.totals);
+    const endpoints = _record(recovery.endpoints);
+    const auditRows = _array(recovery.recent_audits).slice(0, 20).map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.mutation_id, 34))}</td>
+      <td>${escapeHtml(_short(`${_target(item.target_kind, item.target_id)} / ${String(item.action || "-")}`, 52))}</td>
+      <td>${_runtimeStatusTag(String(item.status || "muted"))}</td>
+      <td class="mono">${escapeHtml(_short(item.approval_id || "-", 30))}</td>
+      <td>${escapeHtml(_short(item.operator_id || "-", 28))}</td>
+      <td>${escapeHtml(_short(item.reason || "-", 44))}</td>
+      <td>${escapeHtml(_short(item.created_at || item.timestamp || "-", 32))}</td>
+    </tr>
+  `).join("");
+    const totalCells = ["audits", "planned", "applied", "failed", "rolled_back"].map((key) => `
+      <div class="runtime-overview-kpi">
+        <span>${escapeHtml(key)}</span>
+        <strong>${escapeHtml(String(totals[key] ?? 0))}</strong>
+      </div>
+    `).join("");
+    return `
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div>
+          <div class="detail-label">Media Content Recovery</div>
+          <div class="detail-subtext">${escapeHtml(String(recovery.side_effect || "none"))} \xB7 ${escapeHtml(_short(recovery.reason || "-", 44))}</div>
+        </div>
+        <div class="runtime-overview-links">
+          ${_link(endpoints.plan, "plan")}
+          ${_link(endpoints.preflight, "preflight")}
+          ${_link(endpoints.recovery, "recovery")}
+        </div>
+      </div>
+      <div class="runtime-overview-kpis">${totalCells}</div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Mutation</th>
+              <th>Target / Action</th>
+              <th>Status</th>
+              <th>Approval</th>
+              <th>Operator</th>
+              <th>Reason</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>${auditRows || `<tr><td colspan="7" class="runtime-overview-muted">No media content recovery audits sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  }
   function _renderControlAuditDetail(detail) {
     const approvals = _record(detail.operator_approvals);
     const mutations = _record(detail.control_mutations);
@@ -316,7 +370,7 @@
           <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
         </div>
       ` : "";
-      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : card.id === "queue_topology" ? _renderQueueTopologyDetail(_record(card.detail)) : card.id === "control_audit" ? _renderControlAuditDetail(_record(card.detail)) : card.id === "control_mutation_policy" ? _renderControlMutationPolicyDetail(_record(card.detail)) : "";
+      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : card.id === "media_asset_content_recovery" ? _renderMediaAssetContentRecoveryDetail(_record(card.detail)) : card.id === "queue_topology" ? _renderQueueTopologyDetail(_record(card.detail)) : card.id === "control_audit" ? _renderControlAuditDetail(_record(card.detail)) : card.id === "control_mutation_policy" ? _renderControlMutationPolicyDetail(_record(card.detail)) : "";
       container.innerHTML = `
       <div class="runtime-overview-detail">
         <div class="runtime-overview-toolbar">

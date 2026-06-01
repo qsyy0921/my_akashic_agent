@@ -357,4 +357,7 @@ execution.
 - `135-runtime-overview-media-content-recovery.md`: Runtime overview exposes a
   focused read-only `media_asset_content_recovery` card/detail from Go control
   mutation audits without executing recovery or invoking Python AI.
+- `136-dashboard-media-content-recovery-table.md`: Runtime overview dashboard
+  renders `media_asset_content_recovery` as read-only KPI/link/audit tables
+  while preserving raw JSON fallback and avoiding recovery execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.

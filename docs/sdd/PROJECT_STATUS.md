@@ -18,14 +18,14 @@
 
 ## 当前迭代状态
 
-当前 `TODO.md` 已清空。最近完成的切片是 runtime overview media content recovery：
+当前 `TODO.md` 已清空。最近完成的切片是 dashboard media content recovery table：
 
-- Go runtime overview 已新增 `media_asset_content_recovery` summary/card/detail。
-- 该视图只读汇总 `media_asset_content/recover_content` control mutation audits，显示 applied/failed/planned/recent records 和 plan/preflight/recovery endpoints，不执行恢复或触发 Python AI。
+- Runtime overview dashboard 已把 `media_asset_content_recovery` detail 从纯 JSON 提升为只读表格。
+- 该表格展示 recovery audit totals、plan/preflight/recovery links 和 recent mutation rows；渲染时不调用 preflight/recovery，不创建 approval/mutation，不下载/缓存内容，不触发 Python AI。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/135-runtime-overview-media-content-recovery.md`
+- `docs/sdd/specs/agent-gateway/136-dashboard-media-content-recovery-table.md`
 
 ## 当前已完成主线
 

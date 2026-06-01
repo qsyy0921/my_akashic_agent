@@ -2349,6 +2349,9 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "Media Content Diagnostics" in js_response.text
     assert "content_recovery_plan_endpoint" in js_response.text
     assert "content_recovery_preflight_endpoint" in js_response.text
+    assert "Media Content Recovery" in js_response.text
+    assert "media_asset_content_recovery" in js_response.text
+    assert "No media content recovery audits sampled" in js_response.text
     assert "recovery" in js_response.text
     assert "preflight" in js_response.text
     assert "Queue Topology" in js_response.text
