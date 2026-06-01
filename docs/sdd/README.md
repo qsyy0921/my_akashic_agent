@@ -13,6 +13,8 @@ all unchecked current-iteration items must be completed, moved back to
 ## Directory Layout
 
 - `PROCESS.md`: the workflow for spec, implementation, review, and acceptance.
+- `PROJECT_STATUS.md`: one-page project status ledger that links current TODO,
+  completed work, open issues, backlog, live checks, and ownership boundaries.
 - `ITERATION_PROMPT.md`: resume prompt for future Codex sessions, including
   TODO closure and Go/Python ownership rules.
 - `templates/spec-template.md`: required structure for a feature spec.
