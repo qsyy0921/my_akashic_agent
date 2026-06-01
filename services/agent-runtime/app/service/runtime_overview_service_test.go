@@ -675,8 +675,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			Mutations: []query.ControlMutationAuditView{
 				{MutationID: "mutation-a", TargetKind: "outbound_cutover", TargetID: "cutover-a", Action: "enable", Status: "planned", OperatorID: "qsyy", ApprovalID: "approval-a"},
 				{MutationID: "mutation-b", TargetKind: "outbound_cutover", TargetID: "cutover-a", Action: "enable", Status: "failed", OperatorID: "qsyy", ApprovalID: "approval-a", Reason: "smoke failed"},
+				{MutationID: "mutation-media-cleanup", TargetKind: "media_asset_retention", TargetID: "default-observed-group", Action: "cleanup_expired", Status: "applied", OperatorID: "qsyy", ApprovalID: "approval-media"},
 			},
-			Totals:     map[string]int{"mutations": 2, "planned": 1, "applied": 0, "failed": 1, "rolled_back": 0},
+			Totals:     map[string]int{"mutations": 3, "planned": 1, "applied": 1, "failed": 1, "rolled_back": 0},
 			SideEffect: "runtime_state_only",
 		}},
 		ControlMutationPolicy: staticControlMutationPolicy{view: query.ControlMutationPolicyView{
@@ -816,6 +817,14 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["media_asset_retention_plan_required_steps"] != 2 {
 		t.Fatalf("unexpected media asset retention plan summary: %#v", view.Summary)
 	}
+	if view.Summary["media_asset_retention_cleanup_ready"] != true ||
+		view.Summary["media_asset_retention_cleanup_reason"] != "media_asset_retention_cleanup_candidates_ready" ||
+		view.Summary["media_asset_retention_cleanup_candidates"] != 1 ||
+		view.Summary["media_asset_retention_cleanup_applied"] != 1 ||
+		view.Summary["media_asset_retention_cleanup_failed"] != 0 ||
+		view.Summary["media_asset_retention_cleanup_recent_audits"] != 1 {
+		t.Fatalf("unexpected media asset retention cleanup summary: %#v", view.Summary)
+	}
 	if view.Summary["knowledge_pipeline_targets"] != 2 ||
 		view.Summary["knowledge_pipeline_ready"] != 1 ||
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
@@ -925,8 +934,9 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["operator_approvals_approved"] != 1 ||
 		view.Summary["operator_approvals_rejected"] != 1 ||
 		view.Summary["operator_approvals_revoked"] != 0 ||
-		view.Summary["control_mutations_total"] != 2 ||
+		view.Summary["control_mutations_total"] != 3 ||
 		view.Summary["control_mutations_planned"] != 1 ||
+		view.Summary["control_mutations_applied"] != 1 ||
 		view.Summary["control_mutations_failed"] != 1 ||
 		view.Summary["control_mutations_rolled_back"] != 0 {
 		t.Fatalf("unexpected control audit summary: %#v", view.Summary)
@@ -994,6 +1004,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention", "1/3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_retention_plan", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention_plan", "1/3")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_retention_cleanup", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention_cleanup", "1/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
@@ -1011,7 +1023,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "control_mutation_policy", "ok")
 	assertRuntimeOverviewCardValue(t, view.Cards, "control_mutation_policy", "2/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "control_audit", "warn")
-	assertRuntimeOverviewCardValue(t, view.Cards, "control_audit", "1/2")
+	assertRuntimeOverviewCardValue(t, view.Cards, "control_audit", "1/3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "receiver_leases", "1/1")
@@ -1070,6 +1082,13 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		len(view.MediaAssetRetentionPlan.RequiredSteps) != 2 {
 		t.Fatalf("unexpected media asset retention plan detail: %+v", view.MediaAssetRetentionPlan)
 	}
+	if !view.MediaAssetRetentionCleanup.Ready ||
+		view.MediaAssetRetentionCleanup.CandidateCount != 1 ||
+		len(view.MediaAssetRetentionCleanup.RecentAudits) != 1 ||
+		view.MediaAssetRetentionCleanup.RecentAudits[0].MutationID != "mutation-media-cleanup" ||
+		view.MediaAssetRetentionCleanup.SideEffect != "none" {
+		t.Fatalf("unexpected media asset retention cleanup detail: %+v", view.MediaAssetRetentionCleanup)
+	}
 	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
 		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
 	}
@@ -1113,7 +1132,7 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if len(view.OperatorApprovals.Approvals) != 2 || view.OperatorApprovals.Approvals[0].ApprovalID != "approval-a" {
 		t.Fatalf("unexpected operator approvals detail: %+v", view.OperatorApprovals)
 	}
-	if len(view.ControlMutations.Mutations) != 2 || view.ControlMutations.Mutations[1].Status != "failed" {
+	if len(view.ControlMutations.Mutations) != 3 || view.ControlMutations.Mutations[1].Status != "failed" {
 		t.Fatalf("unexpected control mutation detail: %+v", view.ControlMutations)
 	}
 }

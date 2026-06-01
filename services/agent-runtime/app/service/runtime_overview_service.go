@@ -208,40 +208,41 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	}
 
 	var (
-		errors                  []query.RuntimeOverviewErrorView
-		deliveryAdapters        []query.DeliveryAdapterDiagnosticsView
-		deliverySmoke           query.DeliverySmokeReadinessView
-		queueBackend            query.QueueBackendView
-		queueTopology           query.QueueTopologyView
-		runtimeConfig           query.RuntimeConfigView
-		sendLedger              query.SendLedgerMetricsView
-		inboxMetrics            query.InboxMetricsView
-		inboundDedupe           query.InboundDedupeMetricsView
-		agentJobMetrics         query.AgentJobMetricsView
-		outboxMetrics           query.OutboxMetricsView
-		diagnostics             query.KnowledgeWorkerDiagnosticsView
-		runtimeWorkers          query.RuntimeWorkerDiagnosticsView
-		agentWorkers            query.AgentWorkerStatusesView
-		observeTargets          query.ObserveTargetsView
-		observeCapture          query.ObserveCaptureDiagnosticsView
-		mediaAssetContent       query.MediaAssetContentDiagnosticsView
-		mediaAssetRetention     query.MediaAssetRetentionDiagnosticsView
-		mediaAssetRetentionPlan query.MediaAssetRetentionPlanView
-		knowledgePipelines      query.KnowledgePipelineDiagnosticsView
-		knowledgePlanner        query.KnowledgeJobPlannerPreviewView
-		knowledgeReady          query.KnowledgeJobPlannerReadinessView
-		knowledgeCutover        query.KnowledgeJobPlannerCutoverPlanView
-		agentJobCapacity        query.AgentJobCapacityPlanView
-		agentJobPriority        query.AgentJobPriorityPlanView
-		agentJobExternalLease   query.AgentJobExternalLeaseReadinessView
-		agentJobExternalPlan    query.AgentJobExternalLeasePlanView
-		outboundCutover         query.OutboundCutoverPlanView
-		controlMutationPolicy   query.ControlMutationPolicyView
-		operatorApprovals       query.OperatorApprovalsView
-		controlMutations        query.ControlMutationAuditsView
-		receiverStatuses        query.ReceiverStatusesView
-		receiverLeases          query.ReceiverLeasesView
-		schedulerJobs           query.SchedulerJobDiagnosticsView
+		errors                     []query.RuntimeOverviewErrorView
+		deliveryAdapters           []query.DeliveryAdapterDiagnosticsView
+		deliverySmoke              query.DeliverySmokeReadinessView
+		queueBackend               query.QueueBackendView
+		queueTopology              query.QueueTopologyView
+		runtimeConfig              query.RuntimeConfigView
+		sendLedger                 query.SendLedgerMetricsView
+		inboxMetrics               query.InboxMetricsView
+		inboundDedupe              query.InboundDedupeMetricsView
+		agentJobMetrics            query.AgentJobMetricsView
+		outboxMetrics              query.OutboxMetricsView
+		diagnostics                query.KnowledgeWorkerDiagnosticsView
+		runtimeWorkers             query.RuntimeWorkerDiagnosticsView
+		agentWorkers               query.AgentWorkerStatusesView
+		observeTargets             query.ObserveTargetsView
+		observeCapture             query.ObserveCaptureDiagnosticsView
+		mediaAssetContent          query.MediaAssetContentDiagnosticsView
+		mediaAssetRetention        query.MediaAssetRetentionDiagnosticsView
+		mediaAssetRetentionPlan    query.MediaAssetRetentionPlanView
+		mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView
+		knowledgePipelines         query.KnowledgePipelineDiagnosticsView
+		knowledgePlanner           query.KnowledgeJobPlannerPreviewView
+		knowledgeReady             query.KnowledgeJobPlannerReadinessView
+		knowledgeCutover           query.KnowledgeJobPlannerCutoverPlanView
+		agentJobCapacity           query.AgentJobCapacityPlanView
+		agentJobPriority           query.AgentJobPriorityPlanView
+		agentJobExternalLease      query.AgentJobExternalLeaseReadinessView
+		agentJobExternalPlan       query.AgentJobExternalLeasePlanView
+		outboundCutover            query.OutboundCutoverPlanView
+		controlMutationPolicy      query.ControlMutationPolicyView
+		operatorApprovals          query.OperatorApprovalsView
+		controlMutations           query.ControlMutationAuditsView
+		receiverStatuses           query.ReceiverStatusesView
+		receiverLeases             query.ReceiverLeasesView
+		schedulerJobs              query.SchedulerJobDiagnosticsView
 	)
 
 	if s == nil {
@@ -522,6 +523,8 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		mediaAssetRetentionCleanup = mediaAssetRetentionCleanupOverview(mediaAssetRetentionPlan, controlMutations)
+
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
 		} else if item, err := deps.ReceiverStatuses.ListReceiverStatuses(ctx); err != nil {
@@ -567,6 +570,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		mediaAssetContent,
 		mediaAssetRetention,
 		mediaAssetRetentionPlan,
+		mediaAssetRetentionCleanup,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -604,6 +608,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		mediaAssetContent,
 		mediaAssetRetention,
 		mediaAssetRetentionPlan,
+		mediaAssetRetentionCleanup,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -624,42 +629,43 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 	)
 
 	return query.RuntimeOverviewView{
-		Summary:                 summary,
-		Cards:                   cards,
-		DeliveryAdapters:        deliveryAdapters,
-		DeliverySmokeReadiness:  deliverySmoke,
-		QueueBackend:            queueBackend,
-		QueueTopology:           queueTopology,
-		RuntimeConfig:           runtimeConfig,
-		RuntimeWorkers:          runtimeWorkers,
-		AgentWorkers:            agentWorkers,
-		ObserveTargets:          observeTargets,
-		ObserveCapture:          observeCapture,
-		MediaAssetContent:       mediaAssetContent,
-		MediaAssetRetention:     mediaAssetRetention,
-		MediaAssetRetentionPlan: mediaAssetRetentionPlan,
-		KnowledgePipelines:      knowledgePipelines,
-		KnowledgeJobPlanner:     knowledgePlanner,
-		KnowledgePlannerReady:   knowledgeReady,
-		KnowledgePlannerCutover: knowledgeCutover,
-		AgentJobCapacityPlan:    agentJobCapacity,
-		AgentJobPriorityPlan:    agentJobPriority,
-		AgentJobExternalLease:   agentJobExternalLease,
-		AgentJobExternalPlan:    agentJobExternalPlan,
-		OutboundCutoverPlan:     outboundCutover,
-		ControlMutationPolicy:   controlMutationPolicy,
-		OperatorApprovals:       operatorApprovals,
-		ControlMutations:        controlMutations,
-		ReceiverStatuses:        receiverStatuses,
-		ReceiverLeases:          receiverLeases,
-		SchedulerJobs:           schedulerJobs,
-		SendLedgerMetrics:       sendLedger,
-		InboxMetrics:            inboxMetrics,
-		InboundDedupe:           inboundDedupe,
-		AgentJobMetrics:         agentJobMetrics,
-		AgentJobWorkerCoverage:  agentJobWorkerCoverage,
-		OutboxMetrics:           outboxMetrics,
-		Diagnostics:             diagnostics,
+		Summary:                    summary,
+		Cards:                      cards,
+		DeliveryAdapters:           deliveryAdapters,
+		DeliverySmokeReadiness:     deliverySmoke,
+		QueueBackend:               queueBackend,
+		QueueTopology:              queueTopology,
+		RuntimeConfig:              runtimeConfig,
+		RuntimeWorkers:             runtimeWorkers,
+		AgentWorkers:               agentWorkers,
+		ObserveTargets:             observeTargets,
+		ObserveCapture:             observeCapture,
+		MediaAssetContent:          mediaAssetContent,
+		MediaAssetRetention:        mediaAssetRetention,
+		MediaAssetRetentionPlan:    mediaAssetRetentionPlan,
+		MediaAssetRetentionCleanup: mediaAssetRetentionCleanup,
+		KnowledgePipelines:         knowledgePipelines,
+		KnowledgeJobPlanner:        knowledgePlanner,
+		KnowledgePlannerReady:      knowledgeReady,
+		KnowledgePlannerCutover:    knowledgeCutover,
+		AgentJobCapacityPlan:       agentJobCapacity,
+		AgentJobPriorityPlan:       agentJobPriority,
+		AgentJobExternalLease:      agentJobExternalLease,
+		AgentJobExternalPlan:       agentJobExternalPlan,
+		OutboundCutoverPlan:        outboundCutover,
+		ControlMutationPolicy:      controlMutationPolicy,
+		OperatorApprovals:          operatorApprovals,
+		ControlMutations:           controlMutations,
+		ReceiverStatuses:           receiverStatuses,
+		ReceiverLeases:             receiverLeases,
+		SchedulerJobs:              schedulerJobs,
+		SendLedgerMetrics:          sendLedger,
+		InboxMetrics:               inboxMetrics,
+		InboundDedupe:              inboundDedupe,
+		AgentJobMetrics:            agentJobMetrics,
+		AgentJobWorkerCoverage:     agentJobWorkerCoverage,
+		OutboxMetrics:              outboxMetrics,
+		Diagnostics:                diagnostics,
 		Status: query.RuntimeOverviewStatusView{
 			RuntimeAvailable: true,
 			HealthAvailable:  true,
@@ -688,6 +694,7 @@ func runtimeOverviewSummary(
 	mediaAssetContent query.MediaAssetContentDiagnosticsView,
 	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	mediaAssetRetentionPlan query.MediaAssetRetentionPlanView,
+	mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -845,6 +852,13 @@ func runtimeOverviewSummary(
 		"media_asset_retention_plan_assets":                     mediaAssetRetentionPlan.AssetCount,
 		"media_asset_retention_plan_candidates":                 mediaAssetRetentionPlan.CandidateCount,
 		"media_asset_retention_plan_required_steps":             len(mediaAssetRetentionPlan.RequiredSteps),
+		"media_asset_retention_cleanup_ready":                   mediaAssetRetentionCleanup.Ready,
+		"media_asset_retention_cleanup_reason":                  mediaAssetRetentionCleanup.Reason,
+		"media_asset_retention_cleanup_blockers":                len(mediaAssetRetentionCleanup.Blockers),
+		"media_asset_retention_cleanup_candidates":              mediaAssetRetentionCleanup.CandidateCount,
+		"media_asset_retention_cleanup_applied":                 intFromMap(mediaAssetRetentionCleanup.Totals, "applied"),
+		"media_asset_retention_cleanup_failed":                  intFromMap(mediaAssetRetentionCleanup.Totals, "failed"),
+		"media_asset_retention_cleanup_recent_audits":           len(mediaAssetRetentionCleanup.RecentAudits),
 		"knowledge_pipeline_targets":                            intFromMap(knowledgePipelines.Totals, "targets"),
 		"knowledge_pipeline_ready":                              intFromMap(knowledgePipelines.Totals, "ready"),
 		"knowledge_pipeline_warning":                            intFromMap(knowledgePipelines.Totals, "warning"),
@@ -1018,6 +1032,7 @@ func runtimeOverviewCards(
 	mediaAssetContent query.MediaAssetContentDiagnosticsView,
 	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	mediaAssetRetentionPlan query.MediaAssetRetentionPlanView,
+	mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -1067,6 +1082,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("media_asset_content", "Media Asset Content", mediaAssetContentValue(mediaAssetContent), mediaAssetContentStatus(mediaAssetContent), map[string]any{"media_asset_content_diagnostics": mediaAssetContent}),
 		runtimeOverviewCard("media_asset_retention", "Media Asset Retention", mediaAssetRetentionValue(mediaAssetRetention), mediaAssetRetentionStatus(mediaAssetRetention), map[string]any{"media_asset_retention_diagnostics": mediaAssetRetention}),
 		runtimeOverviewCard("media_asset_retention_plan", "Media Asset Retention Plan", mediaAssetRetentionPlanValue(mediaAssetRetentionPlan), mediaAssetRetentionPlanStatus(mediaAssetRetentionPlan), map[string]any{"media_asset_retention_plan": mediaAssetRetentionPlan}),
+		runtimeOverviewCard("media_asset_retention_cleanup", "Media Asset Retention Cleanup", mediaAssetRetentionCleanupValue(mediaAssetRetentionCleanup), mediaAssetRetentionCleanupStatus(mediaAssetRetentionCleanup), map[string]any{"media_asset_retention_cleanup": mediaAssetRetentionCleanup}),
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
@@ -1548,6 +1564,74 @@ func mediaAssetRetentionPlanValue(view query.MediaAssetRetentionPlanView) string
 		return fmt.Sprintf("%s:%d", view.Reason, len(view.Blockers))
 	}
 	return fmt.Sprintf("blocked:%d", len(view.Blockers))
+}
+
+func mediaAssetRetentionCleanupOverview(
+	plan query.MediaAssetRetentionPlanView,
+	controlMutations query.ControlMutationAuditsView,
+) query.MediaAssetRetentionCleanupOverviewView {
+	recentAudits := make([]query.ControlMutationAuditView, 0)
+	totals := map[string]int{
+		"audits":      0,
+		"planned":     0,
+		"applied":     0,
+		"failed":      0,
+		"rolled_back": 0,
+	}
+	for _, item := range controlMutations.Mutations {
+		if item.TargetKind != "media_asset_retention" || item.Action != "cleanup_expired" {
+			continue
+		}
+		recentAudits = append(recentAudits, item)
+		totals["audits"]++
+		totals[item.Status]++
+	}
+	reason := plan.Reason
+	if reason == "" {
+		reason = "media_asset_retention_cleanup_not_available"
+	}
+	return query.MediaAssetRetentionCleanupOverviewView{
+		Ready:          plan.Ready,
+		Reason:         reason,
+		Blockers:       append([]string(nil), plan.Blockers...),
+		AssetCount:     plan.AssetCount,
+		CandidateCount: plan.CandidateCount,
+		RecentAudits:   recentAudits,
+		Totals:         totals,
+		Endpoints: map[string]string{
+			"plan":      "/v1/media-assets/retention-plan",
+			"preflight": "/v1/media-assets/retention-cleanup/preflight",
+			"cleanup":   "/v1/media-assets/retention-cleanup",
+		},
+		Notes: []string{
+			"read-only runtime overview; does not execute cleanup",
+			"cleanup endpoint is metadata-only and still requires active approval preflight",
+		},
+		SideEffect: "none",
+	}
+}
+
+func mediaAssetRetentionCleanupStatus(view query.MediaAssetRetentionCleanupOverviewView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "failed") > 0 {
+		return "danger"
+	}
+	if view.CandidateCount > 0 {
+		return "warn"
+	}
+	if intFromMap(view.Totals, "applied") > 0 {
+		return "ok"
+	}
+	return "muted"
+}
+
+func mediaAssetRetentionCleanupValue(view query.MediaAssetRetentionCleanupOverviewView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d/%d", view.CandidateCount, intFromMap(view.Totals, "applied"))
 }
 
 func knowledgePipelineCardStatus(view query.KnowledgePipelineDiagnosticsView) string {
