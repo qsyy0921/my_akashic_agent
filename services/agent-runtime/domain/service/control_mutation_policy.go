@@ -43,6 +43,9 @@ func NewControlMutationPolicy() ControlMutationPolicy {
 				"enable":   {},
 				"rollback": {},
 			},
+			"media_asset_retention": {
+				"cleanup_expired": {},
+			},
 		},
 	}
 }

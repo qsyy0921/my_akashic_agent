@@ -210,3 +210,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-161-runtime-overview-media-retention.md`
 - `2026-06-01-phase8-162-media-asset-retention-plan.md`
 - `2026-06-01-phase8-163-runtime-overview-media-retention-plan.md`
+- `2026-06-01-phase8-164-media-retention-control-policy.md`

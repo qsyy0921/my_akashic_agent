@@ -46,6 +46,45 @@ func TestControlMutationPreflightServiceAllowsActiveApproval(t *testing.T) {
 	}
 }
 
+func TestControlMutationPreflightServiceAllowsMediaRetentionCleanupApproval(t *testing.T) {
+	ctx := context.Background()
+	approvals := appservice.NewOperatorApprovalService()
+	approval, err := approvals.RecordOperatorApproval(ctx, command.RecordOperatorApprovalCommand{
+		TargetKind: "media_asset_retention",
+		TargetID:   "default-observed-group",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	preflight := appservice.NewControlMutationPreflightService(approvals)
+
+	view, err := preflight.CheckControlMutationPreflight(ctx, query.ControlMutationPreflight{
+		TargetKind: "media_asset_retention",
+		TargetID:   "default-observed-group",
+		Action:     "cleanup_expired",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+	})
+	if err != nil {
+		t.Fatalf("check preflight: %v", err)
+	}
+	if !view.Ready || view.Reason != "approval_active" || view.SideEffect != "none" {
+		t.Fatalf("unexpected media retention preflight view: %+v", view)
+	}
+	if len(view.SupportedActions) != 1 || view.SupportedActions[0] != "cleanup_expired" {
+		t.Fatalf("expected cleanup_expired supported action, got %+v", view.SupportedActions)
+	}
+	if view.SuggestedAudit == nil ||
+		view.SuggestedAudit.TargetKind != "media_asset_retention" ||
+		view.SuggestedAudit.Action != "cleanup_expired" ||
+		view.SuggestedAudit.Status != "planned" {
+		t.Fatalf("unexpected suggested audit: %+v", view.SuggestedAudit)
+	}
+}
+
 func TestControlMutationPreflightServiceBlocksMissingApproval(t *testing.T) {
 	ctx := context.Background()
 	approvals := appservice.NewOperatorApprovalService()
@@ -99,5 +138,39 @@ func TestControlMutationPreflightServiceBlocksUnsupportedAction(t *testing.T) {
 	}
 	if len(view.SupportedActions) != 2 || view.SupportedActions[0] != "enable" || view.SupportedActions[1] != "rollback" {
 		t.Fatalf("expected supported action hints, got %+v", view.SupportedActions)
+	}
+}
+
+func TestControlMutationPreflightServiceBlocksUnsupportedMediaRetentionAction(t *testing.T) {
+	ctx := context.Background()
+	approvals := appservice.NewOperatorApprovalService()
+	approval, err := approvals.RecordOperatorApproval(ctx, command.RecordOperatorApprovalCommand{
+		TargetKind: "media_asset_retention",
+		TargetID:   "default-observed-group",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	preflight := appservice.NewControlMutationPreflightService(approvals)
+
+	view, err := preflight.CheckControlMutationPreflight(ctx, query.ControlMutationPreflight{
+		TargetKind: "media_asset_retention",
+		TargetID:   "default-observed-group",
+		Action:     "delete_all",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+	})
+	if err != nil {
+		t.Fatalf("check preflight: %v", err)
+	}
+	if view.Ready || view.Reason != "unsupported_control_mutation_action" ||
+		len(view.SupportedActions) != 1 || view.SupportedActions[0] != "cleanup_expired" {
+		t.Fatalf("unexpected unsupported media retention action view: %+v", view)
+	}
+	if view.SuggestedAudit != nil {
+		t.Fatalf("blocked media retention preflight must not suggest audit: %+v", view.SuggestedAudit)
 	}
 }

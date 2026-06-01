@@ -21,6 +21,27 @@ func TestControlMutationPolicyServiceListsPolicy(t *testing.T) {
 	if len(view.Intents) == 0 {
 		t.Fatal("expected policy intents")
 	}
+	mediaRetention := findControlMutationPolicyIntent(t, view.Intents, "media_asset_retention")
+	if len(mediaRetention.Actions) != 1 || mediaRetention.Actions[0] != "cleanup_expired" {
+		t.Fatalf("unexpected media retention actions: %+v", mediaRetention.Actions)
+	}
+}
+
+func TestControlMutationPolicyServiceFiltersMediaRetentionTarget(t *testing.T) {
+	service := appservice.NewControlMutationPolicyService()
+
+	view, err := service.GetControlMutationPolicy(context.Background(), query.ControlMutationPolicyFilter{
+		TargetKind: "media_asset_retention",
+	})
+	if err != nil {
+		t.Fatalf("get policy: %v", err)
+	}
+	if !view.Allowed || view.TargetKind != "media_asset_retention" || len(view.Intents) != 1 {
+		t.Fatalf("unexpected media retention policy view: %+v", view)
+	}
+	if len(view.Intents[0].Actions) != 1 || view.Intents[0].Actions[0] != "cleanup_expired" {
+		t.Fatalf("unexpected media retention actions: %+v", view.Intents[0].Actions)
+	}
 }
 
 func TestControlMutationPolicyServiceFiltersUnsupportedTarget(t *testing.T) {
@@ -38,4 +59,19 @@ func TestControlMutationPolicyServiceFiltersUnsupportedTarget(t *testing.T) {
 	if len(view.Intents) != 0 {
 		t.Fatalf("unsupported target should not return intents: %+v", view.Intents)
 	}
+}
+
+func findControlMutationPolicyIntent(
+	t *testing.T,
+	intents []query.ControlMutationPolicyIntentView,
+	targetKind string,
+) query.ControlMutationPolicyIntentView {
+	t.Helper()
+	for _, intent := range intents {
+		if intent.TargetKind == targetKind {
+			return intent
+		}
+	}
+	t.Fatalf("policy intent not found for %s: %+v", targetKind, intents)
+	return query.ControlMutationPolicyIntentView{}
 }
