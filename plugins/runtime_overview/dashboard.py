@@ -1779,10 +1779,23 @@ def _normalize_media_asset_content_item(item: Mapping[str, Any]) -> dict[str, An
         "content_status": _text(item.get("content_status")),
         "content_reason": _text(item.get("content_reason")),
         "content_endpoint": _text(item.get("content_endpoint")),
+        "content_access_plan_endpoint": _text(
+            item.get("content_access_plan_endpoint")
+        )
+        or _media_asset_content_access_plan_endpoint(_text(item.get("asset_id"))),
         "content_mime_type": _text(item.get("content_mime_type")),
         "content_size_bytes": _int_value(item.get("content_size_bytes"), fallback=0),
         "updated_at": _text(item.get("updated_at")),
     }
+
+
+def _media_asset_content_access_plan_endpoint(asset_id: str) -> str:
+    if not asset_id:
+        return ""
+    return (
+        "/v1/media-assets/content-access-plan?asset_id="
+        + urllib.parse.quote(asset_id, safe="")
+    )
 
 
 def _normalize_media_asset_retention_diagnostics(item: Mapping[str, Any]) -> dict[str, Any]:

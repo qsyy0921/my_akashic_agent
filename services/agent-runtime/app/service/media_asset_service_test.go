@@ -53,7 +53,8 @@ func TestMediaAssetServiceContentDiagnosticsClassifiesContentAccess(t *testing.T
 	if ready.ContentStatus != "ready" ||
 		ready.ContentReason != "media_asset_content_ready" ||
 		ready.ContentSizeBytes <= 0 ||
-		ready.ContentEndpoint != "/v1/media-assets/asset:ready/content" {
+		ready.ContentEndpoint != "/v1/media-assets/asset:ready/content" ||
+		ready.ContentAccessPlanEndpoint != "/v1/media-assets/content-access-plan?asset_id=asset%3Aready" {
 		t.Fatalf("unexpected ready item: %+v", ready)
 	}
 	forbidden := findMediaAssetContentDiagnostic(t, view, "asset:forbidden")

@@ -540,20 +540,21 @@ func (s *MediaAssetService) contentDiagnosticItem(
 	}
 	view := assembler.ToMediaAssetView(asset)
 	return query.MediaAssetContentDiagnosticItemView{
-		AssetID:          view.AssetID,
-		Channel:          view.Channel,
-		SourceMessageID:  view.SourceMessageID,
-		SenderID:         view.SenderID,
-		Kind:             view.Kind,
-		MimeType:         view.MimeType,
-		Name:             view.Name,
-		SizeBytes:        view.SizeBytes,
-		ContentStatus:    status,
-		ContentReason:    reason,
-		ContentEndpoint:  mediaAssetContentEndpoint(view.AssetID),
-		ContentMimeType:  contentMimeType,
-		ContentSizeBytes: contentSizeBytes,
-		UpdatedAt:        view.UpdatedAt,
+		AssetID:                   view.AssetID,
+		Channel:                   view.Channel,
+		SourceMessageID:           view.SourceMessageID,
+		SenderID:                  view.SenderID,
+		Kind:                      view.Kind,
+		MimeType:                  view.MimeType,
+		Name:                      view.Name,
+		SizeBytes:                 view.SizeBytes,
+		ContentStatus:             status,
+		ContentReason:             reason,
+		ContentEndpoint:           mediaAssetContentEndpoint(view.AssetID),
+		ContentAccessPlanEndpoint: mediaAssetContentAccessPlanEndpoint(view.AssetID),
+		ContentMimeType:           contentMimeType,
+		ContentSizeBytes:          contentSizeBytes,
+		UpdatedAt:                 view.UpdatedAt,
 	}
 }
 
@@ -652,6 +653,13 @@ func mediaAssetContentEndpoint(assetID string) string {
 		return ""
 	}
 	return "/v1/media-assets/" + url.PathEscape(assetID) + "/content"
+}
+
+func mediaAssetContentAccessPlanEndpoint(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/v1/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID)
 }
 
 func generatedAssetID(cmd command.RegisterMediaAssetCommand) string {

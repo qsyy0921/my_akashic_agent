@@ -1099,6 +1099,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                     "content_status": "ready",
                     "content_reason": "media_asset_content_ready",
                     "content_endpoint": "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content",
+                    "content_access_plan_endpoint": "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1",
                     "content_mime_type": "image/jpeg",
                     "content_size_bytes": 120,
                     "updated_at": "2026-05-31T12:00:00Z",
@@ -1990,6 +1991,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert (
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
+    )
+    assert (
+        payload["media_asset_content_diagnostics"]["items"][0][
+            "content_access_plan_endpoint"
+        ]
+        == "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1"
     )
     capacity_card = next(
         item for item in payload["cards"] if item["id"] == "agent_job_capacity_plan"

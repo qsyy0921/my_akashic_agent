@@ -2387,6 +2387,7 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 		`"ready":1`,
 		`"side_effect":"none"`,
 		`"/v1/media-assets/asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1/content"`,
+		`"/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
 	} {
 		if !strings.Contains(bodyText, expected) {
 			t.Fatalf("content diagnostics response missing %s: %s", expected, bodyText)
