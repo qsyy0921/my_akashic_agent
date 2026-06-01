@@ -20,11 +20,11 @@
 - 基于已完成的 local worker 与 NATS `external_lease` 账号级节流，后续再评估持久化/分布式 rate-limit state、全局 backpressure、平台风控策略参数化和生产 cutover；切换前必须保持可回滚和 observe-only smoke。
 - 生产 cutover 前继续做真实 NATS external lease preflight：确认 local outbox worker 已关闭、delivery smoke readiness 与 runtime overview `Delivery Smoke` card 均通过、dual-read smoke 已通过、outbox external lease smoke 已通过，再启用真实平台发送范围。
 - MQ 方案下一步只做有证据的 adapter 扩展：NATS JetStream 已是当前推荐外部 MQ 且 provider capability matrix 已可见；Redis Streams / RabbitMQ 仅在出现明确部署需求时再实现 infrastructure adapter，并继续保持 domain/provider-neutral。
-- 若前端需要更强队列可视化，再把 provider capability 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
+- 若前端需要更强队列或控制面审计可视化，再把 provider capability / control audit detail 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
 - queue topology read model 已由 Go 提供 `/v1/queue-topology`，并已聚合到 runtime overview / Python dashboard；若前端需要更强执行边界可视化，可基于该 detail 做独立面板，但不要在 dashboard 中加入真实控制逻辑。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview，`agent_job` result-ack readiness/plan 及二者 runtime overview 聚合已可见；后续继续收敛外部 MQ result-ack live smoke 和切换后的稳定性观察。
 - 若后续要做 Python worker 并发控制、autoscaling 或知识任务优先级调度，优先基于已落地的 Go `AgentJob` pressure、`Agent Job Worker Coverage`、`/v1/agent-job-capacity/plan`、`/v1/agent-job-priority/plan` 和 Go-owned `Operator Approval Ledger`；当前只提供只读容量/优先级建议与 operator 审计记录，不引入调度副作用。
-- `Agent Job Capacity` 与 `Agent Job Priority` 已进入 runtime overview 且 Python dashboard 已规范化 detail；后续如需前端 drilldown，可直接消费 dashboard detail，真实 autoscaling/优先级控制仍必须另做 operator ack 和审计设计。
+- `Agent Job Capacity`、`Agent Job Priority` 和 control audit 已进入 runtime overview；后续如需前端 drilldown，可直接消费 overview detail，真实 autoscaling/优先级控制仍必须另做 operator ack、mutation audit 绑定和回滚执行设计。
 - 后续若要把 capacity / priority / cutover plan 推进成真实控制面，已有 operator approval ledger、approval check preflight 和 control mutation audit ledger 可作为人工确认、校验和审计边界；下一步仍必须把具体 control-plane mutation 强制绑定到 approval id、mutation audit id、限流/熔断策略、回滚执行记录和 Python worker 侧并发实现。不要直接让 Go 自动启动 AI worker 或修改模型/RAG/图片执行策略。
 
 ## Knowledge / Memory / RAG
