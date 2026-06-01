@@ -2295,11 +2295,13 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	agentJobs := appservice.NewAgentJobService(store)
 	shadowQueries := appservice.NewShadowQueryService(store)
 	approvals := appservice.NewOperatorApprovalService()
+	controlMutations := appservice.NewControlMutationAuditService()
 	controlPreflight := appservice.NewControlMutationPreflightService(approvals)
 	cleanupPreflight := appservice.NewMediaAssetRetentionCleanupPreflightService(mediaAssets, controlPreflight)
+	cleanup := appservice.NewMediaAssetRetentionCleanupService(store, cleanupPreflight, controlMutations)
 	mux := http.NewServeMux()
 	httptrigger.RegisterRoutes(mux, ingestor, ingestor, shadowQueries, sender, imageJobs, outbox, mediaAssets, agentJobs, appservice.NewSendLedgerService(store), appservice.NewInboxEventService(store))
-	httptrigger.RegisterMediaAssetRetentionCleanupRoutes(mux, cleanupPreflight)
+	httptrigger.RegisterMediaAssetRetentionCleanupRoutes(mux, cleanupPreflight, cleanup)
 
 	body := map[string]any{
 		"channel": map[string]any{
@@ -2474,6 +2476,40 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/retention-cleanup/preflight", nil))
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected retention cleanup preflight 405, got %d: %s", response.Code, response.Body.String())
+	}
+
+	cleanupBody := `{
+		"asset_id": "` + assetID + `",
+		"timestamp": "` + time.Now().UTC().Add(2*24*time.Hour).Format(time.RFC3339Nano) + `",
+		"default_ttl_hours": 24,
+		"target_id": "default-observed-group",
+		"operator_id": "qsyy",
+		"approval_id": "` + approval.ApprovalID + `",
+		"mutation_id": "mutation-media-cleanup-http-1"
+	}`
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/retention-cleanup", strings.NewReader(cleanupBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected retention cleanup 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"applied":true`,
+		`"reason":"media_asset_retention_metadata_cleanup_applied"`,
+		`"deleted_count":1`,
+		`"deleted_asset_ids":["` + assetID + `"]`,
+		`"status":"applied"`,
+		`"side_effect":"runtime_state_cleanup"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("retention cleanup response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/retention-cleanup", nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected retention cleanup 405, got %d: %s", response.Code, response.Body.String())
 	}
 }
 

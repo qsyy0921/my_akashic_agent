@@ -160,3 +160,26 @@ type MediaAssetRetentionCleanupPreflightView struct {
 	Notes            []string                           `json:"notes,omitempty"`
 	SideEffect       string                             `json:"side_effect"`
 }
+
+type MediaAssetRetentionCleanupView struct {
+	Ready           bool                                    `json:"ready"`
+	Applied         bool                                    `json:"applied"`
+	DryRun          bool                                    `json:"dry_run"`
+	Reason          string                                  `json:"reason"`
+	Blockers        []string                                `json:"blockers,omitempty"`
+	TargetKind      string                                  `json:"target_kind"`
+	TargetID        string                                  `json:"target_id"`
+	Action          string                                  `json:"action"`
+	OperatorID      string                                  `json:"operator_id"`
+	ApprovalID      string                                  `json:"approval_id"`
+	MutationID      string                                  `json:"mutation_id,omitempty"`
+	CandidateCount  int                                     `json:"candidate_count"`
+	DeletedCount    int                                     `json:"deleted_count"`
+	DeletedAssetIDs []string                                `json:"deleted_asset_ids,omitempty"`
+	Candidates      []MediaAssetRetentionDiagnosticItemView `json:"candidates,omitempty"`
+	Preflight       MediaAssetRetentionCleanupPreflightView `json:"preflight"`
+	AppliedAudit    *ControlMutationAuditView               `json:"applied_audit,omitempty"`
+	FailedAudit     *ControlMutationAuditView               `json:"failed_audit,omitempty"`
+	Notes           []string                                `json:"notes,omitempty"`
+	SideEffect      string                                  `json:"side_effect"`
+}

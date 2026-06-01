@@ -19,6 +19,7 @@ type MediaAssetRepository interface {
 	SaveMediaAsset(ctx context.Context, asset model.MediaAsset) error
 	FindMediaAsset(ctx context.Context, assetID string) (model.MediaAsset, bool, error)
 	ListMediaAssets(ctx context.Context, filter query.MediaAssetFilter) ([]model.MediaAsset, error)
+	DeleteMediaAsset(ctx context.Context, assetID string) (bool, error)
 }
 
 type MediaAssetContent struct {

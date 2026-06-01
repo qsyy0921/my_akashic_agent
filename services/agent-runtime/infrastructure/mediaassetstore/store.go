@@ -92,6 +92,28 @@ func (s *Store) ListMediaAssets(_ context.Context, filter query.MediaAssetFilter
 	return items, nil
 }
 
+func (s *Store) DeleteMediaAsset(_ context.Context, assetID string) (bool, error) {
+	assetID = strings.TrimSpace(assetID)
+	if assetID == "" {
+		return false, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.assets[assetID]; !ok {
+		return false, nil
+	}
+	delete(s.assets, assetID)
+	for i, item := range s.order {
+		if item == assetID {
+			s.order = append(s.order[:i], s.order[i+1:]...)
+			break
+		}
+	}
+	return true, s.flush()
+}
+
 func matchesMediaAssetFilter(asset model.MediaAsset, filter query.MediaAssetFilter) bool {
 	if filter.ChannelKind != "" && string(asset.Channel.Kind) != filter.ChannelKind {
 		return false

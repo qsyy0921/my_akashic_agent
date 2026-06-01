@@ -110,6 +110,48 @@ func TestMediaAssetStorePersistsUpdatedAsset(t *testing.T) {
 	}
 }
 
+func TestMediaAssetStoreDeletesAssetMetadataAcrossRestarts(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "media-assets-delete.json")
+	repo, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	if err := repo.SaveMediaAsset(ctx, newAsset(t, "asset:delete", "delete.png", now)); err != nil {
+		t.Fatalf("save delete asset: %v", err)
+	}
+	if err := repo.SaveMediaAsset(ctx, newAsset(t, "asset:keep", "keep.png", now)); err != nil {
+		t.Fatalf("save keep asset: %v", err)
+	}
+	deleted, err := repo.DeleteMediaAsset(ctx, "asset:delete")
+	if err != nil {
+		t.Fatalf("delete asset: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("expected delete to report found")
+	}
+	deleted, err = repo.DeleteMediaAsset(ctx, "asset:missing")
+	if err != nil {
+		t.Fatalf("delete missing: %v", err)
+	}
+	if deleted {
+		t.Fatalf("expected missing delete to report false")
+	}
+
+	reloaded, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("reload store: %v", err)
+	}
+	if _, ok, err := reloaded.FindMediaAsset(ctx, "asset:delete"); err != nil || ok {
+		t.Fatalf("deleted asset should not reload, ok=%t err=%v", ok, err)
+	}
+	if _, ok, err := reloaded.FindMediaAsset(ctx, "asset:keep"); err != nil || !ok {
+		t.Fatalf("kept asset should reload, ok=%t err=%v", ok, err)
+	}
+}
+
 func newAsset(t *testing.T, assetID string, name string, now time.Time) model.MediaAsset {
 	t.Helper()
 	asset, err := model.NewMediaAsset(model.ChannelRef{

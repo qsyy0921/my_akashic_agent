@@ -280,8 +280,10 @@ func RegisterControlMutationPolicyRoutes(
 func RegisterMediaAssetRetentionCleanupRoutes(
 	mux *http.ServeMux,
 	checker inport.MediaAssetRetentionCleanupPreflightChecker,
+	cleaner inport.MediaAssetRetentionCleaner,
 ) {
 	mux.Handle("/v1/media-assets/retention-cleanup/preflight", MediaAssetRetentionCleanupPreflightHandler(checker))
+	mux.Handle("/v1/media-assets/retention-cleanup", MediaAssetRetentionCleanupHandler(cleaner))
 }
 
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
@@ -501,6 +503,68 @@ func MediaAssetRetentionCleanupPreflightHandler(checker inport.MediaAssetRetenti
 			return
 		}
 		view, err := checker.CheckMediaAssetRetentionCleanupPreflight(r.Context(), mediaAssetRetentionCleanupPreflightFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+type mediaAssetRetentionCleanupRequest struct {
+	AssetID               string `json:"asset_id"`
+	Limit                 int    `json:"limit"`
+	ChannelKind           string `json:"channel_kind"`
+	AccountID             string `json:"account_id"`
+	ConversationID        string `json:"conversation_id"`
+	ConversationType      string `json:"conversation_type"`
+	SourceMessageID       string `json:"source_message_id"`
+	SourceMessageIDSuffix string `json:"source_message_id_suffix"`
+	Kind                  string `json:"kind"`
+	Timestamp             string `json:"timestamp"`
+	DefaultTTLHours       int    `json:"default_ttl_hours"`
+	EphemeralTTLHours     int    `json:"ephemeral_ttl_hours"`
+	TargetID              string `json:"target_id"`
+	OperatorID            string `json:"operator_id"`
+	ApprovalID            string `json:"approval_id"`
+	MutationID            string `json:"mutation_id"`
+	DryRun                bool   `json:"dry_run"`
+}
+
+func MediaAssetRetentionCleanupHandler(cleaner inport.MediaAssetRetentionCleaner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if cleaner == nil {
+			http.Error(w, "media asset retention cleanup disabled", http.StatusNotImplemented)
+			return
+		}
+		var request mediaAssetRetentionCleanupRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := cleaner.CleanupMediaAssetRetention(r.Context(), command.CleanupMediaAssetRetentionCommand{
+			AssetID:               request.AssetID,
+			Limit:                 request.Limit,
+			ChannelKind:           request.ChannelKind,
+			AccountID:             request.AccountID,
+			ConversationID:        request.ConversationID,
+			ConversationType:      request.ConversationType,
+			SourceMessageID:       request.SourceMessageID,
+			SourceMessageIDSuffix: request.SourceMessageIDSuffix,
+			Kind:                  request.Kind,
+			Timestamp:             request.Timestamp,
+			DefaultTTLHours:       request.DefaultTTLHours,
+			EphemeralTTLHours:     request.EphemeralTTLHours,
+			TargetID:              request.TargetID,
+			OperatorID:            request.OperatorID,
+			ApprovalID:            request.ApprovalID,
+			MutationID:            request.MutationID,
+			DryRun:                request.DryRun,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
