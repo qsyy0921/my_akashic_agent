@@ -371,25 +371,40 @@ POST /v1/media-assets
 GET  /v1/media-assets?limit=50
 GET  /v1/media-assets/content-diagnostics?limit=50
 GET  /v1/media-assets/content-diagnostics?asset_id=asset%3Aqq%3A...
+GET  /v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/retention-diagnostics?limit=50
 GET  /v1/media-assets/retention-plan?limit=50
+GET  /v1/media-assets/retention-cleanup/preflight?target_id=default-observed-group&operator_id=qsyy&approval_id=...
+POST /v1/media-assets/retention-cleanup
 GET  /v1/media-assets/{asset_id}
 GET  /v1/media-assets/{asset_id}/content
 ```
 
-The first media registry slice is metadata-only. The `/content` route returns
-bytes only for registered local files under configured safe roots. Configure
-roots with `AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated list. If omitted,
-local runs allow Akashic workspace upload directories under the repository root,
-and can recover the same roots from absolute asset paths inside an Akashic
-workspace. Remote platform URLs must be mirrored into a safe root before the
-content route will serve them. The content diagnostics endpoint is read-only and
-classifies each asset as `ready`, `forbidden`, `unavailable`, `disabled`, or
-`error`, with the stable content route included for dashboards. It does not run
-OCR/VLM, parse files, upload to RAG, or change the `/content` access policy.
-The retention plan is also read-only: it reports cleanup candidates and
-operator approval / control mutation audit steps, but does not delete media
-metadata, remove local files, enqueue jobs, or call Python OCR/VLM/file parsing.
+The media registry is Go-owned metadata. The `/content` route returns bytes only
+for registered local files under configured safe roots. Configure roots with
+`AKASHIC_MEDIA_ASSET_ROOTS` as a comma-separated list. If omitted, local runs
+allow Akashic workspace upload directories under the repository root, and can
+recover the same roots from absolute asset paths inside an Akashic workspace.
+Remote platform URLs must be mirrored into a safe root before the content route
+will serve them.
+
+The content diagnostics endpoint is read-only and classifies each asset as
+`ready`, `forbidden`, `unavailable`, `disabled`, or `error`. Each item includes
+the stable content route and the single-asset `content_access_plan_endpoint` for
+dashboard drilldown. It does not run OCR/VLM, parse files, upload to RAG, or
+change the `/content` access policy. The content access plan endpoint is also
+read-only: it probes deterministic availability, immediately closes any opened
+file, returns ready/reason/blockers and operational steps, and does not stream
+content to the caller.
+
+Retention diagnostics and retention plan are read-only: they report cleanup
+candidates and operator approval / control mutation audit steps, but do not
+delete media metadata, remove local files, enqueue jobs, or call Python
+OCR/VLM/file parsing. The retention cleanup preflight validates cleanup
+candidates plus an active operator approval and returns `side_effect=none`.
+The cleanup executor requires that preflight, records applied/failed control
+mutation audit, and deletes only Go media asset metadata. It never deletes local
+files and never triggers OCR/VLM/RAG/AI.
 
 Normalized inbound messages and shadow-observed messages also register their
 attachments into the media registry automatically. Attachment-provided ids are
@@ -973,8 +988,9 @@ NATS external lease.
 `Media Asset Content` summarizes `/v1/media-assets/content-diagnostics`, showing
 how many recent attachments are content-ready versus forbidden, unavailable,
 disabled, or errored. It is only an access-control and local-content readiness
-view; OCR, VLM, file parsing, and semantic extraction remain Python AI worker
-responsibilities.
+view; each item links to `/v1/media-assets/content-access-plan` for single-asset
+drilldown. OCR, VLM, file parsing, and semantic extraction remain Python AI
+worker responsibilities.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

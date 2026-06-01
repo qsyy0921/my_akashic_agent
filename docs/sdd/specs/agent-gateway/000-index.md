@@ -217,6 +217,34 @@ execution.
 - `081-runtime-overview-media-asset-content.md`: Runtime overview aggregates
   media asset content readiness so dashboard and operators can see attachment
   display health without running OCR/VLM or changing file access policy.
+- `089-dashboard-runtime-control-plane-details.md` through later runtime
+  overview/dashboard specs keep Python as a read-only presentation layer for
+  Go-owned control-plane details.
+- `103-media-asset-retention-diagnostics.md`: Go exposes read-only media asset
+  retention diagnostics with TTL and cleanup-due advisory fields.
+- `104-runtime-overview-media-retention.md`: Runtime overview aggregates media
+  retention diagnostics without deleting metadata/files or invoking AI.
+- `105-media-asset-retention-plan.md`: Go exposes a read-only retention cleanup
+  plan with approval/audit/verification/rollback steps.
+- `106-runtime-overview-media-retention-plan.md`: Runtime overview exposes the
+  retention cleanup plan as a read-only card/detail.
+- `107-media-retention-control-policy.md`: Go control mutation policy allowlists
+  media retention cleanup as an explicit target/action.
+- `108-media-retention-cleanup-preflight.md`: Go validates cleanup candidates
+  and active operator approval before metadata cleanup, with `side_effect=none`.
+- `109-media-retention-metadata-cleanup.md`: Go executes approved metadata-only
+  media cleanup and records control mutation audit; local files and AI pipelines
+  remain untouched.
+- `110-runtime-overview-media-retention-cleanup.md`: Runtime overview aggregates
+  media retention cleanup readiness and recent cleanup audits.
+- `112-media-asset-content-access-plan.md`: Go exposes a read-only single-asset
+  content access plan with ready/reason/blockers and no content streaming.
+- `113-dashboard-media-content-access-plan.md` through
+  `116-media-content-access-plan-contract.md`: Python dashboard proxies and
+  contracts the Go-owned content access plan without taking policy ownership.
+- `117-media-content-diagnostics-access-plan-endpoint.md`: Go diagnostics items
+  include the single-asset access-plan endpoint, and Python dashboard preserves
+  it for drilldown.
 - `082-runtime-overview-delivery-smoke.md`: Runtime overview aggregates
   delivery smoke readiness so dashboard and operators can inspect QQ/Telegram
   send-path cutover gates without sending messages or invoking AI.

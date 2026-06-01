@@ -85,6 +85,7 @@
 - dashboard 消息列表/详情的 `media_assets` 已新增 `content_access_plan_url`：前端可从每条消息的媒体资产直接跳到 Go-owned access plan 代理，Python 不主动批量拉取 plan、不复制访问策略、不触发 OCR/VLM/RAG/AI。
 - 已新增 `MediaAssetContentAccessPlan` 合同 fixture：固化 Go `/v1/media-assets/content-access-plan` 与 dashboard `/api/dashboard/media-assets/content-access-plan` 的字段边界，包括 ready/reason/blockers/content endpoint/dashboard path/side_effect。
 - Go media content diagnostics item 已新增 `content_access_plan_endpoint`，Python runtime overview dashboard 会规范化并在旧 runtime 未返回时按 asset id fallback 生成，使批量诊断可直接跳到单资产 access plan。
+- `services/agent-runtime/README.md` 和 SDD index 已同步当前 Go media asset API：content diagnostics/access plan、retention diagnostics/plan、cleanup preflight/executor 及各自 side-effect 边界。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
 - `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。
