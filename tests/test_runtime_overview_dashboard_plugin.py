@@ -730,6 +730,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "outbound_cutover_plan_current_owner": "go_state_store_api",
             "outbound_cutover_plan_desired_owner": "nats_external_lease",
             "outbound_cutover_plan_recommended_owner": "nats_external_lease",
+            "control_mutation_policy_allowed": True,
+            "control_mutation_policy_reason": "control_mutation_policy_listed",
+            "control_mutation_policy_targets": 2,
+            "control_mutation_policy_actions": 4,
             "operator_approvals_total": 2,
             "operator_approvals_active": 1,
             "operator_approvals_approved": 1,
@@ -905,6 +909,29 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                         },
                         "side_effect": "runtime_state_only",
                     },
+                },
+            },
+            {
+                "id": "control_mutation_policy",
+                "label": "Control Mutation Policy",
+                "value": "2/4",
+                "status": "ok",
+                "detail": {
+                    "control_mutation_policy": {
+                        "allowed": True,
+                        "reason": "control_mutation_policy_listed",
+                        "intents": [
+                            {
+                                "target_kind": "agent_job_capacity",
+                                "actions": ["apply", "rollback"],
+                            },
+                            {
+                                "target_kind": "outbound_cutover",
+                                "actions": ["enable", "rollback"],
+                            },
+                        ],
+                        "side_effect": "none",
+                    }
                 },
             },
             {
@@ -1306,6 +1333,22 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "notes": ["read-only"],
             "side_effect": "none",
         },
+        "control_mutation_policy": {
+            "allowed": True,
+            "reason": "control_mutation_policy_listed",
+            "intents": [
+                {
+                    "target_kind": "agent_job_capacity",
+                    "actions": ["apply", "rollback"],
+                },
+                {
+                    "target_kind": "outbound_cutover",
+                    "actions": ["enable", "rollback"],
+                },
+            ],
+            "notes": ["policy query only"],
+            "side_effect": "none",
+        },
         "operator_approvals": {
             "approvals": [
                 {
@@ -1614,6 +1657,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["outbound_cutover_plan_current_owner"] == (
         "go_state_store_api"
     )
+    assert payload["summary"]["control_mutation_policy_allowed"] is True
+    assert (
+        payload["summary"]["control_mutation_policy_reason"]
+        == "control_mutation_policy_listed"
+    )
+    assert payload["summary"]["control_mutation_policy_targets"] == 2
+    assert payload["summary"]["control_mutation_policy_actions"] == 4
     assert payload["summary"]["operator_approvals_total"] == 2
     assert payload["summary"]["operator_approvals_active"] == 1
     assert payload["summary"]["operator_approvals_approved"] == 1
@@ -1760,6 +1810,17 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "AKASHIC_QUEUE_EXTERNAL_LEASE_OUTBOX_ENABLED": "true"
     }
     assert outbound_plan["side_effect"] == "none"
+    policy_card = next(
+        item for item in payload["cards"] if item["id"] == "control_mutation_policy"
+    )
+    assert policy_card["value"] == "2/4"
+    assert policy_card["status"] == "ok"
+    control_mutation_policy = payload["control_mutation_policy"]
+    assert control_mutation_policy["allowed"] is True
+    assert control_mutation_policy["reason"] == "control_mutation_policy_listed"
+    assert control_mutation_policy["intents"][0]["target_kind"] == "agent_job_capacity"
+    assert control_mutation_policy["intents"][1]["actions"] == ["enable", "rollback"]
+    assert control_mutation_policy["side_effect"] == "none"
     control_audit_card = next(
         item for item in payload["cards"] if item["id"] == "control_audit"
     )

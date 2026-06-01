@@ -1152,6 +1152,9 @@ def _normalize_go_runtime_overview(
     outbound_cutover_plan = _normalize_outbound_cutover_plan(
         _mapping_or_empty(item.get("outbound_cutover_plan"))
     )
+    control_mutation_policy = _normalize_control_mutation_policy(
+        _mapping_or_empty(item.get("control_mutation_policy"))
+    )
     operator_approvals = _normalize_operator_approvals(
         _mapping_or_empty(item.get("operator_approvals"))
     )
@@ -1217,6 +1220,7 @@ def _normalize_go_runtime_overview(
         "agent_job_external_lease_readiness": agent_job_external_lease_readiness,
         "agent_job_external_lease_plan": agent_job_external_lease_plan,
         "outbound_cutover_plan": outbound_cutover_plan,
+        "control_mutation_policy": control_mutation_policy,
         "operator_approvals": operator_approvals,
         "control_mutations": control_mutations,
         "knowledge_job_planner_cutover_plan": knowledge_job_planner_cutover_plan,
@@ -1345,6 +1349,10 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "outbound_cutover_plan_current_owner": "unknown",
         "outbound_cutover_plan_desired_owner": "unknown",
         "outbound_cutover_plan_recommended_owner": "unknown",
+        "control_mutation_policy_allowed": False,
+        "control_mutation_policy_reason": "unknown",
+        "control_mutation_policy_targets": 0,
+        "control_mutation_policy_actions": 0,
         "operator_approvals_total": 0,
         "operator_approvals_active": 0,
         "operator_approvals_approved": 0,
@@ -1924,6 +1932,32 @@ def _normalize_outbound_cutover_readiness(item: Mapping[str, Any]) -> dict[str, 
         "attributes": _mapping_or_empty(item.get("attributes")),
         "notes": _string_list(item.get("notes")),
         "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_control_mutation_policy(item: Mapping[str, Any]) -> dict[str, Any]:
+    intents_raw = item.get("intents")
+    if not isinstance(intents_raw, list):
+        intents_raw = []
+    return {
+        "allowed": bool(item.get("allowed")),
+        "reason": _text(item.get("reason")),
+        "blockers": _string_list(item.get("blockers")),
+        "target_kind": _text(item.get("target_kind")),
+        "intents": [
+            _normalize_control_mutation_policy_intent(value)
+            for value in intents_raw
+            if isinstance(value, Mapping)
+        ],
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_control_mutation_policy_intent(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "target_kind": _text(item.get("target_kind")),
+        "actions": _string_list(item.get("actions")),
     }
 
 
