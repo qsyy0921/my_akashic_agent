@@ -3456,6 +3456,56 @@ func TestOperatorApprovalEndpointsRecordAndListLedger(t *testing.T) {
 	}
 }
 
+func TestOperatorApprovalCheckEndpointReportsReadiness(t *testing.T) {
+	approvals := appservice.NewOperatorApprovalService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterOperatorApprovalRoutes(mux, approvals)
+
+	body := []byte(`{"target_kind":"outbound_cutover_plan","target_id":"cutover-a","decision":"approved","operator_id":"qsyy","expires_at":"2999-06-01T09:00:00Z","timestamp":"2026-06-01T09:00:00Z"}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/operator-approvals", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected approval accepted, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/operator-approvals/check?target_kind=outbound_cutover_plan&target_id=cutover-a", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected approval check 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"approved":true`,
+		`"reason":"approval_active"`,
+		`"side_effect":"none"`,
+		`"target_id":"cutover-a"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("approval check missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/operator-approvals/check?target_kind=outbound_cutover_plan&target_id=missing", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected missing approval check 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"approved":false`,
+		`"reason":"approval_not_found"`,
+		`"blockers":["approval_not_found"]`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("missing approval check missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/operator-approvals/check", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected check 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)

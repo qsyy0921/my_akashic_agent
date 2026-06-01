@@ -10,4 +10,5 @@ import (
 type OperatorApprovalManager interface {
 	RecordOperatorApproval(ctx context.Context, cmd command.RecordOperatorApprovalCommand) (query.OperatorApprovalView, error)
 	ListOperatorApprovals(ctx context.Context, filter query.OperatorApprovalFilter) (query.OperatorApprovalsView, error)
+	CheckOperatorApproval(ctx context.Context, check query.OperatorApprovalCheck) (query.OperatorApprovalCheckView, error)
 }

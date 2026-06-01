@@ -140,6 +140,67 @@ func (s *OperatorApprovalService) ListOperatorApprovals(ctx context.Context, fil
 	}, nil
 }
 
+func (s *OperatorApprovalService) CheckOperatorApproval(ctx context.Context, check query.OperatorApprovalCheck) (query.OperatorApprovalCheckView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.OperatorApprovalCheckView{}, err
+	}
+	if s == nil {
+		return query.OperatorApprovalCheckView{}, errors.New("operator approval service is nil")
+	}
+
+	approvalID := strings.TrimSpace(check.ApprovalID)
+	targetKind := strings.TrimSpace(check.TargetKind)
+	targetID := strings.TrimSpace(check.TargetID)
+	if approvalID == "" && (targetKind == "" || targetID == "") {
+		return operatorApprovalCheckBlocked("missing_approval_lookup", "missing_approval_lookup", nil), nil
+	}
+
+	s.mu.RLock()
+	var matched model.OperatorApproval
+	found := false
+	if approvalID != "" {
+		matched, found = s.approvals[approvalID]
+	} else {
+		for _, item := range s.approvals {
+			if item.TargetKind != targetKind || item.TargetID != targetID {
+				continue
+			}
+			if !found || item.CreatedAt.After(matched.CreatedAt) {
+				matched = item
+				found = true
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if !found {
+		return operatorApprovalCheckBlocked("approval_not_found", "approval_not_found", nil), nil
+	}
+	now := time.Now().UTC()
+	view := assembler.ToOperatorApprovalView(matched, now)
+	if approvalID != "" {
+		if targetKind != "" && matched.TargetKind != targetKind {
+			return operatorApprovalCheckBlocked("approval_target_mismatch", "approval_target_mismatch", &view), nil
+		}
+		if targetID != "" && matched.TargetID != targetID {
+			return operatorApprovalCheckBlocked("approval_target_mismatch", "approval_target_mismatch", &view), nil
+		}
+	}
+	if matched.Decision != model.OperatorApprovalApproved {
+		return operatorApprovalCheckBlocked("approval_not_approved", "approval_not_approved", &view), nil
+	}
+	if !matched.ActiveAt(now) {
+		return operatorApprovalCheckBlocked("approval_expired", "approval_expired", &view), nil
+	}
+	return query.OperatorApprovalCheckView{
+		Approved:   true,
+		Reason:     "approval_active",
+		Approval:   &view,
+		SideEffect: "none",
+		Notes:      []string{"approval check only; no runtime configuration is changed"},
+	}, nil
+}
+
 func boundedOperatorApprovalLimit(value int) int {
 	if value <= 0 {
 		return 100
@@ -148,4 +209,16 @@ func boundedOperatorApprovalLimit(value int) int {
 		return 500
 	}
 	return value
+}
+
+func operatorApprovalCheckBlocked(reason string, blocker string, approval *query.OperatorApprovalView) query.OperatorApprovalCheckView {
+	blockers := []string{blocker}
+	return query.OperatorApprovalCheckView{
+		Approved:   false,
+		Reason:     reason,
+		Blockers:   blockers,
+		Approval:   approval,
+		SideEffect: "none",
+		Notes:      []string{"approval check only; no runtime configuration is changed"},
+	}
 }

@@ -7,6 +7,12 @@ type OperatorApprovalFilter struct {
 	Limit      int
 }
 
+type OperatorApprovalCheck struct {
+	ApprovalID string
+	TargetKind string
+	TargetID   string
+}
+
 type OperatorApprovalView struct {
 	ApprovalID string            `json:"approval_id"`
 	TargetKind string            `json:"target_kind"`
@@ -25,4 +31,13 @@ type OperatorApprovalsView struct {
 	Totals     map[string]int         `json:"totals"`
 	Notes      []string               `json:"notes,omitempty"`
 	SideEffect string                 `json:"side_effect"`
+}
+
+type OperatorApprovalCheckView struct {
+	Approved   bool                  `json:"approved"`
+	Reason     string                `json:"reason"`
+	Blockers   []string              `json:"blockers,omitempty"`
+	Approval   *OperatorApprovalView `json:"approval,omitempty"`
+	SideEffect string                `json:"side_effect"`
+	Notes      []string              `json:"notes,omitempty"`
 }

@@ -249,6 +249,7 @@ func RegisterOperatorApprovalRoutes(
 	mux *http.ServeMux,
 	manager inport.OperatorApprovalManager,
 ) {
+	mux.Handle("/v1/operator-approvals/check", OperatorApprovalCheckHandler(manager))
 	mux.Handle("/v1/operator-approvals", OperatorApprovalsHandler(manager))
 }
 
@@ -330,6 +331,29 @@ func OperatorApprovalsHandler(manager inport.OperatorApprovalManager) http.Handl
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+}
+
+func OperatorApprovalCheckHandler(manager inport.OperatorApprovalManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if manager == nil {
+			http.Error(w, "operator approvals disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := manager.CheckOperatorApproval(r.Context(), query.OperatorApprovalCheck{
+			ApprovalID: strings.TrimSpace(r.URL.Query().Get("approval_id")),
+			TargetKind: strings.TrimSpace(r.URL.Query().Get("target_kind")),
+			TargetID:   strings.TrimSpace(r.URL.Query().Get("target_id")),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 
