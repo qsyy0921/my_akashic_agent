@@ -1375,6 +1375,45 @@ def create_dashboard_app(
             headers=response_headers,
         )
 
+    @app.get("/api/dashboard/media-assets/content-access-plan")
+    def get_dashboard_media_asset_content_access_plan(
+        asset_id: str = Query(..., min_length=1),
+    ) -> dict[str, Any]:
+        runtime_base_url = _agent_runtime_base_url()
+        if not runtime_base_url:
+            raise HTTPException(status_code=503, detail="agent-runtime 未配置")
+        url = (
+            f"{runtime_base_url}/v1/media-assets/content-access-plan?"
+            f"{urllib.parse.urlencode({'asset_id': asset_id})}"
+        )
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+            ) as upstream:
+                payload = json.loads(upstream.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = "agent-runtime media content access plan 请求失败"
+            try:
+                raw = exc.read().decode("utf-8", errors="replace").strip()
+            except OSError:
+                raw = ""
+            if raw:
+                detail = raw[:500]
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
+        except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"agent-runtime media content access plan 不可用: {exc}",
+            ) from exc
+        data = payload.get("data") if isinstance(payload, Mapping) else payload
+        if not isinstance(data, Mapping):
+            raise HTTPException(
+                status_code=502,
+                detail="agent-runtime media content access plan 响应格式无效",
+            )
+        return dict(data)
+
     @app.get("/plugins/{plugin_id}/{panel_name}.js")
     def get_plugin_panel_js(plugin_id: str, panel_name: str) -> FileResponse:
         if not panel_name.startswith("dashboard_panel"):
