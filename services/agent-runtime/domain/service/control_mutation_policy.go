@@ -15,6 +15,11 @@ type ControlMutationPolicyResult struct {
 	SupportedActions []string
 }
 
+type ControlMutationPolicyIntent struct {
+	TargetKind string
+	Actions    []string
+}
+
 func NewControlMutationPolicy() ControlMutationPolicy {
 	return ControlMutationPolicy{
 		supported: map[string]map[string]struct{}{
@@ -40,6 +45,35 @@ func NewControlMutationPolicy() ControlMutationPolicy {
 			},
 		},
 	}
+}
+
+func (p ControlMutationPolicy) SupportedIntents() []ControlMutationPolicyIntent {
+	targets := make([]string, 0, len(p.supported))
+	for target := range p.supported {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+
+	result := make([]ControlMutationPolicyIntent, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, ControlMutationPolicyIntent{
+			TargetKind: target,
+			Actions:    sortedControlMutationActions(p.supported[target]),
+		})
+	}
+	return result
+}
+
+func (p ControlMutationPolicy) SupportedIntent(targetKind string) (ControlMutationPolicyIntent, bool) {
+	targetKind = strings.TrimSpace(targetKind)
+	actions, ok := p.supported[targetKind]
+	if !ok {
+		return ControlMutationPolicyIntent{}, false
+	}
+	return ControlMutationPolicyIntent{
+		TargetKind: targetKind,
+		Actions:    sortedControlMutationActions(actions),
+	}, true
 }
 
 func (p ControlMutationPolicy) Check(targetKind string, action string) ControlMutationPolicyResult {

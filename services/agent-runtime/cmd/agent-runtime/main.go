@@ -275,6 +275,7 @@ func main() {
 		log.Fatalf("init control mutation audit service: %v", err)
 	}
 	controlMutationPreflight := appservice.NewControlMutationPreflightService(operatorApprovals)
+	controlMutationPolicy := appservice.NewControlMutationPolicyService()
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
@@ -433,6 +434,7 @@ func main() {
 	httptrigger.RegisterOperatorApprovalRoutes(mux, operatorApprovals)
 	httptrigger.RegisterControlMutationAuditRoutes(mux, controlMutations)
 	httptrigger.RegisterControlMutationPreflightRoutes(mux, controlMutationPreflight)
+	httptrigger.RegisterControlMutationPolicyRoutes(mux, controlMutationPolicy)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",

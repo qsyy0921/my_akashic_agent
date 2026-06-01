@@ -18,6 +18,40 @@ func TestControlMutationPolicyAllowsSupportedIntent(t *testing.T) {
 	}
 }
 
+func TestControlMutationPolicyListsSupportedIntentsDeterministically(t *testing.T) {
+	policy := domainservice.NewControlMutationPolicy()
+
+	intents := policy.SupportedIntents()
+	if len(intents) == 0 {
+		t.Fatal("expected supported intents")
+	}
+	for i := 1; i < len(intents); i++ {
+		if intents[i-1].TargetKind > intents[i].TargetKind {
+			t.Fatalf("expected sorted targets, got %+v", intents)
+		}
+	}
+	for _, intent := range intents {
+		for i := 1; i < len(intent.Actions); i++ {
+			if intent.Actions[i-1] > intent.Actions[i] {
+				t.Fatalf("expected sorted actions for %s: %+v", intent.TargetKind, intent.Actions)
+			}
+		}
+	}
+}
+
+func TestControlMutationPolicyFindsSupportedIntentByTarget(t *testing.T) {
+	policy := domainservice.NewControlMutationPolicy()
+
+	intent, ok := policy.SupportedIntent("outbound_cutover")
+	if !ok || intent.TargetKind != "outbound_cutover" || len(intent.Actions) != 2 {
+		t.Fatalf("expected outbound cutover intent, got ok=%t intent=%+v", ok, intent)
+	}
+
+	if _, ok := policy.SupportedIntent("model_provider_config"); ok {
+		t.Fatal("unexpected unsupported target")
+	}
+}
+
 func TestControlMutationPolicyBlocksUnsupportedIntent(t *testing.T) {
 	policy := domainservice.NewControlMutationPolicy()
 

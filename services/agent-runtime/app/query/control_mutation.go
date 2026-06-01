@@ -63,3 +63,22 @@ type ControlMutationPreflightView struct {
 	Notes            []string                           `json:"notes,omitempty"`
 	SideEffect       string                             `json:"side_effect"`
 }
+
+type ControlMutationPolicyFilter struct {
+	TargetKind string
+}
+
+type ControlMutationPolicyIntentView struct {
+	TargetKind string   `json:"target_kind"`
+	Actions    []string `json:"actions"`
+}
+
+type ControlMutationPolicyView struct {
+	Allowed    bool                              `json:"allowed"`
+	Reason     string                            `json:"reason"`
+	Blockers   []string                          `json:"blockers,omitempty"`
+	TargetKind string                            `json:"target_kind,omitempty"`
+	Intents    []ControlMutationPolicyIntentView `json:"intents"`
+	Notes      []string                          `json:"notes,omitempty"`
+	SideEffect string                            `json:"side_effect"`
+}

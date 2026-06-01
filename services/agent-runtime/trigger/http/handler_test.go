@@ -3632,6 +3632,44 @@ func TestControlMutationPreflightEndpointBlocksUnsupportedIntent(t *testing.T) {
 	}
 }
 
+func TestControlMutationPolicyEndpointListsAndFiltersPolicy(t *testing.T) {
+	policy := appservice.NewControlMutationPolicyService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterControlMutationPolicyRoutes(mux, policy)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/control-mutations/policy", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected policy 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"allowed":true`,
+		`"reason":"control_mutation_policy_listed"`,
+		`"target_kind":"outbound_cutover"`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("policy response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	filtered := httptest.NewRecorder()
+	mux.ServeHTTP(filtered, httptest.NewRequest(http.MethodGet, "/v1/control-mutations/policy?target_kind=model_provider_config", nil))
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("expected filtered policy 200, got %d: %s", filtered.Code, filtered.Body.String())
+	}
+	for _, expected := range []string{
+		`"allowed":false`,
+		`"reason":"unsupported_control_mutation_target"`,
+		`"blockers":["unsupported_control_mutation_target"]`,
+		`"target_kind":"model_provider_config"`,
+	} {
+		if !bytes.Contains(filtered.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("filtered policy response missing %s: %s", expected, filtered.Body.String())
+		}
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)
