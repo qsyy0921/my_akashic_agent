@@ -162,6 +162,45 @@
     </div>
   `;
   }
+  function _renderControlMutationPolicyDetail(detail) {
+    const policy = _record(detail.control_mutation_policy || detail);
+    const intents = _array(policy.intents);
+    const actionCount = intents.reduce((total, item) => {
+      const actions = Array.isArray(item.actions) ? item.actions.length : 0;
+      return total + actions;
+    }, 0);
+    const rows = intents.slice(0, 30).map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.target_kind, 34))}</td>
+      <td>${escapeHtml(Array.isArray(item.actions) ? item.actions.join(", ") : "-")}</td>
+    </tr>
+  `).join("");
+    return `
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div class="detail-label">Control Mutation Policy</div>
+        <div class="detail-subtext">${escapeHtml(String(policy.side_effect || "none"))}</div>
+      </div>
+      <div class="runtime-overview-kpis">
+        <div class="runtime-overview-kpi"><span>allowed</span><strong>${escapeHtml(String(Boolean(policy.allowed)))}</strong></div>
+        <div class="runtime-overview-kpi"><span>reason</span><strong>${escapeHtml(_short(policy.reason || "-", 28))}</strong></div>
+        <div class="runtime-overview-kpi"><span>targets</span><strong>${escapeHtml(String(intents.length))}</strong></div>
+        <div class="runtime-overview-kpi"><span>actions</span><strong>${escapeHtml(String(actionCount))}</strong></div>
+      </div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Target Kind</th>
+              <th>Allowed Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="2" class="runtime-overview-muted">No control mutation policy intents sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  }
   function _renderQueueTopologyDetail(detail) {
     const topology = _record(detail.queue_topology || detail);
     const workKinds = _array(topology.work_kinds);
@@ -276,7 +315,7 @@
           <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
         </div>
       ` : "";
-      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : card.id === "queue_topology" ? _renderQueueTopologyDetail(_record(card.detail)) : card.id === "control_audit" ? _renderControlAuditDetail(_record(card.detail)) : "";
+      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : card.id === "queue_topology" ? _renderQueueTopologyDetail(_record(card.detail)) : card.id === "control_audit" ? _renderControlAuditDetail(_record(card.detail)) : card.id === "control_mutation_policy" ? _renderControlMutationPolicyDetail(_record(card.detail)) : "";
       container.innerHTML = `
       <div class="runtime-overview-detail">
         <div class="runtime-overview-toolbar">

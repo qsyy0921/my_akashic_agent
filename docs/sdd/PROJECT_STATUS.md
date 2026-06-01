@@ -20,12 +20,12 @@
 
 当前 `TODO.md` 已清空。最近完成的切片是 runtime overview dashboard 可读性收口：
 
-- `Control Audit` drilldown 已把 operator approvals / control mutations 从原始 JSON 提升为只读表格。
-- 保留 raw JSON fallback，且不加入 approval/mutation/cutover/worker/MQ/media/AI 副作用。
+- `Control Mutation Policy` drilldown 已把 Go-owned mutation allowlist 从原始 JSON 提升为只读表格。
+- 保留 raw JSON fallback，且不加入 policy edit、approval/mutation、cutover、worker、MQ、media 或 AI 副作用。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/129-runtime-overview-control-audit-table.md`
+- `docs/sdd/specs/agent-gateway/130-runtime-overview-control-mutation-policy-table.md`
 
 ## 当前已完成主线
 

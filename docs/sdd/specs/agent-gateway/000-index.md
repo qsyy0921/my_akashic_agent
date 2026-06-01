@@ -338,4 +338,7 @@ execution.
 - `129-runtime-overview-control-audit-table.md`: Runtime overview dashboard
   renders Go-owned operator approval and control mutation audit detail as
   read-only tables while preserving JSON fallback.
+- `130-runtime-overview-control-mutation-policy-table.md`: Runtime overview
+  dashboard renders Go-owned control mutation target/action allowlist as a
+  read-only table while preserving JSON fallback.
 - Agent architecture boundary specs live under `../agent-architecture/`.

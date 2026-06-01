@@ -2356,6 +2356,10 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "Control Mutations" in js_response.text
     assert "approval_id" in js_response.text
     assert "mutation_id" in js_response.text
+    assert "Control Mutation Policy" in js_response.text
+    assert "Target Kind" in js_response.text
+    assert "Allowed Actions" in js_response.text
+    assert "control_mutation_policy" in js_response.text
 
 
 def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
