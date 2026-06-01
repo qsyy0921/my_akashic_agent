@@ -106,3 +106,7 @@
 - [ ] 通过 schedule tool 创建测试提醒，确认 `.akashic-workspace/agent-runtime/scheduler-jobs.json` 写入；取消后确认单任务 delete 移除对应 job。
 - [ ] 创建短周期测试提醒，确认完成路径调用 Go `/v1/scheduler/jobs/{job_id}/complete`，recurring 只更新自身，one-shot 只删除自身，lease 被释放。
 - [ ] 手工准备过期 recurring 和超过 grace 的 one-shot 测试 job，重启 Python scheduler 后确认 recovery reconciliation 不触发 QQ/Telegram 发送，不全量覆盖其它 job。
+
+## SDD Governance
+
+- [ ] 新增或重命名 `docs/sdd/specs/agent-gateway/[0-9][0-9][0-9]-*.md` 后，必须同步更新 `docs/sdd/specs/agent-gateway/000-index.md`，并运行 `uv run pytest tests/test_sdd_spec_index.py -q`。

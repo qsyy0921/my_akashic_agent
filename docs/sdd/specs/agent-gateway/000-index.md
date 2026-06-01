@@ -33,10 +33,17 @@ execution.
   for replay, dashboard queries, and group-memory source citations.
 - `010-knowledge-checkpoints.md`: Go-owned knowledge ingestion cursors for
   RAGFlow and future memory/RAG workers.
+- `011-knowledge-worker-diagnostics.md`: Python knowledge worker diagnostics
+  are surfaced through Go-owned job/checkpoint status without moving AI
+  extraction logic into Go.
 - `012-agent-job-event-stream.md`: Go-owned durable lifecycle event stream for
   generic agent jobs.
+- `013-proactive-scheduling-state.md`: Go-owned deterministic proactive
+  scheduling state while Python keeps semantic candidate selection.
 - `013-rag-eval-jobs.md`: Go-owned `rag_eval` lifecycle with Python eval
   worker execution.
+- `014-python-proactive-state-runtime-bridge.md`: Python bridges proactive
+  runtime state into Go-owned persistence while keeping AI behavior in Python.
 - `014-runtime-dashboard-overview.md`: read-only dashboard aggregation for
   runtime health, worker leases, stale jobs, dead letters, checkpoint lag, and
   job event stream.
@@ -267,4 +274,45 @@ execution.
 - `088-runtime-overview-queue-topology.md`: Runtime overview and Python
   dashboard aggregate the Go-owned queue topology read model as a stable
   read-only status surface.
+- `089-agent-job-priority-plan.md`: Go exposes a read-only AgentJob priority
+  plan from pressure and Python worker coverage without scheduling or AI side
+  effects.
+- `090-runtime-overview-agent-job-priority-plan.md`: Runtime overview aggregates
+  the read-only AgentJob priority plan.
+- `091-operator-approval-ledger.md`: Go-owned operator approval audit ledger
+  for control-plane plans.
+- `092-operator-approval-check.md`: Go-owned active approval check before
+  control-plane mutations.
+- `093-control-mutation-audit-ledger.md`: Go-owned audit ledger for planned,
+  applied, failed, or rolled-back control mutations.
+- `094-runtime-overview-control-audit.md`: Runtime overview aggregates operator
+  approvals and control mutation audit status.
+- `095-dashboard-control-audit-detail.md`: Python dashboard normalizes
+  Go-owned control audit detail as a read-only projection.
+- `096-control-mutation-preflight.md`: Go validates approval-bound mutation
+  preflight without executing control changes.
+- `097-control-mutation-policy.md`: Go-owned control mutation policy prevents
+  unsupported target/action strings from becoming executable.
+- `098-control-mutation-policy-api.md`: Go exposes the control mutation
+  allowlist as a read-only API.
+- `099-runtime-overview-control-mutation-policy.md`: Runtime overview
+  aggregates the Go-owned mutation policy.
+- `100-dashboard-control-mutation-policy.md`: Python dashboard normalizes
+  Go-owned mutation policy detail without owning the allowlist.
+- `101-receiver-lease-cleanup.md`: Go-owned receiver lease cleanup diagnostics
+  and state hygiene.
+- `102-runtime-overview-receiver-lease-cleanup.md`: Runtime overview aggregates
+  receiver lease cleanup status.
+- `111-dashboard-media-retention-cleanup.md`: Python dashboard normalizes
+  Go-owned media retention cleanup detail as read-only state.
+- `114-dashboard-media-content-access-plan-proxy.md`: Python dashboard proxies
+  the Go-owned media content access plan without copying policy.
+- `115-dashboard-message-media-access-plan-link.md`: Dashboard message media
+  entries expose direct access-plan links for operator drilldown.
+- `118-agent-runtime-media-api-docs.md`: Agent runtime README and SDD index
+  document current media asset APIs and side-effect boundaries.
+- `119-go-contract-test-media-access-plan.md`: Go contract tests validate the
+  shared media content access plan fixture.
+- `120-sdd-spec-index-guard.md`: Repository tests require agent-gateway specs
+  to be referenced by exact filename in this index.
 - Agent architecture boundary specs live under `../agent-architecture/`.
