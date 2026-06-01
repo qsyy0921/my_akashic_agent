@@ -685,6 +685,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_retention_default": 1,
             "media_asset_retention_ephemeral": 1,
             "media_asset_retention_unknown": 0,
+            "media_asset_retention_plan_ready": True,
+            "media_asset_retention_plan_reason": (
+                "media_asset_retention_cleanup_candidates_ready"
+            ),
+            "media_asset_retention_plan_blockers": 0,
+            "media_asset_retention_plan_assets": 3,
+            "media_asset_retention_plan_candidates": 1,
+            "media_asset_retention_plan_required_steps": 2,
             "agent_job_capacity_ready": False,
             "agent_job_capacity_reason": "agent_job_capacity_attention_required",
             "agent_job_capacity_blockers": 3,
@@ -816,6 +824,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
             {"id": "media_asset_retention", "label": "Media Asset Retention", "value": "1/3", "status": "warn"},
+            {"id": "media_asset_retention_plan", "label": "Media Asset Retention Plan", "value": "1/3", "status": "warn"},
             {
                 "id": "agent_job_capacity_plan",
                 "label": "Agent Job Capacity",
@@ -1141,6 +1150,64 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "unknown": 0,
             },
             "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "media_asset_retention_plan": {
+            "ready": True,
+            "reason": "media_asset_retention_cleanup_candidates_ready",
+            "asset_count": 3,
+            "candidate_count": 1,
+            "candidates": [
+                {
+                    "asset_id": "asset:old",
+                    "channel": {"kind": "qq"},
+                    "retention": "ephemeral",
+                    "retention_class": "ephemeral",
+                    "cleanup_due": True,
+                    "cleanup_reason": "media_asset_retention_due",
+                }
+            ],
+            "required_steps": [
+                {
+                    "name": "record-operator-approval",
+                    "description": "record approval",
+                    "endpoint": "/v1/operator-approvals",
+                    "method": "POST",
+                    "metadata": {
+                        "target_kind": "media_asset_retention",
+                        "action": "cleanup_expired",
+                    },
+                },
+                {
+                    "name": "record-planned-control-mutation",
+                    "description": "record planned mutation",
+                    "endpoint": "/v1/control-mutations",
+                    "method": "POST",
+                },
+            ],
+            "verify_steps": [
+                {
+                    "name": "rerun-retention-plan",
+                    "description": "rerun plan",
+                    "endpoint": "/v1/media-assets/retention-plan",
+                    "method": "GET",
+                }
+            ],
+            "rollback_steps": [
+                {"name": "record-rollback-control-mutation", "description": "rollback"}
+            ],
+            "diagnostics": {
+                "totals": {
+                    "assets": 3,
+                    "cleanup_due": 1,
+                    "permanent": 1,
+                    "default": 1,
+                    "ephemeral": 1,
+                    "unknown": 0,
+                },
+                "items": [],
+                "side_effect": "none",
+            },
             "side_effect": "none",
         },
         "agent_job_capacity_plan": {
@@ -1680,6 +1747,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["media_asset_retention_permanent"] == 1
     assert payload["summary"]["media_asset_retention_default"] == 1
     assert payload["summary"]["media_asset_retention_ephemeral"] == 1
+    assert payload["summary"]["media_asset_retention_plan_ready"] is True
+    assert payload["summary"]["media_asset_retention_plan_reason"] == (
+        "media_asset_retention_cleanup_candidates_ready"
+    )
+    assert payload["summary"]["media_asset_retention_plan_candidates"] == 1
+    assert payload["summary"]["media_asset_retention_plan_required_steps"] == 2
     assert payload["summary"]["agent_job_capacity_ready"] is False
     assert payload["summary"]["agent_job_capacity_reason"] == (
         "agent_job_capacity_attention_required"
@@ -1821,9 +1894,20 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     )
     assert media_retention_card["value"] == "1/3"
     assert media_retention_card["status"] == "warn"
+    media_retention_plan_card = next(
+        item for item in payload["cards"] if item["id"] == "media_asset_retention_plan"
+    )
+    assert media_retention_plan_card["value"] == "1/3"
+    assert media_retention_plan_card["status"] == "warn"
     assert payload["media_asset_content_diagnostics"]["totals"]["forbidden"] == 1
     assert payload["media_asset_retention_diagnostics"]["totals"]["cleanup_due"] == 1
     assert payload["media_asset_retention_diagnostics"]["items"][1]["asset_id"] == "asset:old"
+    assert payload["media_asset_retention_plan"]["candidate_count"] == 1
+    assert payload["media_asset_retention_plan"]["candidates"][0]["asset_id"] == "asset:old"
+    assert payload["media_asset_retention_plan"]["required_steps"][0]["endpoint"] == (
+        "/v1/operator-approvals"
+    )
+    assert payload["media_asset_retention_plan"]["side_effect"] == "none"
     assert (
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
@@ -2145,6 +2229,8 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
                     "/v1/outbox-metrics",
                     "/v1/observe-targets",
                     "/v1/observe-capture-diagnostics",
+                    "/v1/media-assets/retention-diagnostics",
+                    "/v1/media-assets/retention-plan",
                     "/v1/receiver-statuses",
                     "/v1/receiver-leases",
                     "/v1/scheduler/diagnostics",
@@ -2204,6 +2290,8 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
                     "/v1/outbox-metrics",
                     "/v1/observe-targets",
                     "/v1/observe-capture-diagnostics",
+                    "/v1/media-assets/retention-diagnostics",
+                    "/v1/media-assets/retention-plan",
                     "/v1/receiver-statuses",
                     "/v1/receiver-leases",
                     "/v1/scheduler/diagnostics",
@@ -2225,6 +2313,8 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
     assert "/v1/runtime-overview" in seen_paths
     assert "/v1/jobs" in seen_paths
     assert "/v1/outbox-metrics" in seen_paths
+    assert "/v1/media-assets/retention-plan" in seen_paths
+    assert payload["summary"]["media_asset_retention_plan_reason"] == "unknown"
 
 
 def _fake_urlopen_response(payload: str):

@@ -383,6 +383,7 @@ func main() {
 		ObserveCapture:             observeCaptureDiagnostics,
 		MediaAssetContent:          mediaAssets,
 		MediaAssetRetention:        mediaAssets,
+		MediaAssetRetentionPlan:    mediaAssets,
 		KnowledgePipelines:         knowledgePipelines,
 		KnowledgeJobPlanner:        knowledgeJobPlannerPreview,
 		KnowledgePlannerReady:      knowledgeJobPlannerReadiness,

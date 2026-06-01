@@ -43,6 +43,7 @@
 - runtime overview 已聚合 `Media Asset Content`：summary/card/detail 直接展示最近附件内容 ready/forbidden/unavailable/disabled/error 状态，方便 dashboard 定位 QQ 图片/文件显示问题，仍不执行 OCR/VLM/文件解析。
 - runtime overview 和 Python dashboard fallback 已聚合 `Media Asset Retention`：summary/card/detail 可直接看到 cleanup_due、permanent/default/ephemeral/unknown 统计和只读 retention diagnostics，仍不删除 registry 或文件，不触发 OCR/VLM/文件解析。
 - 已实现 Go-owned media asset retention cleanup plan：`/v1/media-assets/retention-plan` 基于 retention diagnostics 输出只读 dry-run 清理计划、候选资产、operator approval/control mutation audit 绑定步骤、验证/回滚步骤和 `side_effect=none`；当前不删除 media metadata 或本地文件内容。
+- runtime overview 和 Python dashboard fallback 已聚合 `Media Asset Retention Plan`：summary/card/detail 可直接看到 retention cleanup plan 是否 ready、候选数、blocker 数和 required steps；Python 只做只读展示，不创建 approval/mutation、不删除文件、不触发 OCR/VLM/AI。
 
 ## AgentJob、队列与 worker 状态
 

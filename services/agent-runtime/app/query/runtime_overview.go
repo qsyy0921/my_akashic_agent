@@ -54,6 +54,7 @@ type RuntimeOverviewView struct {
 	ObserveCapture          ObserveCaptureDiagnosticsView      `json:"observe_capture"`
 	MediaAssetContent       MediaAssetContentDiagnosticsView   `json:"media_asset_content_diagnostics,omitempty"`
 	MediaAssetRetention     MediaAssetRetentionDiagnosticsView `json:"media_asset_retention_diagnostics,omitempty"`
+	MediaAssetRetentionPlan MediaAssetRetentionPlanView        `json:"media_asset_retention_plan,omitempty"`
 	KnowledgePipelines      KnowledgePipelineDiagnosticsView   `json:"knowledge_pipelines,omitempty"`
 	KnowledgeJobPlanner     KnowledgeJobPlannerPreviewView     `json:"knowledge_job_planner_preview,omitempty"`
 	KnowledgePlannerReady   KnowledgeJobPlannerReadinessView   `json:"knowledge_job_planner_readiness,omitempty"`

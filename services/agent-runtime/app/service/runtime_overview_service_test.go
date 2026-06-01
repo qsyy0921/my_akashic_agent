@@ -322,6 +322,26 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			},
 			SideEffect: "none",
 		}},
+		MediaAssetRetentionPlan: staticRuntimeMediaAssetRetentionPlan{view: query.MediaAssetRetentionPlanView{
+			Ready:          true,
+			Reason:         "media_asset_retention_cleanup_candidates_ready",
+			AssetCount:     3,
+			CandidateCount: 1,
+			Candidates: []query.MediaAssetRetentionDiagnosticItemView{
+				{AssetID: "asset:old", Kind: "image", RetentionClass: "ephemeral", CleanupDue: true},
+			},
+			RequiredSteps: []query.MediaAssetRetentionPlanStep{
+				{Name: "record-operator-approval"},
+				{Name: "record-planned-control-mutation"},
+			},
+			VerifySteps: []query.MediaAssetRetentionPlanStep{
+				{Name: "rerun-retention-plan"},
+			},
+			RollbackSteps: []query.MediaAssetRetentionPlanStep{
+				{Name: "record-rollback-control-mutation"},
+			},
+			SideEffect: "none",
+		}},
 		KnowledgePipelines: staticKnowledgePipelineDiagnostics{view: query.KnowledgePipelineDiagnosticsView{
 			Totals: map[string]int{
 				"targets":                            2,
@@ -789,6 +809,13 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["media_asset_retention_unknown"] != 0 {
 		t.Fatalf("unexpected media asset retention summary: %#v", view.Summary)
 	}
+	if view.Summary["media_asset_retention_plan_ready"] != true ||
+		view.Summary["media_asset_retention_plan_reason"] != "media_asset_retention_cleanup_candidates_ready" ||
+		view.Summary["media_asset_retention_plan_candidates"] != 1 ||
+		view.Summary["media_asset_retention_plan_assets"] != 3 ||
+		view.Summary["media_asset_retention_plan_required_steps"] != 2 {
+		t.Fatalf("unexpected media asset retention plan summary: %#v", view.Summary)
+	}
 	if view.Summary["knowledge_pipeline_targets"] != 2 ||
 		view.Summary["knowledge_pipeline_ready"] != 1 ||
 		view.Summary["knowledge_pipeline_warning"] != 0 ||
@@ -965,6 +992,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_content", "1/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_retention", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention", "1/3")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "media_asset_retention_plan", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "media_asset_retention_plan", "1/3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_pipelines", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "knowledge_pipelines", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "knowledge_job_planner_preview", "ok")
@@ -1034,6 +1063,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if intFromMap(view.MediaAssetRetention.Totals, "cleanup_due") != 1 ||
 		view.MediaAssetRetention.Items[1].AssetID != "asset:old" {
 		t.Fatalf("unexpected media asset retention detail: %+v", view.MediaAssetRetention)
+	}
+	if !view.MediaAssetRetentionPlan.Ready ||
+		view.MediaAssetRetentionPlan.CandidateCount != 1 ||
+		view.MediaAssetRetentionPlan.Candidates[0].AssetID != "asset:old" ||
+		len(view.MediaAssetRetentionPlan.RequiredSteps) != 2 {
+		t.Fatalf("unexpected media asset retention plan detail: %+v", view.MediaAssetRetentionPlan)
 	}
 	if view.KnowledgeJobPlanner.TotalJobs != 3 || len(view.KnowledgeJobPlanner.Plans) != 1 {
 		t.Fatalf("unexpected knowledge planner preview detail: %+v", view.KnowledgeJobPlanner)
@@ -1242,6 +1277,14 @@ type staticRuntimeMediaAssetRetentionDiagnostics struct {
 }
 
 func (s staticRuntimeMediaAssetRetentionDiagnostics) RetentionDiagnostics(context.Context, query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionDiagnosticsView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeMediaAssetRetentionPlan struct {
+	view query.MediaAssetRetentionPlanView
+}
+
+func (s staticRuntimeMediaAssetRetentionPlan) RetentionPlan(context.Context, query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionPlanView, error) {
 	return s.view, nil
 }
 
