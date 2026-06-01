@@ -215,6 +215,17 @@ func (s *MediaAssetService) ContentAccessPlan(
 	}
 }
 
+func (s *MediaAssetService) ContentRecoveryPlan(
+	ctx context.Context,
+	assetID string,
+) (query.MediaAssetContentRecoveryPlanView, error) {
+	accessPlan, err := s.ContentAccessPlan(ctx, assetID)
+	if err != nil {
+		return query.MediaAssetContentRecoveryPlanView{}, err
+	}
+	return mediaAssetContentRecoveryPlan(accessPlan), nil
+}
+
 func (s *MediaAssetService) RetentionDiagnostics(
 	ctx context.Context,
 	filter query.MediaAssetRetentionDiagnosticsFilter,
@@ -654,6 +665,175 @@ func mediaAssetContentAccessFallbackSteps(assetID string) []query.MediaAssetCont
 	}
 }
 
+func mediaAssetContentRecoveryPlan(
+	accessPlan query.MediaAssetContentAccessPlanView,
+) query.MediaAssetContentRecoveryPlanView {
+	ready := accessPlan.Ready
+	reason := mediaAssetContentRecoveryReason(accessPlan.Reason)
+	blockers := []string{}
+	if !ready {
+		blockers = append(blockers, accessPlan.Blockers...)
+		if len(blockers) == 0 {
+			blockers = append(blockers, "media asset content is not ready")
+		}
+	}
+	return query.MediaAssetContentRecoveryPlanView{
+		Ready:               ready,
+		Reason:              reason,
+		Blockers:            blockers,
+		AssetID:             accessPlan.AssetID,
+		RuntimePath:         mediaAssetContentRecoveryPlanEndpoint(accessPlan.AssetID),
+		DashboardPath:       mediaAssetDashboardContentRecoveryPlanPath(accessPlan.AssetID),
+		ContentURL:          accessPlan.ContentURL,
+		AccessPlan:          accessPlan,
+		RequiredSteps:       mediaAssetContentRecoveryRequiredSteps(accessPlan),
+		VerifySteps:         mediaAssetContentRecoveryVerifySteps(accessPlan.AssetID),
+		FallbackSteps:       mediaAssetContentRecoveryFallbackSteps(accessPlan),
+		FutureExecutorScope: mediaAssetContentRecoveryExecutorScope(accessPlan.Reason),
+		SideEffect:          "none",
+		Notes: []string{
+			"read-only media content recovery plan; no content is downloaded, restored, parsed or streamed",
+			"Go owns deterministic recovery planning; Python remains responsible for OCR, VLM, file parsing and semantic extraction",
+		},
+	}
+}
+
+func mediaAssetContentRecoveryReason(accessReason string) string {
+	switch accessReason {
+	case "media_asset_content_ready":
+		return "media_asset_content_recovery_not_required"
+	case "media_asset_content_asset_id_required":
+		return "media_asset_content_recovery_asset_id_required"
+	case "media_asset_content_asset_not_found":
+		return "media_asset_content_recovery_asset_not_found"
+	case "media_asset_content_disabled":
+		return "media_asset_content_recovery_enable_reader"
+	case "media_asset_content_forbidden":
+		return "media_asset_content_recovery_fix_content_roots"
+	case "media_asset_content_unavailable":
+		return "media_asset_content_recovery_restore_or_redownload"
+	default:
+		return "media_asset_content_recovery_probe_error"
+	}
+}
+
+func mediaAssetContentRecoveryRequiredSteps(
+	accessPlan query.MediaAssetContentAccessPlanView,
+) []query.MediaAssetContentAccessStep {
+	steps := []query.MediaAssetContentAccessStep{
+		{
+			Name:        "inspect-content-access-plan",
+			Description: "Inspect the current Go-owned content access plan before attempting recovery.",
+			Endpoint:    accessPlan.RuntimePath,
+			Method:      "GET",
+		},
+		{
+			Name:        "inspect-content-diagnostics",
+			Description: "Inspect deterministic content diagnostics for the same media asset.",
+			Endpoint:    "/v1/media-assets/content-diagnostics?asset_id=" + url.QueryEscape(accessPlan.AssetID),
+			Method:      "GET",
+		},
+	}
+	if !accessPlan.Ready {
+		steps = append(steps, query.MediaAssetContentAccessStep{
+			Name:        "choose-recovery-path",
+			Description: "Choose the least invasive recovery path based on disabled, forbidden, unavailable, or error reason.",
+			Metadata: map[string]string{
+				"access_reason": accessPlan.Reason,
+			},
+		})
+	}
+	return steps
+}
+
+func mediaAssetContentRecoveryVerifySteps(assetID string) []query.MediaAssetContentAccessStep {
+	return []query.MediaAssetContentAccessStep{
+		{
+			Name:        "rerun-recovery-plan",
+			Description: "Rerun this recovery plan and confirm ready/reason changed as expected.",
+			Endpoint:    mediaAssetContentRecoveryPlanEndpoint(assetID),
+			Method:      "GET",
+		},
+		{
+			Name:        "rerun-content-access-plan",
+			Description: "Rerun the access plan and confirm the content endpoint is ready before frontend use.",
+			Endpoint:    mediaAssetContentAccessPlanEndpoint(assetID),
+			Method:      "GET",
+		},
+	}
+}
+
+func mediaAssetContentRecoveryFallbackSteps(
+	accessPlan query.MediaAssetContentAccessPlanView,
+) []query.MediaAssetContentAccessStep {
+	switch accessPlan.Reason {
+	case "media_asset_content_disabled":
+		return []query.MediaAssetContentAccessStep{
+			{
+				Name:        "enable-content-reader",
+				Description: "Enable Go media content reader configuration and restart agent-runtime.",
+				Metadata: map[string]string{
+					"required_owner": "operator",
+				},
+			},
+		}
+	case "media_asset_content_forbidden":
+		return []query.MediaAssetContentAccessStep{
+			{
+				Name:        "add-intended-media-root",
+				Description: "Add only the intended local media directory to Go content roots, then rerun the access plan.",
+				Metadata: map[string]string{
+					"required_owner": "operator",
+				},
+			},
+		}
+	case "media_asset_content_unavailable":
+		return []query.MediaAssetContentAccessStep{
+			{
+				Name:        "restore-local-content",
+				Description: "Restore the local media file from backup or platform cache without changing OCR/VLM/RAG state.",
+				Metadata: map[string]string{
+					"asset_id": accessPlan.AssetID,
+				},
+			},
+			{
+				Name:        "future-redownload-executor",
+				Description: "If local restore is unavailable, use a future approved media downloader/cache executor.",
+				Metadata: map[string]string{
+					"future_scope": "media_content_cache_executor",
+				},
+			},
+		}
+	case "media_asset_content_asset_id_required", "media_asset_content_asset_not_found":
+		return []query.MediaAssetContentAccessStep{
+			{
+				Name:        "verify-media-asset-registry",
+				Description: "Confirm the asset id is present in Go media asset metadata before attempting content recovery.",
+				Endpoint:    "/v1/media-assets",
+				Method:      "GET",
+			},
+		}
+	default:
+		return []query.MediaAssetContentAccessStep{
+			{
+				Name:        "inspect-runtime-logs",
+				Description: "Inspect Go runtime logs for the content probe error and fix deterministic configuration first.",
+			},
+		}
+	}
+}
+
+func mediaAssetContentRecoveryExecutorScope(accessReason string) string {
+	switch accessReason {
+	case "media_asset_content_unavailable":
+		return "media_content_cache_executor"
+	case "media_asset_content_disabled", "media_asset_content_forbidden":
+		return "operator_runtime_config"
+	default:
+		return ""
+	}
+}
+
 func mediaAssetContentEndpoint(assetID string) string {
 	if strings.TrimSpace(assetID) == "" {
 		return ""
@@ -668,11 +848,25 @@ func mediaAssetContentAccessPlanEndpoint(assetID string) string {
 	return "/v1/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID)
 }
 
+func mediaAssetContentRecoveryPlanEndpoint(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/v1/media-assets/content-recovery-plan?asset_id=" + url.QueryEscape(assetID)
+}
+
 func mediaAssetDashboardContentAccessPlanPath(assetID string) string {
 	if strings.TrimSpace(assetID) == "" {
 		return ""
 	}
 	return "/api/dashboard/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID)
+}
+
+func mediaAssetDashboardContentRecoveryPlanPath(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/api/dashboard/media-assets/content-recovery-plan?asset_id=" + url.QueryEscape(assetID)
 }
 
 func mediaAssetDashboardContentURL(assetID string) string {

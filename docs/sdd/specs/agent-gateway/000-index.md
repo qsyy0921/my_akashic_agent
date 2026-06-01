@@ -323,4 +323,7 @@ execution.
   separate from current-iteration TODO and future backlog.
 - `124-open-issues-registry-guard.md`: SDD governance tests enforce
   structured open issue rows with stable ids and status values.
+- `125-media-content-recovery-plan.md`: Go exposes a read-only media content
+  recovery plan and Python dashboard proxies it without downloading,
+  restoring, parsing or invoking AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.

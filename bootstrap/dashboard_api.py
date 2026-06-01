@@ -112,6 +112,11 @@ def _media_asset_content_access_plan_url(asset_id: str) -> str:
     return f"/api/dashboard/media-assets/content-access-plan?asset_id={encoded}"
 
 
+def _media_asset_content_recovery_plan_url(asset_id: str) -> str:
+    encoded = urllib.parse.quote(asset_id, safe="")
+    return f"/api/dashboard/media-assets/content-recovery-plan?asset_id={encoded}"
+
+
 def _workspace_upload_response_for_asset_name(
     workspace: Path,
     asset_id: str,
@@ -1420,6 +1425,45 @@ def create_dashboard_app(
             raise HTTPException(
                 status_code=502,
                 detail="agent-runtime media content access plan 响应格式无效",
+            )
+        return dict(data)
+
+    @app.get("/api/dashboard/media-assets/content-recovery-plan")
+    def get_dashboard_media_asset_content_recovery_plan(
+        asset_id: str = Query(..., min_length=1),
+    ) -> dict[str, Any]:
+        runtime_base_url = _agent_runtime_base_url()
+        if not runtime_base_url:
+            raise HTTPException(status_code=503, detail="agent-runtime 未配置")
+        url = (
+            f"{runtime_base_url}/v1/media-assets/content-recovery-plan?"
+            f"{urllib.parse.urlencode({'asset_id': asset_id})}"
+        )
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+            ) as upstream:
+                payload = json.loads(upstream.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = "agent-runtime media content recovery plan 请求失败"
+            try:
+                raw = exc.read().decode("utf-8", errors="replace").strip()
+            except OSError:
+                raw = ""
+            if raw:
+                detail = raw[:500]
+            raise HTTPException(status_code=exc.code, detail=detail) from exc
+        except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"agent-runtime media content recovery plan 不可用: {exc}",
+            ) from exc
+        data = payload.get("data") if isinstance(payload, Mapping) else payload
+        if not isinstance(data, Mapping):
+            raise HTTPException(
+                status_code=502,
+                detail="agent-runtime media content recovery plan 响应格式无效",
             )
         return dict(data)
 

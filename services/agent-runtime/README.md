@@ -372,6 +372,7 @@ GET  /v1/media-assets?limit=50
 GET  /v1/media-assets/content-diagnostics?limit=50
 GET  /v1/media-assets/content-diagnostics?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A...
+GET  /v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/retention-diagnostics?limit=50
 GET  /v1/media-assets/retention-plan?limit=50
 GET  /v1/media-assets/retention-cleanup/preflight?target_id=default-observed-group&operator_id=qsyy&approval_id=...
@@ -989,8 +990,10 @@ NATS external lease.
 how many recent attachments are content-ready versus forbidden, unavailable,
 disabled, or errored. It is only an access-control and local-content readiness
 view; each item links to `/v1/media-assets/content-access-plan` for single-asset
-drilldown. OCR, VLM, file parsing, and semantic extraction remain Python AI
-worker responsibilities.
+drilldown. `/v1/media-assets/content-recovery-plan` explains disabled,
+forbidden, unavailable, or probe-error recovery steps and future executor scope
+without downloading, restoring, streaming, parsing, or invoking AI. OCR, VLM,
+file parsing, and semantic extraction remain Python AI worker responsibilities.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

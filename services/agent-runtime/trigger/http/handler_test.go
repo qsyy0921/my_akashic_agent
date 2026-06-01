@@ -2417,9 +2417,36 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/content-recovery-plan?asset_id="+url.QueryEscape(assetID), nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content recovery plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"media_asset_content_recovery_not_required"`,
+		`"asset_id":"` + assetID + `"`,
+		`"runtime_path":"/v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
+		`"dashboard_path":"/api/dashboard/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
+		`"content_url":"/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3Aqq%3Agqq%3A27234224%3A498%3A1"`,
+		`"access_plan":{"ready":true`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("content recovery plan response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	response = httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-access-plan?asset_id="+url.QueryEscape(assetID), nil))
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected content access plan 405, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-recovery-plan?asset_id="+url.QueryEscape(assetID), nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected content recovery plan 405, got %d: %s", response.Code, response.Body.String())
 	}
 
 	response = httptest.NewRecorder()

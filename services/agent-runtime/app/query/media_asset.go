@@ -114,6 +114,23 @@ type MediaAssetContentAccessPlanView struct {
 	Notes            []string                      `json:"notes,omitempty"`
 }
 
+type MediaAssetContentRecoveryPlanView struct {
+	Ready               bool                            `json:"ready"`
+	Reason              string                          `json:"reason"`
+	Blockers            []string                        `json:"blockers,omitempty"`
+	AssetID             string                          `json:"asset_id,omitempty"`
+	RuntimePath         string                          `json:"runtime_path,omitempty"`
+	DashboardPath       string                          `json:"dashboard_path,omitempty"`
+	ContentURL          string                          `json:"content_url,omitempty"`
+	AccessPlan          MediaAssetContentAccessPlanView `json:"access_plan"`
+	RequiredSteps       []MediaAssetContentAccessStep   `json:"required_steps"`
+	VerifySteps         []MediaAssetContentAccessStep   `json:"verify_steps"`
+	FallbackSteps       []MediaAssetContentAccessStep   `json:"fallback_steps"`
+	FutureExecutorScope string                          `json:"future_executor_scope,omitempty"`
+	SideEffect          string                          `json:"side_effect"`
+	Notes               []string                        `json:"notes,omitempty"`
+}
+
 type MediaAssetRetentionDiagnosticItemView struct {
 	AssetID         string                `json:"asset_id"`
 	Channel         MediaAssetChannelView `json:"channel"`

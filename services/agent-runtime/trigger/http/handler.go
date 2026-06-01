@@ -45,6 +45,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/content-access-plan", MediaAssetContentAccessPlanHandler(mediaAssets))
+	mux.Handle("/v1/media-assets/content-recovery-plan", MediaAssetContentRecoveryPlanHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/content-diagnostics", MediaAssetContentDiagnosticsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/retention-diagnostics", MediaAssetRetentionDiagnosticsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/retention-plan", MediaAssetRetentionPlanHandler(mediaAssets))
@@ -2343,6 +2344,21 @@ func MediaAssetContentAccessPlanHandler(mediaAssets inport.MediaAssetManager) ht
 			return
 		}
 		view, err := mediaAssets.ContentAccessPlan(r.Context(), r.URL.Query().Get("asset_id"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func MediaAssetContentRecoveryPlanHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := mediaAssets.ContentRecoveryPlan(r.Context(), r.URL.Query().Get("asset_id"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

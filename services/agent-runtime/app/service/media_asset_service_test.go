@@ -158,6 +158,67 @@ func TestMediaAssetServiceContentAccessPlanExplainsReadyAndBlockedStates(t *test
 	}
 }
 
+func TestMediaAssetServiceContentRecoveryPlanExplainsRecoveryPaths(t *testing.T) {
+	ctx := context.Background()
+	assetRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	readyPath := filepath.Join(assetRoot, "ready.txt")
+	if err := writeTestFile(readyPath, "ready bytes"); err != nil {
+		t.Fatal(err)
+	}
+	forbiddenPath := filepath.Join(outsideRoot, "forbidden.txt")
+	if err := writeTestFile(forbiddenPath, "secret bytes"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, service, "asset:ready", readyPath, "ready.txt")
+	registerTestMediaAsset(t, service, "asset:forbidden", forbiddenPath, "forbidden.txt")
+	registerTestMediaAsset(t, service, "asset:missing", filepath.Join(assetRoot, "missing.txt"), "missing.txt")
+
+	ready, err := service.ContentRecoveryPlan(ctx, "asset:ready")
+	if err != nil {
+		t.Fatalf("content recovery plan ready: %v", err)
+	}
+	if !ready.Ready ||
+		ready.Reason != "media_asset_content_recovery_not_required" ||
+		ready.RuntimePath != "/v1/media-assets/content-recovery-plan?asset_id=asset%3Aready" ||
+		ready.DashboardPath != "/api/dashboard/media-assets/content-recovery-plan?asset_id=asset%3Aready" ||
+		ready.ContentURL != "/api/dashboard/media-assets/content?asset_id=asset%3Aready" ||
+		ready.AccessPlan.Reason != "media_asset_content_ready" ||
+		ready.SideEffect != "none" ||
+		ready.FutureExecutorScope != "" {
+		t.Fatalf("unexpected ready recovery plan: %+v", ready)
+	}
+
+	forbidden, err := service.ContentRecoveryPlan(ctx, "asset:forbidden")
+	if err != nil {
+		t.Fatalf("content recovery plan forbidden: %v", err)
+	}
+	if forbidden.Ready ||
+		forbidden.Reason != "media_asset_content_recovery_fix_content_roots" ||
+		len(forbidden.Blockers) == 0 ||
+		forbidden.FutureExecutorScope != "operator_runtime_config" ||
+		!mediaAssetStepNamesContain(forbidden.FallbackSteps, "add-intended-media-root") {
+		t.Fatalf("unexpected forbidden recovery plan: %+v", forbidden)
+	}
+
+	missingContent, err := service.ContentRecoveryPlan(ctx, "asset:missing")
+	if err != nil {
+		t.Fatalf("content recovery plan unavailable: %v", err)
+	}
+	if missingContent.Ready ||
+		missingContent.Reason != "media_asset_content_recovery_restore_or_redownload" ||
+		missingContent.FutureExecutorScope != "media_content_cache_executor" ||
+		!mediaAssetStepNamesContain(missingContent.FallbackSteps, "future-redownload-executor") {
+		t.Fatalf("unexpected unavailable recovery plan: %+v", missingContent)
+	}
+}
+
 func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()
@@ -188,6 +249,17 @@ func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *
 		disabled.ContentEndpoint != "/v1/media-assets/asset:disabled/content" ||
 		disabled.SideEffect != "none" {
 		t.Fatalf("unexpected disabled plan: %+v", disabled)
+	}
+
+	disabledRecovery, err := service.ContentRecoveryPlan(ctx, "asset:disabled")
+	if err != nil {
+		t.Fatalf("content recovery plan disabled: %v", err)
+	}
+	if disabledRecovery.Ready ||
+		disabledRecovery.Reason != "media_asset_content_recovery_enable_reader" ||
+		disabledRecovery.FutureExecutorScope != "operator_runtime_config" ||
+		!mediaAssetStepNamesContain(disabledRecovery.FallbackSteps, "enable-content-reader") {
+		t.Fatalf("unexpected disabled recovery plan: %+v", disabledRecovery)
 	}
 }
 
@@ -362,6 +434,15 @@ func findMediaAssetContentDiagnostic(
 	}
 	t.Fatalf("content diagnostic item not found for %s: %+v", assetID, view.Items)
 	return query.MediaAssetContentDiagnosticItemView{}
+}
+
+func mediaAssetStepNamesContain(steps []query.MediaAssetContentAccessStep, name string) bool {
+	for _, step := range steps {
+		if step.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func findMediaAssetRetentionDiagnostic(

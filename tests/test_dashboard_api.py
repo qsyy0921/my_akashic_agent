@@ -825,6 +825,74 @@ def test_dashboard_media_asset_content_access_plan_reports_invalid_runtime_respo
     assert "响应格式无效" in response.json()["detail"]
 
 
+def test_dashboard_media_asset_content_recovery_plan_proxy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    asset_id = "asset:qq:image:187890369:missing:1"
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        assert parsed.path == "/v1/media-assets/content-recovery-plan"
+        assert parse_qs(parsed.query)["asset_id"] == [asset_id]
+        return _fake_urlopen_response(
+            {
+                "code": "OK",
+                "data": {
+                    "ready": False,
+                    "reason": "media_asset_content_recovery_restore_or_redownload",
+                    "asset_id": asset_id,
+                    "content_url": (
+                        "/api/dashboard/media-assets/content?"
+                        f"asset_id={quote(asset_id, safe='')}"
+                    ),
+                    "access_plan": {
+                        "ready": False,
+                        "reason": "media_asset_content_unavailable",
+                        "side_effect": "none",
+                    },
+                    "side_effect": "none",
+                },
+            }
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content-recovery-plan",
+            params={"asset_id": asset_id},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is False
+    assert payload["reason"] == "media_asset_content_recovery_restore_or_redownload"
+    assert payload["access_plan"]["reason"] == "media_asset_content_unavailable"
+    assert payload["side_effect"] == "none"
+
+
+def test_dashboard_media_asset_content_recovery_plan_reports_invalid_runtime_response(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    def _fake_urlopen(_url, timeout=None):  # type: ignore[no-untyped-def]
+        return _fake_urlopen_response({"code": "OK", "data": ["not", "object"]})
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content-recovery-plan",
+            params={"asset_id": "asset:bad"},
+        )
+
+    assert response.status_code == 502
+    assert "响应格式无效" in response.json()["detail"]
+
+
 def test_dashboard_media_asset_content_proxies_contract_fixture(
     tmp_path,
     monkeypatch,
