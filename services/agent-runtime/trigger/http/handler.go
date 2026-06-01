@@ -114,6 +114,13 @@ func RegisterAgentJobCapacityRoutes(
 	mux.Handle("/v1/agent-job-capacity/plan", AgentJobCapacityPlanHandler(planner))
 }
 
+func RegisterAgentJobPriorityRoutes(
+	mux *http.ServeMux,
+	planner inport.AgentJobPriorityPlanner,
+) {
+	mux.Handle("/v1/agent-job-priority/plan", AgentJobPriorityPlanHandler(planner))
+}
+
 func RegisterAgentJobExternalLeaseRoutes(
 	mux *http.ServeMux,
 	checker inport.AgentJobExternalLeaseReadinessChecker,
@@ -2254,6 +2261,29 @@ func AgentJobCapacityPlanHandler(planner inport.AgentJobCapacityPlanner) http.Ha
 			return
 		}
 		view, err := planner.PlanAgentJobCapacity(r.Context(), command.PlanAgentJobCapacityCommand{
+			JobLimit:          parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
+			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
+			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func AgentJobPriorityPlanHandler(planner inport.AgentJobPriorityPlanner) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if planner == nil {
+			http.Error(w, "agent job priority plan disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := planner.PlanAgentJobPriority(r.Context(), command.PlanAgentJobPriorityCommand{
 			JobLimit:          parsePositiveInt(r.URL.Query().Get("job_limit"), 200, 200),
 			EventLimit:        parsePositiveInt(r.URL.Query().Get("event_limit"), 50, 200),
 			StaleAfterSeconds: parsePositiveInt(r.URL.Query().Get("stale_after_seconds"), 900, 24*60*60),

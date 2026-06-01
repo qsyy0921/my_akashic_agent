@@ -331,6 +331,10 @@ func main() {
 		AgentJobs:    agentJobMetrics,
 		AgentWorkers: agentWorkerStatuses,
 	})
+	agentJobPriorityPlan := appservice.NewAgentJobPriorityPlanService(appservice.AgentJobPriorityPlanDeps{
+		AgentJobs:    agentJobMetrics,
+		AgentWorkers: agentWorkerStatuses,
+	})
 	outboundCutoverReadiness := appservice.NewOutboundCutoverReadinessService(appservice.OutboundCutoverReadinessDeps{
 		RuntimeConfig:  runtimeConfig,
 		DeliverySmoke:  deliverySmokeReadiness,
@@ -383,6 +387,7 @@ func main() {
 	httptrigger.RegisterInboundDedupeRoutes(mux, inboundDedupe)
 	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
 	httptrigger.RegisterAgentJobCapacityRoutes(mux, agentJobCapacityPlan)
+	httptrigger.RegisterAgentJobPriorityRoutes(mux, agentJobPriorityPlan)
 	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, agentJobExternalLeaseReadiness, agentJobExternalLeasePlan)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)

@@ -192,3 +192,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-143-dashboard-runtime-control-plane-details.md`
 - `2026-06-01-phase8-144-queue-topology-read-model.md`
 - `2026-06-01-phase8-145-runtime-overview-queue-topology.md`
+- `2026-06-01-phase8-146-agent-job-priority-plan.md`

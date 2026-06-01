@@ -2056,6 +2056,54 @@ func TestAgentJobCapacityPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
 	}
 }
 
+func TestAgentJobPriorityPlanEndpointReturnsReadOnlyPlan(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobPriorityRoutes(mux, staticAgentJobPriorityPlanner{
+		view: query.AgentJobPriorityPlanView{
+			Ready:  false,
+			Reason: "agent_job_priority_attention_required",
+			Summary: query.AgentJobPrioritySummaryView{
+				JobTypes:             1,
+				HighPriorityJobTypes: 1,
+				BlockedJobTypes:      1,
+				MaxPriorityScore:     100,
+			},
+			Items: []query.AgentJobPriorityPlanItemView{{
+				Rank:          1,
+				JobType:       "group_memory_extract",
+				PriorityClass: "critical",
+				PriorityScore: 100,
+				Action:        "recover_worker_before_priority_tuning",
+			}},
+			Blockers:   []string{"agent_job_priority_blocked"},
+			SideEffect: "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-priority/plan?job_limit=10&event_limit=5&stale_after_seconds=60", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job priority plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"agent_job_priority_attention_required"`,
+		`"priority_class":"critical"`,
+		`"priority_score":100`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job priority plan response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/agent-job-priority/plan", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
+	}
+}
+
 func TestDeliveryDispatchSendEndpointUsesAdapter(t *testing.T) {
 	store := memory.NewStore()
 	ingestor := appservice.NewMessageIngestService(
@@ -3627,6 +3675,14 @@ type staticAgentJobCapacityPlanner struct {
 }
 
 func (s staticAgentJobCapacityPlanner) PlanAgentJobCapacity(context.Context, command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobPriorityPlanner struct {
+	view query.AgentJobPriorityPlanView
+}
+
+func (s staticAgentJobPriorityPlanner) PlanAgentJobPriority(context.Context, command.PlanAgentJobPriorityCommand) (query.AgentJobPriorityPlanView, error) {
 	return s.view, nil
 }
 
