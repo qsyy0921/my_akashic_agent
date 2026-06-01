@@ -392,8 +392,9 @@ will serve them.
 
 The content diagnostics endpoint is read-only and classifies each asset as
 `ready`, `forbidden`, `unavailable`, `disabled`, or `error`. Each item includes
-the stable content route plus single-asset `content_access_plan_endpoint` and
-`content_recovery_plan_endpoint` fields for dashboard drilldown. It does not run
+the stable content route plus single-asset `content_access_plan_endpoint`,
+`content_recovery_plan_endpoint`, and `content_recovery_preflight_endpoint`
+fields for dashboard drilldown. It does not run
 OCR/VLM, parse files, upload to RAG, or change the `/content` access policy. The
 content access and recovery plan endpoints are also read-only: they probe
 deterministic availability, immediately close any opened file, return

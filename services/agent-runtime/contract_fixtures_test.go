@@ -126,6 +126,22 @@ func TestRuntimeBoundaryFixturesCoverCurrentGoOwnedContracts(t *testing.T) {
 	}
 }
 
+func TestMediaAssetContentContractIncludesRecoveryPreflightPath(t *testing.T) {
+	fixture := loadContractFixture(t, filepath.Join(
+		contractFixtureDir(t),
+		"media_asset_content.qq.image.json",
+	))
+	raw, ok := fixture.Extra["content_access"]
+	if !ok {
+		t.Fatal("missing content_access")
+	}
+	var access map[string]any
+	if err := json.Unmarshal(raw, &access); err != nil {
+		t.Fatalf("content_access must be an object: %v", err)
+	}
+	assertExtraStringPrefix(t, access, "recovery_preflight_path", "/v1/media-assets/content-recovery/preflight")
+}
+
 func TestMediaAssetContentAccessPlanContractShape(t *testing.T) {
 	fixture := loadContractFixture(t, filepath.Join(
 		contractFixtureDir(t),

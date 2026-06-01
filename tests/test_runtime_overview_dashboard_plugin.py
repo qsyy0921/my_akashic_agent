@@ -2348,7 +2348,9 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "Smoke Readiness" in js_response.text
     assert "Media Content Diagnostics" in js_response.text
     assert "content_recovery_plan_endpoint" in js_response.text
+    assert "content_recovery_preflight_endpoint" in js_response.text
     assert "recovery" in js_response.text
+    assert "preflight" in js_response.text
     assert "Queue Topology" in js_response.text
     assert "Execution Owner" in js_response.text
     assert "Ack Owner" in js_response.text

@@ -49,6 +49,7 @@
         ${_link(item.content_endpoint, "content")}
         ${_link(item.content_access_plan_endpoint, "access")}
         ${_link(item.content_recovery_plan_endpoint, "recovery")}
+        ${_link(item.content_recovery_preflight_endpoint, "preflight")}
       </td>
     </tr>
   `).join("");

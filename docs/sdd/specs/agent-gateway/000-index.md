@@ -347,4 +347,7 @@ execution.
 - `132-dashboard-media-recovery-preflight-proxy.md`: Python dashboard proxies
   the Go-owned media content recovery preflight and exposes deterministic
   media asset drilldown URLs without taking policy or executor ownership.
+- `133-media-content-diagnostics-recovery-preflight-endpoint.md`: Go media
+  content diagnostics and runtime overview dashboard expose recovery preflight
+  drilldown endpoints without invoking recovery execution.
 - Agent architecture boundary specs live under `../agent-architecture/`.
