@@ -160,6 +160,13 @@ func RegisterQueueBackendRoutes(
 	mux.Handle("/v1/queue-backend", QueueBackendHandler(queueBackend))
 }
 
+func RegisterQueueTopologyRoutes(
+	mux *http.ServeMux,
+	topology inport.QueueTopologyViewer,
+) {
+	mux.Handle("/v1/queue-topology", QueueTopologyHandler(topology))
+}
+
 func RegisterDeliveryDispatchRoutes(
 	mux *http.ServeMux,
 	planner inport.DeliveryDispatchPlanner,
@@ -2459,6 +2466,25 @@ func QueueBackendHandler(queueBackend inport.QueueBackendViewer) http.Handler {
 			return
 		}
 		item, err := queueBackend.Get(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func QueueTopologyHandler(topology inport.QueueTopologyViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if topology == nil {
+			http.Error(w, "queue topology disabled", http.StatusNotImplemented)
+			return
+		}
+		item, err := topology.GetQueueTopology(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

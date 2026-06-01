@@ -317,6 +317,7 @@ func main() {
 		AgentJobRepo:   agentJobRepository,
 		AgentJobEvents: agentJobEventStore,
 	})
+	queueTopology := appservice.NewQueueTopologyService(queueBackend)
 	agentJobExternalLeaseReadiness := appservice.NewAgentJobExternalLeaseReadinessService(appservice.AgentJobExternalLeaseReadinessDeps{
 		QueueBackend:  queueBackend,
 		RuntimeConfig: runtimeConfig,
@@ -385,6 +386,7 @@ func main() {
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)
+	httptrigger.RegisterQueueTopologyRoutes(mux, queueTopology)
 	httptrigger.RegisterDeliveryDispatchRoutes(mux, deliveryDispatch)
 	httptrigger.RegisterDeliveryAdapterDiagnosticsRoutes(mux, deliveryAdapterDiagnostics)
 	httptrigger.RegisterDeliveryAdapterHealthRoutes(mux, deliveryAdapterHealth)

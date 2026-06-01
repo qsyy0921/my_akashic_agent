@@ -233,4 +233,7 @@ execution.
 - `086-dashboard-runtime-control-plane-details.md`: Python dashboard normalizes
   Go-owned AgentJob capacity, external lease and outbound cutover details from
   runtime overview while staying a read-only projection.
+- `087-queue-topology-read-model.md`: Go exposes a read-only queue topology
+  view that maps provider capability, execution owners and external lease gates
+  without executing MQ or AI work.
 - Agent architecture boundary specs live under `../agent-architecture/`.

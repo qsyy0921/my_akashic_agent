@@ -52,6 +52,32 @@ func TestQueueBackendEndpointReturnsReadOnlyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestQueueTopologyEndpointReturnsReadOnlyView(t *testing.T) {
+	backend := appservice.NewQueueBackendService(queryQueueBackendViewForTest())
+	topology := appservice.NewQueueTopologyService(backend)
+	mux := http.NewServeMux()
+	httptrigger.RegisterQueueTopologyRoutes(mux, topology)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/queue-topology", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"provider":"nats_jetstream"`)) {
+		t.Fatalf("response missing provider: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"work_kind":"outbox_delivery"`)) {
+		t.Fatalf("response missing outbox work kind: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"work_kind":"agent_job"`)) {
+		t.Fatalf("response missing agent job work kind: %s", response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte(`"side_effect":"none"`)) {
+		t.Fatalf("queue topology must be read-only: %s", response.Body.String())
+	}
+}
+
 func TestRuntimeOverviewEndpointReturnsGoOwnedAggregate(t *testing.T) {
 	mux := http.NewServeMux()
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, staticRuntimeOverviewViewer{
