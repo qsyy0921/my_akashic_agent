@@ -86,6 +86,30 @@ type MediaAssetContentDiagnosticsView struct {
 	Notes      []string                              `json:"notes,omitempty"`
 }
 
+type MediaAssetContentAccessStep struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Endpoint    string            `json:"endpoint,omitempty"`
+	Method      string            `json:"method,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+type MediaAssetContentAccessPlanView struct {
+	Ready            bool                          `json:"ready"`
+	Reason           string                        `json:"reason"`
+	Blockers         []string                      `json:"blockers,omitempty"`
+	AssetID          string                        `json:"asset_id,omitempty"`
+	Asset            *MediaAssetView               `json:"asset,omitempty"`
+	ContentEndpoint  string                        `json:"content_endpoint,omitempty"`
+	ContentMimeType  string                        `json:"content_mime_type,omitempty"`
+	ContentSizeBytes int64                         `json:"content_size_bytes,omitempty"`
+	RequiredSteps    []MediaAssetContentAccessStep `json:"required_steps"`
+	VerifySteps      []MediaAssetContentAccessStep `json:"verify_steps"`
+	FallbackSteps    []MediaAssetContentAccessStep `json:"fallback_steps"`
+	SideEffect       string                        `json:"side_effect"`
+	Notes            []string                      `json:"notes,omitempty"`
+}
+
 type MediaAssetRetentionDiagnosticItemView struct {
 	AssetID         string                `json:"asset_id"`
 	Channel         MediaAssetChannelView `json:"channel"`

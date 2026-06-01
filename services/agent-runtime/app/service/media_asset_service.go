@@ -159,6 +159,62 @@ func (s *MediaAssetService) ContentDiagnostics(
 	}, nil
 }
 
+func (s *MediaAssetService) ContentAccessPlan(
+	ctx context.Context,
+	assetID string,
+) (query.MediaAssetContentAccessPlanView, error) {
+	if s == nil || s.repository == nil {
+		return query.MediaAssetContentAccessPlanView{}, errors.New("media asset service requires repository")
+	}
+	if err := ctx.Err(); err != nil {
+		return query.MediaAssetContentAccessPlanView{}, err
+	}
+	assetID = strings.TrimSpace(assetID)
+	if assetID == "" {
+		return mediaAssetContentAccessPlan("", nil, "", "", 0, "media_asset_content_asset_id_required", []string{
+			"asset_id query parameter is required",
+		}), nil
+	}
+	asset, ok, err := s.repository.FindMediaAsset(ctx, assetID)
+	if err != nil {
+		return query.MediaAssetContentAccessPlanView{}, err
+	}
+	if !ok {
+		return mediaAssetContentAccessPlan(assetID, nil, "", "", 0, "media_asset_content_asset_not_found", []string{
+			"media asset metadata was not found",
+		}), nil
+	}
+	view := assembler.ToMediaAssetView(asset)
+	endpoint := mediaAssetContentEndpoint(view.AssetID)
+	if s.contentReader == nil {
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, "", 0, "media_asset_content_disabled", []string{
+			"media asset content reader is disabled",
+		}), nil
+	}
+	content, err := s.contentReader.OpenMediaAssetContent(ctx, asset)
+	switch {
+	case err == nil:
+		_ = content.Body.Close()
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, content.MimeType, content.SizeBytes, "media_asset_content_ready", nil), nil
+	case errors.Is(err, outport.ErrMediaAssetContentDisabled):
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, "", 0, "media_asset_content_disabled", []string{
+			"media asset content reader is disabled",
+		}), nil
+	case errors.Is(err, outport.ErrMediaAssetContentForbidden):
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, "", 0, "media_asset_content_forbidden", []string{
+			"media asset local path is outside configured content roots",
+		}), nil
+	case errors.Is(err, outport.ErrMediaAssetContentUnavailable):
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, "", 0, "media_asset_content_unavailable", []string{
+			"media asset local content is unavailable",
+		}), nil
+	default:
+		return mediaAssetContentAccessPlan(assetID, &view, endpoint, "", 0, "media_asset_content_error", []string{
+			"media asset content probe failed: " + err.Error(),
+		}), nil
+	}
+}
+
 func (s *MediaAssetService) RetentionDiagnostics(
 	ctx context.Context,
 	filter query.MediaAssetRetentionDiagnosticsFilter,
@@ -494,11 +550,108 @@ func (s *MediaAssetService) contentDiagnosticItem(
 		SizeBytes:        view.SizeBytes,
 		ContentStatus:    status,
 		ContentReason:    reason,
-		ContentEndpoint:  "/v1/media-assets/" + url.PathEscape(view.AssetID) + "/content",
+		ContentEndpoint:  mediaAssetContentEndpoint(view.AssetID),
 		ContentMimeType:  contentMimeType,
 		ContentSizeBytes: contentSizeBytes,
 		UpdatedAt:        view.UpdatedAt,
 	}
+}
+
+func mediaAssetContentAccessPlan(
+	assetID string,
+	asset *query.MediaAssetView,
+	endpoint string,
+	contentMimeType string,
+	contentSizeBytes int64,
+	reason string,
+	blockers []string,
+) query.MediaAssetContentAccessPlanView {
+	ready := reason == "media_asset_content_ready"
+	return query.MediaAssetContentAccessPlanView{
+		Ready:            ready,
+		Reason:           reason,
+		Blockers:         blockers,
+		AssetID:          assetID,
+		Asset:            asset,
+		ContentEndpoint:  endpoint,
+		ContentMimeType:  contentMimeType,
+		ContentSizeBytes: contentSizeBytes,
+		RequiredSteps:    mediaAssetContentAccessRequiredSteps(assetID, endpoint, ready),
+		VerifySteps:      mediaAssetContentAccessVerifySteps(assetID, endpoint),
+		FallbackSteps:    mediaAssetContentAccessFallbackSteps(assetID),
+		SideEffect:       "none",
+		Notes: []string{
+			"read-only media asset content access plan; content probe is closed immediately",
+			"Go checks deterministic content availability only; Python remains responsible for OCR, VLM, file parsing and semantic extraction",
+		},
+	}
+}
+
+func mediaAssetContentAccessRequiredSteps(
+	assetID string,
+	endpoint string,
+	ready bool,
+) []query.MediaAssetContentAccessStep {
+	steps := []query.MediaAssetContentAccessStep{
+		{
+			Name:        "inspect-content-diagnostics",
+			Description: "Inspect deterministic media content status before opening the attachment.",
+			Endpoint:    "/v1/media-assets/content-diagnostics?asset_id=" + url.QueryEscape(assetID),
+			Method:      "GET",
+		},
+	}
+	if ready {
+		steps = append(steps, query.MediaAssetContentAccessStep{
+			Name:        "open-content-endpoint",
+			Description: "Open the media asset content endpoint from the frontend or dashboard link.",
+			Endpoint:    endpoint,
+			Method:      "GET",
+		})
+	}
+	return steps
+}
+
+func mediaAssetContentAccessVerifySteps(assetID string, endpoint string) []query.MediaAssetContentAccessStep {
+	steps := []query.MediaAssetContentAccessStep{
+		{
+			Name:        "rerun-content-access-plan",
+			Description: "Rerun this plan and confirm ready/reason matches the expected content access state.",
+			Endpoint:    "/v1/media-assets/content-access-plan?asset_id=" + url.QueryEscape(assetID),
+			Method:      "GET",
+		},
+	}
+	if endpoint != "" {
+		steps = append(steps, query.MediaAssetContentAccessStep{
+			Name:        "verify-content-route",
+			Description: "Open the content endpoint and confirm HTTP status and content headers are expected.",
+			Endpoint:    endpoint,
+			Method:      "GET",
+		})
+	}
+	return steps
+}
+
+func mediaAssetContentAccessFallbackSteps(assetID string) []query.MediaAssetContentAccessStep {
+	return []query.MediaAssetContentAccessStep{
+		{
+			Name:        "check-local-media-roots",
+			Description: "If the plan is forbidden, add only the intended media directory to configured Go content roots.",
+		},
+		{
+			Name:        "restore-or-redownload-content",
+			Description: "If the plan is unavailable, restore the local file or let the platform media downloader refresh it.",
+			Metadata: map[string]string{
+				"asset_id": assetID,
+			},
+		},
+	}
+}
+
+func mediaAssetContentEndpoint(assetID string) string {
+	if strings.TrimSpace(assetID) == "" {
+		return ""
+	}
+	return "/v1/media-assets/" + url.PathEscape(assetID) + "/content"
 }
 
 func generatedAssetID(cmd command.RegisterMediaAssetCommand) string {

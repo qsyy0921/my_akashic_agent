@@ -88,6 +88,96 @@ func TestMediaAssetServiceContentDiagnosticsReportsDisabledReader(t *testing.T) 
 	}
 }
 
+func TestMediaAssetServiceContentAccessPlanExplainsReadyAndBlockedStates(t *testing.T) {
+	ctx := context.Background()
+	assetRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	readyPath := filepath.Join(assetRoot, "ready.txt")
+	if err := writeTestFile(readyPath, "ready bytes"); err != nil {
+		t.Fatal(err)
+	}
+	forbiddenPath := filepath.Join(outsideRoot, "forbidden.txt")
+	if err := writeTestFile(forbiddenPath, "secret bytes"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, service, "asset:ready", readyPath, "ready.txt")
+	registerTestMediaAsset(t, service, "asset:forbidden", forbiddenPath, "forbidden.txt")
+	registerTestMediaAsset(t, service, "asset:missing", filepath.Join(assetRoot, "missing.txt"), "missing.txt")
+
+	ready, err := service.ContentAccessPlan(ctx, "asset:ready")
+	if err != nil {
+		t.Fatalf("content access plan ready: %v", err)
+	}
+	if !ready.Ready ||
+		ready.Reason != "media_asset_content_ready" ||
+		ready.ContentEndpoint != "/v1/media-assets/asset:ready/content" ||
+		ready.ContentSizeBytes <= 0 ||
+		ready.SideEffect != "none" ||
+		len(ready.RequiredSteps) < 2 {
+		t.Fatalf("unexpected ready plan: %+v", ready)
+	}
+
+	forbidden, err := service.ContentAccessPlan(ctx, "asset:forbidden")
+	if err != nil {
+		t.Fatalf("content access plan forbidden: %v", err)
+	}
+	if forbidden.Ready ||
+		forbidden.Reason != "media_asset_content_forbidden" ||
+		len(forbidden.Blockers) == 0 ||
+		forbidden.ContentEndpoint != "/v1/media-assets/asset:forbidden/content" {
+		t.Fatalf("unexpected forbidden plan: %+v", forbidden)
+	}
+
+	missingContent, err := service.ContentAccessPlan(ctx, "asset:missing")
+	if err != nil {
+		t.Fatalf("content access plan unavailable: %v", err)
+	}
+	if missingContent.Ready || missingContent.Reason != "media_asset_content_unavailable" || len(missingContent.Blockers) == 0 {
+		t.Fatalf("unexpected unavailable plan: %+v", missingContent)
+	}
+
+	missingAsset, err := service.ContentAccessPlan(ctx, "asset:not-found")
+	if err != nil {
+		t.Fatalf("content access plan missing asset: %v", err)
+	}
+	if missingAsset.Ready || missingAsset.Reason != "media_asset_content_asset_not_found" || missingAsset.Asset != nil {
+		t.Fatalf("unexpected missing asset plan: %+v", missingAsset)
+	}
+}
+
+func TestMediaAssetServiceContentAccessPlanReportsMissingIDAndDisabledReader(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetService(store)
+	registerTestMediaAsset(t, service, "asset:disabled", filepath.Join(t.TempDir(), "disabled.txt"), "disabled.txt")
+
+	missingID, err := service.ContentAccessPlan(ctx, "")
+	if err != nil {
+		t.Fatalf("content access plan missing id: %v", err)
+	}
+	if missingID.Ready || missingID.Reason != "media_asset_content_asset_id_required" || len(missingID.Blockers) == 0 {
+		t.Fatalf("unexpected missing id plan: %+v", missingID)
+	}
+
+	disabled, err := service.ContentAccessPlan(ctx, "asset:disabled")
+	if err != nil {
+		t.Fatalf("content access plan disabled: %v", err)
+	}
+	if disabled.Ready ||
+		disabled.Reason != "media_asset_content_disabled" ||
+		disabled.Asset == nil ||
+		disabled.ContentEndpoint != "/v1/media-assets/asset:disabled/content" ||
+		disabled.SideEffect != "none" {
+		t.Fatalf("unexpected disabled plan: %+v", disabled)
+	}
+}
+
 func TestMediaAssetServiceRetentionDiagnosticsClassifiesCleanupDue(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

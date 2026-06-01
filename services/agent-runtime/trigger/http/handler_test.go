@@ -2394,6 +2394,31 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/content-access-plan?asset_id="+url.QueryEscape(assetID), nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content access plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"media_asset_content_ready"`,
+		`"asset_id":"` + assetID + `"`,
+		`"content_endpoint":"/v1/media-assets/asset:qq:1049511700:group:27234224:qq:gqq:27234224:498:1/content"`,
+		`"name":"open-content-endpoint"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("content access plan response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-access-plan?asset_id="+url.QueryEscape(assetID), nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected content access plan 405, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
 	retentionURL := "/v1/media-assets/retention-diagnostics?asset_id=" + assetID +
 		"&timestamp=" + url.QueryEscape(time.Now().UTC().Add(2*24*time.Hour).Format(time.RFC3339Nano)) +
 		"&default_ttl_hours=24"
