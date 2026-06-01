@@ -260,6 +260,13 @@ func RegisterControlMutationAuditRoutes(
 	mux.Handle("/v1/control-mutations", ControlMutationAuditsHandler(manager))
 }
 
+func RegisterControlMutationPreflightRoutes(
+	mux *http.ServeMux,
+	checker inport.ControlMutationPreflightChecker,
+) {
+	mux.Handle("/v1/control-mutations/preflight", ControlMutationPreflightHandler(checker))
+}
+
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -417,6 +424,31 @@ func ControlMutationAuditsHandler(manager inport.ControlMutationAuditManager) ht
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+}
+
+func ControlMutationPreflightHandler(checker inport.ControlMutationPreflightChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if checker == nil {
+			http.Error(w, "control mutation preflight disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := checker.CheckControlMutationPreflight(r.Context(), query.ControlMutationPreflight{
+			TargetKind: strings.TrimSpace(r.URL.Query().Get("target_kind")),
+			TargetID:   strings.TrimSpace(r.URL.Query().Get("target_id")),
+			Action:     strings.TrimSpace(r.URL.Query().Get("action")),
+			OperatorID: strings.TrimSpace(r.URL.Query().Get("operator_id")),
+			ApprovalID: strings.TrimSpace(r.URL.Query().Get("approval_id")),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
 }
 

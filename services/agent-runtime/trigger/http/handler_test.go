@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -3548,6 +3549,62 @@ func TestControlMutationAuditEndpointsRecordAndListLedger(t *testing.T) {
 	mux.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/v1/control-mutations", bytes.NewReader([]byte(`{"target_kind":"outbound_cutover","target_id":"cutover-a","action":"rollback","status":"rolled_back","operator_id":"qsyy","approval_id":"approval-b","reason":"restore"}`))))
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("expected invalid rollback 400, got %d: %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestControlMutationPreflightEndpointChecksApproval(t *testing.T) {
+	approvals := appservice.NewOperatorApprovalService()
+	approval, err := approvals.RecordOperatorApproval(context.Background(), command.RecordOperatorApprovalCommand{
+		TargetKind: "outbound_cutover",
+		TargetID:   "cutover-a",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	preflight := appservice.NewControlMutationPreflightService(approvals)
+	mux := http.NewServeMux()
+	httptrigger.RegisterControlMutationPreflightRoutes(mux, preflight)
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/control-mutations/preflight?target_kind=outbound_cutover&target_id=cutover-a&action=enable&operator_id=qsyy&approval_id="+url.QueryEscape(approval.ApprovalID), nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected preflight 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"approval_active"`,
+		`"status":"planned"`,
+		`"side_effect":"none"`,
+		`"preflight only; no runtime configuration is changed"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("preflight response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	missing := httptest.NewRecorder()
+	mux.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/v1/control-mutations/preflight?target_kind=outbound_cutover&target_id=cutover-a&action=enable&operator_id=qsyy&approval_id=missing", nil))
+	if missing.Code != http.StatusOK {
+		t.Fatalf("expected missing preflight 200, got %d: %s", missing.Code, missing.Body.String())
+	}
+	for _, expected := range []string{
+		`"ready":false`,
+		`"reason":"approval_not_ready"`,
+		`"blockers":["approval_not_found"]`,
+	} {
+		if !bytes.Contains(missing.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("missing preflight response missing %s: %s", expected, missing.Body.String())
+		}
+	}
+
+	methodNotAllowed := httptest.NewRecorder()
+	mux.ServeHTTP(methodNotAllowed, httptest.NewRequest(http.MethodPost, "/v1/control-mutations/preflight", nil))
+	if methodNotAllowed.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected preflight 405, got %d: %s", methodNotAllowed.Code, methodNotAllowed.Body.String())
 	}
 }
 
