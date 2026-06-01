@@ -1013,6 +1013,9 @@ records or execute any download/restore/cache operation. The paired
 `POST /v1/media-assets/content-recovery` endpoint performs the controlled
 HTTP/HTTPS download/cache step after approval and audit checks pass. OCR, VLM,
 file parsing, and semantic extraction remain Python AI worker responsibilities.
+`Media Content Recovery` in `/v1/runtime-overview` summarizes recent
+`media_asset_content/recover_content` control mutation audits and links the
+plan/preflight/recovery endpoints without invoking the executor.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

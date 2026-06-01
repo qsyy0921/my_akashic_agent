@@ -1,6 +1,6 @@
 # Akashic 项目状态总览
 
-最后更新：2026-06-01
+最后更新：2026-06-02
 
 本文件是项目状态总账，用来在重启 Codex、人工交接或开始新一轮迭代前快速判断“现在做到哪、还有什么坑、下一步从哪里进”。它不替代其它 SDD 文档，而是把它们的职责汇总到一个入口。
 
@@ -18,14 +18,14 @@
 
 ## 当前迭代状态
 
-当前 `TODO.md` 已清空。最近完成的切片是 media content recovery executor：
+当前 `TODO.md` 已清空。最近完成的切片是 runtime overview media content recovery：
 
-- Go 已新增 `POST /v1/media-assets/content-recovery`，在 preflight、operator approval 和 control mutation audit 边界下把 HTTP/HTTPS media source 下载到本地 cache root。
-- 恢复后会更新 media registry 的 `local_path`、hash/size/mime 和 recovery metadata；OCR/VLM/语义解析仍留给 Python。
+- Go runtime overview 已新增 `media_asset_content_recovery` summary/card/detail。
+- 该视图只读汇总 `media_asset_content/recover_content` control mutation audits，显示 applied/failed/planned/recent records 和 plan/preflight/recovery endpoints，不执行恢复或触发 Python AI。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/134-media-content-recovery-executor.md`
+- `docs/sdd/specs/agent-gateway/135-runtime-overview-media-content-recovery.md`
 
 ## 当前已完成主线
 
@@ -50,7 +50,7 @@
 | OI-002 | Queue / MQ | NATS JetStream 是当前推荐 MQ，Redis Streams / RabbitMQ adapter 尚未实现 | 只有出现明确部署需求才新增 adapter |
 | OI-003 | AgentJob / Worker | `agent_job` external lease result-ack 仍在 readiness/plan/smoke 边界 | 完成 live smoke 后再 cutover |
 | OI-004 | Control Plane | capacity / priority / cutover plan 还没有真实 mutation executor | 必须先绑定 approval、audit、allowlist、回滚和限流 |
-| OI-005 | Media Assets | 媒体远程重新下载、文件恢复和内容缓存 executor 尚未统一 | 后续单独设计 media downloader/cache |
+| OI-005 | Media Assets | HTTP/HTTPS media cache recovery executor 已有，但平台私有源凭证、会话态重拉、自动后台重试和恢复后 AI enrichment 仍未统一 | Go 管 cache/audit/lifecycle，Python/provider worker 管私有源和 OCR/VLM/RAG |
 | OI-006 | Knowledge / RAG | RAG dataset/index state 主要来自 checkpoint snapshot 推导 | 需要时接入外部 index metadata |
 | OI-007 | Python AI Worker | worker 并发控制、autoscaling、优先级调度还没有真实执行器 | 基于 AgentJob pressure 和 approval 设计 executor |
 | OI-008 | Frontend / Dashboard | 部分 runtime overview drilldown 仍依赖原始 JSON | 优先做只读表格化，不加入控制逻辑 |

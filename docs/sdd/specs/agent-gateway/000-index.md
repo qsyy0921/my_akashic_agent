@@ -354,4 +354,7 @@ execution.
   content recovery executor that downloads HTTP/HTTPS media into a local cache,
   updates the registry, and records control mutation audit while leaving OCR/VLM
   and semantic parsing to Python.
+- `135-runtime-overview-media-content-recovery.md`: Runtime overview exposes a
+  focused read-only `media_asset_content_recovery` card/detail from Go control
+  mutation audits without executing recovery or invoking Python AI.
 - Agent architecture boundary specs live under `../agent-architecture/`.

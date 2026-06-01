@@ -228,6 +228,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		mediaAssetRetention        query.MediaAssetRetentionDiagnosticsView
 		mediaAssetRetentionPlan    query.MediaAssetRetentionPlanView
 		mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView
+		mediaAssetContentRecovery  query.MediaAssetContentRecoveryOverviewView
 		knowledgePipelines         query.KnowledgePipelineDiagnosticsView
 		knowledgePlanner           query.KnowledgeJobPlannerPreviewView
 		knowledgeReady             query.KnowledgeJobPlannerReadinessView
@@ -524,6 +525,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		}
 
 		mediaAssetRetentionCleanup = mediaAssetRetentionCleanupOverview(mediaAssetRetentionPlan, controlMutations)
+		mediaAssetContentRecovery = mediaAssetContentRecoveryOverview(controlMutations)
 
 		if deps.ReceiverStatuses == nil {
 			errors = append(errors, runtimeOverviewError("receiver-statuses", fmt.Errorf("receiver status diagnostics disabled")))
@@ -571,6 +573,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		mediaAssetRetention,
 		mediaAssetRetentionPlan,
 		mediaAssetRetentionCleanup,
+		mediaAssetContentRecovery,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -609,6 +612,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		mediaAssetRetention,
 		mediaAssetRetentionPlan,
 		mediaAssetRetentionCleanup,
+		mediaAssetContentRecovery,
 		knowledgePipelines,
 		knowledgePlanner,
 		knowledgeReady,
@@ -644,6 +648,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		MediaAssetRetention:        mediaAssetRetention,
 		MediaAssetRetentionPlan:    mediaAssetRetentionPlan,
 		MediaAssetRetentionCleanup: mediaAssetRetentionCleanup,
+		MediaAssetContentRecovery:  mediaAssetContentRecovery,
 		KnowledgePipelines:         knowledgePipelines,
 		KnowledgeJobPlanner:        knowledgePlanner,
 		KnowledgePlannerReady:      knowledgeReady,
@@ -695,6 +700,7 @@ func runtimeOverviewSummary(
 	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	mediaAssetRetentionPlan query.MediaAssetRetentionPlanView,
 	mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView,
+	mediaAssetContentRecovery query.MediaAssetContentRecoveryOverviewView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -859,6 +865,11 @@ func runtimeOverviewSummary(
 		"media_asset_retention_cleanup_applied":                 intFromMap(mediaAssetRetentionCleanup.Totals, "applied"),
 		"media_asset_retention_cleanup_failed":                  intFromMap(mediaAssetRetentionCleanup.Totals, "failed"),
 		"media_asset_retention_cleanup_recent_audits":           len(mediaAssetRetentionCleanup.RecentAudits),
+		"media_asset_content_recovery_ready":                    mediaAssetContentRecovery.Ready,
+		"media_asset_content_recovery_reason":                   mediaAssetContentRecovery.Reason,
+		"media_asset_content_recovery_applied":                  intFromMap(mediaAssetContentRecovery.Totals, "applied"),
+		"media_asset_content_recovery_failed":                   intFromMap(mediaAssetContentRecovery.Totals, "failed"),
+		"media_asset_content_recovery_recent_audits":            len(mediaAssetContentRecovery.RecentAudits),
 		"knowledge_pipeline_targets":                            intFromMap(knowledgePipelines.Totals, "targets"),
 		"knowledge_pipeline_ready":                              intFromMap(knowledgePipelines.Totals, "ready"),
 		"knowledge_pipeline_warning":                            intFromMap(knowledgePipelines.Totals, "warning"),
@@ -1033,6 +1044,7 @@ func runtimeOverviewCards(
 	mediaAssetRetention query.MediaAssetRetentionDiagnosticsView,
 	mediaAssetRetentionPlan query.MediaAssetRetentionPlanView,
 	mediaAssetRetentionCleanup query.MediaAssetRetentionCleanupOverviewView,
+	mediaAssetContentRecovery query.MediaAssetContentRecoveryOverviewView,
 	knowledgePipelines query.KnowledgePipelineDiagnosticsView,
 	knowledgePlanner query.KnowledgeJobPlannerPreviewView,
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
@@ -1083,6 +1095,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("media_asset_retention", "Media Asset Retention", mediaAssetRetentionValue(mediaAssetRetention), mediaAssetRetentionStatus(mediaAssetRetention), map[string]any{"media_asset_retention_diagnostics": mediaAssetRetention}),
 		runtimeOverviewCard("media_asset_retention_plan", "Media Asset Retention Plan", mediaAssetRetentionPlanValue(mediaAssetRetentionPlan), mediaAssetRetentionPlanStatus(mediaAssetRetentionPlan), map[string]any{"media_asset_retention_plan": mediaAssetRetentionPlan}),
 		runtimeOverviewCard("media_asset_retention_cleanup", "Media Asset Retention Cleanup", mediaAssetRetentionCleanupValue(mediaAssetRetentionCleanup), mediaAssetRetentionCleanupStatus(mediaAssetRetentionCleanup), map[string]any{"media_asset_retention_cleanup": mediaAssetRetentionCleanup}),
+		runtimeOverviewCard("media_asset_content_recovery", "Media Content Recovery", mediaAssetContentRecoveryValue(mediaAssetContentRecovery), mediaAssetContentRecoveryStatus(mediaAssetContentRecovery), map[string]any{"media_asset_content_recovery": mediaAssetContentRecovery}),
 		runtimeOverviewCard("knowledge_pipelines", "Knowledge Pipelines", knowledgePipelineCardValue(knowledgePipelines), knowledgePipelineCardStatus(knowledgePipelines), map[string]any{"knowledge_pipelines": knowledgePipelines}),
 		runtimeOverviewCard("knowledge_job_planner_preview", "Knowledge Planner", knowledgePlannerPreviewValue(knowledgePlanner), knowledgePlannerPreviewStatus(knowledgePlanner), map[string]any{"knowledge_job_planner_preview": knowledgePlanner}),
 		runtimeOverviewCard("knowledge_job_planner_readiness", "Knowledge Planner Readiness", knowledgePlannerReadinessValue(knowledgeReady), knowledgePlannerReadinessStatus(knowledgeReady), map[string]any{"knowledge_job_planner_readiness": knowledgeReady}),
@@ -1632,6 +1645,63 @@ func mediaAssetRetentionCleanupValue(view query.MediaAssetRetentionCleanupOvervi
 		return "unknown"
 	}
 	return fmt.Sprintf("%d/%d", view.CandidateCount, intFromMap(view.Totals, "applied"))
+}
+
+func mediaAssetContentRecoveryOverview(
+	controlMutations query.ControlMutationAuditsView,
+) query.MediaAssetContentRecoveryOverviewView {
+	recentAudits := make([]query.ControlMutationAuditView, 0)
+	totals := map[string]int{
+		"audits":      0,
+		"planned":     0,
+		"applied":     0,
+		"failed":      0,
+		"rolled_back": 0,
+	}
+	for _, item := range controlMutations.Mutations {
+		if item.TargetKind != "media_asset_content" || item.Action != "recover_content" {
+			continue
+		}
+		recentAudits = append(recentAudits, item)
+		totals["audits"]++
+		totals[item.Status]++
+	}
+	return query.MediaAssetContentRecoveryOverviewView{
+		Ready:        true,
+		Reason:       "media_asset_content_recovery_audit_ready",
+		RecentAudits: recentAudits,
+		Totals:       totals,
+		Endpoints: map[string]string{
+			"plan":      "/v1/media-assets/content-recovery-plan",
+			"preflight": "/v1/media-assets/content-recovery/preflight",
+			"recovery":  "/v1/media-assets/content-recovery",
+		},
+		Notes: []string{
+			"read-only runtime overview; does not execute media content recovery",
+			"recovery execution still requires active approval preflight and records control mutation audit",
+		},
+		SideEffect: "none",
+	}
+}
+
+func mediaAssetContentRecoveryStatus(view query.MediaAssetContentRecoveryOverviewView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if intFromMap(view.Totals, "failed") > 0 {
+		return "danger"
+	}
+	if intFromMap(view.Totals, "applied") > 0 {
+		return "ok"
+	}
+	return "muted"
+}
+
+func mediaAssetContentRecoveryValue(view query.MediaAssetContentRecoveryOverviewView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "applied"), intFromMap(view.Totals, "failed"))
 }
 
 func knowledgePipelineCardStatus(view query.KnowledgePipelineDiagnosticsView) string {

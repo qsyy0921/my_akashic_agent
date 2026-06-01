@@ -56,6 +56,7 @@ type RuntimeOverviewView struct {
 	MediaAssetRetention        MediaAssetRetentionDiagnosticsView     `json:"media_asset_retention_diagnostics,omitempty"`
 	MediaAssetRetentionPlan    MediaAssetRetentionPlanView            `json:"media_asset_retention_plan,omitempty"`
 	MediaAssetRetentionCleanup MediaAssetRetentionCleanupOverviewView `json:"media_asset_retention_cleanup,omitempty"`
+	MediaAssetContentRecovery  MediaAssetContentRecoveryOverviewView  `json:"media_asset_content_recovery,omitempty"`
 	KnowledgePipelines         KnowledgePipelineDiagnosticsView       `json:"knowledge_pipelines,omitempty"`
 	KnowledgeJobPlanner        KnowledgeJobPlannerPreviewView         `json:"knowledge_job_planner_preview,omitempty"`
 	KnowledgePlannerReady      KnowledgeJobPlannerReadinessView       `json:"knowledge_job_planner_readiness,omitempty"`
@@ -92,4 +93,15 @@ type MediaAssetRetentionCleanupOverviewView struct {
 	Endpoints      map[string]string          `json:"endpoints"`
 	Notes          []string                   `json:"notes,omitempty"`
 	SideEffect     string                     `json:"side_effect"`
+}
+
+type MediaAssetContentRecoveryOverviewView struct {
+	Ready        bool                       `json:"ready"`
+	Reason       string                     `json:"reason"`
+	Blockers     []string                   `json:"blockers,omitempty"`
+	RecentAudits []ControlMutationAuditView `json:"recent_audits,omitempty"`
+	Totals       map[string]int             `json:"totals"`
+	Endpoints    map[string]string          `json:"endpoints"`
+	Notes        []string                   `json:"notes,omitempty"`
+	SideEffect   string                     `json:"side_effect"`
 }
