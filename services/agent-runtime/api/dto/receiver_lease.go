@@ -25,3 +25,7 @@ type ReleaseReceiverLeaseRequest struct {
 	LeaseToken string `json:"lease_token"`
 	Timestamp  string `json:"timestamp"`
 }
+
+type CleanupExpiredReceiverLeasesRequest struct {
+	Timestamp string `json:"timestamp"`
+}

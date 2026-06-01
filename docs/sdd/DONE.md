@@ -33,6 +33,7 @@
 ## 观察群与接收链路
 
 - 已实现 Go observe target sync/list、receiver status、receiver lease、observe capture diagnostics。
+- 已实现 Go-owned receiver lease cleanup：`POST /v1/receiver-leases/cleanup-expired` 可显式删除过期接收端租约，返回 deleted/remaining summary，并保持 `side_effect=runtime_state_only`；QQ/Telegram receiver 进程、observe-only 群采集和 Python AI pipeline 不受影响。
 - 已实现 Go inbox metrics、receiver stale 降级、recent inbox activity 推断 receiver connected。
 - 已实现 Telegram 和 QQ/NapCat inbound dedupe，包含 observe-only 群文本、图片、普通群消息、私聊和群文件上传 notice。
 - 已实现 inbound dedupe metrics，并接入 runtime overview/dashboard。

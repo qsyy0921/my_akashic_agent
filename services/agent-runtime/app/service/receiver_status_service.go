@@ -288,6 +288,41 @@ func (s *ReceiverStatusService) ReleaseReceiverLease(ctx context.Context, cmd co
 	return view, nil
 }
 
+func (s *ReceiverStatusService) CleanupExpiredReceiverLeases(ctx context.Context, cmd command.CleanupExpiredReceiverLeasesCommand) (query.ReceiverLeaseCleanupView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.ReceiverLeaseCleanupView{}, err
+	}
+	if s == nil {
+		return query.ReceiverLeaseCleanupView{}, errors.New("receiver status service is nil")
+	}
+	now := cmd.Timestamp
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.leases == nil {
+		s.leases = make(map[string]model.ReceiverLease)
+	}
+
+	deleted := make([]model.ReceiverLease, 0)
+	for _, item := range model.SortedReceiverLeases(s.leaseSnapshotLocked()) {
+		if item.ActiveAt(now) {
+			continue
+		}
+		if s.leaseRepository != nil {
+			if err := s.leaseRepository.DeleteReceiverLease(ctx, item.ReceiverID); err != nil {
+				return query.ReceiverLeaseCleanupView{}, err
+			}
+		}
+		delete(s.leases, item.ReceiverID)
+		deleted = append(deleted, item)
+	}
+	remaining := s.leaseSnapshotLocked()
+	return receiverLeaseCleanupView(deleted, remaining, now), nil
+}
+
 func (s *ReceiverStatusService) ListReceiverLeases(ctx context.Context) (query.ReceiverLeasesView, error) {
 	if err := ctx.Err(); err != nil {
 		return query.ReceiverLeasesView{}, err
@@ -424,6 +459,39 @@ func receiverLeasesView(items []model.ReceiverLease, now time.Time) query.Receiv
 		Leases:     assembler.ToReceiverLeaseViews(items, now),
 		Totals:     totals,
 		Notes:      []string{"side_effect=runtime_state_only"},
+		SideEffect: "runtime_state_only",
+	}
+}
+
+func receiverLeaseCleanupView(deleted []model.ReceiverLease, remaining []model.ReceiverLease, now time.Time) query.ReceiverLeaseCleanupView {
+	totals := map[string]int{
+		"deleted":           len(deleted),
+		"remaining":         len(remaining),
+		"remaining_active":  0,
+		"remaining_expired": 0,
+		"deleted_qq":        0,
+		"deleted_telegram":  0,
+	}
+	for _, item := range remaining {
+		if item.ActiveAt(now) {
+			totals["remaining_active"]++
+		} else {
+			totals["remaining_expired"]++
+		}
+	}
+	for _, item := range deleted {
+		switch item.Kind {
+		case model.ChannelKindQQ:
+			totals["deleted_qq"]++
+		case model.ChannelKindTelegram:
+			totals["deleted_telegram"]++
+		}
+	}
+	return query.ReceiverLeaseCleanupView{
+		Deleted:    assembler.ToReceiverLeaseViews(deleted, now),
+		Remaining:  assembler.ToReceiverLeaseViews(remaining, now),
+		Totals:     totals,
+		Notes:      []string{"side_effect=runtime_state_only", "expired_receiver_leases_removed"},
 		SideEffect: "runtime_state_only",
 	}
 }

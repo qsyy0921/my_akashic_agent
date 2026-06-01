@@ -23,3 +23,11 @@ type ReceiverLeasesView struct {
 	Notes      []string            `json:"notes"`
 	SideEffect string              `json:"side_effect"`
 }
+
+type ReceiverLeaseCleanupView struct {
+	Deleted    []ReceiverLeaseView `json:"deleted"`
+	Remaining  []ReceiverLeaseView `json:"remaining"`
+	Totals     map[string]int      `json:"totals"`
+	Notes      []string            `json:"notes"`
+	SideEffect string              `json:"side_effect"`
+}

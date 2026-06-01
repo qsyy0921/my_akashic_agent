@@ -242,6 +242,7 @@ func RegisterReceiverStatusRoutes(
 	mux.Handle("/v1/receiver-leases/acquire", ReceiverLeaseAcquireHandler(manager))
 	mux.Handle("/v1/receiver-leases/renew", ReceiverLeaseRenewHandler(manager))
 	mux.Handle("/v1/receiver-leases/release", ReceiverLeaseReleaseHandler(manager))
+	mux.Handle("/v1/receiver-leases/cleanup-expired", ReceiverLeaseCleanupExpiredHandler(manager))
 	mux.Handle("/v1/receiver-leases", ReceiverLeasesHandler(manager))
 }
 
@@ -1989,6 +1990,37 @@ func ReceiverLeaseReleaseHandler(manager inport.ReceiverStatusManager) http.Hand
 			HolderID:   request.HolderID,
 			LeaseToken: request.LeaseToken,
 			Timestamp:  timestamp,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ReceiverLeaseCleanupExpiredHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver lease manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.CleanupExpiredReceiverLeasesRequest
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.CleanupExpiredReceiverLeases(r.Context(), command.CleanupExpiredReceiverLeasesCommand{
+			Timestamp: timestamp,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})

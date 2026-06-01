@@ -27,3 +27,7 @@ type ReleaseReceiverLeaseCommand struct {
 	LeaseToken string
 	Timestamp  time.Time
 }
+
+type CleanupExpiredReceiverLeasesCommand struct {
+	Timestamp time.Time
+}

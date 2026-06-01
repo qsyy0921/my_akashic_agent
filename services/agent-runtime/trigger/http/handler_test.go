@@ -1005,6 +1005,55 @@ func TestReceiverLeaseEndpointAcquireDenyRenewRelease(t *testing.T) {
 	}
 }
 
+func TestReceiverLeaseCleanupExpiredEndpoint(t *testing.T) {
+	manager := appservice.NewReceiverStatusService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterReceiverStatusRoutes(mux, manager)
+	now := time.Date(2026, 6, 1, 1, 0, 0, 0, time.UTC)
+
+	for _, body := range []string{
+		`{
+			"kind": "telegram",
+			"channel_name": "telegram",
+			"account_id": "7689386159",
+			"holder_id": "python:telegram",
+			"ttl_seconds": 30,
+			"timestamp": "` + now.Format(time.RFC3339Nano) + `"
+		}`,
+		`{
+			"kind": "qq",
+			"channel_name": "qq_2365524513",
+			"account_id": "2365524513",
+			"holder_id": "python:qq",
+			"ttl_seconds": 120,
+			"timestamp": "` + now.Format(time.RFC3339Nano) + `"
+		}`,
+	} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/acquire", strings.NewReader(body)))
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected acquire 200, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	cleanupBody := []byte(`{"timestamp":"` + now.Add(31*time.Second).Format(time.RFC3339Nano) + `"}`)
+	cleanupResponse := httptest.NewRecorder()
+	mux.ServeHTTP(cleanupResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-leases/cleanup-expired", bytes.NewReader(cleanupBody)))
+	if cleanupResponse.Code != http.StatusOK {
+		t.Fatalf("expected cleanup 200, got %d: %s", cleanupResponse.Code, cleanupResponse.Body.String())
+	}
+	for _, expected := range []string{
+		`"deleted":1`,
+		`"remaining":1`,
+		`"remaining_active":1`,
+		`"expired_receiver_leases_removed"`,
+	} {
+		if !bytes.Contains(cleanupResponse.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("cleanup response missing %s: %s", expected, cleanupResponse.Body.String())
+		}
+	}
+}
+
 func TestDeliveryAdapterHealthEndpointReturnsReadOnlyProbeResults(t *testing.T) {
 	viewer := appservice.NewDeliveryAdapterHealthService(staticHTTPDeliveryHealthProbe{
 		items: []query.DeliveryAdapterHealthView{{

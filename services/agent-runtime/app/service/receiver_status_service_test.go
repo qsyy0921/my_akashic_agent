@@ -289,3 +289,71 @@ func TestReceiverStatusServiceRejectsExpiredReceiverLeaseRenewal(t *testing.T) {
 		t.Fatalf("expected expired lease error, got %v", err)
 	}
 }
+
+func TestReceiverStatusServiceCleanupExpiredReceiverLeases(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receiver-leases.json")
+	store, err := receiverleasestore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewReceiverStatusServiceWithRepositories(context.Background(), nil, store, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 6, 1, 1, 0, 0, 0, time.UTC)
+	expired, err := service.AcquireReceiverLease(context.Background(), command.AcquireReceiverLeaseCommand{
+		Kind:        "telegram",
+		ChannelName: "telegram",
+		AccountID:   "7689386159",
+		HolderID:    "python:telegram",
+		TTLSeconds:  30,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := service.AcquireReceiverLease(context.Background(), command.AcquireReceiverLeaseCommand{
+		Kind:        "qq",
+		ChannelName: "qq_2365524513",
+		AccountID:   "2365524513",
+		HolderID:    "python:qq",
+		TTLSeconds:  120,
+		Timestamp:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupAt := now.Add(31 * time.Second)
+	view, err := service.CleanupExpiredReceiverLeases(context.Background(), command.CleanupExpiredReceiverLeasesCommand{
+		Timestamp: cleanupAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["deleted"] != 1 || view.Totals["remaining"] != 1 || view.Totals["remaining_active"] != 1 {
+		t.Fatalf("unexpected cleanup totals: %#v", view.Totals)
+	}
+	if len(view.Deleted) != 1 || view.Deleted[0].ReceiverID != expired.ReceiverID {
+		t.Fatalf("expected expired lease deleted: %#v", view.Deleted)
+	}
+	if len(view.Remaining) != 1 || view.Remaining[0].ReceiverID != active.ReceiverID {
+		t.Fatalf("expected active lease remaining: %#v", view.Remaining)
+	}
+
+	reopenedStore, err := receiverleasestore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewReceiverStatusServiceWithRepositories(context.Background(), nil, reopenedStore, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := reopened.ListReceiverLeases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Totals["leases"] != 1 || listed.Leases[0].ReceiverID != active.ReceiverID {
+		t.Fatalf("expected persisted expired lease removed: %#v", listed)
+	}
+}

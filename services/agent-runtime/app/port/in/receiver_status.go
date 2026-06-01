@@ -13,5 +13,6 @@ type ReceiverStatusManager interface {
 	AcquireReceiverLease(ctx context.Context, cmd command.AcquireReceiverLeaseCommand) (query.ReceiverLeaseView, error)
 	RenewReceiverLease(ctx context.Context, cmd command.RenewReceiverLeaseCommand) (query.ReceiverLeaseView, error)
 	ReleaseReceiverLease(ctx context.Context, cmd command.ReleaseReceiverLeaseCommand) (query.ReceiverLeaseView, error)
+	CleanupExpiredReceiverLeases(ctx context.Context, cmd command.CleanupExpiredReceiverLeasesCommand) (query.ReceiverLeaseCleanupView, error)
 	ListReceiverLeases(ctx context.Context) (query.ReceiverLeasesView, error)
 }
