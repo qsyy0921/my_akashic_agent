@@ -1152,6 +1152,12 @@ def _normalize_go_runtime_overview(
     outbound_cutover_plan = _normalize_outbound_cutover_plan(
         _mapping_or_empty(item.get("outbound_cutover_plan"))
     )
+    operator_approvals = _normalize_operator_approvals(
+        _mapping_or_empty(item.get("operator_approvals"))
+    )
+    control_mutations = _normalize_control_mutations(
+        _mapping_or_empty(item.get("control_mutations"))
+    )
     knowledge_job_planner_cutover_plan = (
         _normalize_knowledge_job_planner_cutover_plan(
             _mapping_or_empty(item.get("knowledge_job_planner_cutover_plan"))
@@ -1211,6 +1217,8 @@ def _normalize_go_runtime_overview(
         "agent_job_external_lease_readiness": agent_job_external_lease_readiness,
         "agent_job_external_lease_plan": agent_job_external_lease_plan,
         "outbound_cutover_plan": outbound_cutover_plan,
+        "operator_approvals": operator_approvals,
+        "control_mutations": control_mutations,
         "knowledge_job_planner_cutover_plan": knowledge_job_planner_cutover_plan,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
@@ -1337,6 +1345,16 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "outbound_cutover_plan_current_owner": "unknown",
         "outbound_cutover_plan_desired_owner": "unknown",
         "outbound_cutover_plan_recommended_owner": "unknown",
+        "operator_approvals_total": 0,
+        "operator_approvals_active": 0,
+        "operator_approvals_approved": 0,
+        "operator_approvals_rejected": 0,
+        "operator_approvals_revoked": 0,
+        "control_mutations_total": 0,
+        "control_mutations_planned": 0,
+        "control_mutations_applied": 0,
+        "control_mutations_failed": 0,
+        "control_mutations_rolled_back": 0,
         "knowledge_job_planner_cutover_plan_ready": False,
         "knowledge_job_planner_cutover_plan_decision": "unknown",
         "knowledge_job_planner_cutover_plan_blockers": 0,
@@ -1906,6 +1924,84 @@ def _normalize_outbound_cutover_readiness(item: Mapping[str, Any]) -> dict[str, 
         "attributes": _mapping_or_empty(item.get("attributes")),
         "notes": _string_list(item.get("notes")),
         "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_operator_approvals(item: Mapping[str, Any]) -> dict[str, Any]:
+    approvals_raw = item.get("approvals")
+    if not isinstance(approvals_raw, list):
+        approvals_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    return {
+        "approvals": [
+            _normalize_operator_approval(value)
+            for value in approvals_raw
+            if isinstance(value, Mapping)
+        ],
+        "totals": {
+            "approvals": _int_value(totals.get("approvals"), fallback=0),
+            "active": _int_value(totals.get("active"), fallback=0),
+            "approved": _int_value(totals.get("approved"), fallback=0),
+            "rejected": _int_value(totals.get("rejected"), fallback=0),
+            "revoked": _int_value(totals.get("revoked"), fallback=0),
+        },
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "runtime_state_only"),
+    }
+
+
+def _normalize_operator_approval(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "approval_id": _text(item.get("approval_id")),
+        "target_kind": _text(item.get("target_kind")),
+        "target_id": _text(item.get("target_id")),
+        "decision": _text(item.get("decision")),
+        "operator_id": _text(item.get("operator_id")),
+        "reason": _text(item.get("reason")),
+        "active": bool(item.get("active")),
+        "expires_at": _text(item.get("expires_at")),
+        "created_at": _text(item.get("created_at")),
+        "metadata": _mapping_or_empty(item.get("metadata")),
+    }
+
+
+def _normalize_control_mutations(item: Mapping[str, Any]) -> dict[str, Any]:
+    mutations_raw = item.get("mutations")
+    if not isinstance(mutations_raw, list):
+        mutations_raw = []
+    totals = _mapping_or_empty(item.get("totals"))
+    return {
+        "mutations": [
+            _normalize_control_mutation(value)
+            for value in mutations_raw
+            if isinstance(value, Mapping)
+        ],
+        "totals": {
+            "mutations": _int_value(totals.get("mutations"), fallback=0),
+            "planned": _int_value(totals.get("planned"), fallback=0),
+            "applied": _int_value(totals.get("applied"), fallback=0),
+            "failed": _int_value(totals.get("failed"), fallback=0),
+            "rolled_back": _int_value(totals.get("rolled_back"), fallback=0),
+        },
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "runtime_state_only"),
+    }
+
+
+def _normalize_control_mutation(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "mutation_id": _text(item.get("mutation_id")),
+        "target_kind": _text(item.get("target_kind")),
+        "target_id": _text(item.get("target_id")),
+        "action": _text(item.get("action")),
+        "status": _text(item.get("status")),
+        "operator_id": _text(item.get("operator_id")),
+        "approval_id": _text(item.get("approval_id")),
+        "reason": _text(item.get("reason")),
+        "rollback_of": _text(item.get("rollback_of")),
+        "rollback_ref": _text(item.get("rollback_ref")),
+        "created_at": _text(item.get("created_at")),
+        "metadata": _mapping_or_empty(item.get("metadata")),
     }
 
 

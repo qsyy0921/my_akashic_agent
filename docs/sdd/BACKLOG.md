@@ -24,7 +24,7 @@
 - queue topology read model 已由 Go 提供 `/v1/queue-topology`，并已聚合到 runtime overview / Python dashboard；若前端需要更强执行边界可视化，可基于该 detail 做独立面板，但不要在 dashboard 中加入真实控制逻辑。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview，`agent_job` result-ack readiness/plan 及二者 runtime overview 聚合已可见；后续继续收敛外部 MQ result-ack live smoke 和切换后的稳定性观察。
 - 若后续要做 Python worker 并发控制、autoscaling 或知识任务优先级调度，优先基于已落地的 Go `AgentJob` pressure、`Agent Job Worker Coverage`、`/v1/agent-job-capacity/plan`、`/v1/agent-job-priority/plan` 和 Go-owned `Operator Approval Ledger`；当前只提供只读容量/优先级建议与 operator 审计记录，不引入调度副作用。
-- `Agent Job Capacity`、`Agent Job Priority` 和 control audit 已进入 runtime overview；后续如需前端 drilldown，可直接消费 overview detail，真实 autoscaling/优先级控制仍必须另做 operator ack、mutation audit 绑定和回滚执行设计。
+- `Agent Job Capacity`、`Agent Job Priority` 和 control audit 已进入 runtime overview，Python dashboard 也已规范化 control audit detail；后续如需前端 drilldown，可直接消费 overview detail，真实 autoscaling/优先级控制仍必须另做 operator ack、mutation audit 绑定和回滚执行设计。
 - 后续若要把 capacity / priority / cutover plan 推进成真实控制面，已有 operator approval ledger、approval check preflight 和 control mutation audit ledger 可作为人工确认、校验和审计边界；下一步仍必须把具体 control-plane mutation 强制绑定到 approval id、mutation audit id、限流/熔断策略、回滚执行记录和 Python worker 侧并发实现。不要直接让 Go 自动启动 AI worker 或修改模型/RAG/图片执行策略。
 
 ## Knowledge / Memory / RAG

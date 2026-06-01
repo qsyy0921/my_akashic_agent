@@ -730,6 +730,16 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "outbound_cutover_plan_current_owner": "go_state_store_api",
             "outbound_cutover_plan_desired_owner": "nats_external_lease",
             "outbound_cutover_plan_recommended_owner": "nats_external_lease",
+            "operator_approvals_total": 2,
+            "operator_approvals_active": 1,
+            "operator_approvals_approved": 1,
+            "operator_approvals_rejected": 1,
+            "operator_approvals_revoked": 0,
+            "control_mutations_total": 2,
+            "control_mutations_planned": 1,
+            "control_mutations_applied": 0,
+            "control_mutations_failed": 1,
+            "control_mutations_rolled_back": 0,
             "knowledge_job_planner_cutover_plan_ready": False,
             "knowledge_job_planner_cutover_plan_decision": "blocked",
             "knowledge_job_planner_cutover_plan_blockers": 2,
@@ -822,6 +832,80 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "label": "Outbound Cutover",
                 "value": "blocked:2",
                 "status": "warn",
+            },
+            {
+                "id": "control_audit",
+                "label": "Control Audit",
+                "value": "1/2",
+                "status": "warn",
+                "detail": {
+                    "operator_approvals": {
+                        "approvals": [
+                            {
+                                "approval_id": "approval-a",
+                                "target_kind": "outbound_cutover_plan",
+                                "target_id": "cutover-a",
+                                "decision": "approved",
+                                "operator_id": "qsyy",
+                                "active": True,
+                                "created_at": "2026-06-01T12:00:00Z",
+                                "metadata": {"source": "test"},
+                            },
+                            {
+                                "approval_id": "approval-b",
+                                "target_kind": "agent_job_priority_plan",
+                                "target_id": "priority-a",
+                                "decision": "rejected",
+                                "operator_id": "qsyy",
+                                "reason": "blocked",
+                                "active": False,
+                                "created_at": "2026-06-01T12:01:00Z",
+                            },
+                        ],
+                        "totals": {
+                            "approvals": 2,
+                            "active": 1,
+                            "approved": 1,
+                            "rejected": 1,
+                            "revoked": 0,
+                        },
+                        "side_effect": "runtime_state_only",
+                    },
+                    "control_mutations": {
+                        "mutations": [
+                            {
+                                "mutation_id": "mutation-a",
+                                "target_kind": "outbound_cutover",
+                                "target_id": "cutover-a",
+                                "action": "enable",
+                                "status": "planned",
+                                "operator_id": "qsyy",
+                                "approval_id": "approval-a",
+                                "created_at": "2026-06-01T12:02:00Z",
+                            },
+                            {
+                                "mutation_id": "mutation-b",
+                                "target_kind": "outbound_cutover",
+                                "target_id": "cutover-a",
+                                "action": "enable",
+                                "status": "failed",
+                                "operator_id": "qsyy",
+                                "approval_id": "approval-a",
+                                "reason": "smoke failed",
+                                "rollback_ref": "manual",
+                                "created_at": "2026-06-01T12:03:00Z",
+                            },
+                        ],
+                        "totals": {
+                            "mutations": 2,
+                            "planned": 1,
+                            "applied": 0,
+                            "failed": 1,
+                            "rolled_back": 0,
+                        },
+                        "side_effect": "runtime_state_only",
+                    },
+                },
             },
             {
                 "id": "knowledge_job_planner_cutover_plan",
@@ -1222,6 +1306,74 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "notes": ["read-only"],
             "side_effect": "none",
         },
+        "operator_approvals": {
+            "approvals": [
+                {
+                    "approval_id": "approval-a",
+                    "target_kind": "outbound_cutover_plan",
+                    "target_id": "cutover-a",
+                    "decision": "approved",
+                    "operator_id": "qsyy",
+                    "active": True,
+                    "created_at": "2026-06-01T12:00:00Z",
+                    "metadata": {"source": "test"},
+                },
+                {
+                    "approval_id": "approval-b",
+                    "target_kind": "agent_job_priority_plan",
+                    "target_id": "priority-a",
+                    "decision": "rejected",
+                    "operator_id": "qsyy",
+                    "reason": "blocked",
+                    "active": False,
+                    "created_at": "2026-06-01T12:01:00Z",
+                },
+            ],
+            "totals": {
+                "approvals": 2,
+                "active": 1,
+                "approved": 1,
+                "rejected": 1,
+                "revoked": 0,
+            },
+            "notes": ["approval ledger only"],
+            "side_effect": "runtime_state_only",
+        },
+        "control_mutations": {
+            "mutations": [
+                {
+                    "mutation_id": "mutation-a",
+                    "target_kind": "outbound_cutover",
+                    "target_id": "cutover-a",
+                    "action": "enable",
+                    "status": "planned",
+                    "operator_id": "qsyy",
+                    "approval_id": "approval-a",
+                    "created_at": "2026-06-01T12:02:00Z",
+                },
+                {
+                    "mutation_id": "mutation-b",
+                    "target_kind": "outbound_cutover",
+                    "target_id": "cutover-a",
+                    "action": "enable",
+                    "status": "failed",
+                    "operator_id": "qsyy",
+                    "approval_id": "approval-a",
+                    "reason": "smoke failed",
+                    "rollback_ref": "manual",
+                    "created_at": "2026-06-01T12:03:00Z",
+                },
+            ],
+            "totals": {
+                "mutations": 2,
+                "planned": 1,
+                "applied": 0,
+                "failed": 1,
+                "rolled_back": 0,
+            },
+            "notes": ["control mutation audit only"],
+            "side_effect": "runtime_state_only",
+        },
         "knowledge_job_planner_cutover_plan": {
             "ready": False,
             "decision": "blocked",
@@ -1462,6 +1614,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["outbound_cutover_plan_current_owner"] == (
         "go_state_store_api"
     )
+    assert payload["summary"]["operator_approvals_total"] == 2
+    assert payload["summary"]["operator_approvals_active"] == 1
+    assert payload["summary"]["operator_approvals_approved"] == 1
+    assert payload["summary"]["operator_approvals_rejected"] == 1
+    assert payload["summary"]["control_mutations_total"] == 2
+    assert payload["summary"]["control_mutations_planned"] == 1
+    assert payload["summary"]["control_mutations_failed"] == 1
     assert payload["summary"]["knowledge_job_planner_cutover_plan_ready"] is False
     assert payload["summary"]["knowledge_job_planner_cutover_plan_decision"] == "blocked"
     assert payload["summary"]["knowledge_job_planner_cutover_plan_blockers"] == 2
@@ -1601,6 +1760,21 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "AKASHIC_QUEUE_EXTERNAL_LEASE_OUTBOX_ENABLED": "true"
     }
     assert outbound_plan["side_effect"] == "none"
+    control_audit_card = next(
+        item for item in payload["cards"] if item["id"] == "control_audit"
+    )
+    assert control_audit_card["value"] == "1/2"
+    assert control_audit_card["status"] == "warn"
+    operator_approvals = payload["operator_approvals"]
+    assert operator_approvals["totals"]["active"] == 1
+    assert operator_approvals["approvals"][0]["approval_id"] == "approval-a"
+    assert operator_approvals["approvals"][0]["metadata"]["source"] == "test"
+    assert operator_approvals["side_effect"] == "runtime_state_only"
+    control_mutations = payload["control_mutations"]
+    assert control_mutations["totals"]["failed"] == 1
+    assert control_mutations["mutations"][1]["status"] == "failed"
+    assert control_mutations["mutations"][1]["rollback_ref"] == "manual"
+    assert control_mutations["side_effect"] == "runtime_state_only"
     cutover_card = next(
         item for item in payload["cards"] if item["id"] == "knowledge_job_planner_cutover_plan"
     )

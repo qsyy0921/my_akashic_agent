@@ -112,6 +112,7 @@
 - dashboard 优先读取 Go aggregate，并保留必要 fallback。
 - dashboard 已规范化 Go-owned runtime overview 的 `delivery_smoke_readiness` 和 `media_asset_content_diagnostics`：前端/API 可稳定读取最新 detail 与 summary 默认值，Python 只做只读展示适配，不执行发送、租约、OCR/VLM、文件解析或 AI。
 - dashboard 已规范化 Go-owned runtime overview 的 control-plane plan/readiness detail：前端/API 可稳定读取 AgentJob capacity、AgentJob external lease readiness/plan、outbound cutover plan，Python 只做只读展示适配。
+- dashboard 已规范化 Go-owned control audit detail：`/api/dashboard/runtime-overview` 稳定透传 `control_audit` card、`operator_approvals` 和 `control_mutations`，并补齐 summary 默认值；Python 仍只做展示适配，不记录 approval/mutation、不执行控制面变更。
 
 ## SDD / 迭代治理
 
