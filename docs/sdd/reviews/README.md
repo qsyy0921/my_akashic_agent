@@ -227,3 +227,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-178-go-runtime-package-guard.md`
 - `2026-06-01-phase8-179-media-content-access-plan-url-fields.md`
 - `2026-06-01-phase8-180-open-issues-register.md`
+- `2026-06-01-phase8-181-open-issues-registry-guard.md`

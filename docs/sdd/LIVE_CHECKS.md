@@ -113,3 +113,4 @@
 - [ ] 新增或重命名 `docs/sdd/specs/agent-gateway/[0-9][0-9][0-9]-*.md` 后，必须同步更新 `docs/sdd/specs/agent-gateway/000-index.md`，并运行 `uv run pytest tests/test_sdd_spec_index.py -q`。
 - [ ] 新增 `services/agent-runtime` Go 源码目录前，先确认它属于 `api/app/cmd/domain/infrastructure/smoke/trigger/types` 之一；否则需要先更新 SDD package 设计并让 `go test .` 的架构守卫通过。
 - [ ] 每轮结束前检查 `docs/sdd/OPEN_ISSUES.md`：新增未解决风险、待决策项或长期缺口应进 OPEN_ISSUES；只有本轮承诺解决的拆解任务才进入 `TODO.md`。
+- [ ] 修改 `docs/sdd/OPEN_ISSUES.md` 后运行 `uv run pytest tests/test_sdd_governance_docs.py -q`，确认 open issue ID、字段和状态仍然可解析。

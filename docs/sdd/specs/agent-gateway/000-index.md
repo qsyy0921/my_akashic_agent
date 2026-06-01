@@ -321,4 +321,6 @@ execution.
   runtime/dashboard URL hints while Python remains a read-only proxy.
 - `123-open-issues-register.md`: SDD adds a canonical unresolved issue ledger
   separate from current-iteration TODO and future backlog.
+- `124-open-issues-registry-guard.md`: SDD governance tests enforce
+  structured open issue rows with stable ids and status values.
 - Agent architecture boundary specs live under `../agent-architecture/`.
