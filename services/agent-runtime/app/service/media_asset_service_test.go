@@ -130,6 +130,62 @@ func TestMediaAssetServiceRetentionDiagnosticsClassifiesCleanupDue(t *testing.T)
 	}
 }
 
+func TestMediaAssetServiceRetentionPlanBuildsDryRunCleanupPlan(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetService(store)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	registerTestMediaAssetWithRetention(t, service, "asset:keep", "keep.txt", "permanent", now.Add(-90*24*time.Hour))
+	registerTestMediaAssetWithRetention(t, service, "asset:due", "due.txt", "default-observed-group", now.Add(-48*time.Hour))
+	registerTestMediaAssetWithRetention(t, service, "asset:fresh", "fresh.txt", "ephemeral", now.Add(-30*time.Minute))
+
+	view, err := service.RetentionPlan(ctx, query.MediaAssetRetentionDiagnosticsFilter{
+		Limit:             10,
+		Timestamp:         now.Format(time.RFC3339Nano),
+		DefaultTTLHours:   24,
+		EphemeralTTLHours: 1,
+	})
+	if err != nil {
+		t.Fatalf("retention plan: %v", err)
+	}
+	if !view.Ready || view.Reason != "media_asset_retention_cleanup_candidates_ready" {
+		t.Fatalf("unexpected readiness: %+v", view)
+	}
+	if view.AssetCount != 3 || view.CandidateCount != 1 || len(view.Candidates) != 1 ||
+		view.Candidates[0].AssetID != "asset:due" {
+		t.Fatalf("unexpected candidates: %+v", view)
+	}
+	if len(view.RequiredSteps) < 3 || len(view.VerifySteps) == 0 || len(view.RollbackSteps) == 0 {
+		t.Fatalf("missing plan steps: %+v", view)
+	}
+	if view.SideEffect != "none" || view.Diagnostics.SideEffect != "none" {
+		t.Fatalf("retention plan must be read-only: %+v", view)
+	}
+}
+
+func TestMediaAssetServiceRetentionPlanBlocksWhenNoCandidates(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetService(store)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	registerTestMediaAssetWithRetention(t, service, "asset:keep", "keep.txt", "permanent", now.Add(-90*24*time.Hour))
+
+	view, err := service.RetentionPlan(ctx, query.MediaAssetRetentionDiagnosticsFilter{
+		Limit:     10,
+		Timestamp: now.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("retention plan: %v", err)
+	}
+	if view.Ready || view.Reason != "media_asset_retention_no_cleanup_candidates" ||
+		view.CandidateCount != 0 || len(view.Blockers) == 0 {
+		t.Fatalf("expected blocked no-candidate plan: %+v", view)
+	}
+	if view.SideEffect != "none" {
+		t.Fatalf("retention plan must be read-only: %+v", view)
+	}
+}
+
 func registerTestMediaAsset(
 	t *testing.T,
 	service *appservice.MediaAssetService,

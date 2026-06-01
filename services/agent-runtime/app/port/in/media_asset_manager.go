@@ -15,4 +15,5 @@ type MediaAssetManager interface {
 	OpenContent(ctx context.Context, assetID string) (outport.MediaAssetContent, error)
 	ContentDiagnostics(ctx context.Context, filter query.MediaAssetContentDiagnosticsFilter) (query.MediaAssetContentDiagnosticsView, error)
 	RetentionDiagnostics(ctx context.Context, filter query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionDiagnosticsView, error)
+	RetentionPlan(ctx context.Context, filter query.MediaAssetRetentionDiagnosticsFilter) (query.MediaAssetRetentionPlanView, error)
 }

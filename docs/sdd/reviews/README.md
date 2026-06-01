@@ -208,3 +208,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-159-runtime-overview-receiver-lease-cleanup.md`
 - `2026-06-01-phase8-160-media-asset-retention-diagnostics.md`
 - `2026-06-01-phase8-161-runtime-overview-media-retention.md`
+- `2026-06-01-phase8-162-media-asset-retention-plan.md`

@@ -2407,6 +2407,28 @@ func TestMediaAssetEndpointRegistersListsAndServesContentRoute(t *testing.T) {
 			t.Fatalf("retention diagnostics response missing %s: %s", expected, bodyText)
 		}
 	}
+
+	response = httptest.NewRecorder()
+	retentionPlanURL := "/v1/media-assets/retention-plan?asset_id=" + assetID +
+		"&timestamp=" + url.QueryEscape(time.Now().UTC().Add(2*24*time.Hour).Format(time.RFC3339Nano)) +
+		"&default_ttl_hours=24"
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, retentionPlanURL, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected retention plan 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"ready":true`,
+		`"reason":"media_asset_retention_cleanup_candidates_ready"`,
+		`"candidate_count":1`,
+		`"name":"record-operator-approval"`,
+		`"name":"record-planned-control-mutation"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("retention plan response missing %s: %s", expected, bodyText)
+		}
+	}
 }
 
 type fakeDeliveryAdapter struct {

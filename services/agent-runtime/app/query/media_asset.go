@@ -112,3 +112,26 @@ type MediaAssetRetentionDiagnosticsView struct {
 	SideEffect string                                  `json:"side_effect"`
 	Notes      []string                                `json:"notes,omitempty"`
 }
+
+type MediaAssetRetentionPlanStep struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Endpoint    string            `json:"endpoint,omitempty"`
+	Method      string            `json:"method,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+type MediaAssetRetentionPlanView struct {
+	Ready          bool                                    `json:"ready"`
+	Reason         string                                  `json:"reason"`
+	Blockers       []string                                `json:"blockers,omitempty"`
+	AssetCount     int                                     `json:"asset_count"`
+	CandidateCount int                                     `json:"candidate_count"`
+	Candidates     []MediaAssetRetentionDiagnosticItemView `json:"candidates,omitempty"`
+	RequiredSteps  []MediaAssetRetentionPlanStep           `json:"required_steps"`
+	VerifySteps    []MediaAssetRetentionPlanStep           `json:"verify_steps"`
+	RollbackSteps  []MediaAssetRetentionPlanStep           `json:"rollback_steps"`
+	Diagnostics    MediaAssetRetentionDiagnosticsView      `json:"diagnostics"`
+	SideEffect     string                                  `json:"side_effect"`
+	Notes          []string                                `json:"notes,omitempty"`
+}

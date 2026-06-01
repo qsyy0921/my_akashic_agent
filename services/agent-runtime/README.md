@@ -371,6 +371,8 @@ POST /v1/media-assets
 GET  /v1/media-assets?limit=50
 GET  /v1/media-assets/content-diagnostics?limit=50
 GET  /v1/media-assets/content-diagnostics?asset_id=asset%3Aqq%3A...
+GET  /v1/media-assets/retention-diagnostics?limit=50
+GET  /v1/media-assets/retention-plan?limit=50
 GET  /v1/media-assets/{asset_id}
 GET  /v1/media-assets/{asset_id}/content
 ```
@@ -385,6 +387,9 @@ content route will serve them. The content diagnostics endpoint is read-only and
 classifies each asset as `ready`, `forbidden`, `unavailable`, `disabled`, or
 `error`, with the stable content route included for dashboards. It does not run
 OCR/VLM, parse files, upload to RAG, or change the `/content` access policy.
+The retention plan is also read-only: it reports cleanup candidates and
+operator approval / control mutation audit steps, but does not delete media
+metadata, remove local files, enqueue jobs, or call Python OCR/VLM/file parsing.
 
 Normalized inbound messages and shadow-observed messages also register their
 attachments into the media registry automatically. Attachment-provided ids are

@@ -46,6 +46,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/content-diagnostics", MediaAssetContentDiagnosticsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/retention-diagnostics", MediaAssetRetentionDiagnosticsHandler(mediaAssets))
+	mux.Handle("/v1/media-assets/retention-plan", MediaAssetRetentionPlanHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
 	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
@@ -2241,6 +2242,21 @@ func MediaAssetRetentionDiagnosticsHandler(mediaAssets inport.MediaAssetManager)
 			return
 		}
 		view, err := mediaAssets.RetentionDiagnostics(r.Context(), mediaAssetRetentionDiagnosticsFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func MediaAssetRetentionPlanHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := mediaAssets.RetentionPlan(r.Context(), mediaAssetRetentionDiagnosticsFilterFromQuery(r))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

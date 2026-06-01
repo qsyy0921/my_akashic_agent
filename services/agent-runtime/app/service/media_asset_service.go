@@ -213,6 +213,122 @@ func (s *MediaAssetService) RetentionDiagnostics(
 	}, nil
 }
 
+func (s *MediaAssetService) RetentionPlan(
+	ctx context.Context,
+	filter query.MediaAssetRetentionDiagnosticsFilter,
+) (query.MediaAssetRetentionPlanView, error) {
+	diagnostics, err := s.RetentionDiagnostics(ctx, filter)
+	if err != nil {
+		return query.MediaAssetRetentionPlanView{}, err
+	}
+	candidates := make([]query.MediaAssetRetentionDiagnosticItemView, 0, len(diagnostics.Items))
+	for _, item := range diagnostics.Items {
+		if item.CleanupDue {
+			candidates = append(candidates, item)
+		}
+	}
+	blockers := []string{}
+	ready := len(candidates) > 0
+	reason := "media_asset_retention_cleanup_candidates_ready"
+	if !ready {
+		reason = "media_asset_retention_no_cleanup_candidates"
+		blockers = append(blockers, "no media assets are past retention ttl under current filter")
+	}
+	return query.MediaAssetRetentionPlanView{
+		Ready:          ready,
+		Reason:         reason,
+		Blockers:       blockers,
+		AssetCount:     intFromTotals(diagnostics.Totals, "assets"),
+		CandidateCount: len(candidates),
+		Candidates:     candidates,
+		RequiredSteps:  mediaAssetRetentionPlanRequiredSteps(),
+		VerifySteps:    mediaAssetRetentionPlanVerifySteps(),
+		RollbackSteps:  mediaAssetRetentionPlanRollbackSteps(),
+		Diagnostics:    diagnostics,
+		SideEffect:     "none",
+		Notes: []string{
+			"read-only media asset retention cleanup plan; no metadata or file content is deleted",
+			"destructive cleanup must be implemented in a separate SDD slice with operator approval and control mutation audit binding",
+		},
+	}, nil
+}
+
+func mediaAssetRetentionPlanRequiredSteps() []query.MediaAssetRetentionPlanStep {
+	return []query.MediaAssetRetentionPlanStep{
+		{
+			Name:        "inspect-retention-diagnostics",
+			Description: "Review retention diagnostics and confirm only expired non-permanent media assets are selected.",
+			Endpoint:    "/v1/media-assets/retention-diagnostics",
+			Method:      "GET",
+		},
+		{
+			Name:        "record-operator-approval",
+			Description: "Record an explicit operator approval before any future destructive cleanup executor is allowed to run.",
+			Endpoint:    "/v1/operator-approvals",
+			Method:      "POST",
+			Metadata: map[string]string{
+				"target_kind": "media_asset_retention",
+				"action":      "cleanup_expired",
+			},
+		},
+		{
+			Name:        "record-planned-control-mutation",
+			Description: "Record a planned control mutation audit bound to the approval id before deletion is implemented.",
+			Endpoint:    "/v1/control-mutations",
+			Method:      "POST",
+			Metadata: map[string]string{
+				"target_kind": "media_asset_retention",
+				"action":      "cleanup_expired",
+				"status":      "planned",
+			},
+		},
+	}
+}
+
+func mediaAssetRetentionPlanVerifySteps() []query.MediaAssetRetentionPlanStep {
+	return []query.MediaAssetRetentionPlanStep{
+		{
+			Name:        "rerun-retention-plan",
+			Description: "After a future cleanup executor runs, rerun this plan and confirm candidate_count decreases as expected.",
+			Endpoint:    "/v1/media-assets/retention-plan",
+			Method:      "GET",
+		},
+		{
+			Name:        "verify-content-access",
+			Description: "Sample remaining assets through content diagnostics and confirm non-expired assets still resolve normally.",
+			Endpoint:    "/v1/media-assets/content-diagnostics",
+			Method:      "GET",
+		},
+	}
+}
+
+func mediaAssetRetentionPlanRollbackSteps() []query.MediaAssetRetentionPlanStep {
+	return []query.MediaAssetRetentionPlanStep{
+		{
+			Name:        "restore-from-runtime-backup",
+			Description: "Restore deleted metadata or local content from the operator-approved backup path if a future cleanup executor removes the wrong assets.",
+		},
+		{
+			Name:        "record-rollback-control-mutation",
+			Description: "Record rollback evidence in the control mutation audit ledger.",
+			Endpoint:    "/v1/control-mutations",
+			Method:      "POST",
+			Metadata: map[string]string{
+				"target_kind": "media_asset_retention",
+				"action":      "cleanup_expired",
+				"status":      "rolled_back",
+			},
+		},
+	}
+}
+
+func intFromTotals(totals map[string]int, key string) int {
+	if totals == nil {
+		return 0
+	}
+	return totals[key]
+}
+
 func (s *MediaAssetService) retentionDiagnosticAssets(
 	ctx context.Context,
 	filter query.MediaAssetRetentionDiagnosticsFilter,
