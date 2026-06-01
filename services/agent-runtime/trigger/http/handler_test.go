@@ -2601,8 +2601,9 @@ func TestMediaAssetContentRecoveryPreflightEndpointRequiresApproval(t *testing.T
 	approvals := appservice.NewOperatorApprovalService()
 	controlPreflight := appservice.NewControlMutationPreflightService(approvals)
 	recoveryPreflight := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, controlPreflight)
+	recoverer := appservice.NewMediaAssetContentRecoveryService(store, recoveryPreflight, nil, appservice.NewControlMutationAuditService())
 	mux := http.NewServeMux()
-	httptrigger.RegisterMediaAssetContentRecoveryRoutes(mux, recoveryPreflight)
+	httptrigger.RegisterMediaAssetContentRecoveryRoutes(mux, recoveryPreflight, recoverer)
 
 	response := httptest.NewRecorder()
 	preflightURL := "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Amissing&operator_id=qsyy"
@@ -2658,6 +2659,31 @@ func TestMediaAssetContentRecoveryPreflightEndpointRequiresApproval(t *testing.T
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-recovery/preflight", nil))
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected content recovery preflight 405, got %d: %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	recoveryBody := bytes.NewBufferString(`{"asset_id":"asset:missing","operator_id":"qsyy","approval_id":"` + approval.ApprovalID + `","dry_run":true}`)
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/media-assets/content-recovery", recoveryBody))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected content recovery dry-run 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText = response.Body.String()
+	for _, expected := range []string{
+		`"dry_run":true`,
+		`"reason":"media_asset_content_recovery_dry_run"`,
+		`"target_kind":"media_asset_content"`,
+		`"action":"recover_content"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("content recovery dry-run response missing %s: %s", expected, bodyText)
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/media-assets/content-recovery", nil))
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected content recovery 405, got %d: %s", response.Code, response.Body.String())
 	}
 }
 

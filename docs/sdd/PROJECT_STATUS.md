@@ -18,14 +18,14 @@
 
 ## 当前迭代状态
 
-当前 `TODO.md` 已清空。最近完成的切片是 media content diagnostics recovery preflight endpoint 收口：
+当前 `TODO.md` 已清空。最近完成的切片是 media content recovery executor：
 
-- Go media content diagnostics 已新增 `content_recovery_preflight_endpoint`。
-- Runtime Overview 的 `Media Asset Content` 表格会展示 preflight 链接，但不主动调用 preflight 或恢复执行。
+- Go 已新增 `POST /v1/media-assets/content-recovery`，在 preflight、operator approval 和 control mutation audit 边界下把 HTTP/HTTPS media source 下载到本地 cache root。
+- 恢复后会更新 media registry 的 `local_path`、hash/size/mime 和 recovery metadata；OCR/VLM/语义解析仍留给 Python。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/133-media-content-diagnostics-recovery-preflight-endpoint.md`
+- `docs/sdd/specs/agent-gateway/134-media-content-recovery-executor.md`
 
 ## 当前已完成主线
 

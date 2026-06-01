@@ -374,6 +374,7 @@ GET  /v1/media-assets/content-diagnostics?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A...
 GET  /v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3A...&operator_id=qsyy&approval_id=...
+POST /v1/media-assets/content-recovery
 GET  /v1/media-assets/retention-diagnostics?limit=50
 GET  /v1/media-assets/retention-plan?limit=50
 GET  /v1/media-assets/retention-cleanup/preflight?target_id=default-observed-group&operator_id=qsyy&approval_id=...
@@ -400,6 +401,15 @@ content access and recovery plan endpoints are also read-only: they probe
 deterministic availability, immediately close any opened file, return
 ready/reason/blockers and operational steps, and do not stream content to the
 caller.
+
+`POST /v1/media-assets/content-recovery` is the approval-bound executor for
+HTTP/HTTPS media redownload into a local cache root. It always runs the
+preflight first, supports `dry_run`, writes only under
+`AKASHIC_MEDIA_CONTENT_RECOVERY_CACHE_ROOT` (defaulting to an Akashic upload
+root when discoverable), updates the Go media registry with `local_path`,
+hash/size/mime metadata, and records applied/failed control mutation audit.
+It does not use QQ/Telegram private credentials, parse files, run OCR/VLM,
+enqueue RAG jobs, or invoke Python AI.
 
 Retention diagnostics and retention plan are read-only: they report cleanup
 candidates and operator approval / control mutation audit steps, but do not
@@ -999,8 +1009,10 @@ without downloading, restoring, streaming, parsing, or invoking AI.
 `/v1/media-assets/content-recovery/preflight` then binds an actionable recovery
 candidate to `media_asset_content/recover_content` control mutation preflight
 and an active operator approval; it still does not create approval/mutation
-records or execute any download/restore/cache operation. OCR, VLM, file parsing,
-and semantic extraction remain Python AI worker responsibilities.
+records or execute any download/restore/cache operation. The paired
+`POST /v1/media-assets/content-recovery` endpoint performs the controlled
+HTTP/HTTPS download/cache step after approval and audit checks pass. OCR, VLM,
+file parsing, and semantic extraction remain Python AI worker responsibilities.
 It does not send platform messages, lease work, recover jobs, or mutate runtime
 state. The Python dashboard prefers this endpoint and falls back to the older
 multi-endpoint read path when it is unavailable.

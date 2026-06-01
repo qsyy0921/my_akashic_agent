@@ -291,8 +291,10 @@ func RegisterMediaAssetRetentionCleanupRoutes(
 func RegisterMediaAssetContentRecoveryRoutes(
 	mux *http.ServeMux,
 	checker inport.MediaAssetContentRecoveryPreflightChecker,
+	recoverer inport.MediaAssetContentRecoverer,
 ) {
 	mux.Handle("/v1/media-assets/content-recovery/preflight", MediaAssetContentRecoveryPreflightHandler(checker))
+	mux.Handle("/v1/media-assets/content-recovery", MediaAssetContentRecoveryHandler(recoverer))
 }
 
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
@@ -531,6 +533,46 @@ func MediaAssetContentRecoveryPreflightHandler(checker inport.MediaAssetContentR
 			return
 		}
 		view, err := checker.CheckMediaAssetContentRecoveryPreflight(r.Context(), mediaAssetContentRecoveryPreflightFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+type mediaAssetContentRecoveryRequest struct {
+	AssetID    string `json:"asset_id"`
+	TargetID   string `json:"target_id"`
+	OperatorID string `json:"operator_id"`
+	ApprovalID string `json:"approval_id"`
+	MutationID string `json:"mutation_id"`
+	DryRun     bool   `json:"dry_run"`
+}
+
+func MediaAssetContentRecoveryHandler(recoverer inport.MediaAssetContentRecoverer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if recoverer == nil {
+			http.Error(w, "media asset content recovery disabled", http.StatusNotImplemented)
+			return
+		}
+		var request mediaAssetContentRecoveryRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := recoverer.RecoverMediaAssetContent(r.Context(), command.RecoverMediaAssetContentCommand{
+			AssetID:    request.AssetID,
+			TargetID:   request.TargetID,
+			OperatorID: request.OperatorID,
+			ApprovalID: request.ApprovalID,
+			MutationID: request.MutationID,
+			DryRun:     request.DryRun,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

@@ -159,6 +159,31 @@ type MediaAssetContentRecoveryPreflightView struct {
 	SideEffect       string                             `json:"side_effect"`
 }
 
+type MediaAssetContentRecoveryView struct {
+	Ready            bool                                   `json:"ready"`
+	Applied          bool                                   `json:"applied"`
+	DryRun           bool                                   `json:"dry_run"`
+	Reason           string                                 `json:"reason"`
+	Blockers         []string                               `json:"blockers,omitempty"`
+	TargetKind       string                                 `json:"target_kind"`
+	TargetID         string                                 `json:"target_id"`
+	Action           string                                 `json:"action"`
+	OperatorID       string                                 `json:"operator_id"`
+	ApprovalID       string                                 `json:"approval_id"`
+	MutationID       string                                 `json:"mutation_id,omitempty"`
+	AssetID          string                                 `json:"asset_id,omitempty"`
+	LocalPath        string                                 `json:"local_path,omitempty"`
+	ContentMimeType  string                                 `json:"content_mime_type,omitempty"`
+	ContentSizeBytes int64                                  `json:"content_size_bytes,omitempty"`
+	ContentHash      string                                 `json:"content_hash,omitempty"`
+	Preflight        MediaAssetContentRecoveryPreflightView `json:"preflight"`
+	RecoveredAsset   *MediaAssetView                        `json:"recovered_asset,omitempty"`
+	AppliedAudit     *ControlMutationAuditView              `json:"applied_audit,omitempty"`
+	FailedAudit      *ControlMutationAuditView              `json:"failed_audit,omitempty"`
+	Notes            []string                               `json:"notes,omitempty"`
+	SideEffect       string                                 `json:"side_effect"`
+}
+
 type MediaAssetRetentionDiagnosticItemView struct {
 	AssetID         string                `json:"asset_id"`
 	Channel         MediaAssetChannelView `json:"channel"`

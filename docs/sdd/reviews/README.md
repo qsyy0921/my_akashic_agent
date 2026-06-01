@@ -237,3 +237,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-188-media-content-recovery-preflight.md`
 - `2026-06-01-phase8-189-dashboard-media-recovery-preflight-proxy.md`
 - `2026-06-01-phase8-190-media-diagnostics-recovery-preflight-endpoint.md`
+- `2026-06-01-phase8-191-media-content-recovery-executor.md`

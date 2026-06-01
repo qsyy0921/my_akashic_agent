@@ -240,6 +240,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init media content reader: %v", err)
 	}
+	mediaContentDownloader, err := newMediaAssetContentDownloader()
+	if err != nil {
+		log.Fatalf("init media content downloader: %v", err)
+	}
 	mediaAssets := appservice.NewMediaAssetServiceWithContent(mediaAssetRepository, mediaContentReader)
 	agentJobEvents := appservice.NewAgentJobEventService(agentJobEventStore)
 	sendLedger := appservice.NewSendLedgerService(sendLedgerRepository)
@@ -279,6 +283,7 @@ func main() {
 	mediaRetentionCleanupPreflight := appservice.NewMediaAssetRetentionCleanupPreflightService(mediaAssets, controlMutationPreflight)
 	mediaRetentionCleanup := appservice.NewMediaAssetRetentionCleanupService(mediaAssetRepository, mediaRetentionCleanupPreflight, controlMutations)
 	mediaContentRecoveryPreflight := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, controlMutationPreflight)
+	mediaContentRecovery := appservice.NewMediaAssetContentRecoveryService(mediaAssetRepository, mediaContentRecoveryPreflight, mediaContentDownloader, controlMutations)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
@@ -442,7 +447,7 @@ func main() {
 	httptrigger.RegisterControlMutationPreflightRoutes(mux, controlMutationPreflight)
 	httptrigger.RegisterControlMutationPolicyRoutes(mux, controlMutationPolicy)
 	httptrigger.RegisterMediaAssetRetentionCleanupRoutes(mux, mediaRetentionCleanupPreflight, mediaRetentionCleanup)
-	httptrigger.RegisterMediaAssetContentRecoveryRoutes(mux, mediaContentRecoveryPreflight)
+	httptrigger.RegisterMediaAssetContentRecoveryRoutes(mux, mediaContentRecoveryPreflight, mediaContentRecovery)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",
@@ -1047,6 +1052,21 @@ func newMediaAssetContentReader() (outport.MediaAssetContentReader, error) {
 		roots = defaultMediaAssetRoots()
 	}
 	return localmedia.NewReaderWithDiscoveredRoots(roots, !explicitRoots)
+}
+
+func newMediaAssetContentDownloader() (outport.MediaAssetContentDownloader, error) {
+	root := strings.TrimSpace(os.Getenv("AKASHIC_MEDIA_CONTENT_RECOVERY_CACHE_ROOT"))
+	if root == "" {
+		roots := defaultMediaAssetRoots()
+		if len(roots) > 0 {
+			root = filepath.Join(roots[0], "recovered")
+		}
+	}
+	if root == "" {
+		return nil, nil
+	}
+	maxBytes := int64(positiveIntEnvOrDefault("AKASHIC_MEDIA_CONTENT_RECOVERY_MAX_BYTES", 100*1024*1024, 1024*1024*1024))
+	return localmedia.NewDownloader(root, maxBytes)
 }
 
 func defaultRuntimeStatePath(filename string) (string, bool) {

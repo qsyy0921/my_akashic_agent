@@ -350,4 +350,8 @@ execution.
 - `133-media-content-diagnostics-recovery-preflight-endpoint.md`: Go media
   content diagnostics and runtime overview dashboard expose recovery preflight
   drilldown endpoints without invoking recovery execution.
+- `134-media-content-recovery-executor.md`: Go exposes an approval-bound media
+  content recovery executor that downloads HTTP/HTTPS media into a local cache,
+  updates the registry, and records control mutation audit while leaving OCR/VLM
+  and semantic parsing to Python.
 - Agent architecture boundary specs live under `../agent-architecture/`.

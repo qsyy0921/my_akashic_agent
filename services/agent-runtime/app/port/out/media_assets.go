@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	ErrMediaAssetContentDisabled    = errors.New("media asset content access disabled")
-	ErrMediaAssetContentUnavailable = errors.New("media asset content unavailable")
-	ErrMediaAssetContentForbidden   = errors.New("media asset content forbidden")
+	ErrMediaAssetContentDisabled     = errors.New("media asset content access disabled")
+	ErrMediaAssetContentUnavailable  = errors.New("media asset content unavailable")
+	ErrMediaAssetContentForbidden    = errors.New("media asset content forbidden")
+	ErrMediaAssetRecoveryUnsupported = errors.New("media asset content recovery source unsupported")
 )
 
 type MediaAssetRepository interface {
@@ -31,4 +32,17 @@ type MediaAssetContent struct {
 
 type MediaAssetContentReader interface {
 	OpenMediaAssetContent(ctx context.Context, asset model.MediaAsset) (MediaAssetContent, error)
+}
+
+type RecoveredMediaAssetContent struct {
+	LocalPath   string
+	Name        string
+	MimeType    string
+	SizeBytes   int64
+	ContentHash string
+	SourceURL   string
+}
+
+type MediaAssetContentDownloader interface {
+	RecoverMediaAssetContent(ctx context.Context, asset model.MediaAsset) (RecoveredMediaAssetContent, error)
 }

@@ -2,8 +2,11 @@ package service_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,6 +314,137 @@ func TestMediaAssetContentRecoveryPreflightBlocksWhenRecoveryNotRequired(t *test
 		len(view.Blockers) == 0 ||
 		view.SideEffect != "none" {
 		t.Fatalf("unexpected not-required preflight: %+v", view)
+	}
+}
+
+func TestMediaAssetContentRecoveryExecutorDownloadsCachesAndAudits(t *testing.T) {
+	ctx := context.Background()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png bytes"))
+	}))
+	defer source.Close()
+
+	assetRoot := t.TempDir()
+	cacheRoot := filepath.Join(assetRoot, "recovered")
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloader, err := localmedia.NewDownloader(cacheRoot, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, mediaAssets, "asset:remote", source.URL+"/image.png", "image.png")
+
+	approvals := appservice.NewOperatorApprovalService()
+	approval, err := approvals.RecordOperatorApproval(ctx, command.RecordOperatorApprovalCommand{
+		TargetKind: "media_asset_content",
+		TargetID:   "asset:remote",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	preflight := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, appservice.NewControlMutationPreflightService(approvals))
+	audits := appservice.NewControlMutationAuditService()
+	recoverer := appservice.NewMediaAssetContentRecoveryService(store, preflight, downloader, audits)
+
+	dryRun, err := recoverer.RecoverMediaAssetContent(ctx, command.RecoverMediaAssetContentCommand{
+		AssetID:    "asset:remote",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+		DryRun:     true,
+	})
+	if err != nil {
+		t.Fatalf("dry-run content recovery: %v", err)
+	}
+	if !dryRun.Ready || dryRun.Applied || dryRun.Reason != "media_asset_content_recovery_dry_run" || dryRun.SideEffect != "none" {
+		t.Fatalf("unexpected dry-run recovery: %+v", dryRun)
+	}
+	if _, err := os.Stat(filepath.Join(cacheRoot, "asset_remote.png")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run should not create cache file, stat err=%v", err)
+	}
+
+	view, err := recoverer.RecoverMediaAssetContent(ctx, command.RecoverMediaAssetContentCommand{
+		AssetID:    "asset:remote",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+		MutationID: "mutation-recover-remote",
+	})
+	if err != nil {
+		t.Fatalf("content recovery: %v", err)
+	}
+	if !view.Ready || !view.Applied ||
+		view.Reason != "media_asset_content_recovery_applied" ||
+		view.LocalPath == "" ||
+		view.ContentMimeType != "image/png" ||
+		view.ContentSizeBytes != int64(len("png bytes")) ||
+		!strings.HasPrefix(view.ContentHash, "sha256:") ||
+		view.AppliedAudit == nil ||
+		view.SideEffect != "local_cache_write_and_runtime_state_update" {
+		t.Fatalf("unexpected recovery view: %+v", view)
+	}
+	if raw, err := os.ReadFile(view.LocalPath); err != nil || string(raw) != "png bytes" {
+		t.Fatalf("unexpected recovered file content raw=%q err=%v", string(raw), err)
+	}
+	access, err := mediaAssets.ContentAccessPlan(ctx, "asset:remote")
+	if err != nil {
+		t.Fatalf("content access after recovery: %v", err)
+	}
+	if !access.Ready || access.Reason != "media_asset_content_ready" || access.ContentSizeBytes != int64(len("png bytes")) {
+		t.Fatalf("expected recovered content ready: %+v", access)
+	}
+	asset, ok, err := store.FindMediaAsset(ctx, "asset:remote")
+	if err != nil || !ok {
+		t.Fatalf("find recovered asset ok=%t err=%v", ok, err)
+	}
+	if asset.Metadata["local_path"] != view.LocalPath ||
+		asset.Metadata["recovered_from_url"] != source.URL+"/image.png" ||
+		asset.Metadata["recovery_scope"] != "download_to_local_cache" ||
+		asset.Metadata["recovery_approval_id"] != approval.ApprovalID ||
+		asset.Metadata["recovery_mutation_id"] != "mutation-recover-remote" {
+		t.Fatalf("unexpected recovered metadata: %+v", asset.Metadata)
+	}
+}
+
+func TestMediaAssetContentRecoveryExecutorBlocksWithoutApprovalBeforeDownload(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte("should not download"))
+	}))
+	defer source.Close()
+
+	assetRoot := t.TempDir()
+	reader, err := localmedia.NewReader([]string{assetRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloader, err := localmedia.NewDownloader(filepath.Join(assetRoot, "recovered"), 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := memory.NewStore()
+	mediaAssets := appservice.NewMediaAssetServiceWithContent(store, reader)
+	registerTestMediaAsset(t, mediaAssets, "asset:no-approval", source.URL+"/file.bin", "file.bin")
+	preflight := appservice.NewMediaAssetContentRecoveryPreflightService(mediaAssets, appservice.NewControlMutationPreflightService(appservice.NewOperatorApprovalService()))
+	recoverer := appservice.NewMediaAssetContentRecoveryService(store, preflight, downloader, appservice.NewControlMutationAuditService())
+
+	view, err := recoverer.RecoverMediaAssetContent(ctx, command.RecoverMediaAssetContentCommand{
+		AssetID:    "asset:no-approval",
+		OperatorID: "qsyy",
+	})
+	if err != nil {
+		t.Fatalf("blocked content recovery: %v", err)
+	}
+	if view.Ready || view.Applied || view.Reason != "missing_approval_id" || len(view.Blockers) == 0 || calls != 0 {
+		t.Fatalf("expected approval blocker before download, calls=%d view=%+v", calls, view)
 	}
 }
 
