@@ -245,6 +245,13 @@ func RegisterReceiverStatusRoutes(
 	mux.Handle("/v1/receiver-leases", ReceiverLeasesHandler(manager))
 }
 
+func RegisterOperatorApprovalRoutes(
+	mux *http.ServeMux,
+	manager inport.OperatorApprovalManager,
+) {
+	mux.Handle("/v1/operator-approvals", OperatorApprovalsHandler(manager))
+}
+
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -266,6 +273,63 @@ func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsVie
 			Code: types.ErrorCodeOK,
 			Data: view,
 		})
+	})
+}
+
+func OperatorApprovalsHandler(manager inport.OperatorApprovalManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "operator approvals disabled", http.StatusNotImplemented)
+			return
+		}
+		switch r.Method {
+		case http.MethodPost:
+			var request dto.RecordOperatorApprovalRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			timestamp, err := parseOptionalTimestamp(request.Timestamp)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			expiresAt, err := parseOptionalTimestamp(request.ExpiresAt)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			view, err := manager.RecordOperatorApproval(r.Context(), command.RecordOperatorApprovalCommand{
+				ApprovalID: request.ApprovalID,
+				TargetKind: request.TargetKind,
+				TargetID:   request.TargetID,
+				Decision:   request.Decision,
+				OperatorID: request.OperatorID,
+				Reason:     request.Reason,
+				ExpiresAt:  expiresAt,
+				Timestamp:  timestamp,
+				Metadata:   request.Metadata,
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+		case http.MethodGet:
+			view, err := manager.ListOperatorApprovals(r.Context(), query.OperatorApprovalFilter{
+				TargetKind: strings.TrimSpace(r.URL.Query().Get("target_kind")),
+				TargetID:   strings.TrimSpace(r.URL.Query().Get("target_id")),
+				Decision:   strings.TrimSpace(r.URL.Query().Get("decision")),
+				Limit:      parsePositiveInt(r.URL.Query().Get("limit"), 100, 500),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 }
 

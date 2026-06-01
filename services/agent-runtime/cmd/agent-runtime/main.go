@@ -26,6 +26,7 @@ import (
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/memory"
 	observetargetstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/observetargetstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/onebotdelivery"
+	operatorapprovalstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/operatorapprovalstore"
 	outboxeventstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxeventstore"
 	outboxstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/outboxstore"
 	proactivestate "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/proactivestate"
@@ -111,6 +112,10 @@ func main() {
 	schedulerLeaseRepository, err := newSchedulerExecutionLeaseRepository()
 	if err != nil {
 		log.Fatalf("init scheduler execution lease repository: %v", err)
+	}
+	operatorApprovalRepository, err := newOperatorApprovalRepository()
+	if err != nil {
+		log.Fatalf("init operator approval repository: %v", err)
 	}
 	queueBackendView, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -255,6 +260,10 @@ func main() {
 	schedulerJobs, err := appservice.NewSchedulerJobServiceWithLeaseRepository(context.Background(), schedulerJobRepository, schedulerLeaseRepository)
 	if err != nil {
 		log.Fatalf("init scheduler job service: %v", err)
+	}
+	operatorApprovals, err := appservice.NewOperatorApprovalServiceWithRepository(context.Background(), operatorApprovalRepository)
+	if err != nil {
+		log.Fatalf("init operator approval service: %v", err)
 	}
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
@@ -409,6 +418,7 @@ func main() {
 	httptrigger.RegisterRuntimeOverviewRoutes(mux, runtimeOverview)
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 	httptrigger.RegisterSchedulerJobRoutes(mux, schedulerJobs)
+	httptrigger.RegisterOperatorApprovalRoutes(mux, operatorApprovals)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",
@@ -775,6 +785,23 @@ func newSchedulerExecutionLeaseRepository() (outport.SchedulerExecutionLeaseRepo
 		return schedulerleasestore.NewStore(path)
 	}
 	return memory.NewStore(), nil
+}
+
+func newOperatorApprovalRepository() (outport.OperatorApprovalRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_OPERATOR_APPROVALS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return nil, nil
+		}
+		return operatorapprovalstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_OPERATOR_APPROVALS_PATH")); path != "" {
+		return operatorapprovalstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("operator-approvals.json"); ok {
+		return operatorapprovalstore.NewStore(path)
+	}
+	return nil, nil
 }
 
 func newObserveTargetService() (*appservice.ObserveTargetService, error) {

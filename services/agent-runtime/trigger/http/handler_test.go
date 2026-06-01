@@ -3417,6 +3417,45 @@ func TestSendLedgerPrivateEchoEndpointUsesImageMarker(t *testing.T) {
 	}
 }
 
+func TestOperatorApprovalEndpointsRecordAndListLedger(t *testing.T) {
+	approvals := appservice.NewOperatorApprovalService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterOperatorApprovalRoutes(mux, approvals)
+
+	body := []byte(`{"target_kind":"agent_job_priority_plan","target_id":"plan-a","decision":"approved","operator_id":"qsyy","timestamp":"2026-06-01T09:00:00Z","metadata":{"source":"test"}}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/operator-approvals", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected approval accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"target_kind":"agent_job_priority_plan"`,
+		`"decision":"approved"`,
+		`"operator_id":"qsyy"`,
+		`"active":true`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("approval response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/operator-approvals?target_kind=agent_job_priority_plan&decision=approved&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected approvals list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"approvals":1`,
+		`"approved":1`,
+		`"side_effect":"runtime_state_only"`,
+		`"approval ledger only; no runtime configuration is changed"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("approvals list missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)

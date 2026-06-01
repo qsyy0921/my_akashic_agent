@@ -194,3 +194,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-145-runtime-overview-queue-topology.md`
 - `2026-06-01-phase8-146-agent-job-priority-plan.md`
 - `2026-06-01-phase8-147-runtime-overview-agent-job-priority-plan.md`
+- `2026-06-01-phase8-148-operator-approval-ledger.md`
