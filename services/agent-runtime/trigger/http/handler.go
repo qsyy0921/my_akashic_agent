@@ -277,6 +277,13 @@ func RegisterControlMutationPolicyRoutes(
 	mux.Handle("/v1/control-mutations/policy", ControlMutationPolicyHandler(viewer))
 }
 
+func RegisterMediaAssetRetentionCleanupRoutes(
+	mux *http.ServeMux,
+	checker inport.MediaAssetRetentionCleanupPreflightChecker,
+) {
+	mux.Handle("/v1/media-assets/retention-cleanup/preflight", MediaAssetRetentionCleanupPreflightHandler(checker))
+}
+
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -481,6 +488,35 @@ func ControlMutationPolicyHandler(viewer inport.ControlMutationPolicyViewer) htt
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
 	})
+}
+
+func MediaAssetRetentionCleanupPreflightHandler(checker inport.MediaAssetRetentionCleanupPreflightChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if checker == nil {
+			http.Error(w, "media asset retention cleanup preflight disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := checker.CheckMediaAssetRetentionCleanupPreflight(r.Context(), mediaAssetRetentionCleanupPreflightFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func mediaAssetRetentionCleanupPreflightFilterFromQuery(r *http.Request) query.MediaAssetRetentionCleanupPreflightFilter {
+	values := r.URL.Query()
+	return query.MediaAssetRetentionCleanupPreflightFilter{
+		RetentionFilter: mediaAssetRetentionDiagnosticsFilterFromQuery(r),
+		TargetID:        strings.TrimSpace(values.Get("target_id")),
+		OperatorID:      strings.TrimSpace(values.Get("operator_id")),
+		ApprovalID:      strings.TrimSpace(values.Get("approval_id")),
+	}
 }
 
 func KnowledgePipelineDiagnosticsHandler(viewer inport.KnowledgePipelineDiagnosticsViewer) http.Handler {

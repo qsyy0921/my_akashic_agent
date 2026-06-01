@@ -75,6 +75,7 @@
 - runtime overview 已聚合 Go-owned control mutation policy：summary/card/detail 可直接看到 allowlist target/action 数量与只读 policy 明细，Python/dashboard 不需要维护控制面 mutation allowlist。
 - Python dashboard 已规范化 Go-owned control mutation policy：`/api/dashboard/runtime-overview` 稳定透传 `control_mutation_policy` detail、summary 默认值和 card；Python 仍只做展示适配，不维护 allowlist、不执行控制面变更。
 - runtime overview 已聚合 Go-owned control audit：summary/card/detail 可直接看到 operator approvals、active approvals、control mutations、failed/rolled_back mutation audits 和 bounded recent records，仍保持只读且不记录 approval/mutation、不执行任何控制面变更。
+- 已实现 Go-owned media asset retention cleanup preflight：`GET /v1/media-assets/retention-cleanup/preflight` 聚合 retention plan 与 control mutation preflight，校验 active approval 并返回建议 planned audit，明确 `side_effect=none`，不删除媒体 metadata/文件、不创建 approval/mutation、不触发 OCR/VLM/RAG/AI。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
 - `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。

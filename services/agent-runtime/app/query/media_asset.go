@@ -135,3 +135,28 @@ type MediaAssetRetentionPlanView struct {
 	SideEffect     string                                  `json:"side_effect"`
 	Notes          []string                                `json:"notes,omitempty"`
 }
+
+type MediaAssetRetentionCleanupPreflightFilter struct {
+	RetentionFilter MediaAssetRetentionDiagnosticsFilter
+	TargetID        string
+	OperatorID      string
+	ApprovalID      string
+}
+
+type MediaAssetRetentionCleanupPreflightView struct {
+	Ready            bool                               `json:"ready"`
+	Reason           string                             `json:"reason"`
+	Blockers         []string                           `json:"blockers,omitempty"`
+	TargetKind       string                             `json:"target_kind"`
+	TargetID         string                             `json:"target_id"`
+	Action           string                             `json:"action"`
+	OperatorID       string                             `json:"operator_id"`
+	ApprovalID       string                             `json:"approval_id"`
+	CandidateCount   int                                `json:"candidate_count"`
+	AssetCount       int                                `json:"asset_count"`
+	Plan             MediaAssetRetentionPlanView        `json:"plan"`
+	ControlPreflight ControlMutationPreflightView       `json:"control_preflight"`
+	SuggestedAudit   *ControlMutationSuggestedAuditView `json:"suggested_audit,omitempty"`
+	Notes            []string                           `json:"notes,omitempty"`
+	SideEffect       string                             `json:"side_effect"`
+}

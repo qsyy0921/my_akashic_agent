@@ -276,6 +276,7 @@ func main() {
 	}
 	controlMutationPreflight := appservice.NewControlMutationPreflightService(operatorApprovals)
 	controlMutationPolicy := appservice.NewControlMutationPolicyService()
+	mediaRetentionCleanupPreflight := appservice.NewMediaAssetRetentionCleanupPreflightService(mediaAssets, controlMutationPreflight)
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
 	agentJobMetrics := appservice.NewAgentJobMetricsService(agentJobRepository, agentJobEventStore)
@@ -438,6 +439,7 @@ func main() {
 	httptrigger.RegisterControlMutationAuditRoutes(mux, controlMutations)
 	httptrigger.RegisterControlMutationPreflightRoutes(mux, controlMutationPreflight)
 	httptrigger.RegisterControlMutationPolicyRoutes(mux, controlMutationPolicy)
+	httptrigger.RegisterMediaAssetRetentionCleanupRoutes(mux, mediaRetentionCleanupPreflight)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",
