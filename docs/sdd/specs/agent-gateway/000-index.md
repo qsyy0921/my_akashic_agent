@@ -230,4 +230,7 @@ execution.
 - `085-dashboard-knowledge-planner-cutover-plan.md`: Python dashboard
   normalizes the Go-owned knowledge planner cutover plan from runtime overview
   without taking ownership of admission, jobs, worker startup or AI execution.
+- `086-dashboard-runtime-control-plane-details.md`: Python dashboard normalizes
+  Go-owned AgentJob capacity, external lease and outbound cutover details from
+  runtime overview while staying a read-only projection.
 - Agent architecture boundary specs live under `../agent-architecture/`.

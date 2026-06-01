@@ -669,6 +669,49 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_content_unavailable": 1,
             "media_asset_content_disabled": 0,
             "media_asset_content_error": 0,
+            "agent_job_capacity_ready": False,
+            "agent_job_capacity_reason": "agent_job_capacity_attention_required",
+            "agent_job_capacity_blockers": 3,
+            "agent_job_capacity_job_types": 4,
+            "agent_job_capacity_mapped_job_types": 4,
+            "agent_job_capacity_unmapped_job_types": 0,
+            "agent_job_capacity_high_pressure_job_types": 1,
+            "agent_job_capacity_blocked_job_types": 1,
+            "agent_job_capacity_worker_warning_job_types": 2,
+            "agent_job_capacity_active_worker_job_types": 1,
+            "agent_job_capacity_stale_worker_job_types": 2,
+            "agent_job_capacity_failed_worker_job_types": 1,
+            "agent_job_capacity_max_pending": 11,
+            "agent_job_capacity_max_active": 2,
+            "agent_job_capacity_oldest_pending_age_seconds": 1800,
+            "agent_job_external_lease_ready": False,
+            "agent_job_external_lease_reason": "agent_job_external_lease_not_ready",
+            "agent_job_external_lease_blockers": 3,
+            "agent_job_external_lease_result_ack_ready": False,
+            "agent_job_external_lease_worker_ready": False,
+            "agent_job_external_lease_strict_token": True,
+            "agent_job_external_lease_execution_owner": (
+                "python_ai_worker_with_nats_result_ack"
+            ),
+            "agent_job_external_lease_execution_scope": "agent_job_result_ack_only",
+            "agent_job_external_lease_plan_ready": False,
+            "agent_job_external_lease_plan_decision": "blocked",
+            "agent_job_external_lease_plan_blockers": 2,
+            "agent_job_external_lease_plan_current_owner": (
+                "python_ai_worker_state_store_lease"
+            ),
+            "agent_job_external_lease_plan_desired_owner": (
+                "python_ai_worker_with_nats_result_ack"
+            ),
+            "agent_job_external_lease_plan_recommended_owner": (
+                "python_ai_worker_with_nats_result_ack"
+            ),
+            "outbound_cutover_plan_ready": False,
+            "outbound_cutover_plan_decision": "blocked",
+            "outbound_cutover_plan_blockers": 2,
+            "outbound_cutover_plan_current_owner": "go_state_store_api",
+            "outbound_cutover_plan_desired_owner": "nats_external_lease",
+            "outbound_cutover_plan_recommended_owner": "nats_external_lease",
             "knowledge_job_planner_cutover_plan_ready": False,
             "knowledge_job_planner_cutover_plan_decision": "blocked",
             "knowledge_job_planner_cutover_plan_blockers": 2,
@@ -726,6 +769,30 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
             {"id": "media_asset_content", "label": "Media Asset Content", "value": "1/3", "status": "danger"},
+            {
+                "id": "agent_job_capacity_plan",
+                "label": "Agent Job Capacity",
+                "value": "attention:3",
+                "status": "danger",
+            },
+            {
+                "id": "agent_job_external_lease_readiness",
+                "label": "Agent Job External Lease",
+                "value": "agent_job_external_lease_not_ready:3",
+                "status": "danger",
+            },
+            {
+                "id": "agent_job_external_lease_plan",
+                "label": "Agent Job External Lease Plan",
+                "value": "blocked:2",
+                "status": "warn",
+            },
+            {
+                "id": "outbound_cutover_plan",
+                "label": "Outbound Cutover",
+                "value": "blocked:2",
+                "status": "warn",
+            },
             {
                 "id": "knowledge_job_planner_cutover_plan",
                 "label": "Knowledge Planner Cutover",
@@ -817,6 +884,210 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "disabled": 0,
                 "error": 0,
             },
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "agent_job_capacity_plan": {
+            "ready": False,
+            "reason": "agent_job_capacity_attention_required",
+            "summary": {
+                "job_types": 4,
+                "mapped_job_types": 4,
+                "unmapped_job_types": 0,
+                "high_pressure_job_types": 1,
+                "capacity_blocked_job_types": 1,
+                "worker_warning_job_types": 2,
+                "active_worker_job_types": 1,
+                "stale_worker_job_types": 2,
+                "failed_worker_job_types": 1,
+                "max_pending": 11,
+                "max_active": 2,
+                "oldest_pending_age_seconds": 1800,
+            },
+            "items": [
+                {
+                    "job_type": "group_memory_extract",
+                    "severity": "blocked",
+                    "action": "start_or_recover_python_worker",
+                    "recommendation": "restart knowledge worker",
+                    "pending": 11,
+                    "leased": 1,
+                    "running": 1,
+                    "active": 2,
+                    "oldest_pending_age_seconds": 1800,
+                    "high_pressure": True,
+                    "pressure_reason": "pending_backlog_high",
+                    "coverage": {"job_type": "group_memory_extract", "status": "danger"},
+                }
+            ],
+            "verification_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "verify",
+                    "action": "read_agent_job_metrics",
+                    "method": "GET",
+                    "endpoint": "/v1/job-metrics",
+                }
+            ],
+            "blockers": [
+                "agent_job_capacity_blocked",
+                "worker_coverage_danger",
+                "pending_backlog_high",
+            ],
+            "attributes": {"planned_by": "agent_runtime_agent_job_capacity_plan"},
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "agent_job_external_lease_readiness": {
+            "ready": False,
+            "reason": "agent_job_external_lease_not_ready",
+            "external_lease_ready": False,
+            "agent_job_result_ack_ready": False,
+            "strict_lease_token_enabled": True,
+            "agent_job_worker_ready": False,
+            "execution_owner": "python_ai_worker_with_nats_result_ack",
+            "queue_provider": "nats_jetstream",
+            "queue_mode": "external_lease",
+            "execution_scope": "agent_job_result_ack_only",
+            "allowed_work_kinds": ["outbox"],
+            "blocked_work_kinds": [{"kind": "agent_job", "reason": "not_enabled"}],
+            "required_checks": [{"name": "strict_token", "ready": True}],
+            "worker_coverage": [{"job_type": "group_memory_extract", "status": "danger"}],
+            "blockers": [
+                "agent_job_external_lease_smoke_missing",
+                "agent_job_worker_coverage_blocked",
+                "agent_job_result_ack_disabled",
+            ],
+            "attributes": {
+                "planned_by": "agent_runtime_agent_job_external_lease_readiness"
+            },
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "agent_job_external_lease_plan": {
+            "ready": False,
+            "decision": "blocked",
+            "desired_execution_owner": "python_ai_worker_with_nats_result_ack",
+            "recommended_execution_owner": "python_ai_worker_with_nats_result_ack",
+            "current_execution_owner": "python_ai_worker_state_store_lease",
+            "readiness": {
+                "ready": False,
+                "reason": "agent_job_external_lease_not_ready",
+                "agent_job_result_ack_ready": False,
+                "strict_lease_token_enabled": True,
+                "agent_job_worker_ready": False,
+                "execution_owner": "python_ai_worker_with_nats_result_ack",
+                "execution_scope": "agent_job_result_ack_only",
+                "blockers": ["agent_job_result_ack_disabled"],
+                "side_effect": "none",
+            },
+            "required_checks": [
+                {
+                    "step_index": 1,
+                    "phase": "precheck",
+                    "action": "check_agent_job_external_lease_readiness",
+                    "method": "GET",
+                    "endpoint": "/v1/agent-job-external-lease/readiness",
+                }
+            ],
+            "enable_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "enable",
+                    "action": "enable_agent_job_result_ack",
+                    "env": {"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "true"},
+                }
+            ],
+            "verification_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "verify",
+                    "action": "read_queue_backend",
+                    "method": "GET",
+                    "endpoint": "/v1/queue-backend",
+                }
+            ],
+            "rollback_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "rollback",
+                    "action": "disable_agent_job_result_ack",
+                    "env": {"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "false"},
+                }
+            ],
+            "blockers": [
+                "agent_job_external_lease_readiness_not_ready",
+                "agent_job_worker_coverage_blocked",
+            ],
+            "attributes": {"planned_by": "agent_runtime_agent_job_external_lease_plan"},
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "outbound_cutover_plan": {
+            "ready": False,
+            "decision": "blocked",
+            "desired_execution_owner": "nats_external_lease",
+            "recommended_execution_owner": "nats_external_lease",
+            "current_execution_owner": "go_state_store_api",
+            "readiness": {
+                "ready": False,
+                "reason": "outbound_cutover_not_ready",
+                "onebot_ready": True,
+                "smoke_ready": False,
+                "execution_ready": False,
+                "execution_owner": "go_state_store_api",
+                "local_outbox_worker_ready": False,
+                "external_lease_outbox_ready": False,
+                "queue_provider": "nats_jetstream",
+                "queue_mode": "external_lease",
+                "external_lease_scope": "outbox_only",
+                "expected_onebot_channels": ["qq_2365524513"],
+                "missing_onebot_channels": [],
+                "delivery_smoke_readiness": {
+                    "ready": False,
+                    "reason": "delivery_smoke_not_ready",
+                    "totals": {"cases": 2, "ready": 1, "not_ready": 1},
+                    "side_effect": "none",
+                },
+                "blockers": ["delivery_smoke_not_ready", "outbox_execution_path_not_ready"],
+                "side_effect": "none",
+            },
+            "required_checks": [
+                {
+                    "step_index": 1,
+                    "phase": "precheck",
+                    "action": "check_outbound_cutover_readiness",
+                    "method": "GET",
+                    "endpoint": "/v1/outbound-cutover/readiness",
+                }
+            ],
+            "enable_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "enable",
+                    "action": "enable_nats_outbox_external_lease",
+                    "env": {"AKASHIC_QUEUE_EXTERNAL_LEASE_OUTBOX_ENABLED": "true"},
+                }
+            ],
+            "verification_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "verify",
+                    "action": "read_outbox_metrics",
+                    "method": "GET",
+                    "endpoint": "/v1/outbox-metrics",
+                }
+            ],
+            "rollback_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "rollback",
+                    "action": "disable_nats_outbox_external_lease",
+                    "env": {"AKASHIC_QUEUE_EXTERNAL_LEASE_OUTBOX_ENABLED": "false"},
+                }
+            ],
+            "blockers": ["outbound_cutover_readiness_not_ready", "delivery_smoke_not_ready"],
+            "attributes": {"planned_by": "agent_runtime_outbound_cutover_plan"},
             "notes": ["read-only"],
             "side_effect": "none",
         },
@@ -1005,6 +1276,37 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["media_asset_content_ready"] == 1
     assert payload["summary"]["media_asset_content_forbidden"] == 1
     assert payload["summary"]["media_asset_content_unavailable"] == 1
+    assert payload["summary"]["agent_job_capacity_ready"] is False
+    assert payload["summary"]["agent_job_capacity_reason"] == (
+        "agent_job_capacity_attention_required"
+    )
+    assert payload["summary"]["agent_job_capacity_blockers"] == 3
+    assert payload["summary"]["agent_job_capacity_job_types"] == 4
+    assert payload["summary"]["agent_job_capacity_max_pending"] == 11
+    assert payload["summary"]["agent_job_capacity_oldest_pending_age_seconds"] == 1800
+    assert payload["summary"]["agent_job_external_lease_ready"] is False
+    assert payload["summary"]["agent_job_external_lease_reason"] == (
+        "agent_job_external_lease_not_ready"
+    )
+    assert payload["summary"]["agent_job_external_lease_blockers"] == 3
+    assert payload["summary"]["agent_job_external_lease_result_ack_ready"] is False
+    assert payload["summary"]["agent_job_external_lease_worker_ready"] is False
+    assert payload["summary"]["agent_job_external_lease_strict_token"] is True
+    assert payload["summary"]["agent_job_external_lease_execution_owner"] == (
+        "python_ai_worker_with_nats_result_ack"
+    )
+    assert payload["summary"]["agent_job_external_lease_plan_ready"] is False
+    assert payload["summary"]["agent_job_external_lease_plan_decision"] == "blocked"
+    assert payload["summary"]["agent_job_external_lease_plan_blockers"] == 2
+    assert payload["summary"]["agent_job_external_lease_plan_current_owner"] == (
+        "python_ai_worker_state_store_lease"
+    )
+    assert payload["summary"]["outbound_cutover_plan_ready"] is False
+    assert payload["summary"]["outbound_cutover_plan_decision"] == "blocked"
+    assert payload["summary"]["outbound_cutover_plan_blockers"] == 2
+    assert payload["summary"]["outbound_cutover_plan_current_owner"] == (
+        "go_state_store_api"
+    )
     assert payload["summary"]["knowledge_job_planner_cutover_plan_ready"] is False
     assert payload["summary"]["knowledge_job_planner_cutover_plan_decision"] == "blocked"
     assert payload["summary"]["knowledge_job_planner_cutover_plan_blockers"] == 2
@@ -1073,6 +1375,50 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
     )
+    capacity_card = next(
+        item for item in payload["cards"] if item["id"] == "agent_job_capacity_plan"
+    )
+    assert capacity_card["value"] == "attention:3"
+    assert capacity_card["status"] == "danger"
+    capacity_plan = payload["agent_job_capacity_plan"]
+    assert capacity_plan["summary"]["max_pending"] == 11
+    assert capacity_plan["items"][0]["job_type"] == "group_memory_extract"
+    assert capacity_plan["items"][0]["coverage"]["status"] == "danger"
+    assert capacity_plan["verification_steps"][0]["endpoint"] == "/v1/job-metrics"
+    assert capacity_plan["side_effect"] == "none"
+    external_readiness_card = next(
+        item
+        for item in payload["cards"]
+        if item["id"] == "agent_job_external_lease_readiness"
+    )
+    assert external_readiness_card["status"] == "danger"
+    external_readiness = payload["agent_job_external_lease_readiness"]
+    assert external_readiness["execution_scope"] == "agent_job_result_ack_only"
+    assert external_readiness["blocked_work_kinds"][0]["kind"] == "agent_job"
+    assert external_readiness["worker_coverage"][0]["status"] == "danger"
+    external_plan_card = next(
+        item for item in payload["cards"] if item["id"] == "agent_job_external_lease_plan"
+    )
+    assert external_plan_card["value"] == "blocked:2"
+    external_plan = payload["agent_job_external_lease_plan"]
+    assert external_plan["current_execution_owner"] == "python_ai_worker_state_store_lease"
+    assert external_plan["readiness"]["reason"] == "agent_job_external_lease_not_ready"
+    assert external_plan["enable_steps"][0]["env"] == {
+        "AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "true"
+    }
+    assert external_plan["rollback_steps"][0]["action"] == "disable_agent_job_result_ack"
+    outbound_card = next(
+        item for item in payload["cards"] if item["id"] == "outbound_cutover_plan"
+    )
+    assert outbound_card["status"] == "warn"
+    outbound_plan = payload["outbound_cutover_plan"]
+    assert outbound_plan["desired_execution_owner"] == "nats_external_lease"
+    assert outbound_plan["readiness"]["expected_onebot_channels"] == ["qq_2365524513"]
+    assert outbound_plan["readiness"]["delivery_smoke_readiness"]["totals"]["not_ready"] == 1
+    assert outbound_plan["enable_steps"][0]["env"] == {
+        "AKASHIC_QUEUE_EXTERNAL_LEASE_OUTBOX_ENABLED": "true"
+    }
+    assert outbound_plan["side_effect"] == "none"
     cutover_card = next(
         item for item in payload["cards"] if item["id"] == "knowledge_job_planner_cutover_plan"
     )

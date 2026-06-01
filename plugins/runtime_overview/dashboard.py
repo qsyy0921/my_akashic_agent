@@ -1114,6 +1114,20 @@ def _normalize_go_runtime_overview(
     media_asset_content = _normalize_media_asset_content_diagnostics(
         _mapping_or_empty(item.get("media_asset_content_diagnostics"))
     )
+    agent_job_capacity_plan = _normalize_agent_job_capacity_plan(
+        _mapping_or_empty(item.get("agent_job_capacity_plan"))
+    )
+    agent_job_external_lease_readiness = (
+        _normalize_agent_job_external_lease_readiness(
+            _mapping_or_empty(item.get("agent_job_external_lease_readiness"))
+        )
+    )
+    agent_job_external_lease_plan = _normalize_agent_job_external_lease_plan(
+        _mapping_or_empty(item.get("agent_job_external_lease_plan"))
+    )
+    outbound_cutover_plan = _normalize_outbound_cutover_plan(
+        _mapping_or_empty(item.get("outbound_cutover_plan"))
+    )
     knowledge_job_planner_cutover_plan = (
         _normalize_knowledge_job_planner_cutover_plan(
             _mapping_or_empty(item.get("knowledge_job_planner_cutover_plan"))
@@ -1167,6 +1181,10 @@ def _normalize_go_runtime_overview(
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
         "media_asset_content_diagnostics": media_asset_content,
+        "agent_job_capacity_plan": agent_job_capacity_plan,
+        "agent_job_external_lease_readiness": agent_job_external_lease_readiness,
+        "agent_job_external_lease_plan": agent_job_external_lease_plan,
+        "outbound_cutover_plan": outbound_cutover_plan,
         "knowledge_job_planner_cutover_plan": knowledge_job_planner_cutover_plan,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
@@ -1242,6 +1260,41 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "media_asset_content_unavailable": 0,
         "media_asset_content_disabled": 0,
         "media_asset_content_error": 0,
+        "agent_job_capacity_ready": False,
+        "agent_job_capacity_reason": "unknown",
+        "agent_job_capacity_blockers": 0,
+        "agent_job_capacity_job_types": 0,
+        "agent_job_capacity_mapped_job_types": 0,
+        "agent_job_capacity_unmapped_job_types": 0,
+        "agent_job_capacity_high_pressure_job_types": 0,
+        "agent_job_capacity_blocked_job_types": 0,
+        "agent_job_capacity_worker_warning_job_types": 0,
+        "agent_job_capacity_active_worker_job_types": 0,
+        "agent_job_capacity_stale_worker_job_types": 0,
+        "agent_job_capacity_failed_worker_job_types": 0,
+        "agent_job_capacity_max_pending": 0,
+        "agent_job_capacity_max_active": 0,
+        "agent_job_capacity_oldest_pending_age_seconds": 0,
+        "agent_job_external_lease_ready": False,
+        "agent_job_external_lease_reason": "unknown",
+        "agent_job_external_lease_blockers": 0,
+        "agent_job_external_lease_result_ack_ready": False,
+        "agent_job_external_lease_worker_ready": False,
+        "agent_job_external_lease_strict_token": False,
+        "agent_job_external_lease_execution_owner": "unknown",
+        "agent_job_external_lease_execution_scope": "unknown",
+        "agent_job_external_lease_plan_ready": False,
+        "agent_job_external_lease_plan_decision": "unknown",
+        "agent_job_external_lease_plan_blockers": 0,
+        "agent_job_external_lease_plan_current_owner": "unknown",
+        "agent_job_external_lease_plan_desired_owner": "unknown",
+        "agent_job_external_lease_plan_recommended_owner": "unknown",
+        "outbound_cutover_plan_ready": False,
+        "outbound_cutover_plan_decision": "unknown",
+        "outbound_cutover_plan_blockers": 0,
+        "outbound_cutover_plan_current_owner": "unknown",
+        "outbound_cutover_plan_desired_owner": "unknown",
+        "outbound_cutover_plan_recommended_owner": "unknown",
         "knowledge_job_planner_cutover_plan_ready": False,
         "knowledge_job_planner_cutover_plan_decision": "unknown",
         "knowledge_job_planner_cutover_plan_blockers": 0,
@@ -1553,6 +1606,203 @@ def _normalize_media_asset_content_item(item: Mapping[str, Any]) -> dict[str, An
     }
 
 
+def _normalize_agent_job_capacity_plan(item: Mapping[str, Any]) -> dict[str, Any]:
+    summary = _mapping_or_empty(item.get("summary"))
+    items_raw = item.get("items")
+    if not isinstance(items_raw, list):
+        items_raw = []
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason") or "unknown"),
+        "summary": {
+            "job_types": _int_value(summary.get("job_types"), fallback=0),
+            "mapped_job_types": _int_value(summary.get("mapped_job_types"), fallback=0),
+            "unmapped_job_types": _int_value(
+                summary.get("unmapped_job_types"),
+                fallback=0,
+            ),
+            "high_pressure_job_types": _int_value(
+                summary.get("high_pressure_job_types"),
+                fallback=0,
+            ),
+            "capacity_blocked_job_types": _int_value(
+                summary.get("capacity_blocked_job_types"),
+                fallback=0,
+            ),
+            "worker_warning_job_types": _int_value(
+                summary.get("worker_warning_job_types"),
+                fallback=0,
+            ),
+            "active_worker_job_types": _int_value(
+                summary.get("active_worker_job_types"),
+                fallback=0,
+            ),
+            "stale_worker_job_types": _int_value(
+                summary.get("stale_worker_job_types"),
+                fallback=0,
+            ),
+            "failed_worker_job_types": _int_value(
+                summary.get("failed_worker_job_types"),
+                fallback=0,
+            ),
+            "max_pending": _int_value(summary.get("max_pending"), fallback=0),
+            "max_active": _int_value(summary.get("max_active"), fallback=0),
+            "oldest_pending_age_seconds": _int_value(
+                summary.get("oldest_pending_age_seconds"),
+                fallback=0,
+            ),
+        },
+        "items": [
+            _normalize_agent_job_capacity_item(value)
+            for value in items_raw
+            if isinstance(value, Mapping)
+        ],
+        "verification_steps": _normalize_operator_steps(
+            item.get("verification_steps")
+        ),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_agent_job_capacity_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "job_type": _text(item.get("job_type")),
+        "severity": _text(item.get("severity")),
+        "action": _text(item.get("action")),
+        "recommendation": _text(item.get("recommendation")),
+        "pending": _int_value(item.get("pending"), fallback=0),
+        "leased": _int_value(item.get("leased"), fallback=0),
+        "running": _int_value(item.get("running"), fallback=0),
+        "active": _int_value(item.get("active"), fallback=0),
+        "oldest_pending_age_seconds": _int_value(
+            item.get("oldest_pending_age_seconds"),
+            fallback=0,
+        ),
+        "high_pressure": bool(item.get("high_pressure")),
+        "pressure_reason": _text(item.get("pressure_reason")),
+        "coverage": _mapping_or_empty(item.get("coverage")),
+    }
+
+
+def _normalize_agent_job_external_lease_readiness(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason") or "unknown"),
+        "external_lease_ready": bool(item.get("external_lease_ready")),
+        "agent_job_result_ack_ready": bool(item.get("agent_job_result_ack_ready")),
+        "strict_lease_token_enabled": bool(item.get("strict_lease_token_enabled")),
+        "agent_job_worker_ready": bool(item.get("agent_job_worker_ready")),
+        "execution_owner": _text(item.get("execution_owner") or "unknown"),
+        "queue_provider": _text(item.get("queue_provider")),
+        "queue_mode": _text(item.get("queue_mode")),
+        "execution_scope": _text(item.get("execution_scope") or "unknown"),
+        "allowed_work_kinds": _string_list(item.get("allowed_work_kinds")),
+        "blocked_work_kinds": _mapping_list(item.get("blocked_work_kinds")),
+        "required_checks": _mapping_list(item.get("required_checks")),
+        "worker_coverage": _mapping_list(item.get("worker_coverage")),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_agent_job_external_lease_plan(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "ready": bool(item.get("ready")),
+        "decision": _text(item.get("decision") or "unknown"),
+        "desired_execution_owner": _text(
+            item.get("desired_execution_owner") or "unknown"
+        ),
+        "recommended_execution_owner": _text(
+            item.get("recommended_execution_owner") or "unknown"
+        ),
+        "current_execution_owner": _text(
+            item.get("current_execution_owner") or "unknown"
+        ),
+        "readiness": _normalize_agent_job_external_lease_readiness(
+            _mapping_or_empty(item.get("readiness"))
+        ),
+        "required_checks": _normalize_operator_steps(item.get("required_checks")),
+        "enable_steps": _normalize_operator_steps(item.get("enable_steps")),
+        "verification_steps": _normalize_operator_steps(
+            item.get("verification_steps")
+        ),
+        "rollback_steps": _normalize_operator_steps(item.get("rollback_steps")),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_outbound_cutover_plan(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "ready": bool(item.get("ready")),
+        "decision": _text(item.get("decision") or "unknown"),
+        "desired_execution_owner": _text(
+            item.get("desired_execution_owner") or "unknown"
+        ),
+        "recommended_execution_owner": _text(
+            item.get("recommended_execution_owner") or "unknown"
+        ),
+        "current_execution_owner": _text(
+            item.get("current_execution_owner") or "unknown"
+        ),
+        "readiness": _normalize_outbound_cutover_readiness(
+            _mapping_or_empty(item.get("readiness"))
+        ),
+        "required_checks": _normalize_operator_steps(item.get("required_checks")),
+        "enable_steps": _normalize_operator_steps(item.get("enable_steps")),
+        "verification_steps": _normalize_operator_steps(
+            item.get("verification_steps")
+        ),
+        "rollback_steps": _normalize_operator_steps(item.get("rollback_steps")),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_outbound_cutover_readiness(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason") or "unknown"),
+        "onebot_ready": bool(item.get("onebot_ready")),
+        "smoke_ready": bool(item.get("smoke_ready")),
+        "execution_ready": bool(item.get("execution_ready")),
+        "execution_owner": _text(item.get("execution_owner") or "unknown"),
+        "local_outbox_worker_ready": bool(item.get("local_outbox_worker_ready")),
+        "external_lease_outbox_ready": bool(item.get("external_lease_outbox_ready")),
+        "queue_provider": _text(item.get("queue_provider")),
+        "queue_mode": _text(item.get("queue_mode")),
+        "external_lease_scope": _text(item.get("external_lease_scope")),
+        "expected_onebot_channels": _string_list(
+            item.get("expected_onebot_channels")
+        ),
+        "missing_onebot_channels": _string_list(item.get("missing_onebot_channels")),
+        "runtime_config_readiness": _mapping_or_empty(
+            item.get("runtime_config_readiness")
+        ),
+        "delivery_smoke_readiness": _normalize_delivery_smoke_readiness(
+            _mapping_or_empty(item.get("delivery_smoke_readiness")),
+            runtime_base_url="",
+        ),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
 def _normalize_knowledge_job_planner_cutover_plan(
     item: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1632,18 +1882,26 @@ def _normalize_knowledge_job_planner_readiness_summary(
 def _normalize_knowledge_job_planner_cutover_steps(
     value: object,
 ) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [
-        _normalize_knowledge_job_planner_cutover_step(item)
-        for item in value
-        if isinstance(item, Mapping)
-    ]
+    return _normalize_operator_steps(value)
 
 
 def _normalize_knowledge_job_planner_cutover_step(
     item: Mapping[str, Any],
 ) -> dict[str, Any]:
+    return _normalize_operator_step(item)
+
+
+def _normalize_operator_steps(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        _normalize_operator_step(item)
+        for item in value
+        if isinstance(item, Mapping)
+    ]
+
+
+def _normalize_operator_step(item: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "step_index": _int_value(item.get("step_index"), fallback=0),
         "phase": _text(item.get("phase")),
@@ -2151,6 +2409,18 @@ def _parse_timestamp(value: str) -> datetime | None:
 
 def _mapping_or_empty(value: object) -> dict[str, Any]:
     return cast(dict[str, Any], dict(value)) if isinstance(value, Mapping) else {}
+
+
+def _mapping_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
 
 
 def _int_or_none(value: object) -> int | None:

@@ -28,6 +28,7 @@
 - 已实现 `agent_job` external lease result-ack readiness：`/v1/agent-job-external-lease/readiness` 聚合 queue backend gate、strict lease token、runtime flag、AgentJob pressure 和 Python worker coverage，判断是否可以把 generic job 队列确认权扩展到 NATS external lease；Go 仍不执行 AI job。
 - 已实现 `agent_job` external lease result-ack plan：`/v1/agent-job-external-lease/plan` 输出只读启用、验证和回滚步骤，明确 Python AI worker 继续执行模型/RAG/memory/OCR/VLM/图片任务，Go 只规划确定性 AgentJob 生命周期确认权。
 - runtime overview 已聚合 `agent_job` external lease result-ack plan：summary/card/detail 可直接看到当前/目标/推荐 execution owner、决策、blocker 数和回滚步骤，仍保持只读且不 ack/nack MQ、不执行 AI job。
+- Python dashboard 已规范化 Go-owned runtime control-plane detail：`agent_job_capacity_plan`、`agent_job_external_lease_readiness`、`agent_job_external_lease_plan`、`outbound_cutover_plan` 现在都可通过 `/api/dashboard/runtime-overview` 以稳定 summary/card/detail 读取，仍不接管 worker、MQ ack/nack、outbox 发送或 AI job 执行。
 
 ## 观察群与接收链路
 
@@ -102,6 +103,7 @@
 - runtime overview summary/card 已接入 selected queue provider capability：可直接展示 NATS-first 推荐阶段、provider 实现状态、多 goroutine consumer、delayed nack、external lease 和 agent_job result-ack 能力。
 - dashboard 优先读取 Go aggregate，并保留必要 fallback。
 - dashboard 已规范化 Go-owned runtime overview 的 `delivery_smoke_readiness` 和 `media_asset_content_diagnostics`：前端/API 可稳定读取最新 detail 与 summary 默认值，Python 只做只读展示适配，不执行发送、租约、OCR/VLM、文件解析或 AI。
+- dashboard 已规范化 Go-owned runtime overview 的 control-plane plan/readiness detail：前端/API 可稳定读取 AgentJob capacity、AgentJob external lease readiness/plan、outbound cutover plan，Python 只做只读展示适配。
 
 ## SDD / 迭代治理
 
