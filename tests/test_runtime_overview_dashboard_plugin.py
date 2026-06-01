@@ -694,6 +694,14 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "agent_job_capacity_max_pending": 11,
             "agent_job_capacity_max_active": 2,
             "agent_job_capacity_oldest_pending_age_seconds": 1800,
+            "agent_job_priority_ready": False,
+            "agent_job_priority_reason": "agent_job_priority_attention_required",
+            "agent_job_priority_blockers": 2,
+            "agent_job_priority_job_types": 4,
+            "agent_job_priority_high_priority_job_types": 2,
+            "agent_job_priority_blocked_job_types": 1,
+            "agent_job_priority_warning_job_types": 1,
+            "agent_job_priority_max_priority_score": 100,
             "agent_job_external_lease_ready": False,
             "agent_job_external_lease_reason": "agent_job_external_lease_not_ready",
             "agent_job_external_lease_blockers": 3,
@@ -789,6 +797,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "id": "agent_job_capacity_plan",
                 "label": "Agent Job Capacity",
                 "value": "attention:3",
+                "status": "danger",
+            },
+            {
+                "id": "agent_job_priority_plan",
+                "label": "Agent Job Priority",
+                "value": "attention:2",
                 "status": "danger",
             },
             {
@@ -1007,6 +1021,51 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "pending_backlog_high",
             ],
             "attributes": {"planned_by": "agent_runtime_agent_job_capacity_plan"},
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "agent_job_priority_plan": {
+            "ready": False,
+            "reason": "agent_job_priority_attention_required",
+            "summary": {
+                "job_types": 4,
+                "high_priority_job_types": 2,
+                "blocked_job_types": 1,
+                "warning_job_types": 1,
+                "max_priority_score": 100,
+            },
+            "items": [
+                {
+                    "rank": 1,
+                    "job_type": "group_memory_extract",
+                    "priority_class": "critical",
+                    "priority_score": 100,
+                    "action": "recover_worker_before_priority_tuning",
+                    "recommendation": "recover knowledge worker",
+                    "pending": 11,
+                    "leased": 1,
+                    "running": 1,
+                    "active": 2,
+                    "oldest_pending_age_seconds": 1800,
+                    "high_pressure": True,
+                    "pressure_reason": "pending_backlog_high",
+                    "coverage": {"job_type": "group_memory_extract", "status": "danger"},
+                }
+            ],
+            "verification_steps": [
+                {
+                    "step_index": 1,
+                    "phase": "verify",
+                    "action": "compare_capacity_plan",
+                    "method": "GET",
+                    "endpoint": "/v1/agent-job-capacity/plan",
+                }
+            ],
+            "blockers": [
+                "agent_job_priority_attention_required",
+                "agent_job_priority_blocked",
+            ],
+            "attributes": {"planned_by": "agent_runtime_agent_job_priority_plan"},
             "notes": ["read-only"],
             "side_effect": "none",
         },
@@ -1370,6 +1429,16 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["agent_job_capacity_job_types"] == 4
     assert payload["summary"]["agent_job_capacity_max_pending"] == 11
     assert payload["summary"]["agent_job_capacity_oldest_pending_age_seconds"] == 1800
+    assert payload["summary"]["agent_job_priority_ready"] is False
+    assert payload["summary"]["agent_job_priority_reason"] == (
+        "agent_job_priority_attention_required"
+    )
+    assert payload["summary"]["agent_job_priority_blockers"] == 2
+    assert payload["summary"]["agent_job_priority_job_types"] == 4
+    assert payload["summary"]["agent_job_priority_high_priority_job_types"] == 2
+    assert payload["summary"]["agent_job_priority_blocked_job_types"] == 1
+    assert payload["summary"]["agent_job_priority_warning_job_types"] == 1
+    assert payload["summary"]["agent_job_priority_max_priority_score"] == 100
     assert payload["summary"]["agent_job_external_lease_ready"] is False
     assert payload["summary"]["agent_job_external_lease_reason"] == (
         "agent_job_external_lease_not_ready"
@@ -1485,6 +1554,20 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert capacity_plan["items"][0]["coverage"]["status"] == "danger"
     assert capacity_plan["verification_steps"][0]["endpoint"] == "/v1/job-metrics"
     assert capacity_plan["side_effect"] == "none"
+    priority_card = next(
+        item for item in payload["cards"] if item["id"] == "agent_job_priority_plan"
+    )
+    assert priority_card["value"] == "attention:2"
+    assert priority_card["status"] == "danger"
+    priority_plan = payload["agent_job_priority_plan"]
+    assert priority_plan["summary"]["max_priority_score"] == 100
+    assert priority_plan["items"][0]["job_type"] == "group_memory_extract"
+    assert priority_plan["items"][0]["priority_class"] == "critical"
+    assert priority_plan["items"][0]["coverage"]["status"] == "danger"
+    assert priority_plan["verification_steps"][0]["endpoint"] == (
+        "/v1/agent-job-capacity/plan"
+    )
+    assert priority_plan["side_effect"] == "none"
     external_readiness_card = next(
         item
         for item in payload["cards"]

@@ -58,6 +58,7 @@
 - 已实现 Go-owned `AgentJob Capacity Plan`：`/v1/agent-job-capacity/plan` 将 job pressure 与 Python worker coverage 转为只读运维建议，可区分需要恢复 worker、检查 failed/stale worker、或在已有 active worker 下调优并发/优先级；Go 不启动 worker、不执行 AI job、不 ack/nack MQ。
 - 已实现 Go-owned `AgentJob Priority Plan`：`/v1/agent-job-priority/plan` 将 job pressure 与 Python worker coverage 转为确定性优先级/背压建议，输出 rank、priority class、score、action 和 blockers；Go 仍不做真实调度、不启动 worker、不改 MQ、不执行 AI job。
 - runtime overview 已聚合 `Agent Job Capacity`：summary/card/detail 可直接看到 capacity ready/reason/blockers、blocked/warning/high-pressure job types、max pending/active 和完整 plan，仍保持只读且不启动 Python worker、不调度、不执行 AI。
+- runtime overview 已聚合 `Agent Job Priority`，Python dashboard 也已规范化该 detail：summary/card/detail 可直接看到 priority ready/reason/blockers、high/blocked/warning job types 和 max priority score，仍保持只读且不改变调度、worker、MQ 或 AI 执行。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
 - `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。

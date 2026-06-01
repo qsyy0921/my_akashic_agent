@@ -494,6 +494,38 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 			},
 			SideEffect: "none",
 		}},
+		AgentJobPriorityPlan: staticRuntimeAgentJobPriorityPlan{view: query.AgentJobPriorityPlanView{
+			Ready:  false,
+			Reason: "agent_job_priority_attention_required",
+			Summary: query.AgentJobPrioritySummaryView{
+				JobTypes:             4,
+				HighPriorityJobTypes: 2,
+				BlockedJobTypes:      1,
+				WarningJobTypes:      1,
+				MaxPriorityScore:     100,
+			},
+			Items: []query.AgentJobPriorityPlanItemView{
+				{
+					Rank:                    1,
+					JobType:                 "group_memory_extract",
+					PriorityClass:           "critical",
+					PriorityScore:           100,
+					Action:                  "recover_worker_before_priority_tuning",
+					Pending:                 11,
+					OldestPendingAgeSeconds: 1800,
+					HighPressure:            true,
+				},
+				{
+					Rank:          2,
+					JobType:       "rag_eval",
+					PriorityClass: "high",
+					PriorityScore: 90,
+					Action:        "inspect_failed_worker_before_requeue",
+				},
+			},
+			Blockers:   []string{"agent_job_priority_attention_required", "agent_job_priority_blocked"},
+			SideEffect: "none",
+		}},
 		AgentJobExternalLeaseReady: staticRuntimeAgentJobExternalLeaseReadiness{view: query.AgentJobExternalLeaseReadinessView{
 			Ready:                   false,
 			Reason:                  "agent_job_external_lease_not_ready",
@@ -764,6 +796,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["agent_job_capacity_oldest_pending_age_seconds"] != 1800 {
 		t.Fatalf("unexpected agent job capacity summary: %#v", view.Summary)
 	}
+	if view.Summary["agent_job_priority_ready"] != false ||
+		view.Summary["agent_job_priority_reason"] != "agent_job_priority_attention_required" ||
+		view.Summary["agent_job_priority_blockers"] != 2 ||
+		view.Summary["agent_job_priority_job_types"] != 4 ||
+		view.Summary["agent_job_priority_high_priority_job_types"] != 2 ||
+		view.Summary["agent_job_priority_blocked_job_types"] != 1 ||
+		view.Summary["agent_job_priority_warning_job_types"] != 1 ||
+		view.Summary["agent_job_priority_max_priority_score"] != 100 {
+		t.Fatalf("unexpected agent job priority summary: %#v", view.Summary)
+	}
 	if view.Summary["agent_job_external_lease_ready"] != false ||
 		view.Summary["agent_job_external_lease_reason"] != "agent_job_external_lease_not_ready" ||
 		view.Summary["agent_job_external_lease_blockers"] != 3 ||
@@ -871,6 +913,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_worker_coverage", "3/4")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_capacity_plan", "danger")
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_capacity_plan", "attention:3")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "agent_job_priority_plan", "danger")
+	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_priority_plan", "attention:2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
 	if view.QueueTopology.WorkKinds[1].WorkKind != "agent_job" ||
@@ -919,6 +963,12 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.AgentJobCapacityPlan.Summary.CapacityBlockedJobTypes != 1 ||
 		len(view.AgentJobCapacityPlan.Blockers) != 3 {
 		t.Fatalf("unexpected agent job capacity plan detail: %+v", view.AgentJobCapacityPlan)
+	}
+	if view.AgentJobPriorityPlan.Ready ||
+		view.AgentJobPriorityPlan.Summary.BlockedJobTypes != 1 ||
+		view.AgentJobPriorityPlan.Items[0].PriorityClass != "critical" ||
+		len(view.AgentJobPriorityPlan.Blockers) != 2 {
+		t.Fatalf("unexpected agent job priority plan detail: %+v", view.AgentJobPriorityPlan)
 	}
 	if view.AgentJobExternalLease.Ready ||
 		view.AgentJobExternalLease.ExecutionScope != "agent_job_result_ack_only" ||
@@ -1130,6 +1180,14 @@ type staticRuntimeAgentJobCapacityPlan struct {
 }
 
 func (s staticRuntimeAgentJobCapacityPlan) PlanAgentJobCapacity(context.Context, command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeAgentJobPriorityPlan struct {
+	view query.AgentJobPriorityPlanView
+}
+
+func (s staticRuntimeAgentJobPriorityPlan) PlanAgentJobPriority(context.Context, command.PlanAgentJobPriorityCommand) (query.AgentJobPriorityPlanView, error) {
 	return s.view, nil
 }
 

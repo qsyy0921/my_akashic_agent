@@ -39,6 +39,7 @@ type RuntimeOverviewDeps struct {
 	KnowledgePlannerCutover    runtimeKnowledgeJobPlannerCutoverPlanner
 	KnowledgePlannerPlan       command.PlanKnowledgeJobsCommand
 	AgentJobCapacityPlan       runtimeAgentJobCapacityPlanner
+	AgentJobPriorityPlan       runtimeAgentJobPriorityPlanner
 	AgentJobExternalLeaseReady runtimeAgentJobExternalLeaseReadinessChecker
 	AgentJobExternalLeasePlan  runtimeAgentJobExternalLeasePlanner
 	OutboundCutoverPlan        runtimeOutboundCutoverPlanner
@@ -131,6 +132,10 @@ type runtimeAgentJobCapacityPlanner interface {
 	PlanAgentJobCapacity(ctx context.Context, cmd command.PlanAgentJobCapacityCommand) (query.AgentJobCapacityPlanView, error)
 }
 
+type runtimeAgentJobPriorityPlanner interface {
+	PlanAgentJobPriority(ctx context.Context, cmd command.PlanAgentJobPriorityCommand) (query.AgentJobPriorityPlanView, error)
+}
+
 type runtimeAgentJobExternalLeaseReadinessChecker interface {
 	CheckAgentJobExternalLeaseReadiness(ctx context.Context, cmd command.CheckAgentJobExternalLeaseReadinessCommand) (query.AgentJobExternalLeaseReadinessView, error)
 }
@@ -200,6 +205,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgeReady        query.KnowledgeJobPlannerReadinessView
 		knowledgeCutover      query.KnowledgeJobPlannerCutoverPlanView
 		agentJobCapacity      query.AgentJobCapacityPlanView
+		agentJobPriority      query.AgentJobPriorityPlanView
 		agentJobExternalLease query.AgentJobExternalLeaseReadinessView
 		agentJobExternalPlan  query.AgentJobExternalLeasePlanView
 		outboundCutover       query.OutboundCutoverPlanView
@@ -400,6 +406,18 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 			}
 		}
 
+		if deps.AgentJobPriorityPlan != nil {
+			if item, err := deps.AgentJobPriorityPlan.PlanAgentJobPriority(ctx, command.PlanAgentJobPriorityCommand{
+				JobLimit:          limit,
+				EventLimit:        eventLimit,
+				StaleAfterSeconds: staleAfterSeconds,
+			}); err != nil {
+				errors = append(errors, runtimeOverviewError("agent-job-priority-plan", err))
+			} else {
+				agentJobPriority = item
+			}
+		}
+
 		if deps.AgentJobExternalLeaseReady != nil {
 			if item, err := deps.AgentJobExternalLeaseReady.CheckAgentJobExternalLeaseReadiness(ctx, command.CheckAgentJobExternalLeaseReadinessCommand{
 				JobLimit:          limit,
@@ -482,6 +500,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgeReady,
 		knowledgeCutover,
 		agentJobCapacity,
+		agentJobPriority,
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
@@ -513,6 +532,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		knowledgeReady,
 		knowledgeCutover,
 		agentJobCapacity,
+		agentJobPriority,
 		agentJobExternalLease,
 		agentJobExternalPlan,
 		outboundCutover,
@@ -541,6 +561,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		KnowledgePlannerReady:   knowledgeReady,
 		KnowledgePlannerCutover: knowledgeCutover,
 		AgentJobCapacityPlan:    agentJobCapacity,
+		AgentJobPriorityPlan:    agentJobPriority,
 		AgentJobExternalLease:   agentJobExternalLease,
 		AgentJobExternalPlan:    agentJobExternalPlan,
 		OutboundCutoverPlan:     outboundCutover,
@@ -585,6 +606,7 @@ func runtimeOverviewSummary(
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
 	knowledgeCutover query.KnowledgeJobPlannerCutoverPlanView,
 	agentJobCapacity query.AgentJobCapacityPlanView,
+	agentJobPriority query.AgentJobPriorityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
@@ -777,6 +799,14 @@ func runtimeOverviewSummary(
 		"agent_job_capacity_max_pending":                        agentJobCapacity.Summary.MaxPending,
 		"agent_job_capacity_max_active":                         agentJobCapacity.Summary.MaxActive,
 		"agent_job_capacity_oldest_pending_age_seconds":         agentJobCapacity.Summary.OldestPendingAgeSeconds,
+		"agent_job_priority_ready":                              agentJobPriority.Ready,
+		"agent_job_priority_reason":                             agentJobPriority.Reason,
+		"agent_job_priority_blockers":                           len(agentJobPriority.Blockers),
+		"agent_job_priority_job_types":                          agentJobPriority.Summary.JobTypes,
+		"agent_job_priority_high_priority_job_types":            agentJobPriority.Summary.HighPriorityJobTypes,
+		"agent_job_priority_blocked_job_types":                  agentJobPriority.Summary.BlockedJobTypes,
+		"agent_job_priority_warning_job_types":                  agentJobPriority.Summary.WarningJobTypes,
+		"agent_job_priority_max_priority_score":                 agentJobPriority.Summary.MaxPriorityScore,
 		"receiver_statuses":                                     intFromMap(receiverStatuses.Totals, "receivers"),
 		"receiver_status_connected":                             intFromMap(receiverStatuses.Totals, "connected"),
 		"receiver_status_suspended":                             intFromMap(receiverStatuses.Totals, "suspended"),
@@ -873,6 +903,7 @@ func runtimeOverviewCards(
 	knowledgeReady query.KnowledgeJobPlannerReadinessView,
 	knowledgeCutover query.KnowledgeJobPlannerCutoverPlanView,
 	agentJobCapacity query.AgentJobCapacityPlanView,
+	agentJobPriority query.AgentJobPriorityPlanView,
 	agentJobExternalLease query.AgentJobExternalLeaseReadinessView,
 	agentJobExternalPlan query.AgentJobExternalLeasePlanView,
 	outboundCutover query.OutboundCutoverPlanView,
@@ -894,6 +925,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("agent_job_pressure", "Agent Job Pressure", runtimeAgentJobPressureValue(agentJobMetrics), runtimeAgentJobPressureStatus(agentJobMetrics), map[string]any{"agent_job_metrics": agentJobMetrics}),
 		runtimeOverviewCard("agent_job_worker_coverage", "Agent Job Worker Coverage", runtimeAgentJobWorkerCoverageValue(agentJobWorkerCoverage), runtimeAgentJobWorkerCoverageStatus(agentJobWorkerCoverage), map[string]any{"agent_job_worker_coverage": agentJobWorkerCoverage}),
 		runtimeOverviewCard("agent_job_capacity_plan", "Agent Job Capacity", agentJobCapacityPlanValue(agentJobCapacity), agentJobCapacityPlanStatus(agentJobCapacity), map[string]any{"agent_job_capacity_plan": agentJobCapacity}),
+		runtimeOverviewCard("agent_job_priority_plan", "Agent Job Priority", agentJobPriorityPlanValue(agentJobPriority), agentJobPriorityPlanStatus(agentJobPriority), map[string]any{"agent_job_priority_plan": agentJobPriority}),
 		runtimeOverviewCard("agent_job_external_lease_readiness", "Agent Job External Lease", agentJobExternalLeaseValue(agentJobExternalLease), agentJobExternalLeaseStatus(agentJobExternalLease), map[string]any{"agent_job_external_lease_readiness": agentJobExternalLease}),
 		runtimeOverviewCard("agent_job_external_lease_plan", "Agent Job External Lease Plan", agentJobExternalLeasePlanValue(agentJobExternalPlan), agentJobExternalLeasePlanStatus(agentJobExternalPlan), map[string]any{"agent_job_external_lease_plan": agentJobExternalPlan}),
 		runtimeOverviewCard("outbox_metrics", "Outbox Metrics", intSummary(summary, "outbox_metric_events"), statusIfPositive(intSummary(summary, "outbox_metric_dead_letters"), "danger", "ok"), map[string]any{"outbox_metrics": outboxMetrics}),
@@ -1154,6 +1186,40 @@ func agentJobCapacityPlanValue(view query.AgentJobCapacityPlanView) string {
 		return "ready"
 	}
 	if view.Reason == "agent_job_capacity_attention_required" {
+		return fmt.Sprintf("attention:%d", len(view.Blockers))
+	}
+	if view.Reason != "" {
+		return fmt.Sprintf("%s:%d", view.Reason, len(view.Blockers))
+	}
+	return fmt.Sprintf("blocked:%d", len(view.Blockers))
+}
+
+func agentJobPriorityPlanStatus(view query.AgentJobPriorityPlanView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if view.Ready {
+		return "ok"
+	}
+	if view.Summary.BlockedJobTypes > 0 {
+		return "danger"
+	}
+	if len(view.Blockers) > 0 ||
+		view.Summary.HighPriorityJobTypes > 0 ||
+		view.Summary.WarningJobTypes > 0 {
+		return "warn"
+	}
+	return "ok"
+}
+
+func agentJobPriorityPlanValue(view query.AgentJobPriorityPlanView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	if view.Ready {
+		return "ready"
+	}
+	if view.Reason == "agent_job_priority_attention_required" {
 		return fmt.Sprintf("attention:%d", len(view.Blockers))
 	}
 	if view.Reason != "" {

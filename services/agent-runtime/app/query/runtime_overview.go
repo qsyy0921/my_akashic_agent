@@ -58,6 +58,7 @@ type RuntimeOverviewView struct {
 	KnowledgePlannerReady   KnowledgeJobPlannerReadinessView   `json:"knowledge_job_planner_readiness,omitempty"`
 	KnowledgePlannerCutover KnowledgeJobPlannerCutoverPlanView `json:"knowledge_job_planner_cutover_plan,omitempty"`
 	AgentJobCapacityPlan    AgentJobCapacityPlanView           `json:"agent_job_capacity_plan,omitempty"`
+	AgentJobPriorityPlan    AgentJobPriorityPlanView           `json:"agent_job_priority_plan,omitempty"`
 	AgentJobExternalLease   AgentJobExternalLeaseReadinessView `json:"agent_job_external_lease_readiness,omitempty"`
 	AgentJobExternalPlan    AgentJobExternalLeasePlanView      `json:"agent_job_external_lease_plan,omitempty"`
 	OutboundCutoverPlan     OutboundCutoverPlanView            `json:"outbound_cutover_plan,omitempty"`

@@ -1138,6 +1138,9 @@ def _normalize_go_runtime_overview(
     agent_job_capacity_plan = _normalize_agent_job_capacity_plan(
         _mapping_or_empty(item.get("agent_job_capacity_plan"))
     )
+    agent_job_priority_plan = _normalize_agent_job_priority_plan(
+        _mapping_or_empty(item.get("agent_job_priority_plan"))
+    )
     agent_job_external_lease_readiness = (
         _normalize_agent_job_external_lease_readiness(
             _mapping_or_empty(item.get("agent_job_external_lease_readiness"))
@@ -1204,6 +1207,7 @@ def _normalize_go_runtime_overview(
         "observe_capture": observe_capture,
         "media_asset_content_diagnostics": media_asset_content,
         "agent_job_capacity_plan": agent_job_capacity_plan,
+        "agent_job_priority_plan": agent_job_priority_plan,
         "agent_job_external_lease_readiness": agent_job_external_lease_readiness,
         "agent_job_external_lease_plan": agent_job_external_lease_plan,
         "outbound_cutover_plan": outbound_cutover_plan,
@@ -1305,6 +1309,14 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "agent_job_capacity_max_pending": 0,
         "agent_job_capacity_max_active": 0,
         "agent_job_capacity_oldest_pending_age_seconds": 0,
+        "agent_job_priority_ready": False,
+        "agent_job_priority_reason": "unknown",
+        "agent_job_priority_blockers": 0,
+        "agent_job_priority_job_types": 0,
+        "agent_job_priority_high_priority_job_types": 0,
+        "agent_job_priority_blocked_job_types": 0,
+        "agent_job_priority_warning_job_types": 0,
+        "agent_job_priority_max_priority_score": 0,
         "agent_job_external_lease_ready": False,
         "agent_job_external_lease_reason": "unknown",
         "agent_job_external_lease_blockers": 0,
@@ -1701,6 +1713,70 @@ def _normalize_agent_job_capacity_item(item: Mapping[str, Any]) -> dict[str, Any
     return {
         "job_type": _text(item.get("job_type")),
         "severity": _text(item.get("severity")),
+        "action": _text(item.get("action")),
+        "recommendation": _text(item.get("recommendation")),
+        "pending": _int_value(item.get("pending"), fallback=0),
+        "leased": _int_value(item.get("leased"), fallback=0),
+        "running": _int_value(item.get("running"), fallback=0),
+        "active": _int_value(item.get("active"), fallback=0),
+        "oldest_pending_age_seconds": _int_value(
+            item.get("oldest_pending_age_seconds"),
+            fallback=0,
+        ),
+        "high_pressure": bool(item.get("high_pressure")),
+        "pressure_reason": _text(item.get("pressure_reason")),
+        "coverage": _mapping_or_empty(item.get("coverage")),
+    }
+
+
+def _normalize_agent_job_priority_plan(item: Mapping[str, Any]) -> dict[str, Any]:
+    summary = _mapping_or_empty(item.get("summary"))
+    items_raw = item.get("items")
+    if not isinstance(items_raw, list):
+        items_raw = []
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason") or "unknown"),
+        "summary": {
+            "job_types": _int_value(summary.get("job_types"), fallback=0),
+            "high_priority_job_types": _int_value(
+                summary.get("high_priority_job_types"),
+                fallback=0,
+            ),
+            "blocked_job_types": _int_value(
+                summary.get("blocked_job_types"),
+                fallback=0,
+            ),
+            "warning_job_types": _int_value(
+                summary.get("warning_job_types"),
+                fallback=0,
+            ),
+            "max_priority_score": _int_value(
+                summary.get("max_priority_score"),
+                fallback=0,
+            ),
+        },
+        "items": [
+            _normalize_agent_job_priority_item(value)
+            for value in items_raw
+            if isinstance(value, Mapping)
+        ],
+        "verification_steps": _normalize_operator_steps(
+            item.get("verification_steps")
+        ),
+        "blockers": _string_list(item.get("blockers")),
+        "attributes": _mapping_or_empty(item.get("attributes")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _normalize_agent_job_priority_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "rank": _int_value(item.get("rank"), fallback=0),
+        "job_type": _text(item.get("job_type")),
+        "priority_class": _text(item.get("priority_class")),
+        "priority_score": _int_value(item.get("priority_score"), fallback=0),
         "action": _text(item.get("action")),
         "recommendation": _text(item.get("recommendation")),
         "pending": _int_value(item.get("pending"), fallback=0),
