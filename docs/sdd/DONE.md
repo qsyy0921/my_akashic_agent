@@ -57,6 +57,7 @@
 - `/v1/queue-backend` 已增加 execution owner 诊断：outbox delivery 可明确区分 `go_state_store_api`、`go_local_outbox_worker`、`nats_external_lease`；agent_job 可明确区分 Python 通过 state-store lease 执行，或 Python 执行后经 NATS result-ack 回确认。
 - 已实现 Go-owned queue topology read model：`/v1/queue-topology` 将 queue backend、provider capability、execution owner 和 external lease gate 派生成 nodes/edges/work_kinds，直接展示 `outbox_delivery` 与 `agent_job` 的 queue source、execution owner、ack owner 和 blockers；全程只读，不 publish/lease/ack/nack/term MQ，不执行 AI job。
 - runtime overview 已聚合 queue topology：summary/card/detail 现在可直接展示 queue topology 的 nodes/edges/work_kinds、external lease readiness、outbox execution owner、agent_job execution owner 和 ack owner；Python dashboard 也已规范化 `queue_topology` detail，仍保持只读且不执行 MQ/outbox/AgentJob/AI。
+- runtime overview dashboard 的 `Queue Topology` detail 已从纯 JSON 提升为只读表格：展示 provider/mode/phase/external lease、nodes/edges 计数，以及每个 work kind 的 queue source、execution owner、ack owner、allowed 状态和 blockers；渲染时不 publish/lease/ack/nack/term MQ，不创建或执行 AgentJob/outbox，不触发 Python AI。
 - external_lease 已增加 Go-owned 执行诊断：`/v1/queue-backend` 可查看 ack/nack/term disposition、reason、work_kind 统计和 bounded recent executions；只读诊断不执行 Python AI job。
 - runtime overview 已聚合 external_lease 执行诊断：summary/card 可直接查看执行总数、错误数、ack/nack/term 分布，原始 queue backend detail 仍保留。
 - runtime overview summary 已聚合 queue execution owner 字段：`queue_outbox_execution_owner` 和 `queue_agent_job_execution_owner` 能直接说明当前执行边界，避免把 NATS result-ack 误解为 Go 执行 AI job。

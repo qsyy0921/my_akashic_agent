@@ -332,4 +332,7 @@ execution.
 - `127-runtime-overview-media-content-table.md`: Runtime overview dashboard
   renders Go-owned media content diagnostics as a read-only table with
   content/access/recovery links while preserving JSON fallback.
+- `128-runtime-overview-queue-topology-table.md`: Runtime overview dashboard
+  renders Go-owned queue topology work kinds and execution/ack owners as a
+  read-only table while preserving JSON fallback.
 - Agent architecture boundary specs live under `../agent-architecture/`.

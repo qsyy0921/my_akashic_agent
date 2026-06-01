@@ -72,6 +72,53 @@
     </div>
   `;
   }
+  function _renderQueueTopologyDetail(detail) {
+    const topology = _record(detail.queue_topology || detail);
+    const workKinds = _array(topology.work_kinds);
+    const nodes = _array(topology.nodes);
+    const edges = _array(topology.edges);
+    const rows = workKinds.map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.work_kind, 28))}</td>
+      <td>${escapeHtml(_short(item.queue_source || "-", 34))}</td>
+      <td>${escapeHtml(_short(item.execution_owner || "-", 34))}</td>
+      <td>${escapeHtml(_short(item.ack_owner || "-", 34))}</td>
+      <td>${_runtimeStatusTag(item.allowed === false ? "blocked" : "ok")}</td>
+      <td>${escapeHtml(_short(Array.isArray(item.blockers) ? item.blockers.join(", ") : "-", 52))}</td>
+    </tr>
+  `).join("");
+    return `
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div class="detail-label">Queue Topology</div>
+        <div class="detail-subtext">${escapeHtml(String(topology.side_effect || "none"))}</div>
+      </div>
+      <div class="runtime-overview-kpis">
+        <div class="runtime-overview-kpi"><span>provider</span><strong>${escapeHtml(String(topology.provider || "-"))}</strong></div>
+        <div class="runtime-overview-kpi"><span>mode</span><strong>${escapeHtml(String(topology.mode || "-"))}</strong></div>
+        <div class="runtime-overview-kpi"><span>phase</span><strong>${escapeHtml(_short(topology.migration_phase || "-", 24))}</strong></div>
+        <div class="runtime-overview-kpi"><span>external lease</span><strong>${escapeHtml(String(Boolean(topology.external_lease_ready)))}</strong></div>
+        <div class="runtime-overview-kpi"><span>nodes</span><strong>${escapeHtml(String(nodes.length))}</strong></div>
+        <div class="runtime-overview-kpi"><span>edges</span><strong>${escapeHtml(String(edges.length))}</strong></div>
+      </div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Work Kind</th>
+              <th>Queue Source</th>
+              <th>Execution Owner</th>
+              <th>Ack Owner</th>
+              <th>Allowed</th>
+              <th>Blockers</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="6" class="runtime-overview-muted">No work kinds sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  }
   window.AkashicDashboard.registerPlugin({
     id: "runtime_overview",
     label: "Runtime Overview",
@@ -139,7 +186,7 @@
           <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
         </div>
       ` : "";
-      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : "";
+      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : card.id === "queue_topology" ? _renderQueueTopologyDetail(_record(card.detail)) : "";
       container.innerHTML = `
       <div class="runtime-overview-detail">
         <div class="runtime-overview-toolbar">
