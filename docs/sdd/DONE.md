@@ -80,6 +80,7 @@
 - runtime overview 已聚合 media retention cleanup：summary/card/detail 可直接看到候选数、recent cleanup audits、applied/failed 计数和 plan/preflight/cleanup endpoint，仍保持只读且不创建 approval/mutation、不执行 cleanup、不删除 metadata/文件、不触发 Python/OCR/VLM/RAG/AI。
 - Python dashboard 已规范化 Go-owned media retention cleanup：`/api/dashboard/runtime-overview` 稳定透传 `media_asset_retention_cleanup` summary/card/detail 和 fallback 默认值，仍保持只读且不创建 approval/mutation、不执行 cleanup、不删除 metadata/文件、不触发 Python/OCR/VLM/RAG/AI。
 - 已实现 Go-owned media asset content access plan：`GET /v1/media-assets/content-access-plan?asset_id=...` 可在前端点击附件前返回 ready/reason/blockers/content endpoint/verify/fallback steps，保持 `side_effect=none`，不流式返回内容、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
+- Python dashboard media content proxy 已接入 Go-owned access plan fallback：`/api/dashboard/media-assets/content` 在 Go content route 失败且旧 workspace fallback 不可用时返回结构化 `content_access_plan`，Python 不复制访问策略、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
 - `Knowledge Pipeline Diagnostics` 已新增 source-seq lag / stalled 诊断：Go 可按群比较 inbox `metadata.seq` 与 checkpoint cursor，直接看出 memory / rag checkpoint 是否落后、是否在高压下停滞，并聚合到 runtime overview summary。

@@ -671,6 +671,75 @@ def test_dashboard_media_asset_content_falls_back_by_runtime_asset_metadata(
     ]
 
 
+def test_dashboard_media_asset_content_returns_access_plan_when_unavailable(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    asset_id = "asset:qq:image:187890369:missing:1"
+    encoded_asset_id = quote(asset_id, safe="")
+    calls: list[str] = []
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        calls.append(parsed.path)
+        if parsed.path.endswith("/content"):
+            raise urllib.error.HTTPError(
+                str(url),
+                403,
+                "Forbidden",
+                hdrs=None,
+                fp=io.BytesIO(b"media asset content forbidden"),
+            )
+        if parsed.path == f"/v1/media-assets/{encoded_asset_id}":
+            return _fake_urlopen_response(
+                {
+                    "code": "OK",
+                    "data": {
+                        "asset_id": asset_id,
+                        "name": "not-in-uploads.jpg",
+                    },
+                }
+            )
+        assert parsed.path == "/v1/media-assets/content-access-plan"
+        return _fake_urlopen_response(
+            {
+                "code": "OK",
+                "data": {
+                    "ready": False,
+                    "reason": "media_asset_content_forbidden",
+                    "blockers": [
+                        "media asset local path is outside configured content roots"
+                    ],
+                    "asset_id": asset_id,
+                    "content_endpoint": (
+                        f"/v1/media-assets/{encoded_asset_id}/content"
+                    ),
+                    "side_effect": "none",
+                },
+            }
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content",
+            params={"asset_id": asset_id},
+        )
+
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert detail["message"] == "media asset content forbidden"
+    assert detail["content_access_plan"]["reason"] == "media_asset_content_forbidden"
+    assert detail["content_access_plan"]["side_effect"] == "none"
+    assert calls == [
+        f"/v1/media-assets/{encoded_asset_id}/content",
+        f"/v1/media-assets/{encoded_asset_id}",
+        "/v1/media-assets/content-access-plan",
+    ]
+
+
 def test_dashboard_media_asset_content_proxies_contract_fixture(
     tmp_path,
     monkeypatch,

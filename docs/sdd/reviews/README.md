@@ -216,3 +216,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-167-runtime-overview-media-retention-cleanup.md`
 - `2026-06-01-phase8-168-dashboard-media-retention-cleanup.md`
 - `2026-06-01-phase8-169-media-asset-content-access-plan.md`
+- `2026-06-01-phase8-170-dashboard-media-content-access-plan.md`

@@ -164,6 +164,28 @@ def _fetch_media_asset_from_runtime_by_id(
     return dict(data) if isinstance(data, Mapping) else {}
 
 
+def _fetch_media_asset_content_access_plan(
+    runtime_base_url: str,
+    asset_id: str,
+) -> dict[str, Any]:
+    if not runtime_base_url:
+        return {}
+    url = (
+        f"{runtime_base_url}/v1/media-assets/content-access-plan?"
+        f"{urllib.parse.urlencode({'asset_id': asset_id})}"
+    )
+    try:
+        with urllib.request.urlopen(
+            url,
+            timeout=_AGENT_RUNTIME_PROXY_TIMEOUT_SECONDS,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+        return {}
+    data = payload.get("data") if isinstance(payload, Mapping) else payload
+    return dict(data) if isinstance(data, Mapping) else {}
+
+
 def _media_asset_upload_name_candidates(asset: Mapping[str, Any]) -> list[str]:
     if not asset:
         return []
@@ -1320,6 +1342,18 @@ def create_dashboard_app(
                 )
                 if fallback is not None:
                     return fallback
+            access_plan = _fetch_media_asset_content_access_plan(
+                runtime_base_url,
+                asset_id,
+            )
+            if access_plan:
+                raise HTTPException(
+                    status_code=exc.code,
+                    detail={
+                        "message": detail,
+                        "content_access_plan": access_plan,
+                    },
+                ) from exc
             raise HTTPException(status_code=exc.code, detail=detail) from exc
         except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise HTTPException(
