@@ -922,8 +922,15 @@ def test_dashboard_messages_are_enriched_with_runtime_media_assets(
     assert item["media_assets"][0]["content_url"] == (
         "/api/dashboard/media-assets/content?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
     )
+    assert item["media_assets"][0]["content_access_plan_url"] == (
+        "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
     assert detail_response.status_code == 200
-    assert detail_response.json()["media_assets"][0]["name"] == "qq-image.jpg"
+    detail_asset = detail_response.json()["media_assets"][0]
+    assert detail_asset["name"] == "qq-image.jpg"
+    assert detail_asset["content_access_plan_url"] == (
+        "/api/dashboard/media-assets/content-access-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
     assert calls
 
 

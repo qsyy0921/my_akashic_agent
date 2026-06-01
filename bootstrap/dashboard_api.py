@@ -107,6 +107,11 @@ def _media_asset_content_url(asset_id: str) -> str:
     return f"/api/dashboard/media-assets/content?asset_id={encoded}"
 
 
+def _media_asset_content_access_plan_url(asset_id: str) -> str:
+    encoded = urllib.parse.quote(asset_id, safe="")
+    return f"/api/dashboard/media-assets/content-access-plan?asset_id={encoded}"
+
+
 def _workspace_upload_response_for_asset_name(
     workspace: Path,
     asset_id: str,
@@ -318,6 +323,10 @@ def _fetch_media_assets_from_runtime(params: Mapping[str, str]) -> list[dict[str
         asset_id = _first_text(asset.get("asset_id"), asset.get("id"))
         if asset_id and not _first_text(asset.get("content_url")):
             asset["content_url"] = _media_asset_content_url(asset_id)
+        if asset_id and not _first_text(asset.get("content_access_plan_url")):
+            asset["content_access_plan_url"] = _media_asset_content_access_plan_url(
+                asset_id
+            )
         assets.append(asset)
     return assets
 

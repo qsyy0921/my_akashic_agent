@@ -218,3 +218,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-169-media-asset-content-access-plan.md`
 - `2026-06-01-phase8-170-dashboard-media-content-access-plan.md`
 - `2026-06-01-phase8-171-dashboard-media-content-access-plan-proxy.md`
+- `2026-06-01-phase8-172-dashboard-message-media-access-plan-link.md`
