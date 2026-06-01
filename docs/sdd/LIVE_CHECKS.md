@@ -8,6 +8,7 @@
 
 - [ ] 继续验证 QQ 群实时采集质量：Go `/v1/observe-capture-diagnostics` 应显示观察群文本、图片、文件覆盖和 media content ready 状态；新文件样本出现后确认 file coverage 从 0 变为 covered，且 observe-only 不回复。
 - [ ] 查看 `/v1/media-assets/content-diagnostics?asset_id=...`：真实 QQ 图片/文件应显示 `content_status=ready`；若为 `forbidden`/`unavailable`/`disabled`，应能对应到安全根目录、文件缺失或 content reader 配置问题，调用后不执行 OCR/VLM/文件解析。
+- [ ] 查看 `/v1/media-assets/retention-diagnostics?limit=50`：真实 QQ 图片/文件应按 retention policy 显示 permanent/default/ephemeral/unknown 和 cleanup_due；调用后不得删除 media asset registry、本地文件或触发 OCR/VLM/文件解析。
 - [ ] 若 Telegram `getUpdates` conflict 再次出现，检查 Go `/v1/receiver-statuses` 的 `status=suspended`、`reason=getupdates_conflict`，并确认 `/v1/receiver-leases` 没有重复 Akashic receiver；若仍冲突，排查外部 polling 进程或改 webhook。
 - [ ] 若 `/v1/receiver-leases` 出现 expired 租约残留，先调用 `POST /v1/receiver-leases/cleanup-expired`，确认返回 `deleted` 增加、`remaining_active` 保留活跃租约、`side_effect=runtime_state_only`，且调用后 QQ/Telegram 接收端不被启动/停止、observe-only 群不回复。
 - [ ] 查看 `/v1/runtime-overview` 或 Python dashboard `/api/dashboard/runtime-overview`：当 `receiver_leases_expired>0` 时应看到 `receiver_lease_cleanup_required=true`、`receiver_lease_cleanup_endpoint=/v1/receiver-leases/cleanup-expired`，`Receiver Leases` card value 应显示 active/expired，调用 overview 不得自动执行 cleanup。

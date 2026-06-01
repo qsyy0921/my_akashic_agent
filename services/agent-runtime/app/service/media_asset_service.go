@@ -159,6 +159,87 @@ func (s *MediaAssetService) ContentDiagnostics(
 	}, nil
 }
 
+func (s *MediaAssetService) RetentionDiagnostics(
+	ctx context.Context,
+	filter query.MediaAssetRetentionDiagnosticsFilter,
+) (query.MediaAssetRetentionDiagnosticsView, error) {
+	if s == nil || s.repository == nil {
+		return query.MediaAssetRetentionDiagnosticsView{}, errors.New("media asset service requires repository")
+	}
+	if err := ctx.Err(); err != nil {
+		return query.MediaAssetRetentionDiagnosticsView{}, err
+	}
+	now := time.Now().UTC()
+	if strings.TrimSpace(filter.Timestamp) != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, filter.Timestamp)
+		if err != nil {
+			return query.MediaAssetRetentionDiagnosticsView{}, err
+		}
+		now = parsed.UTC()
+	}
+	assets, err := s.retentionDiagnosticAssets(ctx, filter)
+	if err != nil {
+		return query.MediaAssetRetentionDiagnosticsView{}, err
+	}
+	items := make([]query.MediaAssetRetentionDiagnosticItemView, 0, len(assets))
+	totals := map[string]int{
+		"assets":      len(assets),
+		"cleanup_due": 0,
+		"permanent":   0,
+		"default":     0,
+		"ephemeral":   0,
+		"unknown":     0,
+	}
+	for _, asset := range assets {
+		item := mediaAssetRetentionDiagnosticItem(asset, now, filter)
+		if _, ok := totals[item.RetentionClass]; ok {
+			totals[item.RetentionClass]++
+		} else {
+			totals["unknown"]++
+		}
+		if item.CleanupDue {
+			totals["cleanup_due"]++
+		}
+		items = append(items, item)
+	}
+	return query.MediaAssetRetentionDiagnosticsView{
+		Items:      items,
+		Totals:     totals,
+		SideEffect: "none",
+		Notes: []string{
+			"read-only media asset retention diagnostics; no metadata or file content is deleted",
+			"Go owns deterministic retention visibility; Python remains responsible for OCR, VLM, file parsing and semantic extraction",
+		},
+	}, nil
+}
+
+func (s *MediaAssetService) retentionDiagnosticAssets(
+	ctx context.Context,
+	filter query.MediaAssetRetentionDiagnosticsFilter,
+) ([]model.MediaAsset, error) {
+	assetID := strings.TrimSpace(filter.AssetID)
+	if assetID != "" {
+		asset, ok, err := s.repository.FindMediaAsset(ctx, assetID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("media asset not found")
+		}
+		return []model.MediaAsset{asset}, nil
+	}
+	return s.repository.ListMediaAssets(ctx, query.MediaAssetFilter{
+		Limit:                 filter.Limit,
+		ChannelKind:           filter.ChannelKind,
+		AccountID:             filter.AccountID,
+		ConversationID:        filter.ConversationID,
+		ConversationType:      filter.ConversationType,
+		SourceMessageID:       filter.SourceMessageID,
+		SourceMessageIDSuffix: filter.SourceMessageIDSuffix,
+		Kind:                  filter.Kind,
+	})
+}
+
 func (s *MediaAssetService) contentDiagnosticAssets(
 	ctx context.Context,
 	filter query.MediaAssetContentDiagnosticsFilter,
@@ -184,6 +265,74 @@ func (s *MediaAssetService) contentDiagnosticAssets(
 		SourceMessageIDSuffix: filter.SourceMessageIDSuffix,
 		Kind:                  filter.Kind,
 	})
+}
+
+func mediaAssetRetentionDiagnosticItem(
+	asset model.MediaAsset,
+	now time.Time,
+	filter query.MediaAssetRetentionDiagnosticsFilter,
+) query.MediaAssetRetentionDiagnosticItemView {
+	ttl, retentionClass := mediaAssetRetentionTTL(asset.Retention, filter)
+	age := int(now.Sub(asset.CreatedAt.UTC()).Seconds())
+	if age < 0 {
+		age = 0
+	}
+	cleanupDue := false
+	cleanupAfter := ""
+	reason := "media_asset_retention_not_due"
+	ttlSeconds := 0
+	if ttl <= 0 {
+		reason = "media_asset_retention_permanent"
+	} else {
+		ttlSeconds = int(ttl.Seconds())
+		cutoff := asset.CreatedAt.UTC().Add(ttl)
+		cleanupAfter = cutoff.Format(time.RFC3339Nano)
+		if !now.Before(cutoff) {
+			cleanupDue = true
+			reason = "media_asset_retention_due"
+		}
+	}
+	view := assembler.ToMediaAssetView(asset)
+	return query.MediaAssetRetentionDiagnosticItemView{
+		AssetID:         view.AssetID,
+		Channel:         view.Channel,
+		SourceMessageID: view.SourceMessageID,
+		SenderID:        view.SenderID,
+		Kind:            view.Kind,
+		MimeType:        view.MimeType,
+		Name:            view.Name,
+		SizeBytes:       view.SizeBytes,
+		Retention:       view.Retention,
+		RetentionClass:  retentionClass,
+		CleanupDue:      cleanupDue,
+		AgeSeconds:      age,
+		TTLSeconds:      ttlSeconds,
+		CleanupAfter:    cleanupAfter,
+		CleanupReason:   reason,
+		CreatedAt:       view.CreatedAt,
+		UpdatedAt:       view.UpdatedAt,
+	}
+}
+
+func mediaAssetRetentionTTL(retention string, filter query.MediaAssetRetentionDiagnosticsFilter) (time.Duration, string) {
+	retention = strings.ToLower(strings.TrimSpace(retention))
+	switch retention {
+	case "permanent", "keep", "never":
+		return 0, "permanent"
+	case "ephemeral", "temp", "temporary", "short":
+		return time.Duration(positiveOrDefault(filter.EphemeralTTLHours, 24)) * time.Hour, "ephemeral"
+	case "", "default", "default-observed-group":
+		return time.Duration(positiveOrDefault(filter.DefaultTTLHours, 30*24)) * time.Hour, "default"
+	default:
+		return time.Duration(positiveOrDefault(filter.DefaultTTLHours, 30*24)) * time.Hour, "unknown"
+	}
+}
+
+func positiveOrDefault(value int, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func (s *MediaAssetService) contentDiagnosticItem(

@@ -206,3 +206,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-157-dashboard-control-mutation-policy.md`
 - `2026-06-01-phase8-158-receiver-lease-cleanup.md`
 - `2026-06-01-phase8-159-runtime-overview-receiver-lease-cleanup.md`
+- `2026-06-01-phase8-160-media-asset-retention-diagnostics.md`

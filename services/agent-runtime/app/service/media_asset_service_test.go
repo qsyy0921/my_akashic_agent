@@ -88,6 +88,48 @@ func TestMediaAssetServiceContentDiagnosticsReportsDisabledReader(t *testing.T) 
 	}
 }
 
+func TestMediaAssetServiceRetentionDiagnosticsClassifiesCleanupDue(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewMediaAssetService(store)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	registerTestMediaAssetWithRetention(t, service, "asset:permanent", "permanent.txt", "permanent", now.Add(-90*24*time.Hour))
+	registerTestMediaAssetWithRetention(t, service, "asset:default", "default.txt", "default-observed-group", now.Add(-48*time.Hour))
+	registerTestMediaAssetWithRetention(t, service, "asset:ephemeral", "ephemeral.txt", "ephemeral", now.Add(-2*time.Hour))
+
+	view, err := service.RetentionDiagnostics(ctx, query.MediaAssetRetentionDiagnosticsFilter{
+		Limit:             10,
+		Timestamp:         now.Format(time.RFC3339Nano),
+		DefaultTTLHours:   24,
+		EphemeralTTLHours: 1,
+	})
+	if err != nil {
+		t.Fatalf("retention diagnostics: %v", err)
+	}
+	if view.Totals["assets"] != 3 ||
+		view.Totals["cleanup_due"] != 2 ||
+		view.Totals["permanent"] != 1 ||
+		view.Totals["default"] != 1 ||
+		view.Totals["ephemeral"] != 1 {
+		t.Fatalf("unexpected retention totals: %+v", view.Totals)
+	}
+	permanent := findMediaAssetRetentionDiagnostic(t, view, "asset:permanent")
+	if permanent.CleanupDue || permanent.RetentionClass != "permanent" || permanent.CleanupReason != "media_asset_retention_permanent" {
+		t.Fatalf("unexpected permanent item: %+v", permanent)
+	}
+	defaultItem := findMediaAssetRetentionDiagnostic(t, view, "asset:default")
+	if !defaultItem.CleanupDue || defaultItem.RetentionClass != "default" || defaultItem.TTLSeconds != 24*60*60 {
+		t.Fatalf("unexpected default item: %+v", defaultItem)
+	}
+	ephemeral := findMediaAssetRetentionDiagnostic(t, view, "asset:ephemeral")
+	if !ephemeral.CleanupDue || ephemeral.RetentionClass != "ephemeral" || ephemeral.TTLSeconds != 60*60 {
+		t.Fatalf("unexpected ephemeral item: %+v", ephemeral)
+	}
+	if view.SideEffect != "none" {
+		t.Fatalf("retention diagnostics must be read-only: %+v", view)
+	}
+}
+
 func registerTestMediaAsset(
 	t *testing.T,
 	service *appservice.MediaAssetService,
@@ -117,6 +159,37 @@ func registerTestMediaAsset(
 	}
 }
 
+func registerTestMediaAssetWithRetention(
+	t *testing.T,
+	service *appservice.MediaAssetService,
+	assetID string,
+	name string,
+	retention string,
+	timestamp time.Time,
+) {
+	t.Helper()
+	_, err := service.Register(context.Background(), command.RegisterMediaAssetCommand{
+		AssetID: assetID,
+		Channel: command.ChannelCommand{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: "group",
+		},
+		SourceMessageID: "qq:gqq:27234224:" + assetID,
+		SenderID:        "2948770636",
+		Kind:            "image",
+		URL:             filepath.Join(t.TempDir(), name),
+		MimeType:        "text/plain",
+		Name:            name,
+		Retention:       retention,
+		Timestamp:       timestamp,
+	})
+	if err != nil {
+		t.Fatalf("register media asset %s: %v", assetID, err)
+	}
+}
+
 func findMediaAssetContentDiagnostic(
 	t *testing.T,
 	view query.MediaAssetContentDiagnosticsView,
@@ -130,6 +203,21 @@ func findMediaAssetContentDiagnostic(
 	}
 	t.Fatalf("content diagnostic item not found for %s: %+v", assetID, view.Items)
 	return query.MediaAssetContentDiagnosticItemView{}
+}
+
+func findMediaAssetRetentionDiagnostic(
+	t *testing.T,
+	view query.MediaAssetRetentionDiagnosticsView,
+	assetID string,
+) query.MediaAssetRetentionDiagnosticItemView {
+	t.Helper()
+	for _, item := range view.Items {
+		if item.AssetID == assetID {
+			return item
+		}
+	}
+	t.Fatalf("retention diagnostic item not found for %s: %+v", assetID, view.Items)
+	return query.MediaAssetRetentionDiagnosticItemView{}
 }
 
 func writeTestFile(path string, content string) error {

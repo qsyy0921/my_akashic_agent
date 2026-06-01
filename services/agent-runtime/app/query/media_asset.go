@@ -23,6 +23,21 @@ type MediaAssetContentDiagnosticsFilter struct {
 	Kind                  string
 }
 
+type MediaAssetRetentionDiagnosticsFilter struct {
+	AssetID               string
+	Limit                 int
+	ChannelKind           string
+	AccountID             string
+	ConversationID        string
+	ConversationType      string
+	SourceMessageID       string
+	SourceMessageIDSuffix string
+	Kind                  string
+	Timestamp             string
+	DefaultTTLHours       int
+	EphemeralTTLHours     int
+}
+
 type MediaAssetChannelView struct {
 	Kind             string `json:"kind"`
 	AccountID        string `json:"account_id"`
@@ -69,4 +84,31 @@ type MediaAssetContentDiagnosticsView struct {
 	Totals     map[string]int                        `json:"totals"`
 	SideEffect string                                `json:"side_effect"`
 	Notes      []string                              `json:"notes,omitempty"`
+}
+
+type MediaAssetRetentionDiagnosticItemView struct {
+	AssetID         string                `json:"asset_id"`
+	Channel         MediaAssetChannelView `json:"channel"`
+	SourceMessageID string                `json:"source_message_id"`
+	SenderID        string                `json:"sender_id"`
+	Kind            string                `json:"kind"`
+	MimeType        string                `json:"mime_type,omitempty"`
+	Name            string                `json:"name,omitempty"`
+	SizeBytes       int64                 `json:"size_bytes,omitempty"`
+	Retention       string                `json:"retention"`
+	RetentionClass  string                `json:"retention_class"`
+	CleanupDue      bool                  `json:"cleanup_due"`
+	AgeSeconds      int                   `json:"age_seconds"`
+	TTLSeconds      int                   `json:"ttl_seconds,omitempty"`
+	CleanupAfter    string                `json:"cleanup_after,omitempty"`
+	CleanupReason   string                `json:"cleanup_reason"`
+	CreatedAt       string                `json:"created_at"`
+	UpdatedAt       string                `json:"updated_at"`
+}
+
+type MediaAssetRetentionDiagnosticsView struct {
+	Items      []MediaAssetRetentionDiagnosticItemView `json:"items"`
+	Totals     map[string]int                          `json:"totals"`
+	SideEffect string                                  `json:"side_effect"`
+	Notes      []string                                `json:"notes,omitempty"`
 }

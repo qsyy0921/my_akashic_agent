@@ -45,6 +45,7 @@ func RegisterRoutes(
 	mux.Handle("/v1/outbox/", OutboxStateHandler(outbox))
 	mux.Handle("/v1/media-assets", MediaAssetsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/content-diagnostics", MediaAssetContentDiagnosticsHandler(mediaAssets))
+	mux.Handle("/v1/media-assets/retention-diagnostics", MediaAssetRetentionDiagnosticsHandler(mediaAssets))
 	mux.Handle("/v1/media-assets/", MediaAssetStateHandler(mediaAssets))
 	mux.Handle("/v1/jobs", AgentJobsHandler(agentJobs))
 	mux.Handle("/v1/jobs/lease-next", AgentJobLeaseNextHandler(agentJobs))
@@ -2200,6 +2201,24 @@ func mediaAssetContentDiagnosticsFilterFromQuery(r *http.Request) query.MediaAss
 	}
 }
 
+func mediaAssetRetentionDiagnosticsFilterFromQuery(r *http.Request) query.MediaAssetRetentionDiagnosticsFilter {
+	values := r.URL.Query()
+	return query.MediaAssetRetentionDiagnosticsFilter{
+		AssetID:               values.Get("asset_id"),
+		Limit:                 parsePositiveInt(values.Get("limit"), 50, 200),
+		ChannelKind:           firstQueryValue(values.Get("channel_kind"), values.Get("kind")),
+		AccountID:             values.Get("account_id"),
+		ConversationID:        values.Get("conversation_id"),
+		ConversationType:      values.Get("conversation_type"),
+		SourceMessageID:       values.Get("source_message_id"),
+		SourceMessageIDSuffix: values.Get("source_message_id_suffix"),
+		Kind:                  values.Get("asset_kind"),
+		Timestamp:             values.Get("timestamp"),
+		DefaultTTLHours:       parsePositiveInt(values.Get("default_ttl_hours"), 30*24, 365*24),
+		EphemeralTTLHours:     parsePositiveInt(values.Get("ephemeral_ttl_hours"), 24, 30*24),
+	}
+}
+
 func MediaAssetContentDiagnosticsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -2207,6 +2226,21 @@ func MediaAssetContentDiagnosticsHandler(mediaAssets inport.MediaAssetManager) h
 			return
 		}
 		view, err := mediaAssets.ContentDiagnostics(r.Context(), mediaAssetContentDiagnosticsFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func MediaAssetRetentionDiagnosticsHandler(mediaAssets inport.MediaAssetManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		view, err := mediaAssets.RetentionDiagnostics(r.Context(), mediaAssetRetentionDiagnosticsFilterFromQuery(r))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
