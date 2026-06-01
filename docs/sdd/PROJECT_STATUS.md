@@ -18,14 +18,14 @@
 
 ## 当前迭代状态
 
-当前 `TODO.md` 已清空。最近完成的切片是 runtime overview dashboard 可读性收口：
+当前 `TODO.md` 已清空。最近完成的切片是 dashboard media recovery preflight 链接收口：
 
-- `Media Content Recovery Preflight` 已把 media content recovery plan 绑定到 Go-owned control mutation policy、operator approval check 和 suggested planned audit。
-- 该 preflight 仍保持 `side_effect=none`，不下载、不恢复、不缓存、不创建 approval/mutation、不触发 OCR/VLM/RAG/AI。
+- Python dashboard 已代理 Go-owned media content recovery preflight。
+- message `media_assets` 已新增 `content_recovery_preflight_url`，列表/详情只暴露链接，不主动触发 preflight 或恢复执行。
 
 对应设计：
 
-- `docs/sdd/specs/agent-gateway/131-media-content-recovery-preflight.md`
+- `docs/sdd/specs/agent-gateway/132-dashboard-media-recovery-preflight-proxy.md`
 
 ## 当前已完成主线
 

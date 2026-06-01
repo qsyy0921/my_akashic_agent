@@ -893,6 +893,86 @@ def test_dashboard_media_asset_content_recovery_plan_reports_invalid_runtime_res
     assert "响应格式无效" in response.json()["detail"]
 
 
+def test_dashboard_media_asset_content_recovery_preflight_proxy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    asset_id = "asset:qq:image:187890369:missing:1"
+
+    def _fake_urlopen(url, timeout=None):  # type: ignore[no-untyped-def]
+        parsed = urlparse(str(url))
+        assert parsed.path == "/v1/media-assets/content-recovery/preflight"
+        query = parse_qs(parsed.query)
+        assert query["asset_id"] == [asset_id]
+        assert query["operator_id"] == ["qsyy"]
+        assert query["approval_id"] == ["approval-media-recovery"]
+        assert "target_id" not in query
+        return _fake_urlopen_response(
+            {
+                "code": "OK",
+                "data": {
+                    "ready": True,
+                    "reason": "media_asset_content_recovery_preflight_ready",
+                    "target_kind": "media_asset_content",
+                    "target_id": asset_id,
+                    "action": "recover_content",
+                    "asset_id": asset_id,
+                    "recovery_needed": True,
+                    "executor_scope": "media_content_cache_executor",
+                    "suggested_audit": {
+                        "target_kind": "media_asset_content",
+                        "target_id": asset_id,
+                        "action": "recover_content",
+                        "status": "planned",
+                    },
+                    "side_effect": "none",
+                },
+            }
+        )
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content-recovery/preflight",
+            params={
+                "asset_id": asset_id,
+                "operator_id": "qsyy",
+                "approval_id": "approval-media-recovery",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is True
+    assert payload["reason"] == "media_asset_content_recovery_preflight_ready"
+    assert payload["target_kind"] == "media_asset_content"
+    assert payload["action"] == "recover_content"
+    assert payload["suggested_audit"]["status"] == "planned"
+    assert payload["side_effect"] == "none"
+
+
+def test_dashboard_media_asset_content_recovery_preflight_reports_invalid_runtime_response(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    def _fake_urlopen(_url, timeout=None):  # type: ignore[no-untyped-def]
+        return _fake_urlopen_response({"code": "OK", "data": ["not", "object"]})
+
+    monkeypatch.setenv("AKASHIC_AGENT_RUNTIME_URL", "http://runtime.local")
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+
+    with TestClient(create_dashboard_app(tmp_path)) as client:
+        response = client.get(
+            "/api/dashboard/media-assets/content-recovery/preflight",
+            params={"asset_id": "asset:bad"},
+        )
+
+    assert response.status_code == 502
+    assert "响应格式无效" in response.json()["detail"]
+
+
 def test_dashboard_media_asset_content_proxies_contract_fixture(
     tmp_path,
     monkeypatch,
@@ -996,6 +1076,9 @@ def test_dashboard_messages_are_enriched_with_runtime_media_assets(
     assert item["media_assets"][0]["content_recovery_plan_url"] == (
         "/api/dashboard/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
     )
+    assert item["media_assets"][0]["content_recovery_preflight_url"] == (
+        "/api/dashboard/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
     assert detail_response.status_code == 200
     detail_asset = detail_response.json()["media_assets"][0]
     assert detail_asset["name"] == "qq-image.jpg"
@@ -1004,6 +1087,9 @@ def test_dashboard_messages_are_enriched_with_runtime_media_assets(
     )
     assert detail_asset["content_recovery_plan_url"] == (
         "/api/dashboard/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
+    assert detail_asset["content_recovery_preflight_url"] == (
+        "/api/dashboard/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
     )
     assert calls
 
