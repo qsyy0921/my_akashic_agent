@@ -3608,6 +3608,30 @@ func TestControlMutationPreflightEndpointChecksApproval(t *testing.T) {
 	}
 }
 
+func TestControlMutationPreflightEndpointBlocksUnsupportedIntent(t *testing.T) {
+	approvals := appservice.NewOperatorApprovalService()
+	preflight := appservice.NewControlMutationPreflightService(approvals)
+	mux := http.NewServeMux()
+	httptrigger.RegisterControlMutationPreflightRoutes(mux, preflight)
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/control-mutations/preflight?target_kind=model_provider_config&target_id=mimo&action=enable&operator_id=qsyy&approval_id=approval-a", nil)
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected unsupported preflight 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"ready":false`,
+		`"reason":"unsupported_control_mutation_target"`,
+		`"blockers":["unsupported_control_mutation_target"]`,
+		`"side_effect":"none"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("unsupported preflight response missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)

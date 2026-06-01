@@ -68,3 +68,36 @@ func TestControlMutationPreflightServiceBlocksMissingApproval(t *testing.T) {
 		t.Fatalf("blocked preflight must not suggest audit: %+v", view.SuggestedAudit)
 	}
 }
+
+func TestControlMutationPreflightServiceBlocksUnsupportedAction(t *testing.T) {
+	ctx := context.Background()
+	approvals := appservice.NewOperatorApprovalService()
+	approval, err := approvals.RecordOperatorApproval(ctx, command.RecordOperatorApprovalCommand{
+		TargetKind: "outbound_cutover",
+		TargetID:   "cutover-a",
+		Decision:   "approved",
+		OperatorID: "qsyy",
+		Timestamp:  time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("record approval: %v", err)
+	}
+	preflight := appservice.NewControlMutationPreflightService(approvals)
+
+	view, err := preflight.CheckControlMutationPreflight(ctx, query.ControlMutationPreflight{
+		TargetKind: "outbound_cutover",
+		TargetID:   "cutover-a",
+		Action:     "apply",
+		OperatorID: "qsyy",
+		ApprovalID: approval.ApprovalID,
+	})
+	if err != nil {
+		t.Fatalf("check preflight: %v", err)
+	}
+	if view.Ready || view.Reason != "unsupported_control_mutation_action" || view.Blockers[0] != "unsupported_control_mutation_action" {
+		t.Fatalf("unexpected unsupported action view: %+v", view)
+	}
+	if len(view.SupportedActions) != 2 || view.SupportedActions[0] != "enable" || view.SupportedActions[1] != "rollback" {
+		t.Fatalf("expected supported action hints, got %+v", view.SupportedActions)
+	}
+}

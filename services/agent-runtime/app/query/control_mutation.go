@@ -49,16 +49,17 @@ type ControlMutationSuggestedAuditView struct {
 }
 
 type ControlMutationPreflightView struct {
-	Ready          bool                               `json:"ready"`
-	Reason         string                             `json:"reason"`
-	Blockers       []string                           `json:"blockers,omitempty"`
-	TargetKind     string                             `json:"target_kind"`
-	TargetID       string                             `json:"target_id"`
-	Action         string                             `json:"action"`
-	OperatorID     string                             `json:"operator_id"`
-	ApprovalID     string                             `json:"approval_id"`
-	ApprovalCheck  OperatorApprovalCheckView          `json:"approval_check"`
-	SuggestedAudit *ControlMutationSuggestedAuditView `json:"suggested_audit,omitempty"`
-	Notes          []string                           `json:"notes,omitempty"`
-	SideEffect     string                             `json:"side_effect"`
+	Ready            bool                               `json:"ready"`
+	Reason           string                             `json:"reason"`
+	Blockers         []string                           `json:"blockers,omitempty"`
+	SupportedActions []string                           `json:"supported_actions,omitempty"`
+	TargetKind       string                             `json:"target_kind"`
+	TargetID         string                             `json:"target_id"`
+	Action           string                             `json:"action"`
+	OperatorID       string                             `json:"operator_id"`
+	ApprovalID       string                             `json:"approval_id"`
+	ApprovalCheck    OperatorApprovalCheckView          `json:"approval_check"`
+	SuggestedAudit   *ControlMutationSuggestedAuditView `json:"suggested_audit,omitempty"`
+	Notes            []string                           `json:"notes,omitempty"`
+	SideEffect       string                             `json:"side_effect"`
 }

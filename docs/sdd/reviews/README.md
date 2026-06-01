@@ -200,3 +200,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-151-runtime-overview-control-audit.md`
 - `2026-06-01-phase8-152-dashboard-control-audit-detail.md`
 - `2026-06-01-phase8-153-control-mutation-preflight.md`
+- `2026-06-01-phase8-154-control-mutation-policy.md`

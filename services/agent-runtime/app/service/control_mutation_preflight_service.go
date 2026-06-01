@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
+	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
 )
 
 type controlMutationApprovalChecker interface {
@@ -14,10 +15,14 @@ type controlMutationApprovalChecker interface {
 
 type ControlMutationPreflightService struct {
 	approvals controlMutationApprovalChecker
+	policy    domainservice.ControlMutationPolicy
 }
 
 func NewControlMutationPreflightService(approvals controlMutationApprovalChecker) *ControlMutationPreflightService {
-	return &ControlMutationPreflightService{approvals: approvals}
+	return &ControlMutationPreflightService{
+		approvals: approvals,
+		policy:    domainservice.NewControlMutationPolicy(),
+	}
 }
 
 func (s *ControlMutationPreflightService) CheckControlMutationPreflight(ctx context.Context, preflight query.ControlMutationPreflight) (query.ControlMutationPreflightView, error) {
@@ -63,6 +68,13 @@ func (s *ControlMutationPreflightService) CheckControlMutationPreflight(ctx cont
 	if len(blockers) > 0 {
 		base.Reason = blockers[0]
 		base.Blockers = blockers
+		return base, nil
+	}
+	policyResult := s.policy.Check(targetKind, action)
+	base.SupportedActions = policyResult.SupportedActions
+	if !policyResult.Allowed {
+		base.Reason = policyResult.Reason
+		base.Blockers = []string{policyResult.Reason}
 		return base, nil
 	}
 	if s.approvals == nil {
