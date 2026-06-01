@@ -18,6 +18,7 @@ const (
 
 type RuntimeOverviewDeps struct {
 	QueueBackend               runtimeQueueBackendGetter
+	QueueTopology              runtimeQueueTopologyGetter
 	RuntimeConfig              runtimeConfigGetter
 	DeliveryAdapters           runtimeDeliveryAdapterLister
 	DeliverySmoke              runtimeDeliverySmokeReadinessChecker
@@ -48,6 +49,10 @@ type RuntimeOverviewDeps struct {
 
 type runtimeQueueBackendGetter interface {
 	Get(ctx context.Context) (query.QueueBackendView, error)
+}
+
+type runtimeQueueTopologyGetter interface {
+	GetQueueTopology(ctx context.Context) (query.QueueTopologyView, error)
 }
 
 type runtimeConfigGetter interface {
@@ -177,6 +182,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		deliveryAdapters      []query.DeliveryAdapterDiagnosticsView
 		deliverySmoke         query.DeliverySmokeReadinessView
 		queueBackend          query.QueueBackendView
+		queueTopology         query.QueueTopologyView
 		runtimeConfig         query.RuntimeConfigView
 		sendLedger            query.SendLedgerMetricsView
 		inboxMetrics          query.InboxMetricsView
@@ -219,6 +225,14 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 				errors = append(errors, runtimeOverviewError("runtime-config", err))
 			} else {
 				runtimeConfig = item
+			}
+		}
+
+		if deps.QueueTopology != nil {
+			if item, err := deps.QueueTopology.GetQueueTopology(ctx); err != nil {
+				errors = append(errors, runtimeOverviewError("queue-topology", err))
+			} else {
+				queueTopology = item
 			}
 		}
 
@@ -450,6 +464,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		deliveryAdapters,
 		deliverySmoke,
 		queueBackend,
+		queueTopology,
 		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
@@ -480,6 +495,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		deliveryAdapters,
 		deliverySmoke,
 		queueBackend,
+		queueTopology,
 		runtimeConfig,
 		sendLedger,
 		inboxMetrics,
@@ -513,6 +529,7 @@ func (s *RuntimeOverviewService) Get(ctx context.Context, filter query.RuntimeOv
 		DeliveryAdapters:        deliveryAdapters,
 		DeliverySmokeReadiness:  deliverySmoke,
 		QueueBackend:            queueBackend,
+		QueueTopology:           queueTopology,
 		RuntimeConfig:           runtimeConfig,
 		RuntimeWorkers:          runtimeWorkers,
 		AgentWorkers:            agentWorkers,
@@ -550,6 +567,7 @@ func runtimeOverviewSummary(
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
 	deliverySmoke query.DeliverySmokeReadinessView,
 	queueBackend query.QueueBackendView,
+	queueTopology query.QueueTopologyView,
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
@@ -658,6 +676,14 @@ func runtimeOverviewSummary(
 		"queue_consumer_concurrency":                            queueBackend.ConsumerConcurrency,
 		"queue_max_in_flight":                                   queueBackend.MaxInFlight,
 		"queue_external_lease_ready":                            externalLeaseReady,
+		"queue_topology_nodes":                                  len(queueTopology.Nodes),
+		"queue_topology_edges":                                  len(queueTopology.Edges),
+		"queue_topology_work_kinds":                             len(queueTopology.WorkKinds),
+		"queue_topology_blockers":                               len(queueTopology.Blockers),
+		"queue_topology_external_lease_ready":                   queueTopology.ExternalLeaseReady,
+		"queue_topology_outbox_execution_owner":                 queueTopologyExecutionOwner(queueTopology, "outbox_delivery"),
+		"queue_topology_agent_job_execution_owner":              queueTopologyExecutionOwner(queueTopology, "agent_job"),
+		"queue_topology_agent_job_ack_owner":                    queueTopologyAckOwnerFromView(queueTopology, "agent_job"),
 		"queue_external_lease_executed_total":                   externalLeaseExecutedTotal,
 		"queue_external_lease_error_total":                      externalLeaseErrorTotal,
 		"queue_external_lease_ack":                              externalLeaseAck,
@@ -829,6 +855,7 @@ func runtimeOverviewCards(
 	deliveryAdapters []query.DeliveryAdapterDiagnosticsView,
 	deliverySmoke query.DeliverySmokeReadinessView,
 	queueBackend query.QueueBackendView,
+	queueTopology query.QueueTopologyView,
 	runtimeConfig query.RuntimeConfigView,
 	sendLedger query.SendLedgerMetricsView,
 	inboxMetrics query.InboxMetricsView,
@@ -876,6 +903,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("delivery_adapters", "Delivery Adapters", intSummary(summary, "delivery_adapters_enabled"), deliveryAdapterStatus(deliveryAdapters), map[string]any{"items": deliveryAdapters}),
 		runtimeOverviewCard("delivery_smoke", "Delivery Smoke", deliverySmokeValue(deliverySmoke), deliverySmokeStatus(deliverySmoke), map[string]any{"delivery_smoke_readiness": deliverySmoke}),
 		runtimeOverviewCard("queue_backend", "Queue Backend", queueValue, queueBackendStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
+		runtimeOverviewCard("queue_topology", "Queue Topology", queueTopologyValue(queueTopology), queueTopologyStatus(queueTopology), map[string]any{"queue_topology": queueTopology}),
 		runtimeOverviewCard("external_lease_diagnostics", "External Lease", externalLeaseValue(queueBackend), externalLeaseStatus(queueBackend), map[string]any{"queue_backend": queueBackend}),
 		runtimeOverviewCard("runtime_workers", "Runtime Workers", intSummary(summary, "runtime_workers_running"), runtimeWorkerStatus(runtimeWorkers), map[string]any{"runtime_workers": runtimeWorkers}),
 		runtimeOverviewCard("agent_workers", "Agent Workers", agentWorkerValue(agentWorkers), agentWorkerStatus(agentWorkers), map[string]any{"agent_workers": agentWorkers}),
@@ -1019,6 +1047,53 @@ func queueBackendCardValue(view query.QueueBackendView) string {
 		return fmt.Sprintf("%s (%s)", value, view.SelectedProviderCapability.RecommendedPhase)
 	}
 	return value
+}
+
+func queueTopologyStatus(view query.QueueTopologyView) string {
+	if view.SideEffect == "" {
+		return "muted"
+	}
+	if len(view.Blockers) > 0 {
+		return "warn"
+	}
+	if view.ExternalLeaseReady {
+		return "ok"
+	}
+	if len(view.WorkKinds) > 0 {
+		return "ok"
+	}
+	return "muted"
+}
+
+func queueTopologyValue(view query.QueueTopologyView) string {
+	if view.SideEffect == "" {
+		return "unknown"
+	}
+	allowed := 0
+	for _, item := range view.WorkKinds {
+		if item.Allowed {
+			allowed++
+		}
+	}
+	return fmt.Sprintf("%d/%d", allowed, len(view.WorkKinds))
+}
+
+func queueTopologyExecutionOwner(view query.QueueTopologyView, workKind string) string {
+	for _, item := range view.WorkKinds {
+		if item.WorkKind == workKind {
+			return item.ExecutionOwner
+		}
+	}
+	return ""
+}
+
+func queueTopologyAckOwnerFromView(view query.QueueTopologyView, workKind string) string {
+	for _, item := range view.WorkKinds {
+		if item.WorkKind == workKind {
+			return item.AckOwner
+		}
+	}
+	return ""
 }
 
 func runtimeOutboxPressureStatus(view query.OutboxMetricsView) string {

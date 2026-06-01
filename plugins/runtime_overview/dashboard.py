@@ -918,6 +918,26 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_queue_topology(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": _text(item.get("provider") or "unknown"),
+        "mode": _text(item.get("mode") or "unknown"),
+        "migration_phase": _text(item.get("migration_phase")),
+        "selected_provider": _text(item.get("selected_provider")),
+        "recommended_provider": _text(item.get("recommended_provider")),
+        "state_store_authoritative": bool(item.get("state_store_authoritative")),
+        "external_queue_active": bool(item.get("external_queue_active")),
+        "external_lease_ready": bool(item.get("external_lease_ready")),
+        "execution_scope": _text(item.get("execution_scope")),
+        "nodes": _mapping_list(item.get("nodes")),
+        "edges": _mapping_list(item.get("edges")),
+        "work_kinds": _mapping_list(item.get("work_kinds")),
+        "blockers": _string_list(item.get("blockers")),
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
 def _normalize_send_ledger_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     repeated = item.get("repeated_hashes")
     if not isinstance(repeated, list):
@@ -1078,6 +1098,7 @@ def _normalize_go_runtime_overview(
         if isinstance(value, Mapping)
     ]
     queue_backend = _normalize_queue_backend(_mapping_or_empty(item.get("queue_backend")))
+    queue_topology = _normalize_queue_topology(_mapping_or_empty(item.get("queue_topology")))
     send_ledger_metrics = _normalize_send_ledger_metrics(
         _mapping_or_empty(item.get("send_ledger_metrics"))
     )
@@ -1176,6 +1197,7 @@ def _normalize_go_runtime_overview(
         "delivery_adapters": delivery_adapters,
         "delivery_smoke_readiness": delivery_smoke_readiness,
         "queue_backend": queue_backend,
+        "queue_topology": queue_topology,
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
@@ -1233,6 +1255,14 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "queue_consumer_concurrency": 0,
         "queue_max_in_flight": 0,
         "queue_external_lease_ready": False,
+        "queue_topology_nodes": 0,
+        "queue_topology_edges": 0,
+        "queue_topology_work_kinds": 0,
+        "queue_topology_blockers": 0,
+        "queue_topology_external_lease_ready": False,
+        "queue_topology_outbox_execution_owner": "unknown",
+        "queue_topology_agent_job_execution_owner": "unknown",
+        "queue_topology_agent_job_ack_owner": "unknown",
         "runtime_config_blockers": 0,
         "runtime_config_onebot_missing": 0,
         "runtime_workers": 0,

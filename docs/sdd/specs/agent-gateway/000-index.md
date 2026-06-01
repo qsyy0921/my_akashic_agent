@@ -236,4 +236,7 @@ execution.
 - `087-queue-topology-read-model.md`: Go exposes a read-only queue topology
   view that maps provider capability, execution owners and external lease gates
   without executing MQ or AI work.
+- `088-runtime-overview-queue-topology.md`: Runtime overview and Python
+  dashboard aggregate the Go-owned queue topology read model as a stable
+  read-only status surface.
 - Agent architecture boundary specs live under `../agent-architecture/`.

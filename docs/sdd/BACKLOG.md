@@ -21,7 +21,7 @@
 - 生产 cutover 前继续做真实 NATS external lease preflight：确认 local outbox worker 已关闭、delivery smoke readiness 与 runtime overview `Delivery Smoke` card 均通过、dual-read smoke 已通过、outbox external lease smoke 已通过，再启用真实平台发送范围。
 - MQ 方案下一步只做有证据的 adapter 扩展：NATS JetStream 已是当前推荐外部 MQ 且 provider capability matrix 已可见；Redis Streams / RabbitMQ 仅在出现明确部署需求时再实现 infrastructure adapter，并继续保持 domain/provider-neutral。
 - 若前端需要更强队列可视化，再把 provider capability 做成独立 dashboard 表格；当前 runtime overview 已提供 summary/card 级摘要，避免本轮扩大 UI 改造范围。
-- queue topology read model 已由 Go 提供 `/v1/queue-topology`；若前端需要更强执行边界可视化，可基于该 endpoint 做独立面板，但不要在 dashboard 中加入真实控制逻辑。
+- queue topology read model 已由 Go 提供 `/v1/queue-topology`，并已聚合到 runtime overview / Python dashboard；若前端需要更强执行边界可视化，可基于该 detail 做独立面板，但不要在 dashboard 中加入真实控制逻辑。
 - 继续推进 Python AI worker 作为 Go AgentJob consumer 的规范化：worker status 已有 lease/fencing/heartbeat renewal，external_lease 已有 ack/nack/term 执行诊断并进入 runtime overview，`agent_job` result-ack readiness/plan 及二者 runtime overview 聚合已可见；后续继续收敛外部 MQ result-ack live smoke 和切换后的稳定性观察。
 - 若后续要做 Python worker 并发控制、autoscaling 或知识任务优先级调度，优先基于已落地的 Go `AgentJob` pressure、`Agent Job Worker Coverage` 和 `/v1/agent-job-capacity/plan`；当前只提供只读容量建议，不引入调度副作用。
 - `Agent Job Capacity` 已进入 runtime overview 且 Python dashboard 已规范化 detail；后续如需前端 drilldown，可直接消费 dashboard detail，真实 autoscaling/优先级控制仍必须另做 operator ack 和审计设计。

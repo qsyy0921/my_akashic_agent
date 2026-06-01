@@ -647,6 +647,16 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "queue_consumer_concurrency": 8,
             "queue_max_in_flight": 64,
             "queue_external_lease_ready": False,
+            "queue_topology_nodes": 3,
+            "queue_topology_edges": 2,
+            "queue_topology_work_kinds": 2,
+            "queue_topology_blockers": 1,
+            "queue_topology_external_lease_ready": False,
+            "queue_topology_outbox_execution_owner": "nats_external_lease",
+            "queue_topology_agent_job_execution_owner": (
+                "python_ai_worker_with_nats_result_ack"
+            ),
+            "queue_topology_agent_job_ack_owner": "nats_external_lease_result_ack",
             "runtime_workers": 3,
             "runtime_workers_enabled": 2,
             "runtime_workers_running": 1,
@@ -765,6 +775,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "value": "nats_jetstream/external_lease",
                 "status": "warn",
             },
+            {
+                "id": "queue_topology",
+                "label": "Queue Topology",
+                "value": "1/2",
+                "status": "warn",
+            },
             {"id": "runtime_workers", "label": "Runtime Workers", "value": 1, "status": "warn"},
             {"id": "observe_targets", "label": "Observe Targets", "value": 1, "status": "ok"},
             {"id": "observe_capture", "label": "Observe Capture", "value": "0/1", "status": "warn"},
@@ -837,6 +853,62 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "side_effect": "none",
         },
         "queue_backend": queue_backend,
+        "queue_topology": {
+            "provider": "nats_jetstream",
+            "mode": "external_lease",
+            "migration_phase": "first_external_mq",
+            "selected_provider": "nats_jetstream",
+            "recommended_provider": "nats_jetstream",
+            "state_store_authoritative": True,
+            "external_queue_active": True,
+            "external_lease_ready": False,
+            "execution_scope": "outbox_delivery_and_agent_job_result_ack",
+            "nodes": [
+                {"id": "state_store", "kind": "state_store", "status": "ok"},
+                {"id": "external_queue", "kind": "external_queue", "status": "ok"},
+                {"id": "python_ai_worker", "kind": "python_worker", "status": "ok"},
+            ],
+            "edges": [
+                {
+                    "from": "state_store",
+                    "to": "external_lease_executor",
+                    "work_kind": "outbox_delivery",
+                    "queue_source": "outbox_state_store",
+                    "execution_owner": "nats_external_lease",
+                    "ack_owner": "nats_external_lease",
+                    "status": "ok",
+                },
+                {
+                    "from": "state_store",
+                    "to": "python_ai_worker",
+                    "work_kind": "agent_job",
+                    "queue_source": "agent_job_state_store_with_nats_result_ack",
+                    "execution_owner": "python_ai_worker_with_nats_result_ack",
+                    "ack_owner": "nats_external_lease_result_ack",
+                    "status": "blocked",
+                },
+            ],
+            "work_kinds": [
+                {
+                    "work_kind": "outbox_delivery",
+                    "queue_source": "outbox_state_store",
+                    "execution_owner": "nats_external_lease",
+                    "ack_owner": "nats_external_lease",
+                    "allowed": True,
+                },
+                {
+                    "work_kind": "agent_job",
+                    "queue_source": "agent_job_state_store_with_nats_result_ack",
+                    "execution_owner": "python_ai_worker_with_nats_result_ack",
+                    "ack_owner": "nats_external_lease_result_ack",
+                    "allowed": False,
+                    "blockers": ["agent_job_result_ack_disabled"],
+                },
+            ],
+            "blockers": ["agent_job:agent_job_result_ack_disabled"],
+            "notes": ["read-only"],
+            "side_effect": "none",
+        },
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
@@ -1263,6 +1335,20 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_consumer_concurrency"] == 8
     assert payload["summary"]["queue_max_in_flight"] == 64
     assert payload["summary"]["queue_external_lease_ready"] is False
+    assert payload["summary"]["queue_topology_nodes"] == 3
+    assert payload["summary"]["queue_topology_edges"] == 2
+    assert payload["summary"]["queue_topology_work_kinds"] == 2
+    assert payload["summary"]["queue_topology_blockers"] == 1
+    assert payload["summary"]["queue_topology_external_lease_ready"] is False
+    assert payload["summary"]["queue_topology_outbox_execution_owner"] == (
+        "nats_external_lease"
+    )
+    assert payload["summary"]["queue_topology_agent_job_execution_owner"] == (
+        "python_ai_worker_with_nats_result_ack"
+    )
+    assert payload["summary"]["queue_topology_agent_job_ack_owner"] == (
+        "nats_external_lease_result_ack"
+    )
     assert payload["summary"]["runtime_workers"] == 3
     assert payload["summary"]["runtime_workers_enabled"] == 2
     assert payload["summary"]["runtime_workers_running"] == 1
@@ -1353,6 +1439,19 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    queue_topology_card = next(
+        item for item in payload["cards"] if item["id"] == "queue_topology"
+    )
+    assert queue_topology_card["value"] == "1/2"
+    assert queue_topology_card["status"] == "warn"
+    queue_topology = payload["queue_topology"]
+    assert queue_topology["provider"] == "nats_jetstream"
+    assert queue_topology["work_kinds"][1]["work_kind"] == "agent_job"
+    assert queue_topology["work_kinds"][1]["ack_owner"] == (
+        "nats_external_lease_result_ack"
+    )
+    assert queue_topology["work_kinds"][1]["allowed"] is False
+    assert queue_topology["side_effect"] == "none"
     runtime_worker_card = next(
         item for item in payload["cards"] if item["id"] == "runtime_workers"
     )

@@ -343,6 +343,7 @@ func main() {
 	})
 	runtimeOverview := appservice.NewRuntimeOverviewService(appservice.RuntimeOverviewDeps{
 		QueueBackend:               queueBackend,
+		QueueTopology:              queueTopology,
 		RuntimeConfig:              runtimeConfig,
 		DeliveryAdapters:           deliveryAdapterDiagnostics,
 		DeliverySmoke:              deliverySmokeReadiness,

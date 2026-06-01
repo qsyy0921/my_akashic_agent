@@ -43,6 +43,34 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				},
 			},
 		}},
+		QueueTopology: staticRuntimeQueueTopology{view: query.QueueTopologyView{
+			Provider:           "nats_jetstream",
+			Mode:               "external_lease",
+			MigrationPhase:     "first_external_mq",
+			ExternalLeaseReady: false,
+			ExecutionScope:     "outbox_delivery_and_agent_job_result_ack",
+			SideEffect:         "none",
+			Blockers:           []string{"agent_job:agent_job_result_ack_disabled"},
+			Nodes:              []query.QueueTopologyNodeView{{ID: "state_store"}, {ID: "external_queue"}, {ID: "python_ai_worker"}},
+			Edges:              []query.QueueTopologyEdgeView{{WorkKind: "outbox_delivery"}, {WorkKind: "agent_job"}},
+			WorkKinds: []query.QueueTopologyWorkKind{
+				{
+					WorkKind:       "outbox_delivery",
+					QueueSource:    "outbox_state_store",
+					ExecutionOwner: "nats_external_lease",
+					AckOwner:       "nats_external_lease",
+					Allowed:        true,
+				},
+				{
+					WorkKind:       "agent_job",
+					QueueSource:    "agent_job_state_store_with_nats_result_ack",
+					ExecutionOwner: "python_ai_worker_with_nats_result_ack",
+					AckOwner:       "nats_external_lease_result_ack",
+					Allowed:        false,
+					Blockers:       []string{"agent_job_result_ack_disabled"},
+				},
+			},
+		}},
 		RuntimeConfig: staticRuntimeConfig{view: query.RuntimeConfigView{
 			Runtime: query.RuntimeProcessConfigView{
 				Address:       ":8780",
@@ -762,6 +790,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 		view.Summary["outbound_cutover_plan_recommended_owner"] != "nats_external_lease" {
 		t.Fatalf("unexpected outbound cutover plan summary: %#v", view.Summary)
 	}
+	if view.Summary["queue_topology_nodes"] != 3 ||
+		view.Summary["queue_topology_edges"] != 2 ||
+		view.Summary["queue_topology_work_kinds"] != 2 ||
+		view.Summary["queue_topology_blockers"] != 1 ||
+		view.Summary["queue_topology_external_lease_ready"] != false ||
+		view.Summary["queue_topology_outbox_execution_owner"] != "nats_external_lease" ||
+		view.Summary["queue_topology_agent_job_execution_owner"] != "python_ai_worker_with_nats_result_ack" ||
+		view.Summary["queue_topology_agent_job_ack_owner"] != "nats_external_lease_result_ack" {
+		t.Fatalf("unexpected queue topology summary: %#v", view.Summary)
+	}
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
@@ -798,6 +836,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "delivery_smoke", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_backend", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "queue_backend", "nats_jetstream/external_lease (first_external_mq)")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "queue_topology", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "queue_topology", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "external_lease_diagnostics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_config", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "runtime_workers", "warn")
@@ -833,6 +873,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardValue(t, view.Cards, "agent_job_capacity_plan", "attention:3")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_metrics", "danger")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "outbox_pressure", "warn")
+	if view.QueueTopology.WorkKinds[1].WorkKind != "agent_job" ||
+		view.QueueTopology.WorkKinds[1].AckOwner != "nats_external_lease_result_ack" ||
+		view.QueueTopology.WorkKinds[1].Allowed {
+		t.Fatalf("unexpected queue topology detail: %+v", view.QueueTopology.WorkKinds)
+	}
 	if len(view.AgentJobWorkerCoverage) != 4 {
 		t.Fatalf("unexpected agent job worker coverage items: %+v", view.AgentJobWorkerCoverage)
 	}
@@ -921,6 +966,14 @@ type staticRuntimeQueueBackend struct {
 }
 
 func (s staticRuntimeQueueBackend) Get(context.Context) (query.QueueBackendView, error) {
+	return s.view, nil
+}
+
+type staticRuntimeQueueTopology struct {
+	view query.QueueTopologyView
+}
+
+func (s staticRuntimeQueueTopology) GetQueueTopology(context.Context) (query.QueueTopologyView, error) {
 	return s.view, nil
 }
 
