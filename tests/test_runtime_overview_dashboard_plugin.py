@@ -2352,6 +2352,10 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "Queue Topology" in js_response.text
     assert "Execution Owner" in js_response.text
     assert "Ack Owner" in js_response.text
+    assert "Operator Approvals" in js_response.text
+    assert "Control Mutations" in js_response.text
+    assert "approval_id" in js_response.text
+    assert "mutation_id" in js_response.text
 
 
 def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(

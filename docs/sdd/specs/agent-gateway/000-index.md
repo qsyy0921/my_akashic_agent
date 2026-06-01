@@ -335,4 +335,7 @@ execution.
 - `128-runtime-overview-queue-topology-table.md`: Runtime overview dashboard
   renders Go-owned queue topology work kinds and execution/ack owners as a
   read-only table while preserving JSON fallback.
+- `129-runtime-overview-control-audit-table.md`: Runtime overview dashboard
+  renders Go-owned operator approval and control mutation audit detail as
+  read-only tables while preserving JSON fallback.
 - Agent architecture boundary specs live under `../agent-architecture/`.

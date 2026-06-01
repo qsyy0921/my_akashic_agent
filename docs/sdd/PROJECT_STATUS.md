@@ -18,13 +18,12 @@
 
 ## 当前迭代状态
 
-当前本轮 TODO 仍有未完成项，集中在 runtime overview dashboard 可读性：
+当前 `TODO.md` 已清空。最近完成的切片是 runtime overview dashboard 可读性收口：
 
-- Control Audit drilldown 设计：把 operator approvals / control mutations 从原始 JSON 改为只读表格。
-- Control Audit dashboard panel 实现：展示审计表格，并保留 JSON fallback。
-- 插件资产测试、SDD 收口文档和本轮 TODO 清空。
+- `Control Audit` drilldown 已把 operator approvals / control mutations 从原始 JSON 提升为只读表格。
+- 保留 raw JSON fallback，且不加入 approval/mutation/cutover/worker/MQ/media/AI 副作用。
 
-本轮已有设计草案：
+对应设计：
 
 - `docs/sdd/specs/agent-gateway/129-runtime-overview-control-audit-table.md`
 

@@ -66,6 +66,11 @@ function _link(value: unknown, label: string): string {
   return `<a class="runtime-overview-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
 }
 
+function _target(kind: unknown, id: unknown): string {
+  const parts = [kind, id].map((value) => String(value ?? "").trim()).filter(Boolean);
+  return parts.length ? parts.join(" / ") : "-";
+}
+
 function _renderMediaAssetContentDetail(detail: Record<string, unknown>): string {
   const totals = _record(detail.totals);
   const items = _array(detail.items).slice(0, 20);
@@ -109,6 +114,97 @@ function _renderMediaAssetContentDetail(detail: Record<string, unknown>): string
             </tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="5" class="runtime-overview-muted">No media assets sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function _renderControlAuditDetail(detail: Record<string, unknown>): string {
+  const approvals = _record(detail.operator_approvals);
+  const mutations = _record(detail.control_mutations);
+  const approvalTotals = _record(approvals.totals);
+  const mutationTotals = _record(mutations.totals);
+  const approvalRows = _array(approvals.approvals).slice(0, 20).map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.approval_id, 34))}</td>
+      <td>${escapeHtml(_short(_target(item.target_kind, item.target_id), 42))}</td>
+      <td>${_runtimeStatusTag(String(item.decision || "muted"))}</td>
+      <td>${_runtimeStatusTag(item.active === false ? "muted" : "ok")}</td>
+      <td>${escapeHtml(_short(item.operator_id || "-", 28))}</td>
+      <td>${escapeHtml(_short(item.created_at || "-", 32))}</td>
+    </tr>
+  `).join("");
+  const mutationRows = _array(mutations.mutations).slice(0, 20).map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.mutation_id, 34))}</td>
+      <td>${escapeHtml(_short(`${_target(item.target_kind, item.target_id)} / ${String(item.action || "-")}`, 52))}</td>
+      <td>${_runtimeStatusTag(String(item.status || "muted"))}</td>
+      <td class="mono">${escapeHtml(_short(item.approval_id || "-", 30))}</td>
+      <td>${escapeHtml(_short(item.operator_id || "-", 28))}</td>
+      <td>${escapeHtml(_short(item.rollback_ref || item.reason || "-", 44))}</td>
+      <td>${escapeHtml(_short(item.created_at || "-", 32))}</td>
+    </tr>
+  `).join("");
+  const approvalKpis = ["approvals", "active", "approved", "rejected", "revoked"]
+    .map((key) => `
+      <div class="runtime-overview-kpi">
+        <span>${escapeHtml(key)}</span>
+        <strong>${escapeHtml(String(approvalTotals[key] ?? 0))}</strong>
+      </div>
+    `)
+    .join("");
+  const mutationKpis = ["mutations", "planned", "applied", "failed", "rolled_back"]
+    .map((key) => `
+      <div class="runtime-overview-kpi">
+        <span>${escapeHtml(key)}</span>
+        <strong>${escapeHtml(String(mutationTotals[key] ?? 0))}</strong>
+      </div>
+    `)
+    .join("");
+  return `
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div class="detail-label">Operator Approvals</div>
+        <div class="detail-subtext">${escapeHtml(String(approvals.side_effect || "runtime_state_only"))}</div>
+      </div>
+      <div class="runtime-overview-kpis">${approvalKpis}</div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Approval</th>
+              <th>Target</th>
+              <th>Decision</th>
+              <th>Active</th>
+              <th>Operator</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>${approvalRows || `<tr><td colspan="6" class="runtime-overview-muted">No operator approvals sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div class="detail-label">Control Mutations</div>
+        <div class="detail-subtext">${escapeHtml(String(mutations.side_effect || "runtime_state_only"))}</div>
+      </div>
+      <div class="runtime-overview-kpis">${mutationKpis}</div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Mutation</th>
+              <th>Target / Action</th>
+              <th>Status</th>
+              <th>Approval</th>
+              <th>Operator</th>
+              <th>Reason / Rollback</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>${mutationRows || `<tr><td colspan="7" class="runtime-overview-muted">No control mutations sampled</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -242,6 +338,8 @@ window.AkashicDashboard.registerPlugin({
       ? _renderMediaAssetContentDetail(_record(card.detail))
       : card.id === "queue_topology"
         ? _renderQueueTopologyDetail(_record(card.detail))
+      : card.id === "control_audit"
+        ? _renderControlAuditDetail(_record(card.detail))
       : "";
     container.innerHTML = `
       <div class="runtime-overview-detail">
