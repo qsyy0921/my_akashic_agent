@@ -344,6 +344,8 @@ class RuntimeOverviewDashboardReader:
             "receiver_leases": receiver_leases["totals"]["leases"],
             "receiver_leases_active": receiver_leases["totals"]["active"],
             "receiver_leases_expired": receiver_leases["totals"]["expired"],
+            "receiver_lease_cleanup_required": receiver_leases["totals"]["expired"] > 0,
+            "receiver_lease_cleanup_endpoint": "/v1/receiver-leases/cleanup-expired",
             "scheduler_jobs": scheduler_jobs["sampled_jobs"],
             "scheduler_jobs_enabled": scheduler_jobs["enabled_jobs"],
             "scheduler_jobs_disabled": scheduler_jobs["disabled_jobs"],
@@ -1378,6 +1380,8 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "receiver_leases": 0,
         "receiver_leases_active": 0,
         "receiver_leases_expired": 0,
+        "receiver_lease_cleanup_required": False,
+        "receiver_lease_cleanup_endpoint": "/v1/receiver-leases/cleanup-expired",
         "scheduler_jobs": 0,
         "scheduler_jobs_enabled": 0,
         "scheduler_jobs_disabled": 0,
@@ -2481,9 +2485,15 @@ def _overview_cards(
         _card(
             "receiver_leases",
             "Receiver Leases",
-            summary.get("receiver_leases_active", 0),
+            _receiver_lease_value(summary),
             _receiver_lease_status(summary),
-            {"receiver_leases": receiver_leases},
+            {
+                "receiver_leases": receiver_leases,
+                "cleanup_endpoint": summary.get(
+                    "receiver_lease_cleanup_endpoint",
+                    "/v1/receiver-leases/cleanup-expired",
+                ),
+            },
         ),
         _card(
             "scheduler_jobs",
@@ -2579,6 +2589,16 @@ def _receiver_lease_status(summary: Mapping[str, Any]) -> str:
     if _int_value(summary.get("receiver_leases_active"), fallback=0) <= 0:
         return "warn"
     return "ok"
+
+
+def _receiver_lease_value(summary: Mapping[str, Any]) -> str:
+    leases = _int_value(summary.get("receiver_leases"), fallback=0)
+    if leases <= 0:
+        return "0"
+    return (
+        f"{_int_value(summary.get('receiver_leases_active'), fallback=0)}/"
+        f"{_int_value(summary.get('receiver_leases_expired'), fallback=0)}"
+    )
 
 
 def _scheduler_job_status(summary: Mapping[str, Any]) -> str:

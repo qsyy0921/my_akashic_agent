@@ -870,6 +870,8 @@ func runtimeOverviewSummary(
 		"receiver_leases":                                       intFromMap(receiverLeases.Totals, "leases"),
 		"receiver_leases_active":                                intFromMap(receiverLeases.Totals, "active"),
 		"receiver_leases_expired":                               intFromMap(receiverLeases.Totals, "expired"),
+		"receiver_lease_cleanup_required":                       intFromMap(receiverLeases.Totals, "expired") > 0,
+		"receiver_lease_cleanup_endpoint":                       "/v1/receiver-leases/cleanup-expired",
 		"scheduler_jobs":                                        schedulerJobs.SampledJobs,
 		"scheduler_jobs_enabled":                                schedulerJobs.EnabledJobs,
 		"scheduler_jobs_disabled":                               schedulerJobs.DisabledJobs,
@@ -1021,7 +1023,7 @@ func runtimeOverviewCards(
 		runtimeOverviewCard("control_mutation_policy", "Control Mutation Policy", controlMutationPolicyValue(controlMutationPolicy), controlMutationPolicyStatus(controlMutationPolicy), map[string]any{"control_mutation_policy": controlMutationPolicy}),
 		runtimeOverviewCard("control_audit", "Control Audit", controlAuditValue(summary), controlAuditStatus(operatorApprovals, controlMutations), map[string]any{"operator_approvals": operatorApprovals, "control_mutations": controlMutations}),
 		runtimeOverviewCard("receiver_statuses", "Receiver Statuses", intSummary(summary, "receiver_status_connected"), receiverStatusStatus(receiverStatuses), map[string]any{"receiver_statuses": receiverStatuses}),
-		runtimeOverviewCard("receiver_leases", "Receiver Leases", intSummary(summary, "receiver_leases_active"), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases}),
+		runtimeOverviewCard("receiver_leases", "Receiver Leases", receiverLeaseValue(receiverLeases), receiverLeaseStatus(receiverLeases), map[string]any{"receiver_leases": receiverLeases, "cleanup_endpoint": "/v1/receiver-leases/cleanup-expired"}),
 		runtimeOverviewCard("scheduler_jobs", "Scheduler Jobs", schedulerJobValue(schedulerJobs), schedulerJobStatus(schedulerJobs), map[string]any{"scheduler_jobs": schedulerJobs}),
 		runtimeOverviewCard("send_ledger_metrics", "Send Ledger Metrics", intSummary(summary, "send_ledger_records"), statusIfPositive(intSummary(summary, "send_ledger_repeated_hashes"), "warn", statusIfPositive(intSummary(summary, "send_ledger_records"), "ok", "muted")), map[string]any{"send_ledger_metrics": sendLedger}),
 		runtimeOverviewCard("inbox_metrics", "Inbox Metrics", intSummary(summary, "inbox_metric_events"), statusIfPositive(intSummary(summary, "inbox_metric_events"), "ok", "muted"), map[string]any{"inbox_metrics": inboxMetrics}),
@@ -1635,6 +1637,13 @@ func receiverLeaseStatus(view query.ReceiverLeasesView) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+func receiverLeaseValue(view query.ReceiverLeasesView) string {
+	if intFromMap(view.Totals, "leases") == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d/%d", intFromMap(view.Totals, "active"), intFromMap(view.Totals, "expired"))
 }
 
 func schedulerJobStatus(view query.SchedulerJobDiagnosticsView) string {

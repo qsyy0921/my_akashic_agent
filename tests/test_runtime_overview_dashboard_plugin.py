@@ -765,6 +765,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "receiver_leases": 1,
             "receiver_leases_active": 1,
             "receiver_leases_expired": 0,
+            "receiver_lease_cleanup_required": False,
+            "receiver_lease_cleanup_endpoint": "/v1/receiver-leases/cleanup-expired",
             "scheduler_jobs": 2,
             "scheduler_jobs_enabled": 1,
             "scheduler_jobs_disabled": 1,
@@ -941,7 +943,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "status": "warn",
             },
             {"id": "receiver_statuses", "label": "Receiver Statuses", "value": 1, "status": "warn"},
-            {"id": "receiver_leases", "label": "Receiver Leases", "value": 1, "status": "ok"},
+            {"id": "receiver_leases", "label": "Receiver Leases", "value": "1/0", "status": "ok"},
             {
                 "id": "scheduler_jobs",
                 "label": "Scheduler Jobs",
@@ -1687,6 +1689,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["receiver_status_suspended"] == 1
     assert payload["summary"]["receiver_leases"] == 1
     assert payload["summary"]["receiver_leases_active"] == 1
+    assert payload["summary"]["receiver_lease_cleanup_required"] is False
+    assert (
+        payload["summary"]["receiver_lease_cleanup_endpoint"]
+        == "/v1/receiver-leases/cleanup-expired"
+    )
     assert payload["summary"]["scheduler_jobs"] == 2
     assert payload["summary"]["scheduler_jobs_enabled"] == 1
     assert payload["summary"]["scheduler_jobs_overdue"] == 1
@@ -1863,6 +1870,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["receiver_statuses"]["totals"]["telegram"] == 1
     lease_card = next(item for item in payload["cards"] if item["id"] == "receiver_leases")
     assert lease_card["status"] == "ok"
+    assert lease_card["value"] == "1/0"
     assert payload["receiver_leases"]["leases"][0]["lease_token_present"] is True
     assert payload["receiver_leases"]["side_effect"] == "runtime_state_only"
     scheduler_card = next(item for item in payload["cards"] if item["id"] == "scheduler_jobs")

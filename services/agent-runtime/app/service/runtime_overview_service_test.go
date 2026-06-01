@@ -669,8 +669,16 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 				HolderID:          "python:1",
 				LeaseTokenPresent: true,
 				Active:            true,
+			}, {
+				ReceiverID:        "telegram:7689386159:telegram:expired",
+				Kind:              "telegram",
+				ChannelName:       "telegram",
+				AccountID:         "7689386159",
+				HolderID:          "python:old",
+				LeaseTokenPresent: true,
+				Active:            false,
 			}},
-			Totals:     map[string]int{"leases": 1, "active": 1, "expired": 0, "telegram": 1},
+			Totals:     map[string]int{"leases": 2, "active": 1, "expired": 1, "telegram": 2},
 			SideEffect: "runtime_state_only",
 		}},
 		SchedulerJobs: staticSchedulerJobDiagnostics{view: query.SchedulerJobDiagnosticsView{
@@ -885,7 +893,11 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	if view.Summary["receiver_statuses"] != 2 || view.Summary["receiver_status_suspended"] != 1 {
 		t.Fatalf("unexpected receiver status summary: %#v", view.Summary)
 	}
-	if view.Summary["receiver_leases"] != 1 || view.Summary["receiver_leases_active"] != 1 {
+	if view.Summary["receiver_leases"] != 2 ||
+		view.Summary["receiver_leases_active"] != 1 ||
+		view.Summary["receiver_leases_expired"] != 1 ||
+		view.Summary["receiver_lease_cleanup_required"] != true ||
+		view.Summary["receiver_lease_cleanup_endpoint"] != "/v1/receiver-leases/cleanup-expired" {
 		t.Fatalf("unexpected receiver lease summary: %#v", view.Summary)
 	}
 	if view.Summary["scheduler_jobs"] != 2 || view.Summary["scheduler_jobs_overdue"] != 1 {
@@ -946,7 +958,8 @@ func TestRuntimeOverviewServiceAggregatesGoOwnedDiagnostics(t *testing.T) {
 	assertRuntimeOverviewCardStatus(t, view.Cards, "control_audit", "warn")
 	assertRuntimeOverviewCardValue(t, view.Cards, "control_audit", "1/2")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_statuses", "warn")
-	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "ok")
+	assertRuntimeOverviewCardStatus(t, view.Cards, "receiver_leases", "warn")
+	assertRuntimeOverviewCardValue(t, view.Cards, "receiver_leases", "1/1")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "scheduler_jobs", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "send_ledger_metrics", "warn")
 	assertRuntimeOverviewCardStatus(t, view.Cards, "inbound_dedupe_metrics", "warn")
