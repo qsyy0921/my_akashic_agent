@@ -2346,6 +2346,9 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "/api/dashboard/runtime-overview/delivery-smoke-readiness" in js_response.text
     assert "Probe Health" in js_response.text
     assert "Smoke Readiness" in js_response.text
+    assert "Media Content Diagnostics" in js_response.text
+    assert "content_recovery_plan_endpoint" in js_response.text
+    assert "recovery" in js_response.text
 
 
 def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(

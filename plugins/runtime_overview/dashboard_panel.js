@@ -15,6 +15,63 @@
     const text = String(value ?? "").replace(/\s+/g, " ").trim();
     return text.length > limit ? `${text.slice(0, limit)}...` : text;
   }
+  function _record(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+  function _array(value) {
+    return Array.isArray(value) ? value.filter((item) => Boolean(item && typeof item === "object" && !Array.isArray(item))) : [];
+  }
+  function _link(value, label) {
+    const href = String(value ?? "").trim();
+    if (!href) return `<span class="runtime-overview-muted">-</span>`;
+    return `<a class="runtime-overview-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+  }
+  function _renderMediaAssetContentDetail(detail) {
+    const totals = _record(detail.totals);
+    const items = _array(detail.items).slice(0, 20);
+    const totalCells = ["assets", "ready", "forbidden", "unavailable", "disabled", "error"].map((key) => `
+      <div class="runtime-overview-kpi">
+        <span>${escapeHtml(key)}</span>
+        <strong>${escapeHtml(String(totals[key] ?? 0))}</strong>
+      </div>
+    `).join("");
+    const rows = items.map((item) => `
+    <tr>
+      <td class="mono">${escapeHtml(_short(item.asset_id, 36))}</td>
+      <td>${escapeHtml(_short(item.name || item.kind || "-", 32))}</td>
+      <td>${_runtimeStatusTag(String(item.content_status || "muted"))}</td>
+      <td>${escapeHtml(_short(item.content_reason || "-", 42))}</td>
+      <td class="runtime-overview-links">
+        ${_link(item.content_endpoint, "content")}
+        ${_link(item.content_access_plan_endpoint, "access")}
+        ${_link(item.content_recovery_plan_endpoint, "recovery")}
+      </td>
+    </tr>
+  `).join("");
+    return `
+    <div class="runtime-overview-section">
+      <div class="runtime-overview-section-header">
+        <div class="detail-label">Media Content Diagnostics</div>
+        <div class="detail-subtext">${escapeHtml(String(detail.side_effect || "none"))}</div>
+      </div>
+      <div class="runtime-overview-kpis">${totalCells}</div>
+      <div class="runtime-overview-table-wrap">
+        <table class="runtime-overview-table">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="5" class="runtime-overview-muted">No media assets sampled</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  }
   window.AkashicDashboard.registerPlugin({
     id: "runtime_overview",
     label: "Runtime Overview",
@@ -82,6 +139,7 @@
           <pre class="runtime-overview-json" data-runtime-delivery-smoke-output>${escapeHtml("Not checked")}</pre>
         </div>
       ` : "";
+      const specializedDetail = card.id === "media_asset_content" ? _renderMediaAssetContentDetail(_record(card.detail)) : "";
       container.innerHTML = `
       <div class="runtime-overview-detail">
         <div class="runtime-overview-toolbar">
@@ -90,6 +148,7 @@
             <div class="detail-subtext">${_runtimeStatusTag(card.status || "muted")} \xB7 ${escapeHtml(String(card.value ?? "-"))}</div>
           </div>
         </div>
+        ${specializedDetail}
         <div class="runtime-overview-section">
           <div class="detail-label">Detail</div>
           <pre class="runtime-overview-json">${escapeHtml(_formatJson(card.detail || {}))}</pre>

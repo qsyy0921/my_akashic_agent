@@ -90,6 +90,7 @@
 - Python dashboard 已新增 media content recovery plan 只读代理：`/api/dashboard/media-assets/content-recovery-plan?asset_id=...` 透传 Go plan detail，浏览器可直接查看恢复建议，Python 不复制访问策略、不下载远程媒体、不触发 OCR/VLM/RAG/AI。
 - Go media content diagnostics item 已新增 `content_recovery_plan_endpoint`，dashboard 消息列表/详情的 `media_assets` 已新增 `content_recovery_plan_url`，前端可从每条附件直接进入 Go-owned recovery plan；列表/详情渲染不主动请求 plan、不下载媒体、不触发 OCR/VLM/RAG/AI。
 - Go media content diagnostics item 已新增 `content_access_plan_endpoint`，Python runtime overview dashboard 会规范化并在旧 runtime 未返回时按 asset id fallback 生成，使批量诊断可直接跳到单资产 access plan。
+- runtime overview dashboard 的 `Media Asset Content` detail 已从纯 JSON 提升为只读表格：展示 assets/ready/forbidden/unavailable/disabled/error totals、asset/name/status/reason，并提供 content/access/recovery 三类链接；渲染时不额外请求 plan、不打开内容、不下载媒体、不触发 OCR/VLM/RAG/AI。
 - `services/agent-runtime/README.md` 和 SDD index 已同步当前 Go media asset API：content diagnostics/access plan、retention diagnostics/plan、cleanup preflight/executor 及各自 side-effect 边界。
 - runtime overview 已聚合 `agent_job` external lease readiness：summary/card/detail 直接展示 result-ack gate、strict token、execution owner/scope 和 Python worker coverage blockers，仍保持只读且不执行 AI job。
 - 已实现 Go-owned `Knowledge Pipeline Diagnostics`：按 observe-only QQ 群聚合 capture、`group_memory_extract` / `rag_ingest`、checkpoint 和 worker coverage，并接入 runtime overview `Knowledge Pipelines` card，开始把群知识编排状态沉淀为稳定 control-plane 视图。
