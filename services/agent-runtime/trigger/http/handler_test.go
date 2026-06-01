@@ -3506,6 +3506,51 @@ func TestOperatorApprovalCheckEndpointReportsReadiness(t *testing.T) {
 	}
 }
 
+func TestControlMutationAuditEndpointsRecordAndListLedger(t *testing.T) {
+	mutations := appservice.NewControlMutationAuditService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterControlMutationAuditRoutes(mux, mutations)
+
+	body := []byte(`{"target_kind":"outbound_cutover","target_id":"cutover-a","action":"enable","status":"planned","operator_id":"qsyy","approval_id":"approval-a","timestamp":"2026-06-01T11:00:00Z","metadata":{"source":"test"}}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/control-mutations", bytes.NewReader(body)))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected mutation audit accepted, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"target_kind":"outbound_cutover"`,
+		`"action":"enable"`,
+		`"status":"planned"`,
+		`"approval_id":"approval-a"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("mutation audit response missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/control-mutations?target_kind=outbound_cutover&approval_id=approval-a&limit=10", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected mutation audit list 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"mutations":1`,
+		`"planned":1`,
+		`"side_effect":"runtime_state_only"`,
+		`"control mutation audit only; no runtime configuration is changed"`,
+	} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("mutation audit list missing %s: %s", expected, response.Body.String())
+		}
+	}
+
+	invalid := httptest.NewRecorder()
+	mux.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/v1/control-mutations", bytes.NewReader([]byte(`{"target_kind":"outbound_cutover","target_id":"cutover-a","action":"rollback","status":"rolled_back","operator_id":"qsyy","approval_id":"approval-b","reason":"restore"}`))))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid rollback 400, got %d: %s", invalid.Code, invalid.Body.String())
+	}
+}
+
 func TestProactiveStateEndpointsRecordAndQuerySchedulingState(t *testing.T) {
 	store := memory.NewStore()
 	proactiveState := appservice.NewProactiveStateService(store)

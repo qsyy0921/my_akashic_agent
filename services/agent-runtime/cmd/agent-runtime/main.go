@@ -18,6 +18,7 @@ import (
 	agentjobstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentjobstore"
 	agentworkerstatusstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/agentworkerstatusstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/auditjsonl"
+	controlmutationstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/controlmutationstore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inbounddedupestore"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/inboxstore"
 	knowledgecheckpointstore "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/infrastructure/knowledgecheckpointstore"
@@ -116,6 +117,10 @@ func main() {
 	operatorApprovalRepository, err := newOperatorApprovalRepository()
 	if err != nil {
 		log.Fatalf("init operator approval repository: %v", err)
+	}
+	controlMutationRepository, err := newControlMutationAuditRepository()
+	if err != nil {
+		log.Fatalf("init control mutation audit repository: %v", err)
 	}
 	queueBackendView, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -264,6 +269,10 @@ func main() {
 	operatorApprovals, err := appservice.NewOperatorApprovalServiceWithRepository(context.Background(), operatorApprovalRepository)
 	if err != nil {
 		log.Fatalf("init operator approval service: %v", err)
+	}
+	controlMutations, err := appservice.NewControlMutationAuditServiceWithRepository(context.Background(), controlMutationRepository)
+	if err != nil {
+		log.Fatalf("init control mutation audit service: %v", err)
 	}
 	shadowQueries := appservice.NewShadowQueryService(shadowReader)
 	inboxMetrics := appservice.NewInboxMetricsService(inboxEventRepository)
@@ -419,6 +428,7 @@ func main() {
 	httptrigger.RegisterProactiveStateRoutes(mux, proactiveState)
 	httptrigger.RegisterSchedulerJobRoutes(mux, schedulerJobs)
 	httptrigger.RegisterOperatorApprovalRoutes(mux, operatorApprovals)
+	httptrigger.RegisterControlMutationAuditRoutes(mux, controlMutations)
 
 	log.Printf(
 		"queue backend provider=%s mode=%s phase=%s external_active=%t",
@@ -800,6 +810,23 @@ func newOperatorApprovalRepository() (outport.OperatorApprovalRepository, error)
 	}
 	if path, ok := defaultRuntimeStatePath("operator-approvals.json"); ok {
 		return operatorapprovalstore.NewStore(path)
+	}
+	return nil, nil
+}
+
+func newControlMutationAuditRepository() (outport.ControlMutationAuditRepository, error) {
+	if dsn := strings.TrimSpace(os.Getenv("AKASHIC_CONTROL_MUTATIONS_DSN")); dsn != "" {
+		if strings.EqualFold(dsn, "memory") {
+			return nil, nil
+		}
+		return controlmutationstore.NewStore(dsn)
+	}
+
+	if path := strings.TrimSpace(os.Getenv("AKASHIC_CONTROL_MUTATIONS_PATH")); path != "" {
+		return controlmutationstore.NewStore(path)
+	}
+	if path, ok := defaultRuntimeStatePath("control-mutations.json"); ok {
+		return controlmutationstore.NewStore(path)
 	}
 	return nil, nil
 }

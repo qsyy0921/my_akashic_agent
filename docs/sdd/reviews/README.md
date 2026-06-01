@@ -196,3 +196,4 @@ Current architecture review sequence:
 - `2026-06-01-phase8-147-runtime-overview-agent-job-priority-plan.md`
 - `2026-06-01-phase8-148-operator-approval-ledger.md`
 - `2026-06-01-phase8-149-operator-approval-check.md`
+- `2026-06-01-phase8-150-control-mutation-audit-ledger.md`

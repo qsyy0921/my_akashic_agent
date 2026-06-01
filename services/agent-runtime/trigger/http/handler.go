@@ -253,6 +253,13 @@ func RegisterOperatorApprovalRoutes(
 	mux.Handle("/v1/operator-approvals", OperatorApprovalsHandler(manager))
 }
 
+func RegisterControlMutationAuditRoutes(
+	mux *http.ServeMux,
+	manager inport.ControlMutationAuditManager,
+) {
+	mux.Handle("/v1/control-mutations", ControlMutationAuditsHandler(manager))
+}
+
 func ObserveCaptureDiagnosticsHandler(viewer inport.ObserveCaptureDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -354,6 +361,62 @@ func OperatorApprovalCheckHandler(manager inport.OperatorApprovalManager) http.H
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func ControlMutationAuditsHandler(manager inport.ControlMutationAuditManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "control mutation audits disabled", http.StatusNotImplemented)
+			return
+		}
+		switch r.Method {
+		case http.MethodPost:
+			var request dto.RecordControlMutationAuditRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid json body", http.StatusBadRequest)
+				return
+			}
+			timestamp, err := parseOptionalTimestamp(request.Timestamp)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			view, err := manager.RecordControlMutationAudit(r.Context(), command.RecordControlMutationAuditCommand{
+				MutationID:  request.MutationID,
+				TargetKind:  request.TargetKind,
+				TargetID:    request.TargetID,
+				Action:      request.Action,
+				Status:      request.Status,
+				OperatorID:  request.OperatorID,
+				ApprovalID:  request.ApprovalID,
+				Reason:      request.Reason,
+				RollbackOf:  request.RollbackOf,
+				RollbackRef: request.RollbackRef,
+				Metadata:    request.Metadata,
+				Timestamp:   timestamp,
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, types.Result{Code: types.ErrorCodeOK, Data: view})
+		case http.MethodGet:
+			view, err := manager.ListControlMutationAudits(r.Context(), query.ControlMutationAuditFilter{
+				TargetKind: strings.TrimSpace(r.URL.Query().Get("target_kind")),
+				TargetID:   strings.TrimSpace(r.URL.Query().Get("target_id")),
+				Status:     strings.TrimSpace(r.URL.Query().Get("status")),
+				ApprovalID: strings.TrimSpace(r.URL.Query().Get("approval_id")),
+				Limit:      parsePositiveInt(r.URL.Query().Get("limit"), 100, 500),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 }
 
