@@ -10,16 +10,17 @@ the invariants.
 
 0. **Iteration Contract**
    - At the start of a turn, read `TODO.md`, `DONE.md`, `LIVE_CHECKS.md`,
-     `OPEN_ISSUES.md`, `BACKLOG.md`, and `git status`.
+     `PROBLEM_REGISTRY.md`, `OPEN_ISSUES.md`, `BACKLOG.md`, and `git status`.
    - `TODO.md` is the current iteration contract. Finish every unchecked item
      in it before ending the iteration.
    - If an item cannot be finished because of an external blocker, record the
      blocker, required condition, and resume command. Otherwise do not leave
      partial TODO items behind.
-   - Put unresolved risks, blockers, gaps, and decisions in `OPEN_ISSUES.md`;
-     put future ideas in `BACKLOG.md` and live/manual validation in
-     `LIVE_CHECKS.md`; do not inflate `TODO.md` with work that is not committed
-     for the current iteration.
+   - Use `PROBLEM_REGISTRY.md` as the all-problem entrypoint. Put unresolved
+     risks, blockers, gaps, and decisions in `OPEN_ISSUES.md`; put future ideas
+     in `BACKLOG.md` and live/manual validation in `LIVE_CHECKS.md`; do not
+     inflate `TODO.md` with work that is not committed for the current
+     iteration.
 
 1. **Problem Statement**
    - Describe the user-visible problem.
@@ -62,6 +63,8 @@ A change is not accepted if:
 - it ends with unchecked current-iteration TODO items that are not explicitly
   blocked by external state.
 - it leaves unresolved risks or follow-up decisions outside `OPEN_ISSUES.md`.
+- it adds or closes unresolved problems without keeping `PROBLEM_REGISTRY.md`
+  and `OPEN_ISSUES.md` aligned.
 
 ## Go / Python Ownership Rule
 

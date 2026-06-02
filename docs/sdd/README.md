@@ -15,6 +15,8 @@ all unchecked current-iteration items must be completed, moved back to
 - `PROCESS.md`: the workflow for spec, implementation, review, and acceptance.
 - `PROJECT_STATUS.md`: one-page project status ledger that links current TODO,
   completed work, open issues, backlog, live checks, and ownership boundaries.
+- `PROBLEM_REGISTRY.md`: problem ledger entrypoint that explains where all
+  unresolved problems, risks, blockers, and decisions are tracked.
 - `OPEN_ISSUES.md`: unresolved issues, risks, decisions, and follow-up gaps
   that must remain visible across iterations.
 - `ITERATION_PROMPT.md`: resume prompt for future Codex sessions, including
@@ -42,6 +44,8 @@ Every non-trivial feature should include:
 4. An ADR when the change creates or changes an architectural boundary.
 5. An `OPEN_ISSUES.md` update when the change leaves a risk, gap, blocker, or
    follow-up decision unresolved.
+6. A `PROBLEM_REGISTRY.md` check when adding or closing unresolved problems, so
+   the all-problem entrypoint stays aligned with `OPEN_ISSUES.md`.
 
 ## Current Focus
 
