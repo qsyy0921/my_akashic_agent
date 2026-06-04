@@ -70,16 +70,20 @@ func outboxDeliveryWorkerConfigFromEnv() (jobtrigger.OutboxDeliveryWorkerConfig,
 		return jobtrigger.OutboxDeliveryWorkerConfig{}, false, err
 	}
 	return jobtrigger.OutboxDeliveryWorkerConfig{
-		Interval:                     time.Duration(intervalSeconds) * time.Second,
-		BatchSize:                    batchSize,
-		WorkerID:                     envOrDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "agent-runtime-outbox-worker"),
-		LeaseTTLSeconds:              leaseTTLSeconds,
-		RunOnStart:                   boolEnvDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", true),
-		ChannelByAccount:             keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
-		AccountMinInterval:           accountRateLimit.MinInterval,
-		AccountWindow:                accountRateLimit.Window,
-		AccountMaxDispatchesInWindow: accountRateLimit.MaxDispatchesInWindow,
-		AccountLimiter:               domainservice.NewOutboxAccountRateLimiter(accountRateLimit),
+		Interval:                  time.Duration(intervalSeconds) * time.Second,
+		BatchSize:                 batchSize,
+		WorkerID:                  envOrDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "agent-runtime-outbox-worker"),
+		LeaseTTLSeconds:           leaseTTLSeconds,
+		RunOnStart:                boolEnvDefault("AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START", true),
+		ChannelByAccount:          keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+		AllowedStepKinds:          outboxAllowedKindsFromEnv(),
+		AllowedStepKindsByAccount: outboxAllowedKindsByAccountFromEnv(),
+		AllowedStepKindsByAccountConversationType: outboxAllowedKindsByAccountConversationTypeFromEnv(),
+		AllowedStepKindsByAccountConversationID:   outboxAllowedKindsByAccountConversationIDFromEnv(),
+		AccountMinInterval:                        accountRateLimit.MinInterval,
+		AccountWindow:                             accountRateLimit.Window,
+		AccountMaxDispatchesInWindow:              accountRateLimit.MaxDispatchesInWindow,
+		AccountLimiter:                            domainservice.NewOutboxAccountRateLimiter(accountRateLimit),
 	}, true, nil
 }
 

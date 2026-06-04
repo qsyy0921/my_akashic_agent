@@ -15,12 +15,21 @@ class _FakeClient:
     def __init__(self, delivery: dict[str, Any] | None = None) -> None:
         self.delivery = delivery
         self.calls: list[tuple[str, Any]] = []
+        self.runtime_config: dict[str, Any] | None = None
 
     async def lease_next_outbox(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("lease_next_outbox", kwargs))
         if self.delivery is None:
             raise AgentGatewayNoJob("none")
         return self.delivery
+
+    async def get_runtime_config(self) -> dict[str, Any]:
+        self.calls.append(("get_runtime_config", None))
+        return self.runtime_config or {
+            "workers": {
+                "outbox_delivery_worker_enabled": False,
+            }
+        }
 
     async def mark_outbox_succeeded(self, event_id: str) -> dict[str, Any]:
         self.calls.append(("mark_outbox_succeeded", event_id))
@@ -301,7 +310,8 @@ async def test_outbox_worker_prefers_runtime_dispatch_plan():
     result = await worker.process_once()
 
     assert result["dispatch_count"] == 2
-    assert client.calls[1] == (
+    assert client.calls[0] == ("get_runtime_config", None)
+    assert client.calls[2] == (
         "plan_outbox_dispatch",
         "qq:private:1",
         {"2365524513": "qq_2365524513"},
@@ -331,7 +341,8 @@ async def test_outbox_worker_prefers_go_runtime_dispatch_for_telegram():
 
     assert result["processed"] is True
     assert result["dispatch_count"] == 1
-    assert client.calls[1] == (
+    assert client.calls[0] == ("get_runtime_config", None)
+    assert client.calls[2] == (
         "dispatch_outbox_delivery",
         "telegram:private:1",
         {"2365524513": "qq_2365524513"},
@@ -370,7 +381,8 @@ async def test_outbox_worker_prefers_go_runtime_dispatch_for_configured_qq_chann
 
     assert result["processed"] is True
     assert result["dispatch_count"] == 1
-    assert client.calls[1] == (
+    assert client.calls[0] == ("get_runtime_config", None)
+    assert client.calls[2] == (
         "dispatch_outbox_delivery",
         "qq:private:1",
         {"2365524513": "qq_2365524513"},
@@ -396,7 +408,8 @@ async def test_outbox_worker_checks_go_readiness_before_runtime_dispatch():
 
     assert result["processed"] is True
     assert result["dispatch_count"] == 1
-    assert [call[0] for call in client.calls[:3]] == [
+    assert [call[0] for call in client.calls[:4]] == [
+        "get_runtime_config",
         "lease_next_outbox",
         "check_outbox_dispatch_readiness",
         "dispatch_outbox_delivery",
@@ -439,6 +452,7 @@ async def test_outbox_worker_uses_go_readiness_plan_when_adapter_missing():
     assert result["processed"] is True
     assert result["dispatch_count"] == 1
     assert [call[0] for call in client.calls] == [
+        "get_runtime_config",
         "lease_next_outbox",
         "check_outbox_dispatch_readiness",
         "mark_outbox_succeeded",
@@ -469,6 +483,7 @@ async def test_outbox_worker_uses_go_readiness_error_kind():
     assert result["failed"] is True
     assert result["error_kind"] == "route_error"
     assert [call[0] for call in client.calls] == [
+        "get_runtime_config",
         "lease_next_outbox",
         "check_outbox_dispatch_readiness",
         "mark_outbox_failed",
@@ -502,8 +517,9 @@ async def test_outbox_worker_falls_back_when_go_runtime_dispatch_unavailable():
     result = await worker.process_once()
 
     assert result["dispatch_count"] == 1
-    assert client.calls[1][0] == "dispatch_outbox_delivery"
-    assert client.calls[2][0] == "plan_outbox_dispatch"
+    assert client.calls[0] == ("get_runtime_config", None)
+    assert client.calls[2][0] == "dispatch_outbox_delivery"
+    assert client.calls[3][0] == "plan_outbox_dispatch"
     assert push_tool.calls == [
         {
             "channel": "telegram",
@@ -610,3 +626,25 @@ async def test_outbox_worker_returns_idle_when_no_delivery():
     result = await worker.process_once()
 
     assert result == {"processed": False, "reason": "no_delivery"}
+
+
+@pytest.mark.asyncio
+async def test_outbox_worker_backs_off_when_go_runtime_worker_enabled():
+    client = _FakeClient(_delivery())
+    client.runtime_config = {
+        "workers": {
+            "outbox_delivery_worker_enabled": True,
+            "outbox_delivery_allowed_kinds": ["text"],
+        }
+    }
+    push_tool = _FakePushTool()
+    worker = _worker(client, push_tool)
+
+    result = await worker.process_once()
+
+    assert result == {
+        "processed": False,
+        "reason": "go_runtime_outbox_worker_active",
+    }
+    assert client.calls == [("get_runtime_config", None)]
+    assert push_tool.calls == []

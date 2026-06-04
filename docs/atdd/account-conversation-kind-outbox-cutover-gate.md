@@ -1,0 +1,56 @@
+# ATDD: Account-conversation-kind Outbox Cutover Gate
+
+## Goal
+
+Verify that Go local outbox execution can safely expand from account-kind
+gating to account+conversation-kind gating without regressing the already
+working QQ routes.
+
+## Preconditions
+
+- `agent-runtime` is healthy on `127.0.0.1:8780`
+- OneBot dual-account QQ adapters are connected
+- Python main process is running
+- Go runtime is started with:
+  - `AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED=true`
+  - `AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS=text`
+  - `AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT=2365524513=text|file`
+  - `AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE=1049511700/private=text|file`
+
+## Acceptance Checks
+
+1. Call `/v1/runtime-config` and confirm:
+   - `workers.outbox_delivery_worker_enabled=true`
+   - `workers.outbox_delivery_allowed_kinds=["text"]`
+   - `workers.outbox_delivery_allowed_kinds_by_account.2365524513=["text","file"]`
+   - `workers.outbox_delivery_allowed_kinds_by_account_conversation_type.1049511700.private=["text","file"]`
+2. Call `/v1/queue-backend` and confirm:
+   - `outbox_execution_owner=go_local_outbox_worker`
+   - `outbox_execution_scope=account_conversation_kind_gated`
+3. Call `/v1/runtime-workers` and confirm the outbox worker exposes
+   `allowed_step_kinds_by_account_conversation_type=1049511700/private=text|file`.
+4. Post a real first-account private file outbox event and confirm repeated
+   polling of `/v1/outbox/{event_id}` reaches:
+   - `status=succeeded`
+   - `attempts=1`
+5. Post a real first-account group file outbox event and confirm repeated
+   polling keeps:
+   - `status=queued`
+   - `attempts=0`
+6. Post a real second-account group file outbox event and confirm it reaches:
+   - `status=succeeded`
+   - `attempts=1`
+7. Call `/v1/agent-worker-statuses` and confirm Python outbox worker still
+   reports `metadata.reason=go_runtime_outbox_worker_active`.
+8. Call `/v1/outbound-cutover/readiness` and confirm:
+   - `execution_ready=true`
+   - `execution_owner=go_local_outbox_worker`
+   - `attributes.outbox_execution_scope=account_conversation_kind_gated`
+
+## Failure Signals
+
+- first-account private file stays queued or requires manual dispatch
+- first-account group file is leased or failed instead of staying queued
+- second-account group file regresses from automatic success
+- runtime diagnostics omit the account+conversation gate
+- Python outbox worker resumes leasing deliveries

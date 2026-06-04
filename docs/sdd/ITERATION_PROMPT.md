@@ -1,41 +1,127 @@
-# Akashic Runtime Iteration Prompt
+# Akashic Runtime Goal Prompt
 
-Use this prompt when resuming the Go/Python runtime migration in a new Codex
-thread.
+Use this prompt when resuming the Akashic Go migration in a new Codex thread.
 
 ```text
-继续 Akashic Go/Python runtime 迁移。
+继续 Akashic runtime Go migration。
 
-工作目录：E:\agent\akashic
+工作目录：E:\agent\my-akashic_agent
 
-先读取：
+目标：
+- 不重复做已经 live verified 的 read-model 或 control-plane 收尾。
+- 只推进一个真实、可闭环、可验证的剩余切片。
+- 每轮必须把当前 TODO 清零，或者把未完成项明确归档为外部 blocker。
+
+先做 current-turn 取证：
 - git status --short
-- docs/sdd/TODO.md
-- docs/sdd/DONE.md
-- docs/sdd/LIVE_CHECKS.md
-- docs/sdd/BACKLOG.md
-- 本轮相关 SDD spec/review
+- powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-go-migration-goal.ps1 -StdoutMode summary
+- 读取：
+  - docs/sdd/TODO.md
+  - docs/sdd/PROJECT_STATUS.md
+  - docs/sdd/DONE.md
+  - docs/sdd/OPEN_ISSUES.md
+  - docs/sdd/LIVE_CHECKS.md
+  - docs/sdd/REMAINING_GO_MIGRATION.md
+  - docs/sdd/PROBLEM_REGISTRY.md
+  - docs/sdd/BACKLOG.md
+  - docs/atdd/README.md
+  - docs/tdd/README.md
+  - 本轮相关 docs/sdd/specs/agent-gateway/*.md 与 docs/sdd/reviews/*.md
 
-迭代规则：
-- docs/sdd/TODO.md 是本轮必须闭环的契约，不是长期愿望清单。
-- 本轮结束前必须完成 TODO.md 中所有未完成项；不要只完成其中一个切片就停止，也不要把“下一轮继续同一 TODO”当成交付。
-- 每次迭代的交付口径是“当前 TODO 全量清零”：如果发现 TODO 太大，必须先在 SDD 中重新收敛范围，把非本轮事项移到 BACKLOG.md，再开始写代码。
-- 如果某项不能完成，必须是外部阻塞，并写清阻塞原因、所需条件和恢复入口；普通“还没做完”不能留在 TODO。
-- 如果用户在迭代中追加本轮必须完成的要求，先把它写进 TODO.md，再和原 TODO 一起全量闭环。
-- 未来想法放 BACKLOG.md，现场观察放 LIVE_CHECKS.md，完成记录放 DONE.md。
-- 每轮都要补 SDD spec/review、运行相关测试、更新中文 TODO/DONE/LIVE_CHECKS/BACKLOG。
-- 每次修改后提交并推送到 GitHub。
+TODO / 文档规则：
+- docs/sdd/TODO.md 是本轮契约，不是长期愿望清单。
+- 本轮开始前先把要做的 3-10 条短任务写进 TODO.md。
+- 本轮结束前必须清空 TODO.md；不能把“下一轮继续同一 TODO”当成交付。
+- 新发现的问题先写 OPEN_ISSUES.md，不要堆回 TODO.md。
+- 未来候选项写 BACKLOG.md。
+- 需要长期 live 观察的写 LIVE_CHECKS.md。
+- 每个真实切片都要补：
+  - SDD spec
+  - ATDD
+  - TDD
+  - review
+  - 必要测试 / smoke
+  - DONE.md / PROJECT_STATUS.md / REMAINING_GO_MIGRATION.md / 相关索引
 
-架构边界：
-- Go 只做确定性后端基础设施：路由、账号、幂等、防循环、inbox/outbox、media asset、job/queue、lease、retry、checkpoint、scheduler control plane、audit、dashboard diagnostics。
-- Python 做 AI runtime：模型/provider 路由、prompt 模板、上下文压缩、对话状态构造、工具调用编排、Memory/RAG 抽取与合并、chunking、embedding/rerank、retrieval/ranking 策略、OCR/VLM 图片理解、图片生成执行、浏览器/第三方 AI 工具适配、群知识沉淀、攻略/FAQ 总结、评估脚本、离线实验和 provider-specific fallback。
-- Python 可以做算法试错和非确定性推理编排；Go 不接管 prompt、LLM/VLM/OCR 调用、RAG ranking、图片生成浏览器控制或模型供应商 fallback。
-- Python worker 通过 Go domain API 获取 lease、回写结果、上报 heartbeat/status、读取 checkpoint；它不拥有队列生命周期、幂等、防循环、资产访问控制或审计权威状态。
-- Python 可以保留迁移期 mirror/fallback，但 Go 有对应 domain API 后，确定性基础设施状态必须以 Go 为权威，Python mirror 只能用于兼容读取或离线实验。
+当前 canonical artifact：
+- repo 根有 .codex-goal-verifier.json
+- verify-go-migration-goal.ps1 支持 -StdoutMode summary|full|none
+- 默认以 current_state、migration_residuals、migration_bucket_summary 为当前 turn 权威摘要
+- 如果引用 live 状态，先重新跑 verifier，不要复述旧 handoff
 
-当前原则：
-- 不过度拆服务；优先在 services/agent-runtime 内按 DDD + 六边形分层演进。
-- 不把 LLM 调用、prompt、RAG ranking、VLM/OCR prompt 或图片生成浏览器实现迁入 Go。
-- 不破坏 observe-only QQ 群逻辑，不做未经 smoke 的真实平台发送 cutover。
-- 每轮都要以“完成当前 TODO 全量内容”为交付单位；需要缩小范围时先改 TODO/SDD，不在实现后留下半成品或“下一轮继续同一 TODO”的状态。
+当前 live facts（进入实现前先复核；以下是当前默认预期）：
+- goal_ready_to_close=false
+- open_blockers=["telegram_token_missing","qq_image_native_platform_blocker_unresolved"]
+- qq_group_send_enabled=false
+- telegram_token_configured=false
+- outbox_execution_owner=go_local_outbox_worker
+- outbox_execution_scope=account_conversation_kind_gated
+- agent_job_execution_owner=python_ai_worker_state_store_lease
+- agent_job_ack_owner=go_state_store_api
+- agent_job_external_lease_ready=false
+- agent_job_external_lease_decision=blocked
+- receiver_statuses_telegram=0
+- agent_workers_total=0
+- agent_workers_stale=0
+- runtime_overview_agent_workers_stale=0
+- dashboard_fallback_category=live_verified_runtime_read_models
+
+当前 migration buckets（进入实现前先复核）：
+- already_in_go_only_missing_live_verification
+  - scheduler_runtime
+  - knowledge_rag_state_boundary
+  - dashboard_read_models
+  - mq_adapter_boundary
+- go_control_plane_present_but_real_executor_missing
+  - worker_control_executors
+  - media_recovery_private_source_executor
+- still_not_fully_cut_over
+  - qq_napcat_cutover
+  - telegram_backend
+  - agent_job_external_lease_result_ack
+- explicitly_python_owned
+  - python_owned_surfaces
+
+当前优先级：
+1. production agent_job external lease result-ack flags / owner preflight
+2. Telegram backend getMe + receiver + send/receive smoke（前提：TELEGRAM_BOT_TOKEN 已到位）
+3. QQ rich-media / native platform blocker 继续定位（前提：明确要继续碰平台会话）
+
+执行规则：
+- 不要重复收已经 live verified 的 dashboard/read-model 细枝末节。
+- 不要把 Python-owned AI runtime 当成 Go 迁移未完成项。
+- 如果做 runtime / dashboard / verifier 改动，必须重跑对应 live verifier。
+- 如果改 Go handler / service / store，先补或更新 Go test，再跑 smoke。
+- 如果改 dashboard fallback，必要时重启 main.py 或相关本地进程，让 live verifier 吃到新代码。
+- 不要为了“更多 Go”把 prompt、LLM/VLM/OCR、RAG ranking、image generation 迁入 Go。
+
+Go / Python 边界：
+- Go 负责：
+  - inbox/outbox
+  - idempotency / anti-loop
+  - queue / lease / retry / checkpoint
+  - scheduler control plane
+  - media asset lifecycle / retention / controlled recovery
+  - runtime diagnostics / runtime overview / dashboard read-model
+  - operator approval / control mutation audit / deterministic state
+- Python 负责：
+  - LLM/provider 调用
+  - prompt/context/reasoning
+  - tool execution
+  - OCR / VLM
+  - image generation
+  - memory / RAG 算法与策略实验
+  - provider-specific private-source enrichment
+
+交付口径：
+- 代码、测试、live verifier、SDD 文档、状态文档一起闭环。
+- 最终答复必须直接给出：
+  - 本轮做了什么
+  - 实际跑了哪些验证
+  - 当前 blocker 是否变化
+  - goal 是否仍 active
+
+当前最小 blocker：
+1. telegram_token_missing
+2. qq_image_native_platform_blocker_unresolved
 ```

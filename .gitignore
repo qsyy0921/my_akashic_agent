@@ -47,6 +47,10 @@ plugins/**/.data/
 /docs/*
 !/docs/sdd/
 !/docs/sdd/**
+!/docs/atdd/
+!/docs/atdd/**
+!/docs/tdd/
+!/docs/tdd/**
 /.pytest_artifacts/
 /rss/
 

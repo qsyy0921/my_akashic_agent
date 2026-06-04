@@ -798,6 +798,44 @@ def test_config_load_reads_qq_secondary_accounts(tmp_path: Path):
     assert account.websocket_uri == "ws://localhost:3002"
 
 
+def test_config_load_reads_qq_group_send_toggle(tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    _write_toml(
+        cfg_path,
+        {
+            "llm": {
+                "provider": "openai",
+                "main": {
+                    "model": "m",
+                    "api_key": "k",
+                },
+            },
+            "agent": {
+                "system_prompt": "s",
+            },
+            "channels": {
+                "qq": {
+                    "bot_uin": "1049511700",
+                    "group_send_enabled": False,
+                    "accounts": [
+                        {
+                            "bot_uin": "2365524513",
+                            "group_send_enabled": False,
+                        }
+                    ],
+                },
+            },
+        },
+    )
+
+    cfg = Config.load(cfg_path)
+
+    assert cfg.channels.qq is not None
+    assert cfg.channels.qq.group_send_enabled is False
+    assert len(cfg.channels.qq_accounts) == 1
+    assert cfg.channels.qq_accounts[0].group_send_enabled is False
+
+
 def test_channel_config_resolves_env_placeholders(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
@@ -1498,6 +1536,8 @@ def test_bootstrap_runtime_outbox_worker_is_opt_in():
     assert len(legacy_tasks) == 1
     assert runtime_worker is not None
     assert legacy_worker is not None
+    assert runtime_worker._worker_id == "akashic-python-worker:outbox"
+    assert legacy_worker._worker_id == "akashic-python-worker:outbox"
 
 
 def test_bootstrap_runtime_rag_eval_worker_is_opt_in(tmp_path: Path):
@@ -1541,6 +1581,25 @@ def test_bootstrap_runtime_rag_eval_worker_is_opt_in(tmp_path: Path):
         task.close()
     assert len(tasks) == 1
     assert worker is not None
+    assert worker._worker_id == "akashic-python-worker:rag_eval"
+
+
+def test_bootstrap_runtime_worker_id_suffixes():
+    from bootstrap.app import _agent_runtime_worker_id
+    from agent.config_models import AgentGatewayIntegrationConfig
+
+    config = AgentGatewayIntegrationConfig(worker_id="akashic-python-worker")
+
+    assert _agent_runtime_worker_id(config, "image") == "akashic-python-worker:image"
+    assert (
+        _agent_runtime_worker_id(config, "knowledge")
+        == "akashic-python-worker:knowledge"
+    )
+    assert (
+        _agent_runtime_worker_id(config, "rag_eval")
+        == "akashic-python-worker:rag_eval"
+    )
+    assert _agent_runtime_worker_id(config, "outbox") == "akashic-python-worker:outbox"
 
 
 def test_bootstrap_configures_runtime_backed_message_push_channels():

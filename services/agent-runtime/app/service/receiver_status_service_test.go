@@ -143,6 +143,79 @@ func TestReceiverStatusServiceMarksStaleHeartbeatsStopped(t *testing.T) {
 	}
 }
 
+func TestReceiverStatusServiceCleanupStaleReceiverStatuses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receiver-statuses.json")
+	store, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewReceiverStatusServiceWithRepository(context.Background(), store, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	if _, err := service.ReportReceiverStatus(context.Background(), command.ReportReceiverStatusCommand{
+		Kind:        "qq",
+		ChannelName: "qq",
+		AccountID:   "1049511700",
+		Status:      "connected",
+		Source:      "python_channel",
+		Timestamp:   now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReportReceiverStatus(context.Background(), command.ReportReceiverStatusCommand{
+		Kind:        "telegram",
+		ChannelName: "telegram",
+		AccountID:   "7689386159",
+		Status:      "connected",
+		Source:      "python_channel",
+		Timestamp:   now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := service.CleanupStaleReceiverStatuses(context.Background(), command.CleanupStaleReceiverStatusesCommand{
+		Timestamp: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Totals["deleted"] != 1 || view.Totals["remaining"] != 1 || view.Totals["remaining_stopped"] != 0 {
+		t.Fatalf("unexpected cleanup totals: %#v", view.Totals)
+	}
+	if len(view.Deleted) != 1 || view.Deleted[0].ReceiverID != "qq:1049511700:qq" || view.Deleted[0].Reason != "heartbeat_stale" {
+		t.Fatalf("unexpected deleted view: %#v", view.Deleted)
+	}
+	if len(view.Remaining) != 1 || view.Remaining[0].ReceiverID != "telegram:7689386159:telegram" || view.Remaining[0].Status != "connected" {
+		t.Fatalf("unexpected remaining view: %#v", view.Remaining)
+	}
+
+	listed, err := service.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Totals["receivers"] != 1 || listed.Receivers[0].ReceiverID != "telegram:7689386159:telegram" {
+		t.Fatalf("unexpected list after cleanup: %#v", listed)
+	}
+
+	reopenedStore, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewReceiverStatusServiceWithRepository(context.Background(), reopenedStore, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopenedView, err := reopened.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopenedView.Totals["receivers"] != 1 || reopenedView.Receivers[0].ReceiverID != "telegram:7689386159:telegram" {
+		t.Fatalf("expected stale receiver removed from file-backed store: %#v", reopenedView)
+	}
+}
+
 func TestReceiverStatusServiceReceiverLeaseAcquireDenyRenewRelease(t *testing.T) {
 	service := NewReceiverStatusService()
 	now := time.Date(2026, 5, 31, 1, 2, 3, 0, time.UTC)

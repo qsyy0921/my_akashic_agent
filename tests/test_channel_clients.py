@@ -1419,6 +1419,7 @@ async def test_qq_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         session_manager,
         allow_from=["1"],
         groups=[group_cfg],
+        group_send_enabled=False,
         websocket_open_timeout_seconds=7.5,
         group_filter=group_filter,
         http_requester=requester,
@@ -1472,10 +1473,13 @@ async def test_qq_channel_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     sample = tmp_path / "image.bin"
     sample.write_bytes(b"abc")
     await channel.send("1", "pong")
-    await channel.send("gqq:100", "group pong")
+    with pytest.raises(RuntimeError, match="qq group sends are disabled"):
+        await channel.send("gqq:100", "group pong")
     await channel.send_file("1", str(sample), name="x.bin")
     await channel.send_image("1", str(sample))
+    calls_before_group_reply = list(channel._api.calls)
     await channel._on_response(OutboundMessage(channel="qq", chat_id="gqq:100", content="reply"))
+    assert channel._api.calls == calls_before_group_reply
     assert channel._api.calls
     assert mod._is_local(str(sample)) is True
     assert mod._is_local("https://example.com/x.jpg") is False
@@ -1511,6 +1515,7 @@ async def test_qq_channel_records_runtime_send_ledger(
         bus,
         session_manager,
         allow_from=["1"],
+        group_send_enabled=False,
         http_requester=SimpleNamespace(get=AsyncMock()),
         send_ledger_client=ledger,
     )
@@ -1524,28 +1529,14 @@ async def test_qq_channel_records_runtime_send_ledger(
     sample.write_bytes(b"abc")
 
     await channel.send("1", "pong")
-    await channel.send("gqq:100", "group pong")
+    with pytest.raises(RuntimeError, match="qq group sends are disabled"):
+        await channel.send("gqq:100", "group pong")
     await channel.send_file("1", str(sample), name="x.bin")
     await channel.send_image("1", str(sample))
 
-    assert [record["from_bot_id"] for record in ledger.records] == [
-        "42",
-        "42",
-        "42",
-        "42",
-    ]
-    assert [record["conversation_id"] for record in ledger.records] == [
-        "1",
-        "100",
-        "1",
-        "1",
-    ]
-    assert [record["content"] for record in ledger.records] == [
-        "pong",
-        "group pong",
-        "[文件]",
-        "[图片]",
-    ]
+    assert [record["from_bot_id"] for record in ledger.records] == ["42", "42", "42"]
+    assert [record["conversation_id"] for record in ledger.records] == ["1", "1", "1"]
+    assert [record["content"] for record in ledger.records] == ["pong", "[文件]", "[图片]"]
 
 
 @pytest.mark.asyncio

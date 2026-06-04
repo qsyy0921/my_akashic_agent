@@ -17,6 +17,7 @@ _DEFAULT_LIST_LIMIT = 200
 _MAX_LIST_LIMIT = 200
 _DEFAULT_EVENT_LIMIT = 50
 _DEFAULT_STALE_AFTER_SECONDS = 15 * 60
+_DEFAULT_GO_OVERVIEW_TIMEOUT_SECONDS = 6.0
 _LEASE_STATUSES = {"leased", "running", "dispatching"}
 _DEAD_LETTER_STATUS = "dead_lettered"
 
@@ -66,6 +67,10 @@ class RuntimeOverviewDashboardReader:
                 "event_limit": safe_event_limit,
                 "stale_after_seconds": safe_stale_after,
             },
+            timeout_seconds=max(
+                self.request_timeout_seconds,
+                _DEFAULT_GO_OVERVIEW_TIMEOUT_SECONDS,
+            ),
         )
         if not go_overview_error and go_overview:
             return _normalize_go_runtime_overview(
@@ -208,6 +213,16 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        media_asset_content_raw, error = self._read_mapping(
+            "/v1/media-assets/content-diagnostics",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "media-asset-content-diagnostics", "error": error})
+            media_asset_content_raw = {}
+        else:
+            successful_reads += 1
+
         media_asset_retention_raw, error = self._read_mapping(
             "/v1/media-assets/retention-diagnostics",
             {"limit": safe_limit},
@@ -242,6 +257,20 @@ class RuntimeOverviewDashboardReader:
         else:
             successful_reads += 1
 
+        knowledge_pipelines_raw, error = self._read_mapping(
+            "/v1/knowledge-pipeline-diagnostics",
+            {
+                "limit": safe_limit,
+                "stale_after_seconds": safe_stale_after,
+            },
+            timeout_seconds=max(self.request_timeout_seconds, 5.0),
+        )
+        if error:
+            errors.append({"endpoint": "knowledge-pipeline-diagnostics", "error": error})
+            knowledge_pipelines_raw = {}
+        else:
+            successful_reads += 1
+
         scheduler_jobs_raw, error = self._read_mapping(
             "/v1/scheduler/diagnostics",
             {"limit": safe_limit},
@@ -249,6 +278,35 @@ class RuntimeOverviewDashboardReader:
         if error:
             errors.append({"endpoint": "scheduler-diagnostics", "error": error})
             scheduler_jobs_raw = {}
+        else:
+            successful_reads += 1
+
+        control_mutation_policy_raw, error = self._read_mapping(
+            "/v1/control-mutations/policy"
+        )
+        if error:
+            errors.append({"endpoint": "control-mutations-policy", "error": error})
+            control_mutation_policy_raw = {}
+        else:
+            successful_reads += 1
+
+        operator_approvals_raw, error = self._read_mapping(
+            "/v1/operator-approvals",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "operator-approvals", "error": error})
+            operator_approvals_raw = {}
+        else:
+            successful_reads += 1
+
+        control_mutations_raw, error = self._read_mapping(
+            "/v1/control-mutations",
+            {"limit": safe_limit},
+        )
+        if error:
+            errors.append({"endpoint": "control-mutations", "error": error})
+            control_mutations_raw = {}
         else:
             successful_reads += 1
 
@@ -281,6 +339,9 @@ class RuntimeOverviewDashboardReader:
         outbox_metrics = _normalize_outbox_metrics(outbox_metrics_raw)
         observe_targets = _normalize_observe_targets(observe_targets_raw)
         observe_capture = _normalize_observe_capture(observe_capture_raw)
+        media_asset_content = _normalize_media_asset_content_diagnostics(
+            media_asset_content_raw
+        )
         media_asset_retention = _normalize_media_asset_retention_diagnostics(
             media_asset_retention_raw
         )
@@ -291,9 +352,23 @@ class RuntimeOverviewDashboardReader:
             {},
             plan=media_asset_retention_plan,
         )
+        media_asset_content_recovery = _normalize_media_asset_content_recovery({})
         receiver_statuses = _normalize_receiver_statuses(receiver_statuses_raw)
         receiver_leases = _normalize_receiver_leases(receiver_leases_raw)
+        knowledge_pipelines = _normalize_knowledge_pipeline_diagnostics(
+            knowledge_pipelines_raw
+        )
         scheduler_jobs = _normalize_scheduler_job_diagnostics(scheduler_jobs_raw)
+        control_mutation_policy = _normalize_control_mutation_policy(
+            control_mutation_policy_raw
+        )
+        operator_approvals = _normalize_operator_approvals(operator_approvals_raw)
+        control_mutations = _normalize_control_mutations(control_mutations_raw)
+        media_asset_content_recovery = (
+            _fallback_media_asset_content_recovery_from_control_mutations(
+                control_mutations_raw
+            )
+        )
 
         job_leases = [item for item in jobs if _has_active_lease(item)]
         outbox_leases = [item for item in outbox if _has_active_lease(item)]
@@ -365,6 +440,14 @@ class RuntimeOverviewDashboardReader:
                 "receiver_activity_recent",
                 0,
             ),
+            "media_asset_content_assets": media_asset_content["totals"]["assets"],
+            "media_asset_content_ready": media_asset_content["totals"]["ready"],
+            "media_asset_content_forbidden": media_asset_content["totals"]["forbidden"],
+            "media_asset_content_unavailable": media_asset_content["totals"][
+                "unavailable"
+            ],
+            "media_asset_content_disabled": media_asset_content["totals"]["disabled"],
+            "media_asset_content_error": media_asset_content["totals"]["error"],
             "media_asset_retention_assets": media_asset_retention["totals"]["assets"],
             "media_asset_retention_cleanup_due": media_asset_retention["totals"]["cleanup_due"],
             "media_asset_retention_permanent": media_asset_retention["totals"]["permanent"],
@@ -404,6 +487,17 @@ class RuntimeOverviewDashboardReader:
             "media_asset_retention_cleanup_recent_audits": len(
                 media_asset_retention_cleanup["recent_audits"]
             ),
+            "media_asset_content_recovery_ready": media_asset_content_recovery["ready"],
+            "media_asset_content_recovery_reason": media_asset_content_recovery["reason"],
+            "media_asset_content_recovery_applied": media_asset_content_recovery[
+                "totals"
+            ]["applied"],
+            "media_asset_content_recovery_failed": media_asset_content_recovery[
+                "totals"
+            ]["failed"],
+            "media_asset_content_recovery_recent_audits": len(
+                media_asset_content_recovery["recent_audits"]
+            ),
             "receiver_statuses": receiver_statuses["totals"]["receivers"],
             "receiver_status_connected": receiver_statuses["totals"]["connected"],
             "receiver_status_suspended": receiver_statuses["totals"]["suspended"],
@@ -415,6 +509,33 @@ class RuntimeOverviewDashboardReader:
             "receiver_leases_expired": receiver_leases["totals"]["expired"],
             "receiver_lease_cleanup_required": receiver_leases["totals"]["expired"] > 0,
             "receiver_lease_cleanup_endpoint": "/v1/receiver-leases/cleanup-expired",
+            "knowledge_pipelines": knowledge_pipelines["totals"]["targets"],
+            "knowledge_pipelines_ready": knowledge_pipelines["totals"]["ready"],
+            "knowledge_pipelines_warning": knowledge_pipelines["totals"]["warning"],
+            "knowledge_pipelines_blocked": knowledge_pipelines["totals"]["blocked"],
+            "knowledge_pipelines_lagging": knowledge_pipelines["totals"]["lagging"],
+            "knowledge_pipelines_high_pressure": knowledge_pipelines["totals"]["high_pressure"],
+            "knowledge_pipelines_receiver_connected": knowledge_pipelines["totals"][
+                "receiver_connected"
+            ],
+            "knowledge_pipelines_configured_rag_datasets": knowledge_pipelines["totals"][
+                "configured_rag_datasets"
+            ],
+            "knowledge_pipelines_rag_datasets": knowledge_pipelines["totals"][
+                "rag_datasets"
+            ],
+            "knowledge_pipelines_rag_dataset_index_ready": knowledge_pipelines["totals"][
+                "rag_dataset_index_ready"
+            ],
+            "knowledge_pipelines_rag_dataset_index_missing_snapshot": knowledge_pipelines[
+                "totals"
+            ]["rag_dataset_index_missing_snapshot"],
+            "knowledge_pipelines_rag_dataset_index_empty": knowledge_pipelines["totals"][
+                "rag_dataset_index_empty"
+            ],
+            "knowledge_pipelines_rag_dataset_index_lagging": knowledge_pipelines["totals"][
+                "rag_dataset_index_lagging"
+            ],
             "scheduler_jobs": scheduler_jobs["sampled_jobs"],
             "scheduler_jobs_enabled": scheduler_jobs["enabled_jobs"],
             "scheduler_jobs_disabled": scheduler_jobs["disabled_jobs"],
@@ -422,6 +543,22 @@ class RuntimeOverviewDashboardReader:
             "scheduler_jobs_due_soon": scheduler_jobs["due_soon_jobs"],
             "scheduler_jobs_soft": scheduler_jobs["soft_jobs"],
             "scheduler_jobs_instant": scheduler_jobs["instant_jobs"],
+            "control_mutation_policy_allowed": control_mutation_policy["allowed"],
+            "control_mutation_policy_reason": control_mutation_policy["reason"],
+            "control_mutation_policy_targets": len(control_mutation_policy["intents"]),
+            "control_mutation_policy_actions": sum(
+                len(intent["actions"]) for intent in control_mutation_policy["intents"]
+            ),
+            "operator_approvals_total": operator_approvals["totals"]["approvals"],
+            "operator_approvals_active": operator_approvals["totals"]["active"],
+            "operator_approvals_approved": operator_approvals["totals"]["approved"],
+            "operator_approvals_rejected": operator_approvals["totals"]["rejected"],
+            "operator_approvals_revoked": operator_approvals["totals"]["revoked"],
+            "control_mutations_total": control_mutations["totals"]["mutations"],
+            "control_mutations_planned": control_mutations["totals"]["planned"],
+            "control_mutations_applied": control_mutations["totals"]["applied"],
+            "control_mutations_failed": control_mutations["totals"]["failed"],
+            "control_mutations_rolled_back": control_mutations["totals"]["rolled_back"],
             "send_ledger_records": send_ledger_metrics["sampled_records"],
             "send_ledger_repeated_hashes": send_ledger_metrics["repeated_content_hashes"],
             "inbox_metric_events": inbox_metrics["sampled_events"],
@@ -432,6 +569,7 @@ class RuntimeOverviewDashboardReader:
             "outbox_metric_events": outbox_metrics["sampled_events"],
             "outbox_metric_dead_letters": outbox_metrics["dead_letters"]["current_total"],
         }
+        summary = _summary_with_defaults(summary)
 
         cards = _overview_cards(
             health=health,
@@ -452,12 +590,18 @@ class RuntimeOverviewDashboardReader:
             queue_backend=queue_backend,
             observe_targets=observe_targets,
             observe_capture=observe_capture,
+            media_asset_content=media_asset_content,
             media_asset_retention=media_asset_retention,
             media_asset_retention_plan=media_asset_retention_plan,
             media_asset_retention_cleanup=media_asset_retention_cleanup,
+            media_asset_content_recovery=media_asset_content_recovery,
             receiver_statuses=receiver_statuses,
             receiver_leases=receiver_leases,
+            knowledge_pipelines=knowledge_pipelines,
             scheduler_jobs=scheduler_jobs,
+            control_mutation_policy=control_mutation_policy,
+            operator_approvals=operator_approvals,
+            control_mutations=control_mutations,
             send_ledger_metrics=send_ledger_metrics,
             inbox_metrics=inbox_metrics,
             agent_job_metrics=agent_job_metrics,
@@ -487,12 +631,18 @@ class RuntimeOverviewDashboardReader:
             "queue_backend": queue_backend,
             "observe_targets": observe_targets,
             "observe_capture": observe_capture,
+            "media_asset_content_diagnostics": media_asset_content,
             "media_asset_retention_diagnostics": media_asset_retention,
             "media_asset_retention_plan": media_asset_retention_plan,
             "media_asset_retention_cleanup": media_asset_retention_cleanup,
+            "media_asset_content_recovery": media_asset_content_recovery,
             "receiver_statuses": receiver_statuses,
             "receiver_leases": receiver_leases,
+            "knowledge_pipelines": knowledge_pipelines,
             "scheduler_jobs": scheduler_jobs,
+            "control_mutation_policy": control_mutation_policy,
+            "operator_approvals": operator_approvals,
+            "control_mutations": control_mutations,
             "send_ledger_metrics": send_ledger_metrics,
             "inbox_metrics": inbox_metrics,
             "agent_job_metrics": agent_job_metrics,
@@ -965,6 +1115,9 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
         blockers = external_lease.get("blockers")
     if not isinstance(blockers, list):
         blockers = []
+    provider_capabilities_raw = item.get("provider_capabilities")
+    if not isinstance(provider_capabilities_raw, list):
+        provider_capabilities_raw = []
     return {
         "provider": _text(item.get("provider") or "unknown"),
         "mode": _text(item.get("mode") or "unknown"),
@@ -980,8 +1133,29 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
         "max_in_flight": _int_value(item.get("max_in_flight"), fallback=0),
         "outbox_queue_source": _text(item.get("outbox_queue_source")),
         "agent_job_queue_source": _text(item.get("agent_job_queue_source")),
+        "outbox_execution_owner": _text(item.get("outbox_execution_owner")),
+        "outbox_execution_scope": _text(item.get("outbox_execution_scope")),
+        "outbox_allowed_kinds": _string_list(item.get("outbox_allowed_kinds")),
+        "outbox_allowed_kinds_by_account": _mapping_or_empty(
+            item.get("outbox_allowed_kinds_by_account")
+        ),
+        "outbox_allowed_kinds_by_account_conversation_type": _mapping_or_empty(
+            item.get("outbox_allowed_kinds_by_account_conversation_type")
+        ),
+        "outbox_allowed_kinds_by_account_conversation_id": _mapping_or_empty(
+            item.get("outbox_allowed_kinds_by_account_conversation_id")
+        ),
         "dsn_configured": bool(item.get("dsn_configured")),
         "recommended_first_backend": _text(item.get("recommended_first_backend")),
+        "supported_providers": _string_list(item.get("supported_providers")),
+        "provider_capabilities": [
+            _normalize_queue_provider_capability(value)
+            for value in provider_capabilities_raw
+            if isinstance(value, Mapping)
+        ],
+        "selected_provider_capability": _normalize_queue_provider_capability(
+            _mapping_or_empty(item.get("selected_provider_capability"))
+        ),
         "external_lease_ready": bool(external_lease.get("allow_execution")),
         "external_lease_gate_state": _text(external_lease.get("gate_state")),
         "external_lease_execution_scope": _text(external_lease.get("execution_scope")),
@@ -992,6 +1166,29 @@ def _normalize_queue_backend(item: Mapping[str, Any]) -> dict[str, Any]:
         "notes": [str(value) for value in item.get("notes", [])]
         if isinstance(item.get("notes"), list)
         else [],
+    }
+
+
+def _normalize_queue_provider_capability(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": _text(item.get("provider") or "unknown"),
+        "label": _text(item.get("label")),
+        "status": _text(item.get("status")),
+        "recommended": bool(item.get("recommended")),
+        "recommended_phase": _text(item.get("recommended_phase")),
+        "implemented": bool(item.get("implemented")),
+        "supports_state_store_lease": bool(item.get("supports_state_store_lease")),
+        "supports_external_queue": bool(item.get("supports_external_queue")),
+        "supports_shadow_publish": bool(item.get("supports_shadow_publish")),
+        "supports_dual_read_compare": bool(item.get("supports_dual_read_compare")),
+        "supports_external_lease": bool(item.get("supports_external_lease")),
+        "supports_agent_job_result_ack": bool(item.get("supports_agent_job_result_ack")),
+        "supports_concurrent_consumers": bool(item.get("supports_concurrent_consumers")),
+        "supports_delayed_nack": bool(item.get("supports_delayed_nack")),
+        "consumer_model": _text(item.get("consumer_model")),
+        "adapter_boundary": _text(item.get("adapter_boundary")),
+        "notes": _string_list(item.get("notes")),
+        "blockers": _string_list(item.get("blockers")),
     }
 
 
@@ -1012,6 +1209,261 @@ def _normalize_queue_topology(item: Mapping[str, Any]) -> dict[str, Any]:
         "blockers": _string_list(item.get("blockers")),
         "notes": _string_list(item.get("notes")),
         "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _make_qq_cutover_route(
+    *,
+    account_id: str,
+    conversation_type: str,
+    conversation_id: str,
+    kind: str,
+    source: str,
+    reason: str,
+) -> dict[str, str]:
+    return {
+        "account_id": account_id,
+        "conversation_type": conversation_type,
+        "conversation_id": conversation_id,
+        "kind": kind,
+        "source": source,
+        "reason": reason,
+    }
+
+
+def _dedupe_qq_cutover_routes(
+    routes: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    seen: set[tuple[str, str, str, str, str]] = set()
+    result: list[dict[str, str]] = []
+    for route in routes:
+        key = (
+            route["account_id"],
+            route["conversation_type"],
+            route["conversation_id"],
+            route["kind"],
+            route["source"],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(route)
+    return result
+
+
+def _build_go_owned_qq_cutover_routes(
+    queue_backend: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    routes: list[dict[str, str]] = []
+    for kind in _string_list(queue_backend.get("outbox_allowed_kinds")):
+        routes.append(
+            _make_qq_cutover_route(
+                account_id="*",
+                conversation_type="*",
+                conversation_id="*",
+                kind=kind,
+                source="global",
+                reason="go_execution_owner_global_kind",
+            )
+        )
+
+    by_account = _mapping_or_empty(queue_backend.get("outbox_allowed_kinds_by_account"))
+    for account_id, value in by_account.items():
+        for kind in _string_list(value):
+            routes.append(
+                _make_qq_cutover_route(
+                    account_id=str(account_id),
+                    conversation_type="*",
+                    conversation_id="*",
+                    kind=kind,
+                    source="account",
+                    reason="go_execution_owner_account_kind",
+                )
+            )
+
+    by_account_conversation_type = _mapping_or_empty(
+        queue_backend.get("outbox_allowed_kinds_by_account_conversation_type")
+    )
+    for account_id, conversation_map in by_account_conversation_type.items():
+        if not isinstance(conversation_map, Mapping):
+            continue
+        for conversation_type, value in conversation_map.items():
+            for kind in _string_list(value):
+                routes.append(
+                    _make_qq_cutover_route(
+                        account_id=str(account_id),
+                        conversation_type=str(conversation_type),
+                        conversation_id="*",
+                        kind=kind,
+                        source="account_conversation_type",
+                        reason="go_execution_owner_account_conversation_type_kind",
+                    )
+                )
+
+    by_account_conversation_id = _mapping_or_empty(
+        queue_backend.get("outbox_allowed_kinds_by_account_conversation_id")
+    )
+    for account_id, type_map in by_account_conversation_id.items():
+        if not isinstance(type_map, Mapping):
+            continue
+        for conversation_type, id_map in type_map.items():
+            if not isinstance(id_map, Mapping):
+                continue
+            for conversation_id, value in id_map.items():
+                for kind in _string_list(value):
+                    routes.append(
+                        _make_qq_cutover_route(
+                            account_id=str(account_id),
+                            conversation_type=str(conversation_type),
+                            conversation_id=str(conversation_id),
+                            kind=kind,
+                            source="account_conversation_id",
+                            reason="go_execution_owner_account_conversation_id_kind",
+                        )
+                    )
+
+    return _dedupe_qq_cutover_routes(routes)
+
+
+def _project_policy_blocked_qq_group_routes(
+    go_owned_routes: list[dict[str, str]],
+    qq_group_send_enabled: bool,
+) -> list[dict[str, str]]:
+    if qq_group_send_enabled:
+        return []
+
+    blocked: list[dict[str, str]] = []
+    for route in go_owned_routes:
+        conversation_type = route["conversation_type"]
+        if conversation_type not in {"*", "group"}:
+            continue
+        blocked.append(
+            _make_qq_cutover_route(
+                account_id=route["account_id"],
+                conversation_type="group",
+                conversation_id=route["conversation_id"],
+                kind=route["kind"],
+                source=route["source"],
+                reason="qq_group_send_disabled",
+            )
+        )
+    return _dedupe_qq_cutover_routes(blocked)
+
+
+def _project_currently_sendable_qq_routes(
+    go_owned_routes: list[dict[str, str]],
+    qq_group_send_enabled: bool,
+) -> list[dict[str, str]]:
+    sendable: list[dict[str, str]] = []
+    for route in go_owned_routes:
+        conversation_type = route["conversation_type"]
+        if qq_group_send_enabled:
+            sendable.append(
+                _make_qq_cutover_route(
+                    account_id=route["account_id"],
+                    conversation_type=conversation_type,
+                    conversation_id=route["conversation_id"],
+                    kind=route["kind"],
+                    source=route["source"],
+                    reason="current_runtime_sendable",
+                )
+            )
+            continue
+        if conversation_type == "group":
+            continue
+        sendable.append(
+            _make_qq_cutover_route(
+                account_id=route["account_id"],
+                conversation_type="private" if conversation_type == "*" else conversation_type,
+                conversation_id=route["conversation_id"],
+                kind=route["kind"],
+                source=route["source"],
+                reason="current_runtime_sendable",
+            )
+        )
+    return _dedupe_qq_cutover_routes(sendable)
+
+
+def _build_platform_blocker_qq_routes(
+    *,
+    primary_account_id: str,
+    secondary_account_id: str,
+) -> list[dict[str, str]]:
+    routes: list[dict[str, str]] = []
+    for account_id in (primary_account_id, secondary_account_id):
+        for conversation_type in ("private", "group"):
+            routes.append(
+                _make_qq_cutover_route(
+                    account_id=account_id,
+                    conversation_type=conversation_type,
+                    conversation_id="*",
+                    kind="image",
+                    source="platform_blocker",
+                    reason="native_rich_media_image_unresolved",
+                )
+            )
+    routes.append(
+        _make_qq_cutover_route(
+            account_id=primary_account_id,
+            conversation_type="group",
+            conversation_id="*",
+            kind="file",
+            source="platform_blocker",
+            reason="first_account_group_file_session_specific_blocker",
+        )
+    )
+    return _dedupe_qq_cutover_routes(routes)
+
+
+def _derive_qq_cutover_route_matrix(
+    *,
+    queue_backend: Mapping[str, Any],
+    runtime_config: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime = _mapping_or_empty(runtime_config.get("runtime"))
+    delivery = _mapping_or_empty(runtime_config.get("delivery"))
+    bot_ids = _string_list(runtime.get("bot_ids"))
+    primary_account_id = bot_ids[0] if bot_ids else "1049511700"
+    secondary_account_id = bot_ids[1] if len(bot_ids) > 1 else "2365524513"
+    qq_group_send_enabled = bool(delivery.get("qq_group_send_enabled"))
+    go_owned_routes = _build_go_owned_qq_cutover_routes(queue_backend)
+    currently_sendable_routes = _project_currently_sendable_qq_routes(
+        go_owned_routes,
+        qq_group_send_enabled,
+    )
+    policy_blocked_routes = _project_policy_blocked_qq_group_routes(
+        go_owned_routes,
+        qq_group_send_enabled,
+    )
+    platform_blocker_routes = _build_platform_blocker_qq_routes(
+        primary_account_id=primary_account_id,
+        secondary_account_id=secondary_account_id,
+    )
+    return {
+        "qq_group_send_enabled": qq_group_send_enabled,
+        "outbox_execution_owner": _text(queue_backend.get("outbox_execution_owner")),
+        "outbox_execution_scope": _text(queue_backend.get("outbox_execution_scope")),
+        "qq_accounts": {
+            "configured_bot_ids": bot_ids,
+            "primary_account_id": primary_account_id,
+            "secondary_account_id": secondary_account_id,
+        },
+        "totals": {
+            "go_execution_owner_scope": len(go_owned_routes),
+            "currently_sendable_routes": len(currently_sendable_routes),
+            "policy_blocked_routes": len(policy_blocked_routes),
+            "platform_blocker_routes": len(platform_blocker_routes),
+        },
+        "go_execution_owner_scope": go_owned_routes,
+        "currently_sendable_routes": currently_sendable_routes,
+        "policy_blocked_routes": policy_blocked_routes,
+        "platform_blocker_routes": platform_blocker_routes,
+        "notes": [
+            "go_execution_owner_scope is derived from queue backend outbox route gates",
+            "currently_sendable_routes applies the current qq_group_send_enabled policy without re-enabling group sends",
+            "platform_blocker_routes reflects current rich-media routes intentionally kept outside Go scope",
+        ],
+        "side_effect": "none",
     }
 
 
@@ -1124,9 +1576,13 @@ def _normalize_agent_job_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
 def _normalize_outbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
     throughput = _mapping_or_empty(item.get("throughput"))
     dead_letters = _mapping_or_empty(item.get("dead_letters"))
+    pressure = _mapping_or_empty(item.get("pressure"))
     recent = dead_letters.get("recent")
     if not isinstance(recent, list):
         recent = []
+    by_account = pressure.get("by_account")
+    if not isinstance(by_account, list):
+        by_account = []
     return {
         "sampled_deliveries": _int_value(item.get("sampled_deliveries"), fallback=0),
         "sampled_events": _int_value(item.get("sampled_events"), fallback=0),
@@ -1150,10 +1606,31 @@ def _normalize_outbox_metrics(item: Mapping[str, Any]) -> dict[str, Any]:
             "by_channel_kind": _mapping_or_empty(dead_letters.get("by_channel_kind")),
             "recent": [dict(item) for item in recent if isinstance(item, Mapping)],
         },
+        "pressure": {
+            "accounts": _int_value(pressure.get("accounts"), fallback=0),
+            "high_pressure_accounts": _int_value(
+                pressure.get("high_pressure_accounts"),
+                fallback=0,
+            ),
+            "max_active": _int_value(pressure.get("max_active"), fallback=0),
+            "max_queued": _int_value(pressure.get("max_queued"), fallback=0),
+            "by_account": [dict(value) for value in by_account if isinstance(value, Mapping)],
+        },
         "notes": [str(value) for value in item.get("notes", [])]
         if isinstance(item.get("notes"), list)
         else [],
     }
+
+
+def _normalize_outbox_pressure(
+    item: Mapping[str, Any],
+    *,
+    outbox_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    metrics = _mapping_or_empty(item.get("outbox_metrics"))
+    if metrics:
+        return {"outbox_metrics": _normalize_outbox_metrics(metrics)}
+    return {"outbox_metrics": _normalize_outbox_metrics(outbox_metrics)}
 
 
 def _normalize_go_runtime_overview(
@@ -1176,6 +1653,30 @@ def _normalize_go_runtime_overview(
     ]
     queue_backend = _normalize_queue_backend(_mapping_or_empty(item.get("queue_backend")))
     queue_topology = _normalize_queue_topology(_mapping_or_empty(item.get("queue_topology")))
+    runtime_config = _mapping_or_empty(item.get("runtime_config"))
+    qq_cutover_route_matrix = _derive_qq_cutover_route_matrix(
+        queue_backend=queue_backend,
+        runtime_config=runtime_config,
+    )
+    summary.update(
+        {
+            "qq_cutover_route_matrix_go_execution_owner_scope": qq_cutover_route_matrix[
+                "totals"
+            ]["go_execution_owner_scope"],
+            "qq_cutover_route_matrix_currently_sendable_routes": qq_cutover_route_matrix[
+                "totals"
+            ]["currently_sendable_routes"],
+            "qq_cutover_route_matrix_policy_blocked_routes": qq_cutover_route_matrix[
+                "totals"
+            ]["policy_blocked_routes"],
+            "qq_cutover_route_matrix_platform_blocker_routes": qq_cutover_route_matrix[
+                "totals"
+            ]["platform_blocker_routes"],
+            "qq_cutover_route_matrix_group_send_enabled": qq_cutover_route_matrix[
+                "qq_group_send_enabled"
+            ],
+        }
+    )
     send_ledger_metrics = _normalize_send_ledger_metrics(
         _mapping_or_empty(item.get("send_ledger_metrics"))
     )
@@ -1187,6 +1688,10 @@ def _normalize_go_runtime_overview(
         _mapping_or_empty(item.get("agent_job_metrics"))
     )
     outbox_metrics = _normalize_outbox_metrics(_mapping_or_empty(item.get("outbox_metrics")))
+    outbox_pressure = _normalize_outbox_pressure(
+        _mapping_or_empty(item.get("outbox_pressure")),
+        outbox_metrics=outbox_metrics,
+    )
     runtime_workers = _normalize_runtime_workers(
         _mapping_or_empty(item.get("runtime_workers"))
     )
@@ -1201,6 +1706,9 @@ def _normalize_go_runtime_overview(
     )
     receiver_leases = _normalize_receiver_leases(
         _mapping_or_empty(item.get("receiver_leases"))
+    )
+    knowledge_pipelines = _normalize_knowledge_pipeline_diagnostics(
+        _mapping_or_empty(item.get("knowledge_pipelines"))
     )
     scheduler_jobs = _normalize_scheduler_job_diagnostics(
         _mapping_or_empty(item.get("scheduler_jobs"))
@@ -1221,6 +1729,9 @@ def _normalize_go_runtime_overview(
     media_asset_retention_cleanup = _normalize_media_asset_retention_cleanup(
         _mapping_or_empty(item.get("media_asset_retention_cleanup")),
         plan=media_asset_retention_plan,
+    )
+    media_asset_content_recovery = _normalize_media_asset_content_recovery(
+        _mapping_or_empty(item.get("media_asset_content_recovery"))
     )
     agent_job_capacity_plan = _normalize_agent_job_capacity_plan(
         _mapping_or_empty(item.get("agent_job_capacity_plan"))
@@ -1253,7 +1764,6 @@ def _normalize_go_runtime_overview(
             _mapping_or_empty(item.get("knowledge_job_planner_cutover_plan"))
         )
     )
-    runtime_config = _mapping_or_empty(item.get("runtime_config"))
     diagnostics = _mapping_or_empty(item.get("diagnostics"))
     status = _mapping_or_empty(item.get("status"))
     errors_raw = status.get("errors")
@@ -1273,6 +1783,81 @@ def _normalize_go_runtime_overview(
         for value in cards_raw
         if isinstance(value, Mapping)
     ]
+    if not any(card.get("id") == "worker_leases" for card in cards):
+        cards.append(
+            _card(
+                "worker_leases",
+                "Worker Leases",
+                (
+                    f"{summary.get('stale_jobs', 0)}/{summary.get('worker_leases', 0)}"
+                    if summary.get("stale_jobs")
+                    else summary.get("worker_leases", 0)
+                ),
+                "ok" if not summary.get("stale_jobs") else "warn",
+                {
+                    "worker_leases": _mapping_or_empty(item.get("worker_leases")),
+                    "diagnostics": diagnostics,
+                },
+            )
+        )
+    if not any(card.get("id") == "runtime_config" for card in cards):
+        address = _text(_mapping_or_empty(runtime_config.get("runtime")).get("address"))
+        if not address:
+            runtime_url = runtime_base_url.strip()
+            if runtime_url:
+                parsed_runtime_url = urllib.parse.urlparse(runtime_url)
+                address = (
+                    parsed_runtime_url.netloc
+                    or parsed_runtime_url.path
+                    or runtime_url
+                )
+        cards.append(
+            _card(
+                "runtime_config",
+                "Runtime Config",
+                address,
+                "ok" if address else "warn",
+                {"runtime_config": dict(runtime_config)},
+            )
+        )
+    if not any(card.get("id") == "media_asset_content" for card in cards):
+        cards.append(
+            _card(
+                "media_asset_content",
+                "Media Asset Content",
+                _media_asset_content_value(summary),
+                _media_asset_content_status(summary),
+                {"media_asset_content_diagnostics": media_asset_content},
+            )
+        )
+    if not any(card.get("id") == "media_asset_content_recovery" for card in cards):
+        cards.append(
+            _card(
+                "media_asset_content_recovery",
+                "Media Content Recovery",
+                _media_asset_content_recovery_value(summary),
+                _media_asset_content_recovery_status(summary),
+                {"media_asset_content_recovery": media_asset_content_recovery},
+            )
+        )
+    if not any(card.get("id") == "qq_cutover_route_matrix" for card in cards):
+        cards.append(
+            _card(
+                "qq_cutover_route_matrix",
+                "QQ Cutover Route Matrix",
+                summary.get("qq_cutover_route_matrix_currently_sendable_routes", 0),
+                _qq_cutover_route_matrix_status(summary),
+                {"qq_cutover_route_matrix": qq_cutover_route_matrix},
+            )
+        )
+
+    worker_leases_raw = _mapping_or_empty(item.get("worker_leases"))
+    agent_job_worker_leases = worker_leases_raw.get("agent_jobs")
+    if not isinstance(agent_job_worker_leases, list):
+        agent_job_worker_leases = []
+    outbox_worker_leases = worker_leases_raw.get("outbox")
+    if not isinstance(outbox_worker_leases, list):
+        outbox_worker_leases = []
 
     return {
         "summary": summary,
@@ -1281,8 +1866,16 @@ def _normalize_go_runtime_overview(
         "jobs_by_type": agent_job_metrics["jobs_by_type"],
         "outbox_by_status": outbox_metrics["deliveries_by_status"],
         "worker_leases": {
-            "agent_jobs": [],
-            "outbox": [],
+            "agent_jobs": [
+                dict(value)
+                for value in agent_job_worker_leases
+                if isinstance(value, Mapping)
+            ],
+            "outbox": [
+                dict(value)
+                for value in outbox_worker_leases
+                if isinstance(value, Mapping)
+            ],
         },
         "stale_items": [],
         "dead_letters": {
@@ -1297,11 +1890,13 @@ def _normalize_go_runtime_overview(
         "delivery_smoke_readiness": delivery_smoke_readiness,
         "queue_backend": queue_backend,
         "queue_topology": queue_topology,
+        "qq_cutover_route_matrix": qq_cutover_route_matrix,
         "runtime_config": dict(runtime_config),
         "runtime_workers": runtime_workers,
         "observe_targets": observe_targets,
         "observe_capture": observe_capture,
         "media_asset_content_diagnostics": media_asset_content,
+        "media_asset_content_recovery": media_asset_content_recovery,
         "media_asset_retention_diagnostics": media_asset_retention,
         "media_asset_retention_plan": media_asset_retention_plan,
         "media_asset_retention_cleanup": media_asset_retention_cleanup,
@@ -1316,11 +1911,13 @@ def _normalize_go_runtime_overview(
         "knowledge_job_planner_cutover_plan": knowledge_job_planner_cutover_plan,
         "receiver_statuses": receiver_statuses,
         "receiver_leases": receiver_leases,
+        "knowledge_pipelines": knowledge_pipelines,
         "scheduler_jobs": scheduler_jobs,
         "send_ledger_metrics": send_ledger_metrics,
         "inbox_metrics": inbox_metrics,
         "inbound_dedupe_metrics": inbound_dedupe_metrics,
         "agent_job_metrics": agent_job_metrics,
+        "outbox_pressure": outbox_pressure,
         "outbox_metrics": outbox_metrics,
         "status": {
             "runtime_url": runtime_base_url,
@@ -1369,6 +1966,11 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "queue_topology_outbox_execution_owner": "unknown",
         "queue_topology_agent_job_execution_owner": "unknown",
         "queue_topology_agent_job_ack_owner": "unknown",
+        "qq_cutover_route_matrix_go_execution_owner_scope": 0,
+        "qq_cutover_route_matrix_currently_sendable_routes": 0,
+        "qq_cutover_route_matrix_policy_blocked_routes": 0,
+        "qq_cutover_route_matrix_platform_blocker_routes": 0,
+        "qq_cutover_route_matrix_group_send_enabled": False,
         "runtime_config_blockers": 0,
         "runtime_config_onebot_missing": 0,
         "runtime_workers": 0,
@@ -1396,6 +1998,11 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "media_asset_content_unavailable": 0,
         "media_asset_content_disabled": 0,
         "media_asset_content_error": 0,
+        "media_asset_content_recovery_ready": False,
+        "media_asset_content_recovery_reason": "unknown",
+        "media_asset_content_recovery_applied": 0,
+        "media_asset_content_recovery_failed": 0,
+        "media_asset_content_recovery_recent_audits": 0,
         "media_asset_retention_assets": 0,
         "media_asset_retention_cleanup_due": 0,
         "media_asset_retention_permanent": 0,
@@ -1489,6 +2096,19 @@ def _summary_with_defaults(item: Mapping[str, Any]) -> dict[str, Any]:
         "receiver_leases_expired": 0,
         "receiver_lease_cleanup_required": False,
         "receiver_lease_cleanup_endpoint": "/v1/receiver-leases/cleanup-expired",
+        "knowledge_pipelines": 0,
+        "knowledge_pipelines_ready": 0,
+        "knowledge_pipelines_warning": 0,
+        "knowledge_pipelines_blocked": 0,
+        "knowledge_pipelines_lagging": 0,
+        "knowledge_pipelines_high_pressure": 0,
+        "knowledge_pipelines_receiver_connected": 0,
+        "knowledge_pipelines_configured_rag_datasets": 0,
+        "knowledge_pipelines_rag_datasets": 0,
+        "knowledge_pipelines_rag_dataset_index_ready": 0,
+        "knowledge_pipelines_rag_dataset_index_missing_snapshot": 0,
+        "knowledge_pipelines_rag_dataset_index_empty": 0,
+        "knowledge_pipelines_rag_dataset_index_lagging": 0,
         "scheduler_jobs": 0,
         "scheduler_jobs_enabled": 0,
         "scheduler_jobs_disabled": 0,
@@ -1783,6 +2403,14 @@ def _normalize_media_asset_content_item(item: Mapping[str, Any]) -> dict[str, An
             item.get("content_access_plan_endpoint")
         )
         or _media_asset_content_access_plan_endpoint(_text(item.get("asset_id"))),
+        "content_recovery_plan_endpoint": _text(
+            item.get("content_recovery_plan_endpoint")
+        )
+        or _media_asset_content_recovery_plan_endpoint(_text(item.get("asset_id"))),
+        "content_recovery_preflight_endpoint": _text(
+            item.get("content_recovery_preflight_endpoint")
+        )
+        or _media_asset_content_recovery_preflight_endpoint(_text(item.get("asset_id"))),
         "content_mime_type": _text(item.get("content_mime_type")),
         "content_size_bytes": _int_value(item.get("content_size_bytes"), fallback=0),
         "updated_at": _text(item.get("updated_at")),
@@ -1794,6 +2422,24 @@ def _media_asset_content_access_plan_endpoint(asset_id: str) -> str:
         return ""
     return (
         "/v1/media-assets/content-access-plan?asset_id="
+        + urllib.parse.quote(asset_id, safe="")
+    )
+
+
+def _media_asset_content_recovery_plan_endpoint(asset_id: str) -> str:
+    if not asset_id:
+        return ""
+    return (
+        "/v1/media-assets/content-recovery-plan?asset_id="
+        + urllib.parse.quote(asset_id, safe="")
+    )
+
+
+def _media_asset_content_recovery_preflight_endpoint(asset_id: str) -> str:
+    if not asset_id:
+        return ""
+    return (
+        "/v1/media-assets/content-recovery/preflight?asset_id="
         + urllib.parse.quote(asset_id, safe="")
     )
 
@@ -2002,6 +2648,96 @@ def _normalize_media_asset_retention_cleanup(
         "notes": _string_list(item.get("notes")),
         "side_effect": _text(item.get("side_effect") or "none"),
     }
+
+
+def _normalize_media_asset_content_recovery(item: Mapping[str, Any]) -> dict[str, Any]:
+    audits_raw = item.get("recent_audits")
+    if not isinstance(audits_raw, list):
+        audits_raw = []
+    recent_audits = [
+        _normalize_control_mutation(value)
+        for value in audits_raw
+        if isinstance(value, Mapping)
+    ]
+    totals = _mapping_or_empty(item.get("totals"))
+    endpoints = _mapping_or_empty(item.get("endpoints"))
+    return {
+        "ready": bool(item.get("ready")),
+        "reason": _text(item.get("reason") or "unknown"),
+        "recent_audits": recent_audits,
+        "totals": {
+            "audits": _int_value(totals.get("audits"), fallback=len(recent_audits)),
+            "planned": _int_value(
+                totals.get("planned"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "planned"),
+            ),
+            "applied": _int_value(
+                totals.get("applied"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "applied"),
+            ),
+            "failed": _int_value(
+                totals.get("failed"),
+                fallback=sum(1 for value in recent_audits if value["status"] == "failed"),
+            ),
+            "rolled_back": _int_value(
+                totals.get("rolled_back"),
+                fallback=sum(
+                    1 for value in recent_audits if value["status"] == "rolled_back"
+                ),
+            ),
+        },
+        "endpoints": {
+            "plan": _text(endpoints.get("plan") or "/v1/media-assets/content-recovery-plan"),
+            "preflight": _text(
+                endpoints.get("preflight")
+                or "/v1/media-assets/content-recovery/preflight"
+            ),
+            "recovery": _text(
+                endpoints.get("recovery") or "/v1/media-assets/content-recovery"
+            ),
+        },
+        "notes": _string_list(item.get("notes")),
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
+
+
+def _fallback_media_asset_content_recovery_from_control_mutations(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not item:
+        return _normalize_media_asset_content_recovery({})
+    control_mutations = _normalize_control_mutations(item)
+    recent_audits = [
+        mutation
+        for mutation in control_mutations["mutations"]
+        if mutation["target_kind"] == "media_asset_content"
+        and mutation["action"] == "recover_content"
+    ]
+    totals = control_mutations["totals"]
+    return _normalize_media_asset_content_recovery(
+        {
+            "ready": True,
+            "reason": "media_asset_content_recovery_audit_ready",
+            "recent_audits": recent_audits,
+            "totals": {
+                "audits": len(recent_audits),
+                "planned": totals["planned"],
+                "applied": totals["applied"],
+                "failed": totals["failed"],
+                "rolled_back": totals["rolled_back"],
+            },
+            "endpoints": {
+                "plan": "/v1/media-assets/content-recovery-plan",
+                "preflight": "/v1/media-assets/content-recovery/preflight",
+                "recovery": "/v1/media-assets/content-recovery",
+            },
+            "notes": [
+                "read-only runtime overview; does not execute media content recovery",
+                "recovery execution still requires active approval preflight and records control mutation audit",
+            ],
+            "side_effect": "none",
+        }
+    )
 
 
 def _normalize_agent_job_capacity_plan(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -2686,12 +3422,18 @@ def _overview_cards(
     queue_backend: dict[str, Any],
     observe_targets: dict[str, Any],
     observe_capture: dict[str, Any],
+    media_asset_content: dict[str, Any],
     media_asset_retention: dict[str, Any],
     media_asset_retention_plan: dict[str, Any],
     media_asset_retention_cleanup: dict[str, Any],
+    media_asset_content_recovery: dict[str, Any],
     receiver_statuses: dict[str, Any],
     receiver_leases: dict[str, Any],
+    knowledge_pipelines: dict[str, Any],
     scheduler_jobs: dict[str, Any],
+    control_mutation_policy: dict[str, Any],
+    operator_approvals: dict[str, Any],
+    control_mutations: dict[str, Any],
     send_ledger_metrics: dict[str, Any],
     inbox_metrics: dict[str, Any],
     agent_job_metrics: dict[str, Any],
@@ -2805,6 +3547,13 @@ def _overview_cards(
             {"observe_capture": observe_capture},
         ),
         _card(
+            "media_asset_content",
+            "Media Asset Content",
+            _media_asset_content_value(summary),
+            _media_asset_content_status(summary),
+            {"media_asset_content_diagnostics": media_asset_content},
+        ),
+        _card(
             "media_asset_retention",
             "Media Asset Retention",
             _media_asset_retention_value(summary),
@@ -2824,6 +3573,13 @@ def _overview_cards(
             _media_asset_retention_cleanup_value(summary),
             _media_asset_retention_cleanup_status(summary),
             {"media_asset_retention_cleanup": media_asset_retention_cleanup},
+        ),
+        _card(
+            "media_asset_content_recovery",
+            "Media Content Recovery",
+            _media_asset_content_recovery_value(summary),
+            _media_asset_content_recovery_status(summary),
+            {"media_asset_content_recovery": media_asset_content_recovery},
         ),
         _card(
             "receiver_statuses",
@@ -2846,11 +3602,37 @@ def _overview_cards(
             },
         ),
         _card(
+            "knowledge_pipelines",
+            "Knowledge Pipelines",
+            _knowledge_pipeline_value(summary),
+            _knowledge_pipeline_status(summary),
+            {"knowledge_pipelines": knowledge_pipelines},
+        ),
+        _card(
             "scheduler_jobs",
             "Scheduler Jobs",
             _scheduler_job_value(summary),
             _scheduler_job_status(summary),
             {"scheduler_jobs": scheduler_jobs},
+        ),
+        _card(
+            "control_mutation_policy",
+            "Control Mutation Policy",
+            f"{_int_value(summary.get('control_mutation_policy_targets'), fallback=0)}/"
+            f"{_int_value(summary.get('control_mutation_policy_actions'), fallback=0)}",
+            "ok" if bool(summary.get("control_mutation_policy_allowed")) else "muted",
+            {"control_mutation_policy": control_mutation_policy},
+        ),
+        _card(
+            "control_audit",
+            "Control Audit",
+            f"{_int_value(summary.get('operator_approvals_active'), fallback=0)}/"
+            f"{_int_value(summary.get('control_mutations_total'), fallback=0)}",
+            "warn",
+            {
+                "operator_approvals": operator_approvals,
+                "control_mutations": control_mutations,
+            },
         ),
         _card(
             "send_ledger_metrics",
@@ -2901,6 +3683,20 @@ def _queue_backend_status(queue_backend: Mapping[str, Any]) -> str:
     if bool(queue_backend.get("external_queue_configured")):
         return "ok"
     return "warn"
+
+
+def _qq_cutover_route_matrix_status(summary: Mapping[str, Any]) -> str:
+    go_scope = _int_value(
+        summary.get("qq_cutover_route_matrix_go_execution_owner_scope"),
+        fallback=0,
+    )
+    if go_scope <= 0:
+        return "muted"
+    if _int_value(summary.get("qq_cutover_route_matrix_platform_blocker_routes"), fallback=0) > 0:
+        return "warn"
+    if _int_value(summary.get("qq_cutover_route_matrix_policy_blocked_routes"), fallback=0) > 0:
+        return "warn"
+    return "ok"
 
 
 def _observe_capture_status(summary: Mapping[str, Any]) -> str:
@@ -2982,6 +3778,50 @@ def _media_asset_retention_cleanup_value(summary: Mapping[str, Any]) -> str:
     )
 
 
+def _media_asset_content_status(summary: Mapping[str, Any]) -> str:
+    if _int_value(summary.get("media_asset_content_assets"), fallback=0) == 0:
+        return "muted"
+    if (
+        _int_value(summary.get("media_asset_content_error"), fallback=0) > 0
+        or _int_value(summary.get("media_asset_content_forbidden"), fallback=0) > 0
+        or _int_value(summary.get("media_asset_content_unavailable"), fallback=0) > 0
+    ):
+        return "danger"
+    if _int_value(summary.get("media_asset_content_disabled"), fallback=0) > 0:
+        return "warn"
+    if _int_value(summary.get("media_asset_content_ready"), fallback=0) > 0:
+        return "ok"
+    return "muted"
+
+
+def _media_asset_content_value(summary: Mapping[str, Any]) -> str:
+    return (
+        f"{_int_value(summary.get('media_asset_content_ready'), fallback=0)}/"
+        f"{_int_value(summary.get('media_asset_content_assets'), fallback=0)}"
+    )
+
+
+def _media_asset_content_recovery_status(summary: Mapping[str, Any]) -> str:
+    reason = _text(summary.get("media_asset_content_recovery_reason"))
+    if reason == "unknown":
+        return "muted"
+    if _int_value(summary.get("media_asset_content_recovery_failed"), fallback=0) > 0:
+        return "danger"
+    if _int_value(summary.get("media_asset_content_recovery_applied"), fallback=0) > 0:
+        return "ok"
+    return "muted"
+
+
+def _media_asset_content_recovery_value(summary: Mapping[str, Any]) -> str:
+    reason = _text(summary.get("media_asset_content_recovery_reason"))
+    if reason == "unknown":
+        return "unknown"
+    return (
+        f"{_int_value(summary.get('media_asset_content_recovery_applied'), fallback=0)}/"
+        f"{_int_value(summary.get('media_asset_content_recovery_failed'), fallback=0)}"
+    )
+
+
 def _receiver_status_status(summary: Mapping[str, Any]) -> str:
     receivers = _int_value(summary.get("receiver_statuses"), fallback=0)
     if receivers <= 0:
@@ -3013,6 +3853,24 @@ def _receiver_lease_value(summary: Mapping[str, Any]) -> str:
     return (
         f"{_int_value(summary.get('receiver_leases_active'), fallback=0)}/"
         f"{_int_value(summary.get('receiver_leases_expired'), fallback=0)}"
+    )
+
+
+def _knowledge_pipeline_status(summary: Mapping[str, Any]) -> str:
+    targets = _int_value(summary.get("knowledge_pipelines"), fallback=0)
+    if targets <= 0:
+        return "muted"
+    if _int_value(summary.get("knowledge_pipelines_blocked"), fallback=0) > 0:
+        return "danger"
+    if _int_value(summary.get("knowledge_pipelines_warning"), fallback=0) > 0:
+        return "warn"
+    return "ok"
+
+
+def _knowledge_pipeline_value(summary: Mapping[str, Any]) -> str:
+    return (
+        f"{_int_value(summary.get('knowledge_pipelines_ready'), fallback=0)}/"
+        f"{_int_value(summary.get('knowledge_pipelines'), fallback=0)}"
     )
 
 
@@ -3063,6 +3921,89 @@ def _is_failed_rag_eval(item: Mapping[str, Any]) -> bool:
     if isinstance(passed, str):
         return passed.strip().lower() in {"false", "0", "no"}
     return False
+
+
+def _normalize_knowledge_pipeline_diagnostics(item: Mapping[str, Any]) -> dict[str, Any]:
+    pipelines_raw = item.get("pipelines")
+    if not isinstance(pipelines_raw, list):
+        pipelines_raw = []
+    notes_raw = item.get("notes")
+    if not isinstance(notes_raw, list):
+        notes_raw = []
+    totals_raw = _mapping_or_empty(item.get("totals"))
+    return {
+        "generated_at": _text(item.get("generated_at")),
+        "stale_after_seconds": _int_value(item.get("stale_after_seconds"), fallback=0),
+        "sampled_job_limit": _int_value(item.get("sampled_job_limit"), fallback=0),
+        "sampled_checkpoint_limit": _int_value(
+            item.get("sampled_checkpoint_limit"), fallback=0
+        ),
+        "totals": {
+            "targets": _int_value(totals_raw.get("targets"), fallback=0),
+            "enabled": _int_value(totals_raw.get("enabled"), fallback=0),
+            "ready": _int_value(totals_raw.get("ready"), fallback=0),
+            "warning": _int_value(totals_raw.get("warning"), fallback=0),
+            "blocked": _int_value(totals_raw.get("blocked"), fallback=0),
+            "lagging": _int_value(totals_raw.get("lagging"), fallback=0),
+            "high_pressure": _int_value(totals_raw.get("high_pressure"), fallback=0),
+            "receiver_connected": _int_value(
+                totals_raw.get("receiver_connected"), fallback=0
+            ),
+            "configured_rag_datasets": _int_value(
+                totals_raw.get("configured_rag_datasets"), fallback=0
+            ),
+            "configured_rag_dataset_not_started": _int_value(
+                totals_raw.get("configured_rag_dataset_not_started"), fallback=0
+            ),
+            "rag_datasets": _int_value(totals_raw.get("rag_datasets"), fallback=0),
+            "rag_dataset_blocked": _int_value(
+                totals_raw.get("rag_dataset_blocked"), fallback=0
+            ),
+            "rag_dataset_warning": _int_value(
+                totals_raw.get("rag_dataset_warning"), fallback=0
+            ),
+            "rag_dataset_index_ready": _int_value(
+                totals_raw.get("rag_dataset_index_ready"), fallback=0
+            ),
+            "rag_dataset_index_missing_snapshot": _int_value(
+                totals_raw.get("rag_dataset_index_missing_snapshot"), fallback=0
+            ),
+            "rag_dataset_index_empty": _int_value(
+                totals_raw.get("rag_dataset_index_empty"), fallback=0
+            ),
+            "rag_dataset_index_lagging": _int_value(
+                totals_raw.get("rag_dataset_index_lagging"), fallback=0
+            ),
+            "rag_dataset_ingest_snapshots": _int_value(
+                totals_raw.get("rag_dataset_ingest_snapshots"), fallback=0
+            ),
+            "rag_checkpoints": _int_value(totals_raw.get("rag_checkpoints"), fallback=0),
+            "memory_checkpoints": _int_value(
+                totals_raw.get("memory_checkpoints"), fallback=0
+            ),
+            "group_memory_pending": _int_value(
+                totals_raw.get("group_memory_pending"), fallback=0
+            ),
+            "rag_ingest_pending": _int_value(
+                totals_raw.get("rag_ingest_pending"), fallback=0
+            ),
+            "stale_checkpoints": _int_value(
+                totals_raw.get("stale_checkpoints"), fallback=0
+            ),
+            "stale_active_leases": _int_value(
+                totals_raw.get("stale_active_leases"), fallback=0
+            ),
+            "expired_active_leases": _int_value(
+                totals_raw.get("expired_active_leases"), fallback=0
+            ),
+            "stalled": _int_value(totals_raw.get("stalled"), fallback=0),
+            "stagnant": _int_value(totals_raw.get("stagnant"), fallback=0),
+            "muted": _int_value(totals_raw.get("muted"), fallback=0),
+        },
+        "pipelines": [dict(value) for value in pipelines_raw if isinstance(value, Mapping)],
+        "notes": [str(value) for value in notes_raw],
+        "side_effect": _text(item.get("side_effect") or "none"),
+    }
 
 
 def _parse_timestamp(value: str) -> datetime | None:

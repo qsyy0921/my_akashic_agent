@@ -67,6 +67,37 @@ func TestReceiverStatusStoreSortsReceivers(t *testing.T) {
 	}
 }
 
+func TestReceiverStatusStoreDeletesReceiver(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "receiver-statuses.json")
+	store, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := newReceiverStatus(t, "qq", "qq", "1049511700", "connected")
+	second := newReceiverStatus(t, "telegram", "telegram", "telegram", "connected")
+	if err := store.SaveReceiverStatus(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveReceiverStatus(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteReceiverStatus(context.Background(), first.ReceiverID); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := receiverstatusstore.NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := reopened.ListReceiverStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ReceiverID != second.ReceiverID {
+		t.Fatalf("expected only second receiver to remain, got %#v", items)
+	}
+}
+
 func newReceiverStatus(t *testing.T, kind string, channelName string, accountID string, status string) model.ReceiverStatus {
 	t.Helper()
 	item, err := model.NewReceiverStatus(model.ReceiverStatusSpec{

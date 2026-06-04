@@ -58,6 +58,21 @@ func (s *Store) SaveAgentWorkerStatus(_ context.Context, status model.AgentWorke
 	return s.flush()
 }
 
+func (s *Store) DeleteAgentWorkerStatus(_ context.Context, workerID string) error {
+	if s == nil {
+		return errors.New("agent worker status store is nil")
+	}
+	workerID = strings.TrimSpace(workerID)
+	if workerID == "" {
+		return errors.New("agent worker status delete requires worker_id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.workers, workerID)
+	return s.flush()
+}
+
 func (s *Store) ListAgentWorkerStatuses(_ context.Context) ([]model.AgentWorkerStatus, error) {
 	if s == nil {
 		return nil, errors.New("agent worker status store is nil")

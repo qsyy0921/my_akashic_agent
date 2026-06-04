@@ -15,23 +15,53 @@ import (
 )
 
 type DeliveryDispatchService struct {
-	repository outport.OutboxRepository
-	planner    domainservice.DeliveryPlanner
-	adapters   []outport.DeliveryAdapter
+	repository     outport.OutboxRepository
+	planner        domainservice.DeliveryPlanner
+	adapters       []outport.DeliveryAdapter
+	observeTargets deliveryDispatchObserveTargetLister
+	qqGroupSendEnabled bool
+}
+
+type deliveryDispatchObserveTargetLister interface {
+	ListObserveTargets(ctx context.Context) (query.ObserveTargetsView, error)
 }
 
 func NewDeliveryDispatchService(repository outport.OutboxRepository) *DeliveryDispatchService {
-	return NewDeliveryDispatchServiceWithAdapters(repository)
+	return NewDeliveryDispatchServiceWithObserveTargetsAndAdapters(repository, nil)
 }
 
 func NewDeliveryDispatchServiceWithAdapters(
 	repository outport.OutboxRepository,
 	adapters ...outport.DeliveryAdapter,
 ) *DeliveryDispatchService {
+	return NewDeliveryDispatchServiceWithObserveTargetsAndAdapters(repository, nil, adapters...)
+}
+
+func NewDeliveryDispatchServiceWithObserveTargetsAndAdapters(
+	repository outport.OutboxRepository,
+	observeTargets deliveryDispatchObserveTargetLister,
+	adapters ...outport.DeliveryAdapter,
+) *DeliveryDispatchService {
+	return NewDeliveryDispatchServiceWithObserveTargetsAdaptersAndPolicy(
+		repository,
+		observeTargets,
+		true,
+		adapters...,
+	)
+}
+
+func NewDeliveryDispatchServiceWithObserveTargetsAdaptersAndPolicy(
+	repository outport.OutboxRepository,
+	observeTargets deliveryDispatchObserveTargetLister,
+	qqGroupSendEnabled bool,
+	adapters ...outport.DeliveryAdapter,
+) *DeliveryDispatchService {
 	return &DeliveryDispatchService{
-		repository: repository,
-		planner:    domainservice.NewDeliveryPlanner(),
-		adapters:   adapters,
+		repository:         repository,
+		planner:            domainservice.NewDeliveryPlanner(),
+		adapters:           adapters,
+		observeTargets:     observeTargets,
+		qqGroupSendEnabled: qqGroupSendEnabled,
 	}
 }
 
@@ -133,6 +163,20 @@ func (s *DeliveryDispatchService) planModel(
 	if !ok {
 		return model.DeliveryDispatchPlan{}, errors.New("outbox delivery not found")
 	}
+	if blocked := qqGroupReplyBlock(delivery.Message.Channel, s.qqGroupSendEnabled); blocked {
+		return model.DeliveryDispatchPlan{}, domainservice.DeliveryPlanError{
+			Kind:    model.DeliveryErrorRoute,
+			Message: "qq group sends are disabled",
+		}
+	}
+	if blocked, err := s.observeTargetReplyBlock(ctx, delivery.Message.Channel); err != nil {
+		return model.DeliveryDispatchPlan{}, err
+	} else if blocked {
+		return model.DeliveryDispatchPlan{}, domainservice.DeliveryPlanError{
+			Kind:    model.DeliveryErrorRoute,
+			Message: "observe-only target does not allow replies",
+		}
+	}
 	plan, err := s.planner.Plan(delivery, domainservice.DeliveryPlannerConfig{
 		ChannelByAccount: channelByAccount,
 	})
@@ -140,6 +184,39 @@ func (s *DeliveryDispatchService) planModel(
 		return model.DeliveryDispatchPlan{}, err
 	}
 	return plan, nil
+}
+
+func qqGroupReplyBlock(channel model.ChannelRef, enabled bool) bool {
+	return !enabled && channel.Kind == model.ChannelKindQQ && channel.ConversationType == model.ConversationTypeGroup
+}
+
+func (s *DeliveryDispatchService) observeTargetReplyBlock(ctx context.Context, channel model.ChannelRef) (bool, error) {
+	if s == nil || s.observeTargets == nil {
+		return false, nil
+	}
+	targets, err := s.observeTargets.ListObserveTargets(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, target := range targets.Targets {
+		if !target.Enabled || target.ReplyAllowed {
+			continue
+		}
+		if strings.TrimSpace(target.Channel.Kind) != strings.TrimSpace(string(channel.Kind)) {
+			continue
+		}
+		if strings.TrimSpace(target.Channel.AccountID) != strings.TrimSpace(channel.AccountID) {
+			continue
+		}
+		if strings.TrimSpace(target.Channel.ConversationType) != strings.TrimSpace(string(channel.ConversationType)) {
+			continue
+		}
+		if strings.TrimSpace(target.Channel.ConversationID) != strings.TrimSpace(channel.ConversationID) {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *DeliveryDispatchService) adapterFor(channel string) (outport.DeliveryAdapter, bool) {

@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/assembler"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/command"
+	outport "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/port/out"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/model"
 	domainservice "github.com/kachofugetsu09/akashic-agent/services/agent-runtime/domain/service"
@@ -23,15 +25,19 @@ const (
 )
 
 type WorkQueueExternalLeaseService struct {
-	outbox           *OutboxService
-	dispatch         *DeliveryDispatchService
-	agentJobs        *AgentJobService
-	channelByAccount map[string]string
-	workerID         string
-	leaseTTLSeconds  int
-	accountLimiter   *domainservice.OutboxAccountRateLimiter
-	diagnosticsMu    sync.Mutex
-	diagnostics      queueExternalLeaseDiagnostics
+	outbox                                    *OutboxService
+	dispatch                                  *DeliveryDispatchService
+	agentJobs                                 *AgentJobService
+	channelByAccount                          map[string]string
+	allowedStepKinds                          []string
+	allowedStepKindsByAccount                 map[string][]string
+	allowedStepKindsByAccountConversationType map[string]map[string][]string
+	allowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
+	workerID                                  string
+	leaseTTLSeconds                           int
+	accountLimiter                            *domainservice.OutboxAccountRateLimiter
+	diagnosticsMu                             sync.Mutex
+	diagnostics                               queueExternalLeaseDiagnostics
 }
 
 type queueExternalLeaseDiagnostics struct {
@@ -73,6 +79,20 @@ func NewWorkQueueExternalLeaseService(
 func WithExternalLeaseChannelByAccount(channelByAccount map[string]string) WorkQueueExternalLeaseOption {
 	return func(service *WorkQueueExternalLeaseService) {
 		service.channelByAccount = cloneStringMap(channelByAccount)
+	}
+}
+
+func WithExternalLeaseAllowedStepKinds(
+	allowedStepKinds []string,
+	allowedStepKindsByAccount map[string][]string,
+	allowedStepKindsByAccountConversationType map[string]map[string][]string,
+	allowedStepKindsByAccountConversationID map[string]map[string]map[string][]string,
+) WorkQueueExternalLeaseOption {
+	return func(service *WorkQueueExternalLeaseService) {
+		service.allowedStepKinds = cloneStrings(allowedStepKinds)
+		service.allowedStepKindsByAccount = cloneStringSliceMap(allowedStepKindsByAccount)
+		service.allowedStepKindsByAccountConversationType = cloneStringSliceMatrix(allowedStepKindsByAccountConversationType)
+		service.allowedStepKindsByAccountConversationID = cloneStringSliceTensor(allowedStepKindsByAccountConversationID)
 	}
 }
 
@@ -249,14 +269,22 @@ func (s *WorkQueueExternalLeaseService) executeOutboxWork(
 		view.Reason = "missing_work_id"
 		return view, nil
 	}
-	current, err := s.outbox.Get(ctx, workID)
+	currentModel, err := s.outbox.getModel(ctx, workID)
 	if err != nil {
 		view.Disposition = QueueLeaseDispositionTerm
 		view.Reason = "missing_state"
 		return view, nil
 	}
+	current := assembler.ToOutboxDeliveryView(currentModel)
 	if current.Status == string(model.DeliverySucceeded) || current.Status == string(model.DeliveryDeadLettered) {
 		return s.leaseRejectedView(ctx, view, workID)
+	}
+	if !s.outboxDeliveryAllowed(currentModel, cmd) {
+		view.Disposition = QueueLeaseDispositionNack
+		view.Reason = "delivery_route_gated"
+		view.StateStatus = current.Status
+		view.Attempts = current.Attempts
+		return view, nil
 	}
 	if s.outboxAccountBlocked(current, now) {
 		view.Disposition = QueueLeaseDispositionNack
@@ -334,6 +362,31 @@ func (s *WorkQueueExternalLeaseService) outboxAccountBlocked(delivery query.Outb
 		return false
 	}
 	return s.accountLimiter.AccountBlocked(outboxDeliveryViewAccountKey(delivery), now)
+}
+
+func (s *WorkQueueExternalLeaseService) outboxDeliveryAllowed(
+	delivery model.OutboxDelivery,
+	cmd command.ExecuteWorkQueueLeaseCommand,
+) bool {
+	filter := outport.OutboxLeaseFilter{
+		AllowedStepKinds: outboxAllowedStepKindSet(firstNonEmptyStrings(cmd.AllowedStepKinds, s.allowedStepKinds)),
+		AllowedStepKindsByAccount: outboxAllowedStepKindByAccountSet(
+			firstNonEmptyStringSliceMap(cmd.AllowedStepKindsByAccount, s.allowedStepKindsByAccount),
+		),
+		AllowedStepKindsByAccountConversationType: outboxAllowedStepKindByAccountConversationTypeSet(
+			firstNonEmptyStringSliceMatrix(
+				cmd.AllowedStepKindsByAccountConversationType,
+				s.allowedStepKindsByAccountConversationType,
+			),
+		),
+		AllowedStepKindsByAccountConversationID: outboxAllowedStepKindByAccountConversationIDSet(
+			firstNonEmptyStringSliceTensor(
+				cmd.AllowedStepKindsByAccountConversationID,
+				s.allowedStepKindsByAccountConversationID,
+			),
+		),
+	}
+	return filter.Allows(delivery)
 }
 
 func (s *WorkQueueExternalLeaseService) recordOutboxDispatchAttempt(delivery query.OutboxDeliveryView, now time.Time) {
@@ -495,6 +548,142 @@ func cloneStringMap(items map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func cloneStrings(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		cloned = append(cloned, item)
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceMap(items map[string][]string) map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(items))
+	for key, values := range items {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if normalized := cloneStrings(values); len(normalized) > 0 {
+			cloned[key] = normalized
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceMatrix(items map[string]map[string][]string) map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string][]string, len(items))
+	for outerKey, byInner := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byInner) == 0 {
+			continue
+		}
+		innerClone := make(map[string][]string)
+		for innerKey, values := range byInner {
+			innerKey = strings.TrimSpace(innerKey)
+			if innerKey == "" {
+				continue
+			}
+			if normalized := cloneStrings(values); len(normalized) > 0 {
+				innerClone[innerKey] = normalized
+			}
+		}
+		if len(innerClone) > 0 {
+			cloned[outerKey] = innerClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceTensor(items map[string]map[string]map[string][]string) map[string]map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string]map[string][]string, len(items))
+	for outerKey, byMiddle := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byMiddle) == 0 {
+			continue
+		}
+		middleClone := make(map[string]map[string][]string)
+		for middleKey, byInner := range byMiddle {
+			middleKey = strings.TrimSpace(middleKey)
+			if middleKey == "" || len(byInner) == 0 {
+				continue
+			}
+			innerClone := make(map[string][]string)
+			for innerKey, values := range byInner {
+				innerKey = strings.TrimSpace(innerKey)
+				if innerKey == "" {
+					continue
+				}
+				if normalized := cloneStrings(values); len(normalized) > 0 {
+					innerClone[innerKey] = normalized
+				}
+			}
+			if len(innerClone) > 0 {
+				middleClone[middleKey] = innerClone
+			}
+		}
+		if len(middleClone) > 0 {
+			cloned[outerKey] = middleClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func firstNonEmptyStrings(primary []string, fallback []string) []string {
+	if len(primary) > 0 {
+		return primary
+	}
+	return fallback
+}
+
+func firstNonEmptyStringSliceMap(primary map[string][]string, fallback map[string][]string) map[string][]string {
+	if len(primary) > 0 {
+		return primary
+	}
+	return fallback
+}
+
+func firstNonEmptyStringSliceMatrix(primary map[string]map[string][]string, fallback map[string]map[string][]string) map[string]map[string][]string {
+	if len(primary) > 0 {
+		return primary
+	}
+	return fallback
+}
+
+func firstNonEmptyStringSliceTensor(primary map[string]map[string]map[string][]string, fallback map[string]map[string]map[string][]string) map[string]map[string]map[string][]string {
+	if len(primary) > 0 {
+		return primary
+	}
+	return fallback
 }
 
 func mergeStringMaps(left map[string]string, right map[string]string) map[string]string {

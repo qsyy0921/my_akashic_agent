@@ -68,9 +68,9 @@ func (a *Adapter) callWebSocketResponse(ctx context.Context, endpoint EndpointCo
 			continue
 		}
 		if response.Retcode != 0 {
-			message := strings.TrimSpace(response.Message)
+			message := strings.TrimSpace(response.Message.String())
 			if message == "" {
-				message = strings.TrimSpace(response.Wording)
+				message = strings.TrimSpace(response.Wording.String())
 			}
 			if message == "" {
 				raw, _ := json.Marshal(response)

@@ -13,7 +13,6 @@ import (
 
 type OutboxDeliveryManager interface {
 	LeaseNext(ctx context.Context, cmd command.LeaseNextOutboxCommand) (query.OutboxDeliveryView, error)
-	MarkDispatching(ctx context.Context, cmd command.MarkOutboxDispatchingCommand) (query.OutboxDeliveryView, error)
 	MarkSucceeded(ctx context.Context, cmd command.MarkOutboxSucceededCommand) (query.OutboxDeliveryView, error)
 	MarkFailed(ctx context.Context, cmd command.MarkOutboxFailedCommand) (query.OutboxDeliveryView, error)
 }
@@ -28,18 +27,22 @@ type OutboxAccountLimiter interface {
 }
 
 type OutboxDeliveryWorkerConfig struct {
-	Interval                     time.Duration
-	BatchSize                    int
-	WorkerID                     string
-	LeaseTTLSeconds              int
-	RunOnStart                   bool
-	ChannelByAccount             map[string]string
-	AccountMinInterval           time.Duration
-	AccountWindow                time.Duration
-	AccountMaxDispatchesInWindow int
-	AccountLimiter               OutboxAccountLimiter
-	Now                          func() time.Time
-	Logf                         func(format string, args ...any)
+	Interval                                  time.Duration
+	BatchSize                                 int
+	WorkerID                                  string
+	LeaseTTLSeconds                           int
+	RunOnStart                                bool
+	ChannelByAccount                          map[string]string
+	AllowedStepKinds                          []string
+	AllowedStepKindsByAccount                 map[string][]string
+	AllowedStepKindsByAccountConversationType map[string]map[string][]string
+	AllowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
+	AccountMinInterval                        time.Duration
+	AccountWindow                             time.Duration
+	AccountMaxDispatchesInWindow              int
+	AccountLimiter                            OutboxAccountLimiter
+	Now                                       func() time.Time
+	Logf                                      func(format string, args ...any)
 }
 
 type OutboxDeliveryWorkerResult struct {
@@ -54,17 +57,21 @@ type OutboxDeliveryWorkerResult struct {
 }
 
 type OutboxDeliveryWorker struct {
-	outbox           OutboxDeliveryManager
-	dispatcher       OutboxDeliveryDispatcher
-	interval         time.Duration
-	batchSize        int
-	workerID         string
-	leaseTTLSeconds  int
-	runOnStart       bool
-	channelByAccount map[string]string
-	accountLimiter   OutboxAccountLimiter
-	now              func() time.Time
-	logf             func(format string, args ...any)
+	outbox                                    OutboxDeliveryManager
+	dispatcher                                OutboxDeliveryDispatcher
+	interval                                  time.Duration
+	batchSize                                 int
+	workerID                                  string
+	leaseTTLSeconds                           int
+	runOnStart                                bool
+	channelByAccount                          map[string]string
+	allowedStepKinds                          []string
+	allowedStepKindsByAccount                 map[string][]string
+	allowedStepKindsByAccountConversationType map[string]map[string][]string
+	allowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
+	accountLimiter                            OutboxAccountLimiter
+	now                                       func() time.Time
+	logf                                      func(format string, args ...any)
 }
 
 func NewOutboxDeliveryWorker(
@@ -94,17 +101,21 @@ func NewOutboxDeliveryWorker(
 		config.Now = func() time.Time { return time.Now().UTC() }
 	}
 	return &OutboxDeliveryWorker{
-		outbox:           outbox,
-		dispatcher:       dispatcher,
-		interval:         config.Interval,
-		batchSize:        config.BatchSize,
-		workerID:         strings.TrimSpace(config.WorkerID),
-		leaseTTLSeconds:  config.LeaseTTLSeconds,
-		runOnStart:       config.RunOnStart,
-		channelByAccount: cloneStringMap(config.ChannelByAccount),
-		accountLimiter:   config.AccountLimiter,
-		now:              config.Now,
-		logf:             config.Logf,
+		outbox:                    outbox,
+		dispatcher:                dispatcher,
+		interval:                  config.Interval,
+		batchSize:                 config.BatchSize,
+		workerID:                  strings.TrimSpace(config.WorkerID),
+		leaseTTLSeconds:           config.LeaseTTLSeconds,
+		runOnStart:                config.RunOnStart,
+		channelByAccount:          cloneStringMap(config.ChannelByAccount),
+		allowedStepKinds:          cloneStrings(config.AllowedStepKinds),
+		allowedStepKindsByAccount: cloneStringSliceMap(config.AllowedStepKindsByAccount),
+		allowedStepKindsByAccountConversationType: cloneStringSliceMatrix(config.AllowedStepKindsByAccountConversationType),
+		allowedStepKindsByAccountConversationID:   cloneStringSliceTensor(config.AllowedStepKindsByAccountConversationID),
+		accountLimiter:                            config.AccountLimiter,
+		now:                                       config.Now,
+		logf:                                      config.Logf,
 	}, nil
 }
 
@@ -168,10 +179,14 @@ func (w *OutboxDeliveryWorker) ProcessOnce(ctx context.Context) (OutboxDeliveryW
 	now := w.now()
 	blockedAccountKeys := w.blockedAccountKeys(now)
 	delivery, err := w.outbox.LeaseNext(ctx, command.LeaseNextOutboxCommand{
-		WorkerID:           w.workerID,
-		TTLSeconds:         w.leaseTTLSeconds,
-		Timestamp:          now,
-		BlockedAccountKeys: blockedAccountKeys,
+		WorkerID:                  w.workerID,
+		TTLSeconds:                w.leaseTTLSeconds,
+		Timestamp:                 now,
+		BlockedAccountKeys:        blockedAccountKeys,
+		AllowedStepKinds:          cloneStrings(w.allowedStepKinds),
+		AllowedStepKindsByAccount: cloneStringSliceMap(w.allowedStepKindsByAccount),
+		AllowedStepKindsByAccountConversationType: cloneStringSliceMatrix(w.allowedStepKindsByAccountConversationType),
+		AllowedStepKindsByAccountConversationID:   cloneStringSliceTensor(w.allowedStepKindsByAccountConversationID),
 	})
 	if err != nil {
 		if isNoLeaseableOutboxDelivery(err) {
@@ -190,12 +205,6 @@ func (w *OutboxDeliveryWorker) ProcessOnce(ctx context.Context) (OutboxDeliveryW
 	result := OutboxDeliveryWorkerResult{
 		Processed: true,
 		EventID:   delivery.EventID,
-	}
-	if _, err := w.outbox.MarkDispatching(ctx, command.MarkOutboxDispatchingCommand{
-		EventID:   delivery.EventID,
-		Timestamp: w.now(),
-	}); err != nil {
-		return result, err
 	}
 	dispatch, err := w.dispatcher.Dispatch(ctx, command.DispatchDeliveryCommand{
 		EventID:          delivery.EventID,
@@ -248,6 +257,24 @@ func (w *OutboxDeliveryWorker) log(format string, args ...any) {
 	}
 }
 
+func cloneStrings(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		cloned = append(cloned, item)
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
 func deliveryErrorKind(err error) string {
 	if err == nil {
 		return "unknown"
@@ -273,6 +300,96 @@ func cloneStringMap(items map[string]string) map[string]string {
 	cloned := make(map[string]string, len(items))
 	for key, value := range items {
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneStringSliceMap(items map[string][]string) map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(items))
+	for key, values := range items {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if normalized := cloneStrings(values); len(normalized) > 0 {
+			cloned[key] = normalized
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceMatrix(items map[string]map[string][]string) map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string][]string, len(items))
+	for outerKey, byInner := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byInner) == 0 {
+			continue
+		}
+		innerClone := make(map[string][]string)
+		for innerKey, values := range byInner {
+			innerKey = strings.TrimSpace(innerKey)
+			if innerKey == "" {
+				continue
+			}
+			if normalized := cloneStrings(values); len(normalized) > 0 {
+				innerClone[innerKey] = normalized
+			}
+		}
+		if len(innerClone) > 0 {
+			cloned[outerKey] = innerClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceTensor(items map[string]map[string]map[string][]string) map[string]map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string]map[string][]string, len(items))
+	for outerKey, byMiddle := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byMiddle) == 0 {
+			continue
+		}
+		middleClone := make(map[string]map[string][]string)
+		for middleKey, byInner := range byMiddle {
+			middleKey = strings.TrimSpace(middleKey)
+			if middleKey == "" || len(byInner) == 0 {
+				continue
+			}
+			innerClone := make(map[string][]string)
+			for innerKey, values := range byInner {
+				innerKey = strings.TrimSpace(innerKey)
+				if innerKey == "" {
+					continue
+				}
+				if normalized := cloneStrings(values); len(normalized) > 0 {
+					innerClone[innerKey] = normalized
+				}
+			}
+			if len(innerClone) > 0 {
+				middleClone[middleKey] = innerClone
+			}
+		}
+		if len(middleClone) > 0 {
+			cloned[outerKey] = middleClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
 	}
 	return cloned
 }

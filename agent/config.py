@@ -342,6 +342,9 @@ def _load_qq_channel_config(
             )
         ),
         groups=_load_qq_groups(qq_data.get("groups", []) or []),
+        group_send_enabled=bool(
+            qq_data.get("group_send_enabled", qq_data.get("groupSendEnabled", True))
+        ),
         websocket_open_timeout_seconds=float(
             qq_data.get("websocket_open_timeout_seconds", 5.0)
         ),

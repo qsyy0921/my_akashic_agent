@@ -272,6 +272,7 @@ class AgentGatewayClient:
         *,
         worker_id: str,
         instance_id: str = "",
+        replace_existing_instance_id: str = "",
         worker_type: str,
         status: str,
         current_job_id: str = "",
@@ -288,6 +289,7 @@ class AgentGatewayClient:
             json_body={
                 "worker_id": str(worker_id or ""),
                 "instance_id": str(instance_id or ""),
+                "replace_existing_instance_id": str(replace_existing_instance_id or ""),
                 "worker_type": str(worker_type or ""),
                 "status": str(status or ""),
                 "current_job_id": str(current_job_id or ""),

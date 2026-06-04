@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kachofugetsu09/akashic-agent/services/agent-runtime/app/query"
@@ -95,6 +96,36 @@ func outboxDeliveryWorkerAttributes(config jobtrigger.OutboxDeliveryWorkerConfig
 	attributes := make(map[string]string)
 	for key, value := range config.ChannelByAccount {
 		attributes[key] = value
+	}
+	if len(config.AllowedStepKinds) > 0 {
+		attributes["allowed_step_kinds"] = strings.Join(config.AllowedStepKinds, ",")
+	}
+	if len(config.AllowedStepKindsByAccount) > 0 {
+		items := make([]string, 0, len(config.AllowedStepKindsByAccount))
+		for _, accountID := range sortedMapKeys(config.AllowedStepKindsByAccount) {
+			items = append(items, accountID+"="+strings.Join(config.AllowedStepKindsByAccount[accountID], "|"))
+		}
+		attributes["allowed_step_kinds_by_account"] = strings.Join(items, ",")
+	}
+	if len(config.AllowedStepKindsByAccountConversationType) > 0 {
+		items := make([]string, 0)
+		for _, accountID := range sortedMapKeys(config.AllowedStepKindsByAccountConversationType) {
+			for _, conversationType := range sortedMapKeys(config.AllowedStepKindsByAccountConversationType[accountID]) {
+				items = append(items, accountID+"/"+conversationType+"="+strings.Join(config.AllowedStepKindsByAccountConversationType[accountID][conversationType], "|"))
+			}
+		}
+		attributes["allowed_step_kinds_by_account_conversation_type"] = strings.Join(items, ",")
+	}
+	if len(config.AllowedStepKindsByAccountConversationID) > 0 {
+		items := make([]string, 0)
+		for _, accountID := range sortedMapKeys(config.AllowedStepKindsByAccountConversationID) {
+			for _, conversationType := range sortedMapKeys(config.AllowedStepKindsByAccountConversationID[accountID]) {
+				for _, conversationID := range sortedMapKeys(config.AllowedStepKindsByAccountConversationID[accountID][conversationType]) {
+					items = append(items, accountID+"/"+conversationType+"/"+conversationID+"="+strings.Join(config.AllowedStepKindsByAccountConversationID[accountID][conversationType][conversationID], "|"))
+				}
+			}
+		}
+		attributes["allowed_step_kinds_by_account_conversation_id"] = strings.Join(items, ",")
 	}
 	for key, value := range outboxAccountRateLimitAttributes(domainservice.OutboxAccountRateLimitConfig{
 		MinInterval:           config.AccountMinInterval,

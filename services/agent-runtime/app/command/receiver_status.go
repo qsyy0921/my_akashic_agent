@@ -15,3 +15,9 @@ type ReportReceiverStatusCommand struct {
 	Metadata    map[string]string
 	Timestamp   time.Time
 }
+
+type CleanupStaleReceiverStatusesCommand struct {
+	ReceiverID        string
+	Timestamp         time.Time
+	StaleAfterSeconds int
+}

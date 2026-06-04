@@ -3,8 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import secrets
 from typing import Any
+
+from integrations.agent_gateway import AgentGatewayHTTPError
+
+_LEASE_CONFLICT_INSTANCE_ID_PATTERN = re.compile(r"existing_instance_id=([^\s]+)")
 
 
 class AgentWorkerStatusReporter:
@@ -78,18 +83,30 @@ class AgentWorkerStatusReporter:
         if not callable(method):
             return
         try:
-            await method(
-                worker_id=self._worker_id,
-                instance_id=self._instance_id,
-                worker_type=self._worker_type,
+            await self._report_once(
+                method,
                 status=status,
                 current_job_id=current_job_id,
                 last_job_id=last_job_id,
                 last_error=last_error,
-                processed_total=self._processed_total,
-                failed_total=self._failed_total,
-                lease_ttl_seconds=self._lease_ttl_seconds,
-                metadata=metadata or {},
+                metadata=metadata,
+            )
+        except AgentGatewayHTTPError as exc:
+            recovered = await self._retry_conflict_takeover(
+                method,
+                exc,
+                status=status,
+                current_job_id=current_job_id,
+                last_job_id=last_job_id,
+                last_error=last_error,
+                metadata=metadata,
+            )
+            if recovered:
+                return
+            self._logger.warning(
+                "[%s] agent worker status report failed",
+                self._label,
+                exc_info=True,
             )
         except Exception:
             self._logger.warning(
@@ -97,6 +114,70 @@ class AgentWorkerStatusReporter:
                 self._label,
                 exc_info=True,
             )
+
+    async def _report_once(
+        self,
+        method: Any,
+        *,
+        status: str,
+        current_job_id: str = "",
+        last_job_id: str = "",
+        last_error: str = "",
+        metadata: dict[str, str] | None = None,
+        replace_existing_instance_id: str = "",
+    ) -> dict[str, Any]:
+        return await method(
+            worker_id=self._worker_id,
+            instance_id=self._instance_id,
+            replace_existing_instance_id=replace_existing_instance_id,
+            worker_type=self._worker_type,
+            status=status,
+            current_job_id=current_job_id,
+            last_job_id=last_job_id,
+            last_error=last_error,
+            processed_total=self._processed_total,
+            failed_total=self._failed_total,
+            lease_ttl_seconds=self._lease_ttl_seconds,
+            metadata=metadata or {},
+        )
+
+    async def _retry_conflict_takeover(
+        self,
+        method: Any,
+        exc: AgentGatewayHTTPError,
+        *,
+        status: str,
+        current_job_id: str = "",
+        last_job_id: str = "",
+        last_error: str = "",
+        metadata: dict[str, str] | None = None,
+    ) -> bool:
+        if int(getattr(exc, "status_code", 0) or 0) != 409:
+            return False
+        existing_instance_id = _extract_existing_instance_id_from_conflict(exc.text)
+        if not existing_instance_id or existing_instance_id == self._instance_id:
+            return False
+        existing_pid = _extract_pid_from_instance_id(existing_instance_id)
+        if existing_pid is None:
+            return False
+        pid_alive = await asyncio.to_thread(_process_exists, existing_pid)
+        if pid_alive:
+            return False
+        await self._report_once(
+            method,
+            status=status,
+            current_job_id=current_job_id,
+            last_job_id=last_job_id,
+            last_error=last_error,
+            metadata=metadata,
+            replace_existing_instance_id=existing_instance_id,
+        )
+        self._logger.info(
+            "[%s] took over stale agent worker status lease from instance %s",
+            self._label,
+            existing_instance_id,
+        )
+        return True
 
 
 class AgentWorkerStatusHeartbeat:
@@ -135,3 +216,47 @@ class AgentWorkerStatusHeartbeat:
         while True:
             await asyncio.sleep(self._interval_seconds)
             await self.beat_once()
+
+
+def _extract_existing_instance_id_from_conflict(text: str) -> str:
+    match = _LEASE_CONFLICT_INSTANCE_ID_PATTERN.search(str(text or ""))
+    if not match:
+        return ""
+    return str(match.group(1) or "").strip()
+
+
+def _extract_pid_from_instance_id(instance_id: str) -> int | None:
+    value = str(instance_id or "").strip()
+    if not value:
+        return None
+    parts = value.rsplit(":", 2)
+    if len(parts) != 3:
+        return None
+    try:
+        pid = int(parts[1])
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def _process_exists(pid: int) -> bool:
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        process = kernel32.OpenProcess(0x1000, 0, int(pid))
+        if process:
+            kernel32.CloseHandle(process)
+            return True
+        if kernel32.GetLastError() == 5:
+            return True
+        return False
+    except Exception:
+        pass
+    try:
+        os.kill(int(pid), 0)
+    except OSError:
+        return False
+    except Exception:
+        return True
+    return True

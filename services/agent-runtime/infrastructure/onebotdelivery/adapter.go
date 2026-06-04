@@ -3,6 +3,7 @@ package onebotdelivery
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -214,7 +216,7 @@ func (a *Adapter) sendMessage(ctx context.Context, endpoint EndpointConfig, targ
 }
 
 func (a *Adapter) sendImage(ctx context.Context, endpoint EndpointConfig, target targetRef, caption string, image string) (string, error) {
-	file, err := onebotMediaFile(image)
+	file, err := a.onebotMediaReference(ctx, endpoint, image)
 	if err != nil {
 		return "", err
 	}
@@ -235,7 +237,7 @@ func (a *Adapter) sendImage(ctx context.Context, endpoint EndpointConfig, target
 }
 
 func (a *Adapter) uploadFile(ctx context.Context, endpoint EndpointConfig, target targetRef, filePath string) (string, error) {
-	file, err := onebotMediaFile(filePath)
+	file, err := a.onebotMediaReference(ctx, endpoint, filePath)
 	if err != nil {
 		return "", err
 	}
@@ -283,6 +285,76 @@ func (a *Adapter) call(ctx context.Context, endpoint EndpointConfig, method stri
 		return a.callWebSocket(ctx, endpoint, method, payload)
 	}
 	return a.callHTTP(ctx, endpoint, method, payload)
+}
+
+func (a *Adapter) onebotMediaReference(ctx context.Context, endpoint EndpointConfig, value string) (string, error) {
+	localPath, isLocal, err := localMediaPath(value)
+	if err != nil {
+		return "", err
+	}
+	if isLocal {
+		if strings.TrimSpace(endpoint.WebSocketURL) != "" {
+			return a.uploadFileStream(ctx, endpoint, localPath)
+		}
+		return onebotMediaFile(localPath)
+	}
+	return onebotMediaFile(value)
+}
+
+func (a *Adapter) uploadFileStream(ctx context.Context, endpoint EndpointConfig, localPath string) (string, error) {
+	localPath = strings.TrimSpace(localPath)
+	if localPath == "" {
+		return "", DeliveryError{Kind: model.DeliveryErrorUnsupportedMedia, Message: "onebot media path is empty"}
+	}
+	raw, err := os.ReadFile(localPath)
+	if err != nil {
+		return "", DeliveryError{
+			Kind:    model.DeliveryErrorUnsupportedMedia,
+			Message: fmt.Sprintf("onebot media file unavailable: %s", localPath),
+		}
+	}
+	streamID := onebotEcho()
+	totalChunks := (len(raw) + onebotStreamChunkSize - 1) / onebotStreamChunkSize
+	if totalChunks == 0 {
+		totalChunks = 1
+	}
+	expectedSHA256 := fmt.Sprintf("%x", sha256.Sum256(raw))
+	for chunkIndex := 0; chunkIndex < totalChunks; chunkIndex++ {
+		start := chunkIndex * onebotStreamChunkSize
+		end := start + onebotStreamChunkSize
+		if end > len(raw) {
+			end = len(raw)
+		}
+		chunk := raw[start:end]
+		payload := map[string]any{
+			"stream_id":       streamID,
+			"chunk_data":      base64.StdEncoding.EncodeToString(chunk),
+			"chunk_index":     chunkIndex,
+			"total_chunks":    totalChunks,
+			"file_size":       len(raw),
+			"expected_sha256": expectedSHA256,
+			"filename":        mediaName(localPath),
+			"file_retention":  onebotStreamFileRetentionMillis,
+		}
+		if _, err := a.callWebSocketResponse(ctx, endpoint, "upload_file_stream", payload); err != nil {
+			return "", err
+		}
+	}
+	response, err := a.callWebSocketResponse(ctx, endpoint, "upload_file_stream", map[string]any{
+		"stream_id":   streamID,
+		"is_complete": true,
+	})
+	if err != nil {
+		return "", err
+	}
+	filePath := strings.TrimSpace(response.Data.FilePath)
+	if filePath == "" {
+		return "", DeliveryError{
+			Kind:    model.DeliveryErrorPlatform,
+			Message: "upload_file_stream completed without file_path",
+		}
+	}
+	return filePath, nil
 }
 
 func (a *Adapter) callHTTP(ctx context.Context, endpoint EndpointConfig, method string, payload map[string]any) (string, error) {
@@ -333,9 +405,9 @@ func (a *Adapter) callHTTPResponse(ctx context.Context, endpoint EndpointConfig,
 		}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || payloadResp.Retcode != 0 {
-		message := strings.TrimSpace(payloadResp.Message)
+		message := strings.TrimSpace(payloadResp.Message.String())
 		if message == "" {
-			message = strings.TrimSpace(payloadResp.Wording)
+			message = strings.TrimSpace(payloadResp.Wording.String())
 		}
 		if message == "" {
 			message = strings.TrimSpace(string(raw))
@@ -354,18 +426,59 @@ func isWebSocketURL(value string) bool {
 }
 
 type onebotResponse struct {
-	Status  string         `json:"status"`
-	Retcode int            `json:"retcode"`
-	Message string         `json:"message"`
-	Wording string         `json:"wording"`
-	Data    onebotRespData `json:"data"`
-	Echo    any            `json:"echo"`
+	Status  onebotStatusField  `json:"status"`
+	Retcode int                `json:"retcode"`
+	Message onebotMessageField `json:"message"`
+	Wording onebotMessageField `json:"wording"`
+	Data    onebotRespData     `json:"data"`
+	Echo    any                `json:"echo"`
 }
 
 type onebotRespData struct {
 	MessageID any    `json:"message_id"`
 	UserID    any    `json:"user_id"`
 	Nickname  string `json:"nickname"`
+	FilePath  string `json:"file_path"`
+}
+
+type onebotMessageField string
+type onebotStatusField string
+
+func (f *onebotStatusField) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if bytes.Equal(data, []byte("null")) {
+		*f = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*f = onebotStatusField(text)
+		return nil
+	}
+	*f = onebotStatusField(string(data))
+	return nil
+}
+
+func (f onebotStatusField) String() string {
+	return string(f)
+}
+
+func (f *onebotMessageField) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*f = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*f = onebotMessageField(text)
+		return nil
+	}
+	*f = ""
+	return nil
+}
+
+func (f onebotMessageField) String() string {
+	return string(f)
 }
 
 func (d onebotRespData) MessageIDString() string {
@@ -399,7 +512,7 @@ func onebotMediaFile(value string) (string, error) {
 	if value == "" {
 		return "", DeliveryError{Kind: model.DeliveryErrorUnsupportedMedia, Message: "onebot media path is empty"}
 	}
-	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "base64://") {
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "base64://") || strings.HasPrefix(value, "data:") {
 		return value, nil
 	}
 	stat, err := os.Stat(value)
@@ -417,6 +530,50 @@ func onebotMediaFile(value string) (string, error) {
 		}
 	}
 	return "base64://" + base64.StdEncoding.EncodeToString(raw), nil
+}
+
+const (
+	onebotStreamChunkSize           = 64 * 1024
+	onebotStreamFileRetentionMillis = 30 * 1000
+)
+
+func localMediaPath(value string) (string, bool, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false, nil
+	}
+	switch {
+	case strings.HasPrefix(value, "http://"),
+		strings.HasPrefix(value, "https://"),
+		strings.HasPrefix(value, "base64://"),
+		strings.HasPrefix(value, "data:"):
+		return "", false, nil
+	}
+	lower := strings.ToLower(value)
+	if !strings.HasPrefix(lower, "file://") {
+		return value, true, nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", false, DeliveryError{
+			Kind:    model.DeliveryErrorUnsupportedMedia,
+			Message: fmt.Sprintf("onebot media file unavailable: %s", value),
+		}
+	}
+	pathValue, err := url.PathUnescape(parsed.Path)
+	if err != nil {
+		return "", false, DeliveryError{
+			Kind:    model.DeliveryErrorUnsupportedMedia,
+			Message: fmt.Sprintf("onebot media file unavailable: %s", value),
+		}
+	}
+	if host := strings.TrimSpace(parsed.Host); host != "" && host != "localhost" {
+		pathValue = "//" + host + pathValue
+	}
+	if len(pathValue) >= 3 && pathValue[0] == '/' && pathValue[2] == ':' {
+		pathValue = pathValue[1:]
+	}
+	return filepath.FromSlash(pathValue), true, nil
 }
 
 func mediaName(value string) string {

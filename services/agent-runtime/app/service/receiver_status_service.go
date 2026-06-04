@@ -143,6 +143,60 @@ func (s *ReceiverStatusService) ListReceiverStatuses(ctx context.Context) (query
 	return receiverStatusesView(s.applyReceiverStatusStaleness(items)), nil
 }
 
+func (s *ReceiverStatusService) CleanupStaleReceiverStatuses(
+	ctx context.Context,
+	cmd command.CleanupStaleReceiverStatusesCommand,
+) (query.ReceiverStatusCleanupView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.ReceiverStatusCleanupView{}, err
+	}
+	if s == nil {
+		return query.ReceiverStatusCleanupView{}, errors.New("receiver status service is nil")
+	}
+
+	now := cmd.Timestamp
+	if now.IsZero() {
+		if s.statusClock != nil {
+			now = s.statusClock().UTC()
+		} else {
+			now = time.Now().UTC()
+		}
+	}
+	staleAfter := s.statusStaleAfter
+	if cmd.StaleAfterSeconds > 0 {
+		staleAfter = time.Duration(cmd.StaleAfterSeconds) * time.Second
+	}
+	receiverIDFilter := strings.TrimSpace(cmd.ReceiverID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.receivers == nil {
+		s.receivers = make(map[string]model.ReceiverStatus)
+	}
+
+	deletedProjected := make([]model.ReceiverStatus, 0)
+	for _, item := range model.SortedReceiverStatuses(s.statusSnapshotLocked()) {
+		if receiverIDFilter != "" && item.ReceiverID != receiverIDFilter {
+			continue
+		}
+		projected, stale := staleReceiverStatus(item, now, staleAfter)
+		if !stale {
+			continue
+		}
+		if s.statusRepository != nil {
+			if err := s.statusRepository.DeleteReceiverStatus(ctx, item.ReceiverID); err != nil {
+				return query.ReceiverStatusCleanupView{}, err
+			}
+		}
+		delete(s.receivers, item.ReceiverID)
+		deletedProjected = append(deletedProjected, projected)
+	}
+
+	remainingOriginal := s.statusSnapshotLocked()
+	remainingProjected := s.applyReceiverStatusStalenessAt(remainingOriginal, now, staleAfter)
+	return receiverStatusCleanupView(deletedProjected, remainingProjected), nil
+}
+
 func (s *ReceiverStatusService) AcquireReceiverLease(ctx context.Context, cmd command.AcquireReceiverLeaseCommand) (query.ReceiverLeaseView, error) {
 	if err := ctx.Err(); err != nil {
 		return query.ReceiverLeaseView{}, err
@@ -353,26 +407,47 @@ func (s *ReceiverStatusService) applyReceiverStatusStaleness(items []model.Recei
 	if s.statusClock != nil {
 		now = s.statusClock().UTC()
 	}
+	return s.applyReceiverStatusStalenessAt(items, now, s.statusStaleAfter)
+}
+
+func (s *ReceiverStatusService) applyReceiverStatusStalenessAt(
+	items []model.ReceiverStatus,
+	now time.Time,
+	staleAfter time.Duration,
+) []model.ReceiverStatus {
+	if staleAfter <= 0 {
+		return items
+	}
 	result := append([]model.ReceiverStatus(nil), items...)
 	for index, item := range result {
-		if item.Status != model.ReceiverStatusConnected && item.Status != model.ReceiverStatusStarting {
-			continue
+		projected, stale := staleReceiverStatus(item, now, staleAfter)
+		if stale {
+			result[index] = projected
 		}
-		if item.UpdatedAt.IsZero() || now.Sub(item.UpdatedAt.UTC()) <= s.statusStaleAfter {
-			continue
-		}
-		lastStatus := item.Status
-		item.Status = model.ReceiverStatusStopped
-		item.Reason = "heartbeat_stale"
-		if item.LastError == "" {
-			item.LastError = "last receiver heartbeat exceeded stale threshold"
-		}
-		item.Metadata = cloneReceiverStatusMetadata(item.Metadata)
-		item.Metadata["last_status"] = string(lastStatus)
-		item.Metadata["stale_after_seconds"] = strconv.Itoa(int(s.statusStaleAfter.Seconds()))
-		result[index] = item
 	}
 	return result
+}
+
+func staleReceiverStatus(item model.ReceiverStatus, now time.Time, staleAfter time.Duration) (model.ReceiverStatus, bool) {
+	if staleAfter <= 0 {
+		return item, false
+	}
+	if item.Status != model.ReceiverStatusConnected && item.Status != model.ReceiverStatusStarting {
+		return item, false
+	}
+	if item.UpdatedAt.IsZero() || now.Sub(item.UpdatedAt.UTC()) <= staleAfter {
+		return item, false
+	}
+	lastStatus := item.Status
+	item.Status = model.ReceiverStatusStopped
+	item.Reason = "heartbeat_stale"
+	if item.LastError == "" {
+		item.LastError = "last receiver heartbeat exceeded stale threshold"
+	}
+	item.Metadata = cloneReceiverStatusMetadata(item.Metadata)
+	item.Metadata["last_status"] = string(lastStatus)
+	item.Metadata["stale_after_seconds"] = strconv.Itoa(int(staleAfter.Seconds()))
+	return item, true
 }
 
 func cloneReceiverStatusMetadata(items map[string]string) map[string]string {
@@ -431,6 +506,29 @@ func receiverStatusesView(items []model.ReceiverStatus) query.ReceiverStatusesVi
 		Totals:     totals,
 		Notes:      []string{"side_effect=none", "runtime_view_only"},
 		SideEffect: "none",
+	}
+}
+
+func receiverStatusCleanupView(
+	deleted []model.ReceiverStatus,
+	remaining []model.ReceiverStatus,
+) query.ReceiverStatusCleanupView {
+	totals := map[string]int{
+		"deleted":           len(deleted),
+		"remaining":         len(remaining),
+		"remaining_stopped": 0,
+	}
+	for _, item := range remaining {
+		if item.Status == model.ReceiverStatusStopped {
+			totals["remaining_stopped"]++
+		}
+	}
+	return query.ReceiverStatusCleanupView{
+		Deleted:    assembler.ToReceiverStatusViews(deleted),
+		Remaining:  assembler.ToReceiverStatusViews(remaining),
+		Totals:     totals,
+		Notes:      []string{"side_effect=runtime_state_only", "stale_receiver_statuses_removed"},
+		SideEffect: "runtime_state_only",
 	}
 }
 

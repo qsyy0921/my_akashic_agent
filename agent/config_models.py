@@ -44,6 +44,7 @@ class QQChannelConfig:
     bot_peer_ids: list[str] = field(default_factory=list)
     peer_trigger_prefixes: list[str] = field(default_factory=list)
     groups: list[QQGroupConfig] = field(default_factory=list)
+    group_send_enabled: bool = True
     websocket_open_timeout_seconds: float = 5.0
     channel_name: str = "qq"
     websocket_uri: str = ""

@@ -94,6 +94,8 @@ allow_from = ["your_qq_number"]
 # bot_peer_ids 内的账号需要带 peer_trigger_prefixes 才会触发，避免多机器人循环。
 bot_peer_ids = []
 peer_trigger_prefixes = ["/ask", "/akashic", "Akashic:", "ak:"]
+# 手动开关：false 时，QQ 频道不会向任何 QQ 群发消息；true 时允许群发。
+group_send_enabled = false
 websocket_open_timeout_seconds = 5.0
 channel_name = "qq"
 websocket_uri = "ws://localhost:3001"
@@ -106,6 +108,7 @@ websocket_token = "NcatBot"
 # allow_from = ["1049511700"]
 # bot_peer_ids = ["1049511700", "2365524513"]
 # peer_trigger_prefixes = ["/ask", "/akashic", "Akashic:", "ak:"]
+# group_send_enabled = false
 # websocket_open_timeout_seconds = 5.0
 # channel_name = "qq_2365524513"
 # websocket_uri = "ws://localhost:3002"

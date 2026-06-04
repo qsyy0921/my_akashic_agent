@@ -10,6 +10,7 @@ import (
 type ReceiverStatusManager interface {
 	ReportReceiverStatus(ctx context.Context, cmd command.ReportReceiverStatusCommand) (query.ReceiverStatusesView, error)
 	ListReceiverStatuses(ctx context.Context) (query.ReceiverStatusesView, error)
+	CleanupStaleReceiverStatuses(ctx context.Context, cmd command.CleanupStaleReceiverStatusesCommand) (query.ReceiverStatusCleanupView, error)
 	AcquireReceiverLease(ctx context.Context, cmd command.AcquireReceiverLeaseCommand) (query.ReceiverLeaseView, error)
 	RenewReceiverLease(ctx context.Context, cmd command.RenewReceiverLeaseCommand) (query.ReceiverLeaseView, error)
 	ReleaseReceiverLease(ctx context.Context, cmd command.ReleaseReceiverLeaseCommand) (query.ReceiverLeaseView, error)

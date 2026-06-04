@@ -37,11 +37,8 @@ be overridden by their `AKASHIC_*_DSN` or `AKASHIC_*_PATH` variables, and
 ## Run Locally
 
 ```powershell
-$goRoot = "$env:USERPROFILE\.codex\tools\go1.26.3"
-$env:PATH = "$goRoot\bin;$env:PATH"
-cd E:\agent\akashic\services\agent-runtime
-$env:AKASHIC_BOT_IDS = "1049511700,2365524513"
-go run ./cmd/agent-runtime
+cd E:\agent\my-akashic_agent
+.\scripts\start-agent-runtime.ps1
 ```
 
 Default address:
@@ -53,15 +50,16 @@ Default address:
 Override with:
 
 ```powershell
-$env:AKASHIC_RUNTIME_ADDR = ":8780"   # 推荐
+$env:AKASHIC_RUNTIME_ADDR = "127.0.0.1:8780"   # 推荐
 # 或兼容旧命名（仍可用）
-$env:AKASHIC_GATEWAY_ADDR = ":8780"
+$env:AKASHIC_GATEWAY_ADDR = "127.0.0.1:8780"
 ```
 
 Persist shadow audit events across runtime restarts:
 
 ```powershell
-$env:AKASHIC_SHADOW_AUDIT_PATH = "E:\agent\akashic\.akashic-workspace\shadow\runtime-audit.jsonl"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_SHADOW_AUDIT_PATH = "$repoRoot\.akashic-workspace\shadow\runtime-audit.jsonl"
 ```
 
 When this variable is set, `/v1/shadow/observed` reads recent events from the
@@ -70,7 +68,8 @@ JSONL audit file instead of the in-memory development store.
 Default runtime state directory:
 
 ```powershell
-$env:AKASHIC_RUNTIME_STATE_DIR = "E:\agent\akashic\.akashic-workspace\agent-runtime"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_RUNTIME_STATE_DIR = "$repoRoot\.akashic-workspace\agent-runtime"
 ```
 
 If this variable is omitted, `agent-runtime` discovers the Akashic repo root
@@ -81,7 +80,8 @@ Per-store `AKASHIC_*_DSN` or `AKASHIC_*_PATH` values still take precedence.
 Override observe target persistence:
 
 ```powershell
-$env:AKASHIC_OBSERVE_TARGETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\observe-targets.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_OBSERVE_TARGETS_DSN = "$repoRoot\.akashic-workspace\runtime\observe-targets.json"
 ```
 
 Observe targets synced from Python config are file-backed so runtime overview
@@ -91,8 +91,9 @@ and observe capture diagnostics can recover after restarting only
 Override receiver status persistence:
 
 ```powershell
-$env:AKASHIC_RECEIVER_STATUSES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\receiver-statuses.json"
-$env:AKASHIC_RECEIVER_LEASES_DSN = "E:\agent\akashic\.akashic-workspace\runtime\receiver-leases.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_RECEIVER_STATUSES_DSN = "$repoRoot\.akashic-workspace\runtime\receiver-statuses.json"
+$env:AKASHIC_RECEIVER_LEASES_DSN = "$repoRoot\.akashic-workspace\runtime\receiver-leases.json"
 $env:AKASHIC_RECEIVER_STATUS_STALE_SECONDS = "180"
 ```
 
@@ -107,7 +108,8 @@ reacquire before suspending polling.
 Override agent job persistence:
 
 ```powershell
-$env:AKASHIC_AGENT_JOBS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\agent-jobs.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_AGENT_JOBS_DSN = "$repoRoot\.akashic-workspace\runtime\agent-jobs.json"
 ```
 
 `/v1/jobs` and related lifecycle endpoints use the file-backed `AgentJob` store
@@ -116,7 +118,8 @@ so pending/running/failed work remains recoverable after restart.
 Override media asset metadata persistence:
 
 ```powershell
-$env:AKASHIC_MEDIA_ASSETS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\media-assets.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_MEDIA_ASSETS_DSN = "$repoRoot\.akashic-workspace\runtime\media-assets.json"
 ```
 
 `/v1/media-assets` and automatic attachment registration use the file-backed
@@ -126,7 +129,8 @@ not required.
 Override outbound send ledger persistence:
 
 ```powershell
-$env:AKASHIC_SEND_LEDGER_DSN = "E:\agent\akashic\.akashic-workspace\runtime\send-ledger.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_SEND_LEDGER_DSN = "$repoRoot\.akashic-workspace\runtime\send-ledger.json"
 ```
 
 Outbound sends and inbound echo checks share the same file-backed ledger. Use
@@ -136,7 +140,8 @@ restart recovery.
 Override inbound platform message dedupe persistence:
 
 ```powershell
-$env:AKASHIC_INBOUND_DEDUPE_DSN = "E:\agent\akashic\.akashic-workspace\runtime\inbound-dedupe.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_INBOUND_DEDUPE_DSN = "$repoRoot\.akashic-workspace\runtime\inbound-dedupe.json"
 ```
 
 `/v1/inbound-dedupe/check` stores scoped platform message ids with TTL so
@@ -146,7 +151,8 @@ still keeps a local process dedupe guard and falls back to it if Go is down.
 Override raw inbound/observed message persistence:
 
 ```powershell
-$env:AKASHIC_INBOX_DSN = "E:\agent\akashic\.akashic-workspace\runtime\inbox.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_INBOX_DSN = "$repoRoot\.akashic-workspace\runtime\inbox.json"
 ```
 
 `/v1/inbound` and `/v1/shadow/inbound` record normalized `InboxEvent` rows in a
@@ -156,7 +162,8 @@ replay and group-memory source recovery are not required.
 Override knowledge/RAG ingestion checkpoint persistence:
 
 ```powershell
-$env:AKASHIC_KNOWLEDGE_CHECKPOINTS_DSN = "E:\agent\akashic\.akashic-workspace\runtime\knowledge-checkpoints.json"
+$repoRoot = "E:\agent\my-akashic_agent"
+$env:AKASHIC_KNOWLEDGE_CHECKPOINTS_DSN = "$repoRoot\.akashic-workspace\runtime\knowledge-checkpoints.json"
 ```
 
 `/v1/knowledge-checkpoints/*` stores per-source/per-target cursor state in Go.
@@ -267,6 +274,12 @@ The current local NapCat containers expose OneBot WebSocket servers. A plain
 HTTP request to those ports returns `426 Upgrade Required`; use WebSocket action
 requests unless you explicitly enable NapCat HTTP servers.
 
+For local rich media on WebSocket channels, `agent-runtime` now stages local
+files through NapCat `upload_file_stream` before the final image/file send.
+This removes Windows-host-path ambiguity when NapCat is running inside Docker.
+If rich media still fails live after staging, treat it as a NapCat / QQ
+platform-session blocker rather than a local-path formatting issue.
+
 OneBot HTTP action endpoints are also supported:
 
 ```powershell
@@ -363,6 +376,34 @@ The plan endpoint accepts the same smoke matrix fields as readiness plus
 checks, enable steps, verification endpoints, rollback steps, blockers, and
 `side_effect=none`. The endpoint recommends environment keys but never writes
 them, starts workers, enqueues deliveries, or sends QQ/Telegram messages.
+
+Run the repo-owned QQ private-text live smoke without enabling the Go local
+outbox worker:
+
+```powershell
+cd E:\agent\my-akashic_agent
+.\scripts\run-qq-live-smoke.ps1 -SkipLogCheck
+```
+
+This script checks runtime config plus adapter health, creates two explicit
+smoke outbox events, dispatches them through Go `delivery-dispatch/send`, then
+marks those smoke events `succeeded`. It is intentionally narrower than full
+cutover: group text, image, file, and real execution-owner cutover still need
+separate live checks.
+
+Run the repo-owned QQ group text/image/file live smoke against one enabled
+observe-only group target:
+
+```powershell
+cd E:\agent\my-akashic_agent
+.\scripts\run-qq-group-live-smoke.ps1 -GroupId 27234224
+```
+
+The script auto-discovers a QQ group target when `-GroupId` is omitted, then
+records structured results for one text, one image, and one file case. Group
+text success proves the Go OneBot group-text path; image/file cases may still
+surface real NapCat or platform-side rich-media blockers and should be treated
+as live evidence rather than synthetic success.
 
 Register and query media/file metadata:
 
@@ -605,6 +646,7 @@ Optionally let Go own local outbox delivery dispatch from the state store:
 
 ```powershell
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED = "true"
+$env:AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS = "text"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_INTERVAL_SECONDS = "2"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE = "1"
 $env:AKASHIC_OUTBOX_DELIVERY_WORKER_ID = "agent-runtime-outbox-worker"
@@ -613,6 +655,8 @@ $env:AKASHIC_OUTBOX_DELIVERY_WORKER_RUN_ON_START = "true"
 $env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS = "3"
 $env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS = "60"
 $env:AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW = "5"
+$env:AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT = "2365524513=text|file"
+$env:AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE = "1049511700/private=text|file"
 $env:AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT = "1049511700=qq_1049511700,2365524513=qq_2365524513"
 ```
 
@@ -621,6 +665,17 @@ from Go state storage, marks them dispatching, calls Go `DeliveryAdapter`
 dispatch, and writes succeeded/failed state back through the outbox application
 service. Optional account throttling skips rate-limited account keys before
 leasing so blocked deliveries stay queued and other accounts can continue.
+`AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS` can be set to `text`, `image`, `file`,
+or a comma-separated subset such as `text,image`; deliveries that require other
+step kinds stay queued. `AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT` can
+further narrow or widen the gate per account, for example
+`2365524513=text|file`, and takes precedence over the global kind set for
+matching accounts. `AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE`
+can further narrow or widen the gate per account and route, for example
+`1049511700/private=text|file`, and takes precedence over both the account-only
+and global kind sets for matching deliveries. When Go local outbox ownership is
+active, the Python compatibility outbox worker must back off instead of leasing
+the same state-store deliveries.
 Do not enable it together with a live NATS `external_lease` outbox consumer,
 because both are side-effecting delivery executors.
 
@@ -1091,3 +1146,19 @@ gofmt -w api app cmd domain infrastructure trigger types
 go test ./...
 go build ./cmd/agent-runtime
 ```
+
+Repo-owned local verification entrypoints:
+
+```powershell
+.\scripts\verify-knowledge-planner-cutover.ps1
+.\scripts\verify-telegram-backend.ps1
+.\\scripts\\verify-agent-job-external-lease-nats-smoke.ps1
+.\\scripts\\verify-go-outbox-scope-live.ps1
+.\scripts\verify-go-migration-goal.ps1
+.\scripts\verify-go-migration-goal.ps1 -IncludeOutboxScopeSmoke -IncludeNativeRichMediaProbe -RichMediaProbeGroupId 3219982
+```
+
+These scripts are read-only by default. The combined goal verifier only runs a
+native NapCat rich-media probe when `-IncludeNativeRichMediaProbe` is supplied.
+It only runs real outbox scope smoke when `-IncludeOutboxScopeSmoke` is
+supplied.

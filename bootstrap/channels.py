@@ -227,6 +227,7 @@ async def start_channels(
                 bot_peer_ids=qq.bot_peer_ids,
                 peer_trigger_prefixes=qq.peer_trigger_prefixes,
                 groups=qq.groups,
+                group_send_enabled=qq.group_send_enabled,
                 websocket_open_timeout_seconds=qq.websocket_open_timeout_seconds,
                 http_requester=http_resources.external_default,
                 event_bus=event_bus,

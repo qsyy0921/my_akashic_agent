@@ -38,14 +38,123 @@ func TestOutboxDeliveryWorkerProcessOnceDispatchesAndMarksSucceeded(t *testing.T
 	if !result.Processed || result.EventID != "outbox:1" || result.DispatchCount != 2 || result.Failed {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if outbox.leaseNextCalls != 1 || outbox.markDispatchingCalls != 1 || outbox.markSucceededCalls != 1 || outbox.markFailedCalls != 0 {
+	if outbox.leaseNextCalls != 1 || outbox.markSucceededCalls != 1 || outbox.markFailedCalls != 0 {
 		t.Fatalf("unexpected outbox calls: %+v", outbox)
 	}
 	if outbox.lastLease.WorkerID != "worker-1" || outbox.lastLease.TTLSeconds != 60 || !outbox.lastLease.Timestamp.Equal(now) {
 		t.Fatalf("unexpected lease command: %+v", outbox.lastLease)
 	}
+	if len(outbox.lastLease.AllowedStepKinds) != 0 {
+		t.Fatalf("expected empty allowed-step-kinds by default, got %+v", outbox.lastLease.AllowedStepKinds)
+	}
 	if dispatcher.last.EventID != "outbox:1" || dispatcher.last.ChannelByAccount["2365524513"] != "qq_2365524513" {
 		t.Fatalf("unexpected dispatch command: %+v", dispatcher.last)
+	}
+}
+
+func TestOutboxDeliveryWorkerPassesAllowedStepKindsToLeaseNext(t *testing.T) {
+	outbox := &fakeOutboxDeliveryManager{
+		lease: query.OutboxDeliveryView{EventID: "outbox:text"},
+	}
+	dispatcher := &fakeOutboxDeliveryDispatcher{
+		result: query.DeliveryDispatchResultView{EventID: "outbox:text", StepCount: 1},
+	}
+	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
+		AllowedStepKinds: []string{"text"},
+	})
+	if err != nil {
+		t.Fatalf("new worker: %v", err)
+	}
+
+	if _, err := worker.ProcessOnce(context.Background()); err != nil {
+		t.Fatalf("process once: %v", err)
+	}
+	if len(outbox.lastLease.AllowedStepKinds) != 1 || outbox.lastLease.AllowedStepKinds[0] != "text" {
+		t.Fatalf("expected allowed kinds to reach lease request, got %+v", outbox.lastLease.AllowedStepKinds)
+	}
+}
+
+func TestOutboxDeliveryWorkerPassesAllowedStepKindsByAccountToLeaseNext(t *testing.T) {
+	outbox := &fakeOutboxDeliveryManager{
+		lease: query.OutboxDeliveryView{EventID: "outbox:file-second-account"},
+	}
+	dispatcher := &fakeOutboxDeliveryDispatcher{
+		result: query.DeliveryDispatchResultView{EventID: "outbox:file-second-account", StepCount: 1},
+	}
+	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccount: map[string][]string{
+			"2365524513": {"text", "file"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new worker: %v", err)
+	}
+
+	if _, err := worker.ProcessOnce(context.Background()); err != nil {
+		t.Fatalf("process once: %v", err)
+	}
+	got := outbox.lastLease.AllowedStepKindsByAccount["2365524513"]
+	if len(got) != 2 || got[0] != "text" || got[1] != "file" {
+		t.Fatalf("expected account-specific allowed kinds to reach lease request, got %+v", outbox.lastLease.AllowedStepKindsByAccount)
+	}
+}
+
+func TestOutboxDeliveryWorkerPassesAllowedStepKindsByAccountConversationTypeToLeaseNext(t *testing.T) {
+	outbox := &fakeOutboxDeliveryManager{
+		lease: query.OutboxDeliveryView{EventID: "outbox:file-first-private"},
+	}
+	dispatcher := &fakeOutboxDeliveryDispatcher{
+		result: query.DeliveryDispatchResultView{EventID: "outbox:file-first-private", StepCount: 1},
+	}
+	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccountConversationType: map[string]map[string][]string{
+			"1049511700": {
+				"private": {"text", "file"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new worker: %v", err)
+	}
+
+	if _, err := worker.ProcessOnce(context.Background()); err != nil {
+		t.Fatalf("process once: %v", err)
+	}
+	got := outbox.lastLease.AllowedStepKindsByAccountConversationType["1049511700"]["private"]
+	if len(got) != 2 || got[0] != "text" || got[1] != "file" {
+		t.Fatalf("expected account+conversation allowed kinds to reach lease request, got %+v", outbox.lastLease.AllowedStepKindsByAccountConversationType)
+	}
+}
+
+func TestOutboxDeliveryWorkerPassesAllowedStepKindsByAccountConversationIDToLeaseNext(t *testing.T) {
+	outbox := &fakeOutboxDeliveryManager{
+		lease: query.OutboxDeliveryView{EventID: "outbox:file-first-group-391289439"},
+	}
+	dispatcher := &fakeOutboxDeliveryDispatcher{
+		result: query.DeliveryDispatchResultView{EventID: "outbox:file-first-group-391289439", StepCount: 1},
+	}
+	worker, err := jobtrigger.NewOutboxDeliveryWorker(outbox, dispatcher, jobtrigger.OutboxDeliveryWorkerConfig{
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccountConversationID: map[string]map[string]map[string][]string{
+			"1049511700": {
+				"group": {
+					"391289439": {"text", "file"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new worker: %v", err)
+	}
+
+	if _, err := worker.ProcessOnce(context.Background()); err != nil {
+		t.Fatalf("process once: %v", err)
+	}
+	got := outbox.lastLease.AllowedStepKindsByAccountConversationID["1049511700"]["group"]["391289439"]
+	if len(got) != 2 || got[0] != "text" || got[1] != "file" {
+		t.Fatalf("expected account+conversation-id allowed kinds to reach lease request, got %+v", outbox.lastLease.AllowedStepKindsByAccountConversationID)
 	}
 }
 
@@ -95,7 +204,7 @@ func TestOutboxDeliveryWorkerReturnsIdleWhenNoDelivery(t *testing.T) {
 	if result.Processed || result.Reason != "no_delivery" {
 		t.Fatalf("unexpected idle result: %+v", result)
 	}
-	if dispatcher.calls != 0 || outbox.markDispatchingCalls != 0 || outbox.markSucceededCalls != 0 || outbox.markFailedCalls != 0 {
+	if dispatcher.calls != 0 || outbox.markSucceededCalls != 0 || outbox.markFailedCalls != 0 {
 		t.Fatalf("unexpected side effects: dispatcher=%d outbox=%+v", dispatcher.calls, outbox)
 	}
 }
@@ -160,7 +269,7 @@ func TestOutboxDeliveryWorkerRateLimitSkipsBlockedAccount(t *testing.T) {
 	if len(second.BlockedAccountKeys) != 1 || second.BlockedAccountKeys[0] != "qq:1049511700" {
 		t.Fatalf("unexpected blocked account keys: %+v", second.BlockedAccountKeys)
 	}
-	if dispatcher.calls != 1 || outbox.markDispatchingCalls != 1 || outbox.markSucceededCalls != 1 || outbox.markFailedCalls != 0 {
+	if dispatcher.calls != 1 || outbox.markSucceededCalls != 1 || outbox.markFailedCalls != 0 {
 		t.Fatalf("rate-limited delivery should not dispatch or mutate state again: dispatcher=%d outbox=%+v", dispatcher.calls, outbox)
 	}
 }
@@ -170,10 +279,9 @@ type fakeOutboxDeliveryManager struct {
 	leaseErr               error
 	respectBlockedAccounts bool
 
-	leaseNextCalls       int
-	markDispatchingCalls int
-	markSucceededCalls   int
-	markFailedCalls      int
+	leaseNextCalls     int
+	markSucceededCalls int
+	markFailedCalls    int
 
 	lastLease  command.LeaseNextOutboxCommand
 	lastFailed command.MarkOutboxFailedCommand
@@ -189,14 +297,6 @@ func (f *fakeOutboxDeliveryManager) LeaseNext(
 		return query.OutboxDeliveryView{}, errors.New("no leaseable outbox delivery")
 	}
 	return f.lease, f.leaseErr
-}
-
-func (f *fakeOutboxDeliveryManager) MarkDispatching(
-	context.Context,
-	command.MarkOutboxDispatchingCommand,
-) (query.OutboxDeliveryView, error) {
-	f.markDispatchingCalls++
-	return f.lease, nil
 }
 
 func (f *fakeOutboxDeliveryManager) MarkSucceeded(

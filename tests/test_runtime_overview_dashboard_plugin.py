@@ -213,8 +213,72 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "max_in_flight": 64,
         "outbox_queue_source": "outbox_state_store",
         "agent_job_queue_source": "agent_job_state_store",
+        "outbox_execution_owner": "go_local_outbox_worker",
+        "outbox_execution_scope": "account_conversation_kind_gated",
+        "outbox_allowed_kinds": ["text"],
+        "outbox_allowed_kinds_by_account": {"2365524513": ["text", "file"]},
+        "outbox_allowed_kinds_by_account_conversation_type": {
+            "1049511700": {"private": ["text", "file"]}
+        },
         "dsn_configured": True,
         "recommended_first_backend": "nats_jetstream",
+        "supported_providers": [
+            "local",
+            "nats_jetstream",
+            "redis_streams",
+            "rabbitmq",
+        ],
+        "provider_capabilities": [
+            {
+                "provider": "local",
+                "label": "Local Go state store",
+                "status": "available",
+                "implemented": True,
+                "recommended": False,
+                "supports_external_lease": False,
+                "supports_agent_job_result_ack": False,
+            },
+            {
+                "provider": "nats_jetstream",
+                "label": "NATS JetStream",
+                "status": "available",
+                "implemented": True,
+                "recommended": True,
+                "recommended_phase": "first_external_mq",
+                "supports_external_lease": True,
+                "supports_agent_job_result_ack": True,
+            },
+            {
+                "provider": "redis_streams",
+                "label": "Redis Streams",
+                "status": "planned",
+                "implemented": False,
+                "recommended": False,
+                "supports_external_lease": False,
+                "supports_agent_job_result_ack": False,
+                "blockers": ["adapter_not_implemented"],
+            },
+            {
+                "provider": "rabbitmq",
+                "label": "RabbitMQ",
+                "status": "planned",
+                "implemented": False,
+                "recommended": False,
+                "supports_external_lease": False,
+                "supports_agent_job_result_ack": False,
+                "blockers": ["adapter_not_implemented"],
+            },
+        ],
+        "selected_provider_capability": {
+            "provider": "nats_jetstream",
+            "label": "NATS JetStream",
+            "status": "available",
+            "implemented": True,
+            "recommended": True,
+            "recommended_phase": "first_external_mq",
+            "supports_external_lease": True,
+            "supports_agent_job_result_ack": True,
+        },
         "external_lease": {
             "enabled": True,
             "allow_execution": False,
@@ -425,6 +489,73 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 }
             ],
         },
+    }
+    outbox_pressure = {
+        "outbox_metrics": {
+            "sampled_deliveries": 2,
+            "sampled_events": 7,
+            "deliveries_by_status": {"dead_lettered": 1, "queued": 1},
+            "deliveries_by_channel_kind": {
+                "qq": {"total": 2, "by_status": {"dead_lettered": 1, "queued": 1}}
+            },
+            "throughput": {
+                "events_by_type": {"leased": 2, "queued": 1, "succeeded": 1},
+                "queued": 1,
+                "leased": 2,
+                "dispatching": 0,
+                "succeeded": 1,
+                "failed": 0,
+                "retry": 0,
+                "dead_lettered": 1,
+                "terminal_events": 1,
+            },
+            "dead_letters": {
+                "current_total": 1,
+                "by_channel_kind": {"qq": 1},
+                "recent": [
+                    {
+                        "delivery_id": "outbox:dead",
+                        "channel_kind": "qq",
+                        "event_type": "failed",
+                        "status": "dead_lettered",
+                        "error_kind": "route_error",
+                        "error_message": "missing adapter",
+                        "attempt": 3,
+                        "max_attempts": 3,
+                        "occurred_at": "2026-05-30T08:41:00Z",
+                    }
+                ],
+            },
+            "pressure": {
+                "accounts": 2,
+                "high_pressure_accounts": 1,
+                "max_active": 11,
+                "max_queued": 11,
+                "by_account": [
+                    {
+                        "account_key": "qq:1049511700",
+                        "channel_kind": "qq",
+                        "account_id": "1049511700",
+                        "queued": 11,
+                        "dispatching": 0,
+                        "active": 11,
+                        "dead_lettered": 1,
+                        "high_pressure": True,
+                        "pressure_reason": "active>=10",
+                    },
+                    {
+                        "account_key": "qq:2365524513",
+                        "channel_kind": "qq",
+                        "account_id": "2365524513",
+                        "queued": 0,
+                        "dispatching": 0,
+                        "active": 0,
+                        "dead_lettered": 0,
+                        "high_pressure": False,
+                    },
+                ],
+            },
+        }
     }
     runtime_workers = {
         "workers": [
@@ -702,6 +833,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "media_asset_retention_cleanup_applied": 1,
             "media_asset_retention_cleanup_failed": 0,
             "media_asset_retention_cleanup_recent_audits": 1,
+            "media_asset_content_recovery_ready": True,
+            "media_asset_content_recovery_reason": (
+                "media_asset_content_recovery_audit_ready"
+            ),
+            "media_asset_content_recovery_applied": 1,
+            "media_asset_content_recovery_failed": 1,
+            "media_asset_content_recovery_recent_audits": 2,
             "agent_job_capacity_ready": False,
             "agent_job_capacity_reason": "agent_job_capacity_attention_required",
             "agent_job_capacity_blockers": 3,
@@ -812,6 +950,10 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "agent_job_metric_dead_letters": 1,
             "outbox_metric_events": 7,
             "outbox_metric_dead_letters": 1,
+            "outbox_pressure_accounts": 2,
+            "outbox_pressure_high_accounts": 1,
+            "outbox_pressure_max_active": 11,
+            "outbox_pressure_max_queued": 11,
         },
         "cards": [
             {"id": "delivery_adapters", "label": "Delivery Adapters", "value": 1, "status": "warn"},
@@ -839,6 +981,12 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "label": "Media Asset Retention Cleanup",
                 "value": "1/1",
                 "status": "warn",
+            },
+            {
+                "id": "media_asset_content_recovery",
+                "label": "Media Content Recovery",
+                "value": "1/1",
+                "status": "danger",
             },
             {
                 "id": "agent_job_capacity_plan",
@@ -995,6 +1143,29 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             {"id": "inbox_metrics", "label": "Inbox Metrics", "value": 9, "status": "ok"},
             {"id": "inbound_dedupe_metrics", "label": "Inbound Dedupe", "value": 1, "status": "warn"},
             {"id": "agent_job_metrics", "label": "Agent Job Metrics", "value": 12, "status": "danger"},
+            {
+                "id": "rag_eval_failures",
+                "label": "RAG Eval Failures",
+                "value": 1,
+                "status": "danger",
+                "detail": {
+                    "items": [
+                        {
+                            "job_id": "rag_eval:fixture:failed",
+                            "job_type": "rag_eval",
+                            "lifecycle_status": "succeeded",
+                            "quality_status": "failed_quality",
+                            "passed": False,
+                            "attempts": 1,
+                            "max_attempts": 1,
+                            "lease_owner": "",
+                            "updated_at": "2026-05-30T08:12:00Z",
+                            "result": {"passed": False, "faithfulness": 0.42},
+                        }
+                    ]
+                },
+            },
+            {"id": "outbox_pressure", "label": "Outbox Pressure", "value": "1/2", "status": "warn"},
             {"id": "outbox_metrics", "label": "Outbox Metrics", "value": 7, "status": "danger"},
         ],
         "delivery_adapters": delivery_adapters,
@@ -1021,6 +1192,16 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "side_effect": "none",
         },
         "queue_backend": queue_backend,
+        "runtime_config": {
+            "runtime": {
+                "address": "127.0.0.1:8780",
+                "bot_ids": ["1049511700", "2365524513"],
+            },
+            "delivery": {
+                "qq_group_send_enabled": False,
+                "telegram_token_configured": False,
+            },
+        },
         "queue_topology": {
             "provider": "nats_jetstream",
             "mode": "external_lease",
@@ -1100,6 +1281,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                     "content_reason": "media_asset_content_ready",
                     "content_endpoint": "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content",
                     "content_access_plan_endpoint": "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1",
+                    "content_recovery_plan_endpoint": "/v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1",
+                    "content_recovery_preflight_endpoint": "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1",
                     "content_mime_type": "image/jpeg",
                     "content_size_bytes": 120,
                     "updated_at": "2026-05-31T12:00:00Z",
@@ -1267,6 +1450,49 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
                 "cleanup": "/v1/media-assets/retention-cleanup",
             },
             "notes": ["read-only"],
+            "side_effect": "none",
+        },
+        "media_asset_content_recovery": {
+            "ready": True,
+            "reason": "media_asset_content_recovery_audit_ready",
+            "recent_audits": [
+                {
+                    "mutation_id": "mutation-media-recovery-applied",
+                    "target_kind": "media_asset_content",
+                    "target_id": "asset:missing-a",
+                    "action": "recover_content",
+                    "status": "applied",
+                    "operator_id": "qsyy",
+                    "approval_id": "approval-recovery-a",
+                    "created_at": "2026-06-01T12:06:00Z",
+                },
+                {
+                    "mutation_id": "mutation-media-recovery-failed",
+                    "target_kind": "media_asset_content",
+                    "target_id": "asset:missing-b",
+                    "action": "recover_content",
+                    "status": "failed",
+                    "operator_id": "qsyy",
+                    "approval_id": "approval-recovery-b",
+                    "reason": "download_failed",
+                    "created_at": "2026-06-01T12:07:00Z",
+                },
+            ],
+            "totals": {
+                "audits": 2,
+                "planned": 0,
+                "applied": 1,
+                "failed": 1,
+                "rolled_back": 0,
+            },
+            "endpoints": {
+                "plan": "/v1/media-assets/content-recovery-plan",
+                "preflight": "/v1/media-assets/content-recovery/preflight",
+                "recovery": "/v1/media-assets/content-recovery",
+            },
+            "notes": [
+                "read-only runtime overview; does not execute media content recovery"
+            ],
             "side_effect": "none",
         },
         "agent_job_capacity_plan": {
@@ -1675,6 +1901,7 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
         "inbox_metrics": inbox_metrics,
         "inbound_dedupe_metrics": inbound_dedupe_metrics,
         "agent_job_metrics": agent_job_metrics,
+        "outbox_pressure": outbox_pressure,
         "outbox_metrics": outbox_metrics,
         "diagnostics": diagnostics,
         "status": {
@@ -1788,6 +2015,11 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["queue_topology_agent_job_ack_owner"] == (
         "nats_external_lease_result_ack"
     )
+    assert payload["summary"]["qq_cutover_route_matrix_go_execution_owner_scope"] == 5
+    assert payload["summary"]["qq_cutover_route_matrix_currently_sendable_routes"] == 5
+    assert payload["summary"]["qq_cutover_route_matrix_policy_blocked_routes"] == 3
+    assert payload["summary"]["qq_cutover_route_matrix_platform_blocker_routes"] == 5
+    assert payload["summary"]["qq_cutover_route_matrix_group_send_enabled"] is False
     assert payload["summary"]["runtime_workers"] == 3
     assert payload["summary"]["runtime_workers_enabled"] == 2
     assert payload["summary"]["runtime_workers_running"] == 1
@@ -1820,6 +2052,13 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["media_asset_retention_cleanup_applied"] == 1
     assert payload["summary"]["media_asset_retention_cleanup_failed"] == 0
     assert payload["summary"]["media_asset_retention_cleanup_recent_audits"] == 1
+    assert payload["summary"]["media_asset_content_recovery_ready"] is True
+    assert payload["summary"]["media_asset_content_recovery_reason"] == (
+        "media_asset_content_recovery_audit_ready"
+    )
+    assert payload["summary"]["media_asset_content_recovery_applied"] == 1
+    assert payload["summary"]["media_asset_content_recovery_failed"] == 1
+    assert payload["summary"]["media_asset_content_recovery_recent_audits"] == 2
     assert payload["summary"]["agent_job_capacity_ready"] is False
     assert payload["summary"]["agent_job_capacity_reason"] == (
         "agent_job_capacity_attention_required"
@@ -1911,6 +2150,8 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert payload["summary"]["agent_job_metric_dead_letters"] == 1
     assert payload["summary"]["outbox_metric_events"] == 7
     assert payload["summary"]["outbox_metric_dead_letters"] == 1
+    assert payload["summary"]["outbox_pressure_accounts"] == 2
+    assert payload["summary"]["outbox_pressure_high_accounts"] == 1
     assert payload["jobs_by_status"]["dead_lettered"] == 1
     assert payload["outbox_by_status"]["dead_lettered"] == 1
     assert payload["checkpoint_lag"][0]["checkpoint_lag_messages"] == 17
@@ -1927,6 +2168,16 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     queue_card = next(item for item in payload["cards"] if item["id"] == "queue_backend")
     assert queue_card["value"] == "nats_jetstream/external_lease"
     assert queue_card["status"] == "warn"
+    assert payload["queue_backend"]["supported_providers"] == [
+        "local",
+        "nats_jetstream",
+        "redis_streams",
+        "rabbitmq",
+    ]
+    assert payload["queue_backend"]["selected_provider_capability"]["provider"] == "nats_jetstream"
+    assert len(payload["queue_backend"]["provider_capabilities"]) == 4
+    assert payload["queue_backend"]["provider_capabilities"][2]["provider"] == "redis_streams"
+    assert payload["queue_backend"]["provider_capabilities"][2]["implemented"] is False
     queue_topology_card = next(
         item for item in payload["cards"] if item["id"] == "queue_topology"
     )
@@ -1940,6 +2191,27 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     )
     assert queue_topology["work_kinds"][1]["allowed"] is False
     assert queue_topology["side_effect"] == "none"
+    qq_route_matrix_card = next(
+        item for item in payload["cards"] if item["id"] == "qq_cutover_route_matrix"
+    )
+    assert qq_route_matrix_card["value"] == 5
+    assert qq_route_matrix_card["status"] == "warn"
+    qq_route_matrix = payload["qq_cutover_route_matrix"]
+    assert qq_route_matrix["outbox_execution_owner"] == "go_local_outbox_worker"
+    assert qq_route_matrix["outbox_execution_scope"] == "account_conversation_kind_gated"
+    assert qq_route_matrix["totals"]["go_execution_owner_scope"] == 5
+    assert qq_route_matrix["totals"]["policy_blocked_routes"] == 3
+    assert qq_route_matrix["go_execution_owner_scope"][0]["kind"] == "text"
+    assert qq_route_matrix["currently_sendable_routes"][0]["conversation_type"] == "private"
+    assert qq_route_matrix["policy_blocked_routes"][0]["conversation_type"] == "group"
+    assert qq_route_matrix["platform_blocker_routes"][0]["kind"] == "image"
+    assert qq_route_matrix["side_effect"] == "none"
+    worker_leases_card = next(item for item in payload["cards"] if item["id"] == "worker_leases")
+    assert worker_leases_card["status"] == "warn"
+    assert worker_leases_card["value"] == "1/2"
+    runtime_config_card = next(item for item in payload["cards"] if item["id"] == "runtime_config")
+    assert runtime_config_card["status"] == "ok"
+    assert runtime_config_card["value"] == "127.0.0.1:8780"
     runtime_worker_card = next(
         item for item in payload["cards"] if item["id"] == "runtime_workers"
     )
@@ -1988,6 +2260,18 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     assert cleanup["recent_audits"][0]["mutation_id"] == "mutation-media-cleanup"
     assert cleanup["endpoints"]["cleanup"] == "/v1/media-assets/retention-cleanup"
     assert cleanup["side_effect"] == "none"
+    recovery_card = next(
+        item for item in payload["cards"] if item["id"] == "media_asset_content_recovery"
+    )
+    assert recovery_card["value"] == "1/1"
+    assert recovery_card["status"] == "danger"
+    recovery = payload["media_asset_content_recovery"]
+    assert recovery["ready"] is True
+    assert recovery["totals"]["audits"] == 2
+    assert recovery["totals"]["failed"] == 1
+    assert recovery["recent_audits"][1]["mutation_id"] == "mutation-media-recovery-failed"
+    assert recovery["endpoints"]["recovery"] == "/v1/media-assets/content-recovery"
+    assert recovery["side_effect"] == "none"
     assert (
         payload["media_asset_content_diagnostics"]["items"][0]["content_endpoint"]
         == "/v1/media-assets/asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1/content"
@@ -1997,6 +2281,18 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
             "content_access_plan_endpoint"
         ]
         == "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1"
+    )
+    assert (
+        payload["media_asset_content_diagnostics"]["items"][0][
+            "content_recovery_plan_endpoint"
+        ]
+        == "/v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1"
+    )
+    assert (
+        payload["media_asset_content_diagnostics"]["items"][0][
+            "content_recovery_preflight_endpoint"
+        ]
+        == "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3A1049511700%3Agroup%3A27234224%3A1"
     )
     capacity_card = next(
         item for item in payload["cards"] if item["id"] == "agent_job_capacity_plan"
@@ -2140,14 +2436,25 @@ def test_runtime_overview_dashboard_plugin_aggregates_runtime_state(
     )
     metrics_card = next(item for item in payload["cards"] if item["id"] == "agent_job_metrics")
     assert metrics_card["status"] == "danger"
+    assert metrics_card["value"] == 12
+    assert payload["agent_job_metrics"]["jobs_by_type"]["rag_ingest"]["total"] == 1
     assert payload["agent_job_metrics"]["throughput"]["succeeded"] == 1
     assert payload["agent_job_metrics"]["dead_letters"]["recent"][0]["job_id"] == (
         "rag_ingest:qq:3219982:dead"
     )
+    rag_eval_card = next(item for item in payload["cards"] if item["id"] == "rag_eval_failures")
+    assert rag_eval_card["status"] == "danger"
+    assert rag_eval_card["value"] == 1
+    assert rag_eval_card["detail"]["items"][0]["job_id"] == "rag_eval:fixture:failed"
     outbox_metrics_card = next(item for item in payload["cards"] if item["id"] == "outbox_metrics")
     assert outbox_metrics_card["status"] == "danger"
     assert payload["outbox_metrics"]["throughput"]["failed"] == 1
     assert payload["outbox_metrics"]["dead_letters"]["recent"][0]["delivery_id"] == "outbox:dead"
+    outbox_pressure_card = next(item for item in payload["cards"] if item["id"] == "outbox_pressure")
+    assert outbox_pressure_card["status"] == "warn"
+    assert payload["outbox_pressure"]["outbox_metrics"]["pressure"]["accounts"] == 2
+    assert payload["outbox_pressure"]["outbox_metrics"]["pressure"]["by_account"][0]["account_id"] == "1049511700"
+    assert payload["outbox_pressure"]["outbox_metrics"]["pressure"]["by_account"][0]["high_pressure"] is True
     assert payload["queue_backend"]["external_lease_blockers"] == [
         "explicit_cutover",
         "state_lease_workers_disabled",
@@ -2301,12 +2608,64 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
         parsed = urlparse(target)
         if parsed.path == "/healthz":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
+        if parsed.path == "/v1/knowledge-pipeline-diagnostics":
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "totals": {
+                                "targets": 2,
+                                "enabled": 2,
+                                "ready": 1,
+                                "warning": 1,
+                                "blocked": 0,
+                                "lagging": 0,
+                                "high_pressure": 0,
+                                "receiver_connected": 2,
+                                "configured_rag_datasets": 1,
+                                "configured_rag_dataset_not_started": 0,
+                                "rag_datasets": 1,
+                                "rag_dataset_blocked": 0,
+                                "rag_dataset_warning": 1,
+                                "rag_dataset_index_ready": 0,
+                                "rag_dataset_index_missing_snapshot": 1,
+                                "rag_dataset_index_empty": 0,
+                                "rag_dataset_index_lagging": 0,
+                                "rag_dataset_ingest_snapshots": 0,
+                                "rag_checkpoints": 0,
+                                "memory_checkpoints": 0,
+                                "group_memory_pending": 0,
+                                "rag_ingest_pending": 0,
+                                "stale_checkpoints": 0,
+                                "stale_active_leases": 0,
+                                "expired_active_leases": 0,
+                                "stalled": 0,
+                                "stagnant": 0,
+                                "muted": 1,
+                            },
+                            "pipelines": [
+                                {"target_id": "qq:1049511700:group:27234224"},
+                                {"target_id": "qq:1049511700:group:3219982"},
+                            ],
+                            "notes": [
+                                "side_effect=none",
+                                "group_level_knowledge_control_plane_view",
+                            ],
+                            "side_effect": "none",
+                        },
+                    }
+                )
+            )
         if parsed.path.startswith("/v1/"):
             payload: dict[str, Any] | list[Any]
             payload = (
                 {}
                 if parsed.path
                 in {
+                    "/v1/control-mutations/policy",
+                    "/v1/operator-approvals",
+                    "/v1/control-mutations",
                     "/v1/knowledge-worker-diagnostics",
                     "/v1/queue-backend",
                     "/v1/send-ledger/metrics",
@@ -2346,6 +2705,129 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "/api/dashboard/runtime-overview/delivery-smoke-readiness" in js_response.text
     assert "Probe Health" in js_response.text
     assert "Smoke Readiness" in js_response.text
+    assert "Delivery Smoke Readiness" in js_response.text
+    assert "No smoke cases sampled" in js_response.text
+    assert "Chat ID" in js_response.text
+    assert "Queue Backend" in js_response.text
+    assert "No provider capabilities sampled" in js_response.text
+    assert "Consumer Model" in js_response.text
+    assert "Concurrent Consumers" in js_response.text
+    assert "External Lease Diagnostics" in js_response.text
+    assert "Selected Provider" in js_response.text
+    assert "Supports Result Ack" in js_response.text
+    assert "Scheduler Jobs" in js_response.text
+    assert "No scheduler jobs sampled" in js_response.text
+    assert "Next Run" in js_response.text
+    assert "Worker Leases" in js_response.text
+    assert "No worker lease diagnostics sampled" in js_response.text
+    assert "Checkpoint Prefix" in js_response.text
+    assert "Stale Leases" in js_response.text
+    assert "Runtime Config" in js_response.text
+    assert "QQ Group Send" in js_response.text
+    assert "OneBot Endpoints" in js_response.text
+    assert "Strict Lease Token" in js_response.text
+    assert "Environment Keys" in js_response.text
+    assert "Knowledge Planner Preview" in js_response.text
+    assert "No knowledge planner preview sampled" in js_response.text
+    assert "Group Memory Jobs" in js_response.text
+    assert "Observe Only" in js_response.text
+    assert "Knowledge Planner Readiness" in js_response.text
+    assert "No knowledge planner readiness notes" in js_response.text
+    assert "Planner Running" in js_response.text
+    assert "Worker Active" in js_response.text
+    assert "Agent Workers" in js_response.text
+    assert "No agent workers sampled" in js_response.text
+    assert "Lease Active" in js_response.text
+    assert "Runtime Workers" in js_response.text
+    assert "No runtime workers sampled" in js_response.text
+    assert "Batch / Max In Flight" in js_response.text
+    assert "Agent Job Worker Coverage" in js_response.text
+    assert "No worker coverage sampled" in js_response.text
+    assert "Expected Workers" in js_response.text
+    assert "Agent Job Metrics" in js_response.text
+    assert "No job types sampled" in js_response.text
+    assert "No recent agent-job dead letters sampled" in js_response.text
+    assert "Statuses" in js_response.text
+    assert "Agent Job Pressure" in js_response.text
+    assert "No pressure items sampled" in js_response.text
+    assert "Oldest Pending" in js_response.text
+    assert "Send Ledger Metrics" in js_response.text
+    assert "No repeated hashes sampled" in js_response.text
+    assert "No recent send ledger records sampled" in js_response.text
+    assert "Inbox Metrics" in js_response.text
+    assert "No conversation metrics sampled" in js_response.text
+    assert "No recent inbox events sampled" in js_response.text
+    assert "Latest Seq" in js_response.text
+    assert "Inbound Dedupe" in js_response.text
+    assert "No dedupe scopes sampled" in js_response.text
+    assert "No dedupe notes sampled" in js_response.text
+    assert "Duplicate Seen" in js_response.text
+    assert "Delivery Adapters" in js_response.text
+    assert "No delivery adapters sampled" in js_response.text
+    assert "Access Token" in js_response.text
+    assert "Adapter Health" in js_response.text
+    assert "Outbox Metrics" in js_response.text
+    assert "No recent dead letters sampled" in js_response.text
+    assert "dead letters current" in js_response.text
+    assert "Outbox Pressure" in js_response.text
+    assert "No outbox pressure sampled" in js_response.text
+    assert "Dead Lettered" in js_response.text
+    assert "Receiver Statuses" in js_response.text
+    assert "No receiver statuses sampled" in js_response.text
+    assert "Endpoint" in js_response.text
+    assert "Receiver Leases" in js_response.text
+    assert "No receiver leases sampled" in js_response.text
+    assert "Owner Instance" in js_response.text
+    assert "Observe Targets" in js_response.text
+    assert "No observe targets sampled" in js_response.text
+    assert "No observe-target notes sampled" in js_response.text
+    assert "Reply Allowed" in js_response.text
+    assert "Observe Capture" in js_response.text
+    assert "No observe capture targets sampled" in js_response.text
+    assert "No observe-capture notes sampled" in js_response.text
+    assert "Content Ready" in js_response.text
+    assert "Media Asset Retention Plan" in js_response.text
+    assert "No required steps sampled" in js_response.text
+    assert "Verification Steps" in js_response.text
+    assert "Rollback Steps" in js_response.text
+    assert "Media Asset Retention Cleanup" in js_response.text
+    assert "No media asset retention cleanup notes" in js_response.text
+    assert "Candidates" in js_response.text
+    assert "Rolled Back" in js_response.text
+    assert "Media Asset Retention" in js_response.text
+    assert "No media asset retention assets sampled" in js_response.text
+    assert "Retention Class" in js_response.text
+    assert "Cleanup Due" in js_response.text
+    assert "Dead Letters" in js_response.text
+    assert "No agent-job dead letters sampled" in js_response.text
+    assert "No outbox dead letters sampled" in js_response.text
+    assert "Agent Job Dead Letter Totals" in js_response.text
+    assert "Checkpoint Lag" in js_response.text
+    assert "No lagged checkpoints sampled" in js_response.text
+    assert "Lag Messages" in js_response.text
+    assert "Checkpoint Seq" in js_response.text
+    assert "Job Events" in js_response.text
+    assert "No job event totals sampled" in js_response.text
+    assert "No recent job events sampled" in js_response.text
+    assert "Event ID" in js_response.text
+    assert "Outbox Events" in js_response.text
+    assert "No outbox event totals sampled" in js_response.text
+    assert "No recent outbox events sampled" in js_response.text
+    assert "Delivery / Event" in js_response.text
+    assert "RAG Eval Failures" in js_response.text
+    assert "No rag-eval failures sampled" in js_response.text
+    assert "rag eval dead letters" in js_response.text
+    assert "Quality" in js_response.text
+    assert "Runtime Health" in js_response.text
+    assert "No runtime health snapshot fields" in js_response.text
+    assert "No runtime health errors" in js_response.text
+    assert "Stale Jobs" in js_response.text
+    assert "No worker stale-job diagnostics sampled" in js_response.text
+    assert "No stale jobs sampled" in js_response.text
+    assert "Latest Updated" in js_response.text
+    assert "Knowledge Pipelines" in js_response.text
+    assert "No pipeline targets sampled" in js_response.text
+    assert "Capture Status" in js_response.text
     assert "Media Content Diagnostics" in js_response.text
     assert "content_recovery_plan_endpoint" in js_response.text
     assert "content_recovery_preflight_endpoint" in js_response.text
@@ -2357,6 +2839,34 @@ def test_runtime_overview_panel_assets_are_exposed(monkeypatch, tmp_path) -> Non
     assert "Queue Topology" in js_response.text
     assert "Execution Owner" in js_response.text
     assert "Ack Owner" in js_response.text
+    assert "QQ Cutover Route Matrix" in js_response.text
+    assert "No go-owned routes sampled" in js_response.text
+    assert "Currently Sendable Routes" in js_response.text
+    assert "Policy Blocked Routes" in js_response.text
+    assert "Platform Blocker Routes" in js_response.text
+    assert "Agent Job External Lease" in js_response.text
+    assert "Agent Job External Lease Plan" in js_response.text
+    assert "Current Owner" in js_response.text
+    assert "Desired Owner" in js_response.text
+    assert "Recommended Owner" in js_response.text
+    assert "Required Checks" in js_response.text
+    assert "Enable Steps" in js_response.text
+    assert "Verification Steps" in js_response.text
+    assert "Rollback Steps" in js_response.text
+    assert "agent_job_external_lease_readiness" in js_response.text
+    assert "agent_job_external_lease_plan" in js_response.text
+    assert "Agent Job Capacity" in js_response.text
+    assert "High Pressure" in js_response.text
+    assert "No capacity items sampled" in js_response.text
+    assert "Agent Job Priority" in js_response.text
+    assert "Priority Class" in js_response.text
+    assert "No priority items sampled" in js_response.text
+    assert "Knowledge Planner Cutover" in js_response.text
+    assert "Preview Bucket" in js_response.text
+    assert "Outbound Cutover Plan" in js_response.text
+    assert "Expected OneBot Channels" in js_response.text
+    assert "knowledge_job_planner_cutover_plan" in js_response.text
+    assert "outbound_cutover_plan" in js_response.text
     assert "Operator Approvals" in js_response.text
     assert "Control Mutations" in js_response.text
     assert "approval_id" in js_response.text
@@ -2381,6 +2891,117 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": []}))
         if parsed.path == "/healthz":
             return _fake_urlopen_response(json.dumps({"code": "OK", "data": {"status": "ok"}}))
+        if parsed.path == "/v1/knowledge-pipeline-diagnostics":
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "totals": {
+                                "targets": 2,
+                                "enabled": 2,
+                                "ready": 1,
+                                "warning": 1,
+                                "blocked": 0,
+                                "lagging": 0,
+                                "high_pressure": 0,
+                                "receiver_connected": 2,
+                                "configured_rag_datasets": 1,
+                                "configured_rag_dataset_not_started": 0,
+                                "rag_datasets": 1,
+                                "rag_dataset_blocked": 0,
+                                "rag_dataset_warning": 1,
+                                "rag_dataset_index_ready": 0,
+                                "rag_dataset_index_missing_snapshot": 1,
+                                "rag_dataset_index_empty": 0,
+                                "rag_dataset_index_lagging": 0,
+                                "rag_dataset_ingest_snapshots": 0,
+                                "rag_checkpoints": 0,
+                                "memory_checkpoints": 0,
+                                "group_memory_pending": 0,
+                                "rag_ingest_pending": 0,
+                                "stale_checkpoints": 0,
+                                "stale_active_leases": 0,
+                                "expired_active_leases": 0,
+                                "stalled": 0,
+                                "stagnant": 0,
+                                "muted": 1,
+                            },
+                            "pipelines": [
+                                {"target_id": "qq:1049511700:group:27234224"},
+                                {"target_id": "qq:1049511700:group:3219982"},
+                            ],
+                            "notes": [
+                                "side_effect=none",
+                                "group_level_knowledge_control_plane_view",
+                            ],
+                            "side_effect": "none",
+                        },
+                    }
+                )
+            )
+        if parsed.path == "/v1/media-assets/content-diagnostics":
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "items": [
+                                {
+                                    "asset_id": "asset:qq:image:3219982:x:1",
+                                    "channel": {
+                                        "kind": "qq",
+                                        "account_id": "1049511700",
+                                        "conversation_id": "3219982",
+                                        "conversation_type": "group",
+                                    },
+                                    "kind": "image",
+                                    "name": "qq-image.jpg",
+                                    "content_status": "forbidden",
+                                    "content_reason": "media_asset_content_forbidden",
+                                    "content_endpoint": "/v1/media-assets/asset:qq:image:3219982:x:1/content",
+                                    "content_access_plan_endpoint": "/v1/media-assets/content-access-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1",
+                                    "content_recovery_plan_endpoint": "/v1/media-assets/content-recovery-plan?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1",
+                                    "content_recovery_preflight_endpoint": "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1",
+                                }
+                            ],
+                            "totals": {
+                                "assets": 1,
+                                "ready": 0,
+                                "forbidden": 1,
+                                "unavailable": 0,
+                                "disabled": 0,
+                                "error": 0,
+                            },
+                            "notes": ["read-only"],
+                            "side_effect": "none",
+                        },
+                    }
+                )
+            )
+        if parsed.path == "/v1/control-mutations":
+            return _fake_urlopen_response(
+                json.dumps(
+                    {
+                        "code": "OK",
+                        "data": {
+                            "mutations": [],
+                            "totals": {
+                                "mutations": 0,
+                                "planned": 0,
+                                "applied": 0,
+                                "failed": 0,
+                                "rolled_back": 0,
+                            },
+                            "notes": [
+                                "side_effect=runtime_state_only",
+                                "control mutation audit only; no runtime configuration is changed",
+                            ],
+                            "side_effect": "runtime_state_only",
+                        },
+                    }
+                )
+            )
         if parsed.path.startswith("/v1/"):
             payload: dict[str, Any] | list[Any]
             payload = (
@@ -2395,11 +3016,14 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
                     "/v1/outbox-metrics",
                     "/v1/observe-targets",
                     "/v1/observe-capture-diagnostics",
+                    "/v1/media-assets/content-diagnostics",
                     "/v1/media-assets/retention-diagnostics",
                     "/v1/media-assets/retention-plan",
                     "/v1/receiver-statuses",
                     "/v1/receiver-leases",
                     "/v1/scheduler/diagnostics",
+                    "/v1/control-mutations/policy",
+                    "/v1/operator-approvals",
                 }
                 else []
             )
@@ -2417,9 +3041,65 @@ def test_runtime_overview_reader_falls_back_when_go_aggregate_is_unavailable(
     assert payload["status"]["runtime_available"] is True
     assert "/v1/runtime-overview" in seen_paths
     assert "/v1/jobs" in seen_paths
+    assert "/v1/knowledge-pipeline-diagnostics" in seen_paths
+    assert "/v1/control-mutations/policy" in seen_paths
+    assert "/v1/operator-approvals" in seen_paths
+    assert "/v1/control-mutations" in seen_paths
     assert "/v1/outbox-metrics" in seen_paths
+    assert "/v1/media-assets/content-diagnostics" in seen_paths
     assert "/v1/media-assets/retention-plan" in seen_paths
     assert payload["summary"]["media_asset_retention_plan_reason"] == "unknown"
+    assert payload["summary"]["media_asset_content_assets"] == 1
+    assert payload["summary"]["media_asset_content_forbidden"] == 1
+    assert payload["summary"]["control_mutation_policy_allowed"] is False
+    assert payload["summary"]["operator_approvals_total"] == 0
+    assert payload["summary"]["control_mutations_total"] == 0
+    assert "control_mutation_policy" in payload
+    assert "operator_approvals" in payload
+    assert "control_mutations" in payload
+    assert "knowledge_pipelines" in payload
+    assert "media_asset_content_diagnostics" in payload
+    assert any(item["id"] == "control_mutation_policy" for item in payload["cards"])
+    assert any(item["id"] == "control_audit" for item in payload["cards"])
+    media_card = next(item for item in payload["cards"] if item["id"] == "media_asset_content")
+    assert media_card["value"] == "0/1"
+    assert media_card["status"] == "danger"
+    assert (
+        payload["media_asset_content_diagnostics"]["items"][0][
+            "content_recovery_preflight_endpoint"
+        ]
+        == "/v1/media-assets/content-recovery/preflight?asset_id=asset%3Aqq%3Aimage%3A3219982%3Ax%3A1"
+    )
+    knowledge_card = next(
+        item for item in payload["cards"] if item["id"] == "knowledge_pipelines"
+    )
+    assert knowledge_card["value"] == "1/2"
+    assert knowledge_card["status"] == "warn"
+    assert (
+        knowledge_card["detail"]["knowledge_pipelines"]["totals"][
+            "rag_dataset_index_missing_snapshot"
+        ]
+        == 1
+    )
+    assert (
+        payload["summary"]["media_asset_content_recovery_reason"]
+        == "media_asset_content_recovery_audit_ready"
+    )
+    assert payload["summary"]["media_asset_content_recovery_ready"] is True
+    assert "media_asset_content_recovery" in payload
+    assert payload["summary"]["knowledge_pipelines"] == 2
+    assert payload["summary"]["knowledge_pipelines_ready"] == 1
+    assert payload["summary"]["knowledge_pipelines_configured_rag_datasets"] == 1
+    assert payload["knowledge_pipelines"]["totals"]["targets"] == 2
+    assert payload["knowledge_pipelines"]["totals"]["rag_dataset_index_missing_snapshot"] == 1
+    recovery_card = next(
+        item for item in payload["cards"] if item["id"] == "media_asset_content_recovery"
+    )
+    assert recovery_card["value"] == "0/0"
+    assert recovery_card["status"] == "muted"
+    assert payload["media_asset_content_recovery"]["reason"] == (
+        "media_asset_content_recovery_audit_ready"
+    )
 
 
 def _fake_urlopen_response(payload: str):

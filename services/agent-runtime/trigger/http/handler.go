@@ -129,9 +129,15 @@ func RegisterAgentJobExternalLeaseRoutes(
 	mux *http.ServeMux,
 	checker inport.AgentJobExternalLeaseReadinessChecker,
 	planner inport.AgentJobExternalLeasePlanner,
+	preflightChecker inport.AgentJobExternalLeasePreflightChecker,
+	launcherBundleViewer inport.AgentJobExternalLeaseLauncherBundleViewer,
+	cutoverDiffViewer inport.AgentJobExternalLeaseCutoverDiffViewer,
 ) {
 	mux.Handle("/v1/agent-job-external-lease/readiness", AgentJobExternalLeaseReadinessHandler(checker))
 	mux.Handle("/v1/agent-job-external-lease/plan", AgentJobExternalLeasePlanHandler(planner))
+	mux.Handle("/v1/agent-job-external-lease/preflight", AgentJobExternalLeasePreflightHandler(preflightChecker))
+	mux.Handle("/v1/agent-job-external-lease/launcher-bundle", AgentJobExternalLeaseLauncherBundleHandler(launcherBundleViewer))
+	mux.Handle("/v1/agent-job-external-lease/cutover-diff", AgentJobExternalLeaseCutoverDiffHandler(cutoverDiffViewer))
 }
 
 func RegisterInboxMetricsRoutes(
@@ -243,6 +249,7 @@ func RegisterReceiverStatusRoutes(
 ) {
 	mux.Handle("/v1/receiver-statuses/report", ReceiverStatusReportHandler(manager))
 	mux.Handle("/v1/receiver-statuses", ReceiverStatusesHandler(manager))
+	mux.Handle("/v1/receiver-statuses/cleanup-stale", ReceiverStatusCleanupStaleHandler(manager))
 	mux.Handle("/v1/receiver-leases/acquire", ReceiverLeaseAcquireHandler(manager))
 	mux.Handle("/v1/receiver-leases/renew", ReceiverLeaseRenewHandler(manager))
 	mux.Handle("/v1/receiver-leases/release", ReceiverLeaseReleaseHandler(manager))
@@ -503,6 +510,63 @@ func ControlMutationPolicyHandler(viewer inport.ControlMutationPolicyViewer) htt
 	})
 }
 
+func AgentJobExternalLeasePreflightHandler(checker inport.AgentJobExternalLeasePreflightChecker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if checker == nil {
+			http.Error(w, "agent job external lease preflight disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := checker.CheckAgentJobExternalLeasePreflight(r.Context(), agentJobExternalLeasePreflightFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func AgentJobExternalLeaseLauncherBundleHandler(viewer inport.AgentJobExternalLeaseLauncherBundleViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if viewer == nil {
+			http.Error(w, "agent job external lease launcher bundle disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := viewer.GetAgentJobExternalLeaseLauncherBundle(r.Context(), agentJobExternalLeaseLauncherBundleFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
+func AgentJobExternalLeaseCutoverDiffHandler(viewer inport.AgentJobExternalLeaseCutoverDiffViewer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if viewer == nil {
+			http.Error(w, "agent job external lease cutover diff disabled", http.StatusNotImplemented)
+			return
+		}
+		view, err := viewer.GetAgentJobExternalLeaseCutoverDiff(r.Context(), agentJobExternalLeaseCutoverDiffFilterFromQuery(r))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
 func MediaAssetRetentionCleanupPreflightHandler(checker inport.MediaAssetRetentionCleanupPreflightChecker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -663,6 +727,39 @@ func mediaAssetContentRecoveryPreflightFilterFromQuery(r *http.Request) query.Me
 	}
 }
 
+func agentJobExternalLeasePreflightFilterFromQuery(r *http.Request) query.AgentJobExternalLeasePreflightFilter {
+	values := r.URL.Query()
+	return query.AgentJobExternalLeasePreflightFilter{
+		TargetID:              strings.TrimSpace(values.Get("target_id")),
+		DesiredExecutionOwner: strings.TrimSpace(values.Get("desired_execution_owner")),
+		OperatorID:            strings.TrimSpace(values.Get("operator_id")),
+		ApprovalID:            strings.TrimSpace(values.Get("approval_id")),
+		JobLimit:              parsePositiveInt(values.Get("job_limit"), 200, 1000),
+		EventLimit:            parsePositiveInt(values.Get("event_limit"), 200, 1000),
+		StaleAfterSeconds:     parsePositiveInt(values.Get("stale_after_seconds"), 1800, 86400),
+	}
+}
+
+func agentJobExternalLeaseLauncherBundleFilterFromQuery(r *http.Request) query.AgentJobExternalLeaseLauncherBundleFilter {
+	values := r.URL.Query()
+	return query.AgentJobExternalLeaseLauncherBundleFilter{
+		DesiredExecutionOwner: strings.TrimSpace(values.Get("desired_execution_owner")),
+		JobLimit:              parsePositiveInt(values.Get("job_limit"), 200, 5000),
+		EventLimit:            parsePositiveInt(values.Get("event_limit"), 200, 5000),
+		StaleAfterSeconds:     parsePositiveInt(values.Get("stale_after_seconds"), 180, 86400),
+	}
+}
+
+func agentJobExternalLeaseCutoverDiffFilterFromQuery(r *http.Request) query.AgentJobExternalLeaseCutoverDiffFilter {
+	values := r.URL.Query()
+	return query.AgentJobExternalLeaseCutoverDiffFilter{
+		DesiredExecutionOwner: strings.TrimSpace(values.Get("desired_execution_owner")),
+		JobLimit:              parsePositiveInt(values.Get("job_limit"), 200, 5000),
+		EventLimit:            parsePositiveInt(values.Get("event_limit"), 200, 5000),
+		StaleAfterSeconds:     parsePositiveInt(values.Get("stale_after_seconds"), 180, 86400),
+	}
+}
+
 func KnowledgePipelineDiagnosticsHandler(viewer inport.KnowledgePipelineDiagnosticsViewer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -814,6 +911,7 @@ func RegisterAgentWorkerStatusRoutes(
 ) {
 	mux.Handle("/v1/agent-worker-statuses/report", AgentWorkerStatusReportHandler(manager))
 	mux.Handle("/v1/agent-worker-statuses", AgentWorkerStatusesHandler(manager))
+	mux.Handle("/v1/agent-worker-statuses/cleanup-stale", AgentWorkerStatusCleanupStaleHandler(manager))
 }
 
 func RegisterProactiveStateRoutes(
@@ -2055,6 +2153,39 @@ func ReceiverStatusReportHandler(manager inport.ReceiverStatusManager) http.Hand
 	})
 }
 
+func ReceiverStatusCleanupStaleHandler(manager inport.ReceiverStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "receiver status manager disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.CleanupStaleReceiverStatusesRequest
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		view, err := manager.CleanupStaleReceiverStatuses(r.Context(), command.CleanupStaleReceiverStatusesCommand{
+			ReceiverID:        request.ReceiverID,
+			Timestamp:         timestamp,
+			StaleAfterSeconds: request.StaleAfterSeconds,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: view})
+	})
+}
+
 func ReceiverLeasesHandler(manager inport.ReceiverStatusManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
@@ -3089,19 +3220,20 @@ func AgentWorkerStatusReportHandler(manager inport.AgentWorkerStatusManager) htt
 			return
 		}
 		item, err := manager.ReportAgentWorkerStatus(r.Context(), command.ReportAgentWorkerStatusCommand{
-			WorkerID:        request.WorkerID,
-			InstanceID:      request.InstanceID,
-			WorkerType:      request.WorkerType,
-			Status:          request.Status,
-			CurrentJobID:    request.CurrentJobID,
-			LastJobID:       request.LastJobID,
-			LastError:       request.LastError,
-			ProcessedTotal:  request.ProcessedTotal,
-			FailedTotal:     request.FailedTotal,
-			Source:          request.Source,
-			Metadata:        request.Metadata,
-			Timestamp:       timestamp,
-			LeaseTTLSeconds: request.LeaseTTLSeconds,
+			WorkerID:                  request.WorkerID,
+			InstanceID:                request.InstanceID,
+			ReplaceExistingInstanceID: request.ReplaceExistingInstanceID,
+			WorkerType:                request.WorkerType,
+			Status:                    request.Status,
+			CurrentJobID:              request.CurrentJobID,
+			LastJobID:                 request.LastJobID,
+			LastError:                 request.LastError,
+			ProcessedTotal:            request.ProcessedTotal,
+			FailedTotal:               request.FailedTotal,
+			Source:                    request.Source,
+			Metadata:                  request.Metadata,
+			Timestamp:                 timestamp,
+			LeaseTTLSeconds:           request.LeaseTTLSeconds,
 		})
 		if err != nil {
 			if errors.Is(err, appservice.ErrAgentWorkerLeaseConflict) {
@@ -3130,6 +3262,40 @@ func AgentWorkerStatusesHandler(manager inport.AgentWorkerStatusManager) http.Ha
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})
+	})
+}
+
+func AgentWorkerStatusCleanupStaleHandler(manager inport.AgentWorkerStatusManager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			http.Error(w, "agent worker status disabled", http.StatusNotImplemented)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request dto.CleanupStaleAgentWorkerStatusesRequest
+		if err := readOptionalJSONBody(r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		timestamp, err := parseOptionalTimestamp(request.Timestamp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		item, err := manager.CleanupStaleAgentWorkerStatuses(r.Context(), command.CleanupStaleAgentWorkerStatusesCommand{
+			WorkerID:          request.WorkerID,
+			InstanceID:        request.InstanceID,
+			Timestamp:         timestamp,
+			StaleAfterSeconds: request.StaleAfterSeconds,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, types.Result{Code: types.ErrorCodeInvalidArgument, Message: err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, types.Result{Code: types.ErrorCodeOK, Data: item})

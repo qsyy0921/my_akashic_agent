@@ -48,3 +48,40 @@ func TestStorePersistsAgentWorkerStatuses(t *testing.T) {
 		t.Fatalf("unexpected persisted item: %#v", items[0])
 	}
 }
+
+func TestStoreDeletesAgentWorkerStatus(t *testing.T) {
+	path := t.TempDir() + "/agent-worker-statuses.json"
+	store, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	status, err := model.NewAgentWorkerStatus(model.AgentWorkerStatusSpec{
+		WorkerID:   "worker-a",
+		InstanceID: "instance-a",
+		WorkerType: "knowledge",
+		Status:     "running",
+		Source:     "python",
+		LeaseUntil: time.Date(2026, 6, 3, 12, 2, 0, 0, time.UTC),
+	}, time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("new status: %v", err)
+	}
+	if err := store.SaveAgentWorkerStatus(context.Background(), status); err != nil {
+		t.Fatalf("save status: %v", err)
+	}
+	if err := store.DeleteAgentWorkerStatus(context.Background(), "worker-a"); err != nil {
+		t.Fatalf("delete status: %v", err)
+	}
+
+	reopened, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	items, err := reopened.ListAgentWorkerStatuses(context.Background())
+	if err != nil {
+		t.Fatalf("list statuses: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty store after delete, got %#v", items)
+	}
+}

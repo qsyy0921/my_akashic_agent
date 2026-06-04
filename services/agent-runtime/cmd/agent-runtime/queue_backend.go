@@ -48,6 +48,10 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 		subjectPrefix = "akashic.work"
 	}
 	externalLease := queueExternalLeaseGate(provider, mode, dsnConfigured)
+	outboxAllowedKinds := outboxAllowedKindsFromEnv()
+	outboxAllowedKindsByAccount := outboxAllowedKindsByAccountFromEnv()
+	outboxAllowedKindsByAccountConversationType := outboxAllowedKindsByAccountConversationTypeFromEnv()
+	outboxAllowedKindsByAccountConversationID := outboxAllowedKindsByAccountConversationIDFromEnv()
 	agentJobQueueSource := "agent_job_state_store"
 	if externalLeaseAllowsAgentJobs(externalLease) {
 		agentJobQueueSource = "agent_job_state_store_with_nats_result_ack"
@@ -57,30 +61,35 @@ func queueBackendViewFromEnv() (query.QueueBackendView, error) {
 	providerCapabilities := queueProviderCapabilities(provider)
 
 	return query.QueueBackendView{
-		Provider:                   provider,
-		Mode:                       mode,
-		MigrationPhase:             queueMigrationPhase(provider, mode),
-		Stream:                     stream,
-		SubjectPrefix:              subjectPrefix,
-		ExternalQueueConfigured:    externalConfigured,
-		ExternalQueueActive:        false,
-		StateStoreAuthoritative:    true,
-		LeaseOwner:                 "go_state_store",
-		ConsumerModel:              "goroutine_worker_pool",
-		ConsumerConcurrency:        consumerConcurrency,
-		MaxInFlight:                maxInFlight,
-		OutboxQueueSource:          "outbox_state_store",
-		AgentJobQueueSource:        agentJobQueueSource,
-		OutboxExecutionOwner:       outboxOwner,
-		AgentJobExecutionOwner:     agentJobOwner,
-		DSNConfigured:              dsnConfigured,
-		DSNRedacted:                redactQueueDSN(dsn),
-		RecommendedFirstBackend:    "nats_jetstream",
-		SupportedProviders:         []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
-		ProviderCapabilities:       providerCapabilities,
-		SelectedProviderCapability: selectedQueueProviderCapability(provider, providerCapabilities),
-		Notes:                      notes,
-		ExternalLease:              externalLease,
+		Provider:                    provider,
+		Mode:                        mode,
+		MigrationPhase:              queueMigrationPhase(provider, mode),
+		Stream:                      stream,
+		SubjectPrefix:               subjectPrefix,
+		ExternalQueueConfigured:     externalConfigured,
+		ExternalQueueActive:         false,
+		StateStoreAuthoritative:     true,
+		LeaseOwner:                  "go_state_store",
+		ConsumerModel:               "goroutine_worker_pool",
+		ConsumerConcurrency:         consumerConcurrency,
+		MaxInFlight:                 maxInFlight,
+		OutboxQueueSource:           "outbox_state_store",
+		AgentJobQueueSource:         agentJobQueueSource,
+		OutboxExecutionOwner:        outboxOwner,
+		OutboxExecutionScope:        outboxExecutionScope(outboxOwner, outboxAllowedKinds, outboxAllowedKindsByAccount, outboxAllowedKindsByAccountConversationType, outboxAllowedKindsByAccountConversationID),
+		OutboxAllowedKinds:          outboxAllowedKinds,
+		OutboxAllowedKindsByAccount: outboxAllowedKindsByAccount,
+		OutboxAllowedKindsByAccountConversationType: outboxAllowedKindsByAccountConversationType,
+		OutboxAllowedKindsByAccountConversationID:   outboxAllowedKindsByAccountConversationID,
+		AgentJobExecutionOwner:                      agentJobOwner,
+		DSNConfigured:                               dsnConfigured,
+		DSNRedacted:                                 redactQueueDSN(dsn),
+		RecommendedFirstBackend:                     "nats_jetstream",
+		SupportedProviders:                          []string{"local", "nats_jetstream", "redis_streams", "rabbitmq"},
+		ProviderCapabilities:                        providerCapabilities,
+		SelectedProviderCapability:                  selectedQueueProviderCapability(provider, providerCapabilities),
+		Notes:                                       notes,
+		ExternalLease:                               externalLease,
 	}, nil
 }
 
@@ -92,6 +101,221 @@ func queueOutboxExecutionOwner(externalLease *query.QueueExternalLeaseGate) stri
 		return "go_local_outbox_worker"
 	}
 	return "go_state_store_api"
+}
+
+func outboxAllowedKindsFromEnv() []string {
+	if items := csvEnvOrDefault("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", nil); len(items) > 0 {
+		if normalized := normalizeOutboxAllowedKinds(items); len(normalized) > 0 {
+			return normalized
+		}
+	}
+	return []string{"text", "image", "file"}
+}
+
+func outboxAllowedKindsByAccountFromEnv() map[string][]string {
+	raw := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT"))
+	if raw == "" {
+		return nil
+	}
+	result := make(map[string][]string)
+	for _, item := range strings.Split(raw, ",") {
+		accountID, kindsRaw, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+		kinds := splitOutboxAllowedKinds(kindsRaw)
+		if normalized := normalizeOutboxAllowedKinds(kinds); len(normalized) > 0 {
+			result[accountID] = normalized
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func outboxAllowedKindsByAccountConversationTypeFromEnv() map[string]map[string][]string {
+	raw := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE"))
+	if raw == "" {
+		return nil
+	}
+	result := make(map[string]map[string][]string)
+	for _, item := range strings.Split(raw, ",") {
+		scopeRaw, kindsRaw, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		accountID, conversationType, ok := splitOutboxAllowedConversationScope(scopeRaw)
+		if !ok {
+			continue
+		}
+		kinds := splitOutboxAllowedKinds(kindsRaw)
+		normalizedKinds := normalizeOutboxAllowedKinds(kinds)
+		if len(normalizedKinds) == 0 {
+			continue
+		}
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = make(map[string][]string)
+		}
+		result[accountID][conversationType] = normalizedKinds
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func outboxAllowedKindsByAccountConversationIDFromEnv() map[string]map[string]map[string][]string {
+	raw := strings.TrimSpace(os.Getenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID"))
+	if raw == "" {
+		return nil
+	}
+	result := make(map[string]map[string]map[string][]string)
+	for _, item := range strings.Split(raw, ",") {
+		scopeRaw, kindsRaw, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		accountID, conversationType, conversationID, ok := splitOutboxAllowedConversationIDScope(scopeRaw)
+		if !ok {
+			continue
+		}
+		kinds := splitOutboxAllowedKinds(kindsRaw)
+		normalizedKinds := normalizeOutboxAllowedKinds(kinds)
+		if len(normalizedKinds) == 0 {
+			continue
+		}
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = make(map[string]map[string][]string)
+		}
+		if _, ok := result[accountID][conversationType]; !ok {
+			result[accountID][conversationType] = make(map[string][]string)
+		}
+		result[accountID][conversationType][conversationID] = normalizedKinds
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func splitOutboxAllowedConversationScope(raw string) (string, string, bool) {
+	scope := strings.TrimSpace(raw)
+	if scope == "" {
+		return "", "", false
+	}
+	scope = strings.ReplaceAll(scope, ":", "/")
+	accountID, conversationType, ok := strings.Cut(scope, "/")
+	if !ok {
+		return "", "", false
+	}
+	accountID = strings.TrimSpace(accountID)
+	conversationType = normalizeConversationTypeToken(conversationType)
+	if accountID == "" || conversationType == "" {
+		return "", "", false
+	}
+	return accountID, conversationType, true
+}
+
+func splitOutboxAllowedConversationIDScope(raw string) (string, string, string, bool) {
+	scope := strings.TrimSpace(raw)
+	if scope == "" {
+		return "", "", "", false
+	}
+	scope = strings.ReplaceAll(scope, ":", "/")
+	parts := strings.Split(scope, "/")
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	accountID := strings.TrimSpace(parts[0])
+	conversationType := normalizeConversationTypeToken(parts[1])
+	conversationID := strings.TrimSpace(parts[2])
+	if accountID == "" || conversationType == "" || conversationID == "" {
+		return "", "", "", false
+	}
+	return accountID, conversationType, conversationID, true
+}
+
+func splitOutboxAllowedKinds(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case '|', ';', '+':
+			return true
+		default:
+			return false
+		}
+	})
+	return parts
+}
+
+func normalizeOutboxAllowedKinds(items []string) []string {
+	normalized := make([]string, 0, len(items))
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		value := strings.ToLower(strings.TrimSpace(item))
+		switch value {
+		case "text", "image", "file":
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			normalized = append(normalized, value)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func outboxExecutionScope(owner string, allowedKinds []string, allowedKindsByAccount map[string][]string, allowedKindsByAccountConversationType map[string]map[string][]string, allowedKindsByAccountConversationID map[string]map[string]map[string][]string) string {
+	switch strings.TrimSpace(owner) {
+	case "go_local_outbox_worker":
+		if len(allowedKindsByAccountConversationID) > 0 {
+			return "account_conversation_id_kind_gated"
+		}
+		if len(allowedKindsByAccountConversationType) > 0 {
+			return "account_conversation_kind_gated"
+		}
+		if len(allowedKindsByAccount) > 0 {
+			return "account_kind_gated"
+		}
+		if len(allowedKinds) == 1 && allowedKinds[0] == "text" {
+			return "text_only"
+		}
+		return "all_supported_kinds"
+	case "nats_external_lease":
+		if len(allowedKindsByAccountConversationID) > 0 {
+			return "account_conversation_id_kind_gated"
+		}
+		if len(allowedKindsByAccountConversationType) > 0 {
+			return "account_conversation_kind_gated"
+		}
+		if len(allowedKindsByAccount) > 0 {
+			return "account_kind_gated"
+		}
+		if len(allowedKinds) == 1 && allowedKinds[0] == "text" {
+			return "text_only"
+		}
+		return "all_supported_kinds"
+	default:
+		return "compatibility_only"
+	}
+}
+
+func normalizeConversationTypeToken(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "private":
+		return "private"
+	case "group":
+		return "group"
+	default:
+		return ""
+	}
 }
 
 func queueAgentJobExecutionOwner(externalLease *query.QueueExternalLeaseGate) string {
@@ -486,18 +710,22 @@ func newWorkQueueExternalLeaseConsumer(view query.QueueBackendView) (*natsqueue.
 		return nil, nil, err
 	}
 	consumer, err := natsqueue.NewExternalLeaseConsumer(natsqueue.ExternalLeaseConsumerConfig{
-		URL:                 strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
-		Stream:              view.Stream,
-		SubjectPrefix:       view.SubjectPrefix,
-		Durable:             strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_DURABLE")),
-		WorkerID:            strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
-		LeaseTTLSeconds:     ttlSeconds,
-		NackDelay:           time.Duration(nackDelaySeconds) * time.Second,
-		Timeout:             time.Duration(timeoutSeconds) * time.Second,
-		ConsumerConcurrency: view.ConsumerConcurrency,
-		MaxInFlight:         view.MaxInFlight,
-		ChannelByAccount:    keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
-		IncludeAgentJobs:    externalLeaseAllowsAgentJobs(view.ExternalLease),
+		URL:                       strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_DSN")),
+		Stream:                    view.Stream,
+		SubjectPrefix:             view.SubjectPrefix,
+		Durable:                   strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_DURABLE")),
+		WorkerID:                  strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
+		LeaseTTLSeconds:           ttlSeconds,
+		NackDelay:                 time.Duration(nackDelaySeconds) * time.Second,
+		Timeout:                   time.Duration(timeoutSeconds) * time.Second,
+		ConsumerConcurrency:       view.ConsumerConcurrency,
+		MaxInFlight:               view.MaxInFlight,
+		ChannelByAccount:          keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT"),
+		AllowedStepKinds:          outboxAllowedKindsFromEnv(),
+		AllowedStepKindsByAccount: outboxAllowedKindsByAccountFromEnv(),
+		AllowedStepKindsByAccountConversationType: outboxAllowedKindsByAccountConversationTypeFromEnv(),
+		AllowedStepKindsByAccountConversationID:   outboxAllowedKindsByAccountConversationIDFromEnv(),
+		IncludeAgentJobs:                          externalLeaseAllowsAgentJobs(view.ExternalLease),
 	})
 	if err != nil {
 		return nil, nil, err

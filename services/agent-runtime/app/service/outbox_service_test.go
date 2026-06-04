@@ -175,6 +175,288 @@ func TestOutboxServiceLeaseNextSkipsBlockedAccountKeys(t *testing.T) {
 	}
 }
 
+func TestOutboxServiceLeaseNextSkipsUnsupportedStepKinds(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewOutboxService(store, store)
+	now := time.Date(2026, 6, 2, 13, 0, 0, 0, time.UTC)
+
+	imageMessage := sampleOutboxMessage(now)
+	imageMessage.EventID = "outbox-image"
+	imageMessage.Content = "caption"
+	imageMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindImage,
+		URL:  "file:///tmp/smoke.png",
+		Name: "smoke.png",
+	}}
+	imageDelivery, err := model.NewOutboxDelivery(imageMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new image delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, imageDelivery); err != nil {
+		t.Fatalf("save image delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, imageDelivery); err != nil {
+		t.Fatalf("enqueue image delivery: %v", err)
+	}
+
+	textMessage := sampleOutboxMessage(now.Add(time.Second))
+	textMessage.EventID = "outbox-text"
+	textDelivery, err := model.NewOutboxDelivery(textMessage, 2, textMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new text delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, textDelivery); err != nil {
+		t.Fatalf("save text delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, textDelivery); err != nil {
+		t.Fatalf("enqueue text delivery: %v", err)
+	}
+
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:         "qq-dispatcher",
+		TTLSeconds:       60,
+		Timestamp:        now.Add(2 * time.Second),
+		AllowedStepKinds: []string{"text"},
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.EventID != "outbox-text" {
+		t.Fatalf("expected text-only lease, got %+v", leased)
+	}
+
+	stillQueued, err := service.Get(ctx, "outbox-image")
+	if err != nil {
+		t.Fatalf("get image delivery: %v", err)
+	}
+	if stillQueued.Status != string(model.DeliveryQueued) || stillQueued.Attempts != 0 {
+		t.Fatalf("unsupported image delivery should remain queued, got %+v", stillQueued)
+	}
+}
+
+func TestOutboxServiceLeaseNextFiltersByAllowedStepKindsPerAccount(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewOutboxService(store, store)
+	now := time.Date(2026, 6, 2, 13, 5, 0, 0, time.UTC)
+
+	firstFileMessage := sampleOutboxMessage(now)
+	firstFileMessage.EventID = "outbox-file-first-account"
+	firstFileMessage.Content = ""
+	firstFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/first.txt",
+		Name: "first.txt",
+	}}
+	firstFileDelivery, err := model.NewOutboxDelivery(firstFileMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new first-account file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, firstFileDelivery); err != nil {
+		t.Fatalf("save first-account file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, firstFileDelivery); err != nil {
+		t.Fatalf("enqueue first-account file delivery: %v", err)
+	}
+
+	secondFileMessage := sampleOutboxMessage(now.Add(time.Second))
+	secondFileMessage.EventID = "outbox-file-second-account"
+	secondFileMessage.Content = ""
+	secondFileMessage.Channel.AccountID = "2365524513"
+	secondFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/second.txt",
+		Name: "second.txt",
+	}}
+	secondFileDelivery, err := model.NewOutboxDelivery(secondFileMessage, 2, secondFileMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new second-account file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, secondFileDelivery); err != nil {
+		t.Fatalf("save second-account file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, secondFileDelivery); err != nil {
+		t.Fatalf("enqueue second-account file delivery: %v", err)
+	}
+
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:         "qq-dispatcher",
+		TTLSeconds:       60,
+		Timestamp:        now.Add(2 * time.Second),
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccount: map[string][]string{
+			"2365524513": {"text", "file"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.EventID != "outbox-file-second-account" {
+		t.Fatalf("expected second-account file lease, got %+v", leased)
+	}
+
+	stillQueued, err := service.Get(ctx, "outbox-file-first-account")
+	if err != nil {
+		t.Fatalf("get first-account file delivery: %v", err)
+	}
+	if stillQueued.Status != string(model.DeliveryQueued) || stillQueued.Attempts != 0 {
+		t.Fatalf("first-account file delivery should remain queued, got %+v", stillQueued)
+	}
+}
+
+func TestOutboxServiceLeaseNextFiltersByAllowedStepKindsPerAccountConversationType(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewOutboxService(store, store)
+	now := time.Date(2026, 6, 2, 13, 40, 0, 0, time.UTC)
+
+	firstGroupFileMessage := sampleOutboxMessage(now)
+	firstGroupFileMessage.EventID = "outbox-file-first-account-group"
+	firstGroupFileMessage.Content = ""
+	firstGroupFileMessage.Channel.ConversationType = model.ConversationTypeGroup
+	firstGroupFileMessage.Channel.ConversationID = "3219982"
+	firstGroupFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/first-group.txt",
+		Name: "first-group.txt",
+	}}
+	firstGroupFileDelivery, err := model.NewOutboxDelivery(firstGroupFileMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new first-account group file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, firstGroupFileDelivery); err != nil {
+		t.Fatalf("save first-account group file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, firstGroupFileDelivery); err != nil {
+		t.Fatalf("enqueue first-account group file delivery: %v", err)
+	}
+
+	firstPrivateFileMessage := sampleOutboxMessage(now.Add(time.Second))
+	firstPrivateFileMessage.EventID = "outbox-file-first-account-private"
+	firstPrivateFileMessage.Content = ""
+	firstPrivateFileMessage.Channel.ConversationType = model.ConversationTypePrivate
+	firstPrivateFileMessage.Channel.ConversationID = "2365524513"
+	firstPrivateFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/first-private.txt",
+		Name: "first-private.txt",
+	}}
+	firstPrivateFileDelivery, err := model.NewOutboxDelivery(firstPrivateFileMessage, 2, firstPrivateFileMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new first-account private file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, firstPrivateFileDelivery); err != nil {
+		t.Fatalf("save first-account private file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, firstPrivateFileDelivery); err != nil {
+		t.Fatalf("enqueue first-account private file delivery: %v", err)
+	}
+
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:         "qq-dispatcher",
+		TTLSeconds:       60,
+		Timestamp:        now.Add(2 * time.Second),
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccountConversationType: map[string]map[string][]string{
+			"1049511700": {
+				"private": {"text", "file"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.EventID != "outbox-file-first-account-private" {
+		t.Fatalf("expected first-account private file lease, got %+v", leased)
+	}
+
+	stillQueued, err := service.Get(ctx, "outbox-file-first-account-group")
+	if err != nil {
+		t.Fatalf("get first-account group file delivery: %v", err)
+	}
+	if stillQueued.Status != string(model.DeliveryQueued) || stillQueued.Attempts != 0 {
+		t.Fatalf("first-account group file delivery should remain queued, got %+v", stillQueued)
+	}
+}
+
+func TestOutboxServiceLeaseNextFiltersByAllowedStepKindsPerAccountConversationID(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	service := appservice.NewOutboxService(store, store)
+	now := time.Date(2026, 6, 2, 14, 5, 0, 0, time.UTC)
+
+	blockedGroupFileMessage := sampleOutboxMessage(now)
+	blockedGroupFileMessage.EventID = "outbox-file-first-account-group-blocked"
+	blockedGroupFileMessage.Content = ""
+	blockedGroupFileMessage.Channel.ConversationType = model.ConversationTypeGroup
+	blockedGroupFileMessage.Channel.ConversationID = "3219982"
+	blockedGroupFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/blocked-group.txt",
+		Name: "blocked-group.txt",
+	}}
+	blockedGroupFileDelivery, err := model.NewOutboxDelivery(blockedGroupFileMessage, 2, now)
+	if err != nil {
+		t.Fatalf("new blocked first-account group file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, blockedGroupFileDelivery); err != nil {
+		t.Fatalf("save blocked first-account group file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, blockedGroupFileDelivery); err != nil {
+		t.Fatalf("enqueue blocked first-account group file delivery: %v", err)
+	}
+
+	allowedGroupFileMessage := sampleOutboxMessage(now.Add(time.Second))
+	allowedGroupFileMessage.EventID = "outbox-file-first-account-group-allowed"
+	allowedGroupFileMessage.Content = ""
+	allowedGroupFileMessage.Channel.ConversationType = model.ConversationTypeGroup
+	allowedGroupFileMessage.Channel.ConversationID = "391289439"
+	allowedGroupFileMessage.Attachments = []model.Attachment{{
+		Kind: model.AttachmentKindFile,
+		URL:  "file:///tmp/allowed-group.txt",
+		Name: "allowed-group.txt",
+	}}
+	allowedGroupFileDelivery, err := model.NewOutboxDelivery(allowedGroupFileMessage, 2, allowedGroupFileMessage.Timestamp)
+	if err != nil {
+		t.Fatalf("new allowed first-account group file delivery: %v", err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, allowedGroupFileDelivery); err != nil {
+		t.Fatalf("save allowed first-account group file delivery: %v", err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, allowedGroupFileDelivery); err != nil {
+		t.Fatalf("enqueue allowed first-account group file delivery: %v", err)
+	}
+
+	leased, err := service.LeaseNext(ctx, command.LeaseNextOutboxCommand{
+		WorkerID:         "qq-dispatcher",
+		TTLSeconds:       60,
+		Timestamp:        now.Add(2 * time.Second),
+		AllowedStepKinds: []string{"text"},
+		AllowedStepKindsByAccountConversationID: map[string]map[string]map[string][]string{
+			"1049511700": {
+				"group": {
+					"391289439": {"text", "file"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("lease next: %v", err)
+	}
+	if leased.EventID != "outbox-file-first-account-group-allowed" {
+		t.Fatalf("expected allowed first-account group file lease, got %+v", leased)
+	}
+
+	stillQueued, err := service.Get(ctx, "outbox-file-first-account-group-blocked")
+	if err != nil {
+		t.Fatalf("get blocked first-account group file delivery: %v", err)
+	}
+	if stillQueued.Status != string(model.DeliveryQueued) || stillQueued.Attempts != 0 {
+		t.Fatalf("blocked first-account group file delivery should remain queued, got %+v", stillQueued)
+	}
+}
+
 func TestOutboxServiceDeadLettersNonRetryableFailureKind(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

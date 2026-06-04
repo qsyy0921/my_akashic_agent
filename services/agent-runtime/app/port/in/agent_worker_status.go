@@ -10,4 +10,5 @@ import (
 type AgentWorkerStatusManager interface {
 	ReportAgentWorkerStatus(ctx context.Context, cmd command.ReportAgentWorkerStatusCommand) (query.AgentWorkerStatusView, error)
 	ListAgentWorkerStatuses(ctx context.Context, filter query.AgentWorkerStatusFilter) (query.AgentWorkerStatusesView, error)
+	CleanupStaleAgentWorkerStatuses(ctx context.Context, cmd command.CleanupStaleAgentWorkerStatusesCommand) (query.AgentWorkerStatusCleanupView, error)
 }

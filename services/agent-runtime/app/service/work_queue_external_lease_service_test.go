@@ -146,6 +146,65 @@ func TestWorkQueueExternalLeaseServiceRateLimitsOutboxBeforeLease(t *testing.T) 
 	}
 }
 
+func TestWorkQueueExternalLeaseServiceKeepsRouteGatedOutboxQueued(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewStore()
+	now := time.Date(2026, 5, 31, 11, 35, 0, 0, time.UTC)
+	delivery, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:lease:gated:image",
+		Channel: model.ChannelRef{
+			Kind:             "qq",
+			AccountID:        "1049511700",
+			ConversationID:   "2365524513",
+			ConversationType: model.ConversationTypePrivate,
+		},
+		Attachments: []model.Attachment{
+			{Kind: model.AttachmentKindImage, URL: "https://example.com/test.png"},
+		},
+		Timestamp: now,
+	}, 3, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnqueueOutboxDelivery(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingLeaseDeliveryAdapter{}
+	service := NewWorkQueueExternalLeaseService(
+		NewOutboxServiceWithEvents(store, store, store),
+		NewDeliveryDispatchServiceWithAdapters(store, adapter),
+		WithExternalLeaseAllowedStepKinds([]string{"text"}, nil, nil, nil),
+	)
+
+	result, err := service.ExecuteWorkQueueLease(ctx, command.ExecuteWorkQueueLeaseCommand{
+		WorkKind:  "outbox_delivery",
+		WorkID:    "outbox:lease:gated:image",
+		Timestamp: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("execute gated lease: %v", err)
+	}
+	if result.Disposition != QueueLeaseDispositionNack || result.Reason != "delivery_route_gated" {
+		t.Fatalf("expected gated delivery nack, got %+v", result)
+	}
+	if result.StateStatus != string(model.DeliveryQueued) || result.Attempts != 0 {
+		t.Fatalf("expected queued delivery state without attempts, got %+v", result)
+	}
+	if len(adapter.steps) != 0 {
+		t.Fatalf("gated delivery must not dispatch, got %#v", adapter.steps)
+	}
+	stored, ok, err := store.FindOutboxDelivery(ctx, "outbox:lease:gated:image")
+	if err != nil || !ok {
+		t.Fatalf("find stored delivery: ok=%t err=%v", ok, err)
+	}
+	if stored.Status != model.DeliveryQueued || stored.Attempts != 0 || stored.LeaseOwner != "" {
+		t.Fatalf("gated delivery should remain queued without lease, got %#v", stored)
+	}
+}
+
 func TestWorkQueueExternalLeaseServiceAcksTerminalFailure(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore()

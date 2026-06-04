@@ -4,6 +4,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SDD_DIR = ROOT / "docs" / "sdd"
+ATDD_DIR = ROOT / "docs" / "atdd"
+TDD_DIR = ROOT / "docs" / "tdd"
 
 
 def test_sdd_governance_documents_exist_and_define_roles() -> None:
@@ -22,6 +24,18 @@ def test_sdd_governance_documents_exist_and_define_roles() -> None:
         assert f"`{name}`" in open_issues, f"OPEN_ISSUES.md must explain {name}"
     assert "当前未解决问题" in open_issues
     assert "| ID | 领域 | 问题 | 影响 | 下一步 | 状态 |" in open_issues
+
+
+def test_atdd_and_tdd_guides_exist() -> None:
+    atdd_readme = ATDD_DIR / "README.md"
+    tdd_readme = TDD_DIR / "README.md"
+    assert atdd_readme.exists(), "missing ATDD guide: docs/atdd/README.md"
+    assert tdd_readme.exists(), "missing TDD guide: docs/tdd/README.md"
+
+    atdd_text = atdd_readme.read_text(encoding="utf-8")
+    tdd_text = tdd_readme.read_text(encoding="utf-8")
+    assert "Acceptance Test-Driven Development" in atdd_text
+    assert "Test-Driven Development" in tdd_text
 
 
 def test_open_issues_table_rows_are_structured() -> None:

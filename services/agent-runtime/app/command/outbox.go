@@ -25,10 +25,14 @@ type RetryOutboxCommand struct {
 }
 
 type LeaseNextOutboxCommand struct {
-	WorkerID           string
-	TTLSeconds         int
-	Timestamp          time.Time
-	BlockedAccountKeys []string
+	WorkerID                                  string
+	TTLSeconds                                int
+	Timestamp                                 time.Time
+	BlockedAccountKeys                        []string
+	AllowedStepKinds                          []string
+	AllowedStepKindsByAccount                 map[string][]string
+	AllowedStepKindsByAccountConversationType map[string]map[string][]string
+	AllowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
 }
 
 type LeaseOutboxDeliveryCommand struct {

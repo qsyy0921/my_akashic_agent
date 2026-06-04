@@ -182,6 +182,212 @@ func TestOutboxStoreFindLeaseableAndPersistsLease(t *testing.T) {
 	}
 }
 
+func TestOutboxStoreFindLeaseableSkipsUnsupportedStepKinds(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "outbox-kinds.json")
+	repo, err := store.NewStore(path)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	now := time.Date(2026, 6, 2, 13, 30, 0, 0, time.UTC)
+	imageDelivery, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:image",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "27234224",
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Content: "caption",
+		Attachments: []model.Attachment{{
+			Kind: model.AttachmentKindImage,
+			URL:  "file:///tmp/smoke.png",
+			Name: "smoke.png",
+		}},
+		Timestamp: now,
+		Metadata:  map[string]string{"source": "test"},
+	}, 2, now)
+	if err != nil {
+		t.Fatalf("new image delivery: %v", err)
+	}
+	if err := repo.EnqueueOutboxDelivery(ctx, imageDelivery); err != nil {
+		t.Fatalf("enqueue image delivery: %v", err)
+	}
+
+	textDelivery := newDelivery(t, "outbox:text", "2365524513", now.Add(time.Second))
+	if err := repo.EnqueueOutboxDelivery(ctx, textDelivery); err != nil {
+		t.Fatalf("enqueue text delivery: %v", err)
+	}
+
+	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{
+		Now: now.Add(2 * time.Second),
+		AllowedStepKinds: map[model.DeliveryDispatchStepKind]struct{}{
+			model.DeliveryDispatchStepText: {},
+		},
+	})
+	if err != nil {
+		t.Fatalf("find leaseable: %v", err)
+	}
+	if !ok || leaseable.Message.EventID != "outbox:text" {
+		t.Fatalf("expected text delivery, got ok=%t delivery=%+v", ok, leaseable)
+	}
+}
+
+func TestFindLeaseableOutboxDeliveryRespectsAllowedStepKindsPerAccount(t *testing.T) {
+	ctx := context.Background()
+	repo, err := store.NewStore(filepath.Join(t.TempDir(), "outbox-per-account.json"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	now := time.Date(2026, 6, 2, 13, 10, 0, 0, time.UTC)
+
+	firstFile, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:first-file",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "1001",
+			ConversationType: model.ConversationTypePrivate,
+		},
+		Content: "",
+		Attachments: []model.Attachment{{
+			Kind: model.AttachmentKindFile,
+			URL:  "file:///tmp/first.txt",
+			Name: "first.txt",
+		}},
+		Timestamp: now,
+		Metadata:  map[string]string{"source": "test"},
+	}, 2, now)
+	if err != nil {
+		t.Fatalf("new first file delivery: %v", err)
+	}
+	if err := repo.EnqueueOutboxDelivery(ctx, firstFile); err != nil {
+		t.Fatalf("enqueue first file delivery: %v", err)
+	}
+
+	secondFile, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:second-file",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "2365524513",
+			ConversationID:   "1002",
+			ConversationType: model.ConversationTypePrivate,
+		},
+		Content: "",
+		Attachments: []model.Attachment{{
+			Kind: model.AttachmentKindFile,
+			URL:  "file:///tmp/second.txt",
+			Name: "second.txt",
+		}},
+		Timestamp: now.Add(time.Second),
+		Metadata:  map[string]string{"source": "test"},
+	}, 2, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("new second file delivery: %v", err)
+	}
+	if err := repo.EnqueueOutboxDelivery(ctx, secondFile); err != nil {
+		t.Fatalf("enqueue second file delivery: %v", err)
+	}
+
+	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{
+		Now: now.Add(2 * time.Second),
+		AllowedStepKinds: map[model.DeliveryDispatchStepKind]struct{}{
+			model.DeliveryDispatchStepText: {},
+		},
+		AllowedStepKindsByAccount: map[string]map[model.DeliveryDispatchStepKind]struct{}{
+			"2365524513": {
+				model.DeliveryDispatchStepText: {},
+				model.DeliveryDispatchStepFile: {},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("find leaseable: %v", err)
+	}
+	if !ok || leaseable.Message.EventID != "outbox:second-file" {
+		t.Fatalf("expected second-account file delivery, got ok=%t delivery=%+v", ok, leaseable)
+	}
+}
+
+func TestFindLeaseableOutboxDeliveryRespectsAllowedStepKindsPerAccountConversationType(t *testing.T) {
+	ctx := context.Background()
+	repo, err := store.NewStore(filepath.Join(t.TempDir(), "outbox-per-account-conversation.json"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	now := time.Date(2026, 6, 2, 13, 42, 0, 0, time.UTC)
+
+	groupFile, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:first-group-file",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "3219982",
+			ConversationType: model.ConversationTypeGroup,
+		},
+		Content: "",
+		Attachments: []model.Attachment{{
+			Kind: model.AttachmentKindFile,
+			URL:  "file:///tmp/group.txt",
+			Name: "group.txt",
+		}},
+		Timestamp: now,
+		Metadata:  map[string]string{"source": "test"},
+	}, 2, now)
+	if err != nil {
+		t.Fatalf("new group file delivery: %v", err)
+	}
+	if err := repo.EnqueueOutboxDelivery(ctx, groupFile); err != nil {
+		t.Fatalf("enqueue group file delivery: %v", err)
+	}
+
+	privateFile, err := model.NewOutboxDelivery(model.OutboundMessage{
+		EventID: "outbox:first-private-file",
+		Channel: model.ChannelRef{
+			Kind:             model.ChannelKindQQ,
+			AccountID:        "1049511700",
+			ConversationID:   "2365524513",
+			ConversationType: model.ConversationTypePrivate,
+		},
+		Content: "",
+		Attachments: []model.Attachment{{
+			Kind: model.AttachmentKindFile,
+			URL:  "file:///tmp/private.txt",
+			Name: "private.txt",
+		}},
+		Timestamp: now.Add(time.Second),
+		Metadata:  map[string]string{"source": "test"},
+	}, 2, now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("new private file delivery: %v", err)
+	}
+	if err := repo.EnqueueOutboxDelivery(ctx, privateFile); err != nil {
+		t.Fatalf("enqueue private file delivery: %v", err)
+	}
+
+	leaseable, ok, err := repo.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{
+		Now: now.Add(2 * time.Second),
+		AllowedStepKinds: map[model.DeliveryDispatchStepKind]struct{}{
+			model.DeliveryDispatchStepText: {},
+		},
+		AllowedStepKindsByAccountConversationType: map[string]map[model.ConversationType]map[model.DeliveryDispatchStepKind]struct{}{
+			"1049511700": {
+				model.ConversationTypePrivate: {
+					model.DeliveryDispatchStepText: {},
+					model.DeliveryDispatchStepFile: {},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("find leaseable: %v", err)
+	}
+	if !ok || leaseable.Message.EventID != "outbox:first-private-file" {
+		t.Fatalf("expected first-account private file delivery, got ok=%t delivery=%+v", ok, leaseable)
+	}
+}
+
 func newDelivery(t *testing.T, eventID string, conversationID string, now time.Time) model.OutboxDelivery {
 	t.Helper()
 	delivery, err := model.NewOutboxDelivery(model.OutboundMessage{

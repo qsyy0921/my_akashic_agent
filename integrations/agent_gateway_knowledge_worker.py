@@ -208,6 +208,11 @@ class AgentGatewayKnowledgeWorker:
                     summary = await self.enqueue_if_due_once()
                     if summary.get("enqueued"):
                         logger.info("[agent_runtime_knowledge_worker] enqueued %s", summary)
+                    elif summary.get("reason") == "go_runtime_knowledge_job_planner_enabled":
+                        logger.info(
+                            "[agent_runtime_knowledge_worker] skip legacy enqueue %s",
+                            summary,
+                        )
                     result = await self.process_once()
                     if result.get("processed") and not result.get("failed"):
                         logger.info("[agent_runtime_knowledge_worker] processed %s", result)

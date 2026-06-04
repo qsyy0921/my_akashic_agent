@@ -17,6 +17,7 @@ type RuntimeProcessConfigView struct {
 }
 
 type RuntimeDeliveryConfigView struct {
+	QQGroupSendEnabled           bool                              `json:"qq_group_send_enabled"`
 	TelegramChannels               []string                          `json:"telegram_channels"`
 	TelegramTokenConfigured        bool                              `json:"telegram_token_configured"`
 	TelegramEndpoint               string                            `json:"telegram_endpoint,omitempty"`
@@ -40,11 +41,15 @@ type RuntimeOneBotEndpointConfigView struct {
 }
 
 type RuntimeWorkerConfigView struct {
-	AgentJobRecoveryEnabled          bool `json:"agent_job_recovery_enabled"`
-	OutboxDeliveryWorkerEnabled      bool `json:"outbox_delivery_worker_enabled"`
-	KnowledgeJobPlannerEnabled       bool `json:"knowledge_job_planner_enabled"`
-	AgentJobStrictLeaseToken         bool `json:"agent_job_strict_lease_token"`
-	QueueExternalLeaseAgentJobEnable bool `json:"queue_external_lease_agent_job_enabled"`
+	AgentJobRecoveryEnabled                             bool                                      `json:"agent_job_recovery_enabled"`
+	OutboxDeliveryWorkerEnabled                         bool                                      `json:"outbox_delivery_worker_enabled"`
+	OutboxDeliveryAllowedKinds                          []string                                  `json:"outbox_delivery_allowed_kinds,omitempty"`
+	OutboxDeliveryAllowedKindsByAccount                 map[string][]string                       `json:"outbox_delivery_allowed_kinds_by_account,omitempty"`
+	OutboxDeliveryAllowedKindsByAccountConversationType map[string]map[string][]string            `json:"outbox_delivery_allowed_kinds_by_account_conversation_type,omitempty"`
+	OutboxDeliveryAllowedKindsByAccountConversationID   map[string]map[string]map[string][]string `json:"outbox_delivery_allowed_kinds_by_account_conversation_id,omitempty"`
+	KnowledgeJobPlannerEnabled                          bool                                      `json:"knowledge_job_planner_enabled"`
+	AgentJobStrictLeaseToken                            bool                                      `json:"agent_job_strict_lease_token"`
+	QueueExternalLeaseAgentJobEnable                    bool                                      `json:"queue_external_lease_agent_job_enabled"`
 }
 
 type RuntimeEnvVarView struct {

@@ -141,12 +141,15 @@ func (s *OutboundCutoverReadinessService) CheckOutboundCutoverReadiness(
 		DeliverySmokeReadiness:   smoke,
 		Blockers:                 blockers,
 		Attributes: map[string]string{
-			"checked_by":  "agent_runtime_outbound_cutover_readiness",
-			"side_effect": "none",
+			"checked_by":             "agent_runtime_outbound_cutover_readiness",
+			"side_effect":            "none",
+			"outbox_execution_scope": strings.TrimSpace(queueBackend.OutboxExecutionScope),
+			"outbox_allowed_kinds":   strings.Join(queueBackend.OutboxAllowedKinds, ","),
 		},
 		Notes: []string{
 			"read-only outbound cutover preflight; no platform messages are sent",
 			"ready requires OneBot config, delivery smoke adapter support, and a running Go outbox execution path",
+			"delivery smoke readiness only proves adapter routing and synthetic planning; live rich-media capability still depends on real platform session behavior",
 		},
 		SideEffect: "none",
 	}, nil

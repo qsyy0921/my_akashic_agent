@@ -67,6 +67,20 @@ func (s *Store) ListReceiverStatuses(_ context.Context) ([]model.ReceiverStatus,
 	return model.SortedReceiverStatuses(receiverStatusItems(s.receivers)), nil
 }
 
+func (s *Store) DeleteReceiverStatus(_ context.Context, receiverID string) error {
+	if s == nil {
+		return errors.New("receiver status store is nil")
+	}
+	receiverID = strings.TrimSpace(receiverID)
+	if receiverID == "" {
+		return errors.New("receiver status store delete requires receiver_id")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.receivers, receiverID)
+	return s.flush()
+}
+
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {

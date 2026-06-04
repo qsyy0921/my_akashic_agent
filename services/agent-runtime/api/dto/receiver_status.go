@@ -13,3 +13,9 @@ type ReceiverStatusRequest struct {
 	Metadata    map[string]string `json:"metadata"`
 	Timestamp   string            `json:"timestamp"`
 }
+
+type CleanupStaleReceiverStatusesRequest struct {
+	ReceiverID        string `json:"receiver_id"`
+	Timestamp         string `json:"timestamp"`
+	StaleAfterSeconds int    `json:"stale_after_seconds"`
+}

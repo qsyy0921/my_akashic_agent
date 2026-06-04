@@ -85,7 +85,7 @@ func TestExternalLeaseNATSSmokeOutboxDispositions(t *testing.T) {
 		errs <- consumer.Run(runCtx, executor)
 	}()
 
-	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	success := saveSmokeDelivery(t, ctx, store, "smoke:external:success:"+suffix, "success", 3, now)
 	retry := saveSmokeDelivery(t, ctx, store, "smoke:external:retry:"+suffix, "retry", 3, now)
 	dead := saveSmokeDelivery(t, ctx, store, "smoke:external:dead:"+suffix, "dead", 1, now)
@@ -150,7 +150,7 @@ func TestExternalLeaseNATSSmokeAgentJobDuplicateTerminalAck(t *testing.T) {
 
 	store := memory.NewStore()
 	jobs := appservice.NewAgentJobServiceWithEvents(store, store)
-	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	jobID := "smoke:agent_job:terminal:" + suffix
 	created, err := jobs.Create(ctx, command.CreateAgentJobCommand{
 		JobID:   jobID,
@@ -270,7 +270,7 @@ func TestExternalLeaseNATSSmokeAgentJobPendingRunningSucceededFlow(t *testing.T)
 
 	store := memory.NewStore()
 	jobs := appservice.NewAgentJobServiceWithEvents(store, store)
-	now := time.Date(2026, 5, 31, 2, 30, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	jobID := "smoke:agent_job:flow:" + suffix
 	created, err := jobs.Create(ctx, command.CreateAgentJobCommand{
 		JobID:   jobID,

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gorilla/websocket"
@@ -217,6 +218,63 @@ func TestOneBotAdapterClassifiesRouteError(t *testing.T) {
 	}
 }
 
+func TestOneBotAdapterWebSocketFailureToleratesStructuredStatusField(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		var actionRequest map[string]any
+		if err := conn.ReadJSON(&actionRequest); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"status": map[string]any{
+				"phase": "error",
+			},
+			"retcode": 1200,
+			"message": "rich media transfer failed",
+			"echo":    actionRequest["echo"],
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_1049511700": {WebSocketURL: wsURL},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = adapter.DispatchDeliveryStep(context.Background(), model.DeliveryDispatchStep{
+		StepIndex:        1,
+		Kind:             model.DeliveryDispatchStepText,
+		Channel:          "qq_1049511700",
+		ChatID:           "27234224",
+		ConversationType: model.ConversationTypeGroup,
+		Message:          "hello",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var kinded interface{ DeliveryErrorKind() string }
+	if !errors.As(err, &kinded) {
+		t.Fatalf("expected kinded error: %v", err)
+	}
+	if got := kinded.DeliveryErrorKind(); got != string(model.DeliveryErrorPlatform) {
+		t.Fatalf("expected platform_error, got %s", got)
+	}
+	if !strings.Contains(err.Error(), "rich media transfer failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestOneBotAdapterSupportsConfiguredChannelAliases(t *testing.T) {
 	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
 		Endpoints: map[string]onebotdelivery.EndpointConfig{
@@ -306,6 +364,276 @@ func TestOneBotAdapterDispatchesViaWebSocketAction(t *testing.T) {
 	}
 	if result.ProviderMessageID != "42" || result.Provider != "onebot" {
 		t.Fatalf("unexpected dispatch result: %+v", result)
+	}
+}
+
+func TestOneBotAdapterDispatchesWebSocketImageWhenNonEchoMessageIsArray(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	dir := t.TempDir()
+	imagePath := filepath.Join(dir, "image.png")
+	if err := os.WriteFile(imagePath, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var (
+		mu       sync.Mutex
+		actions  []map[string]any
+		connSeen int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		mu.Lock()
+		connSeen++
+		currentConn := connSeen
+		mu.Unlock()
+		switch currentConn {
+		case 1:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"stream_id": actionRequest["echo"],
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case 2:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"file_path": "/app/.config/QQ/NapCat/temp/smoke.png",
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case 3:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"post_type": "message",
+				"message": []map[string]any{
+					{"type": "text", "data": map[string]any{"text": "ignored event"}},
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"message_id": 77,
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatalf("unexpected websocket connection #%d", currentConn)
+		}
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_1049511700": {WebSocketURL: wsURL},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.DispatchDeliveryStep(context.Background(), model.DeliveryDispatchStep{
+		StepIndex:        1,
+		Kind:             model.DeliveryDispatchStepImage,
+		Channel:          "qq_1049511700",
+		ChatID:           "27234224",
+		ConversationType: model.ConversationTypeGroup,
+		Message:          "caption",
+		Image:            imagePath,
+	})
+	if err != nil {
+		t.Fatalf("dispatch websocket image: %v", err)
+	}
+
+	if len(actions) != 3 {
+		t.Fatalf("expected stream chunk + complete + send actions, got %+v", actions)
+	}
+	if actions[0]["action"] != "upload_file_stream" || actions[1]["action"] != "upload_file_stream" || actions[2]["action"] != "send_group_msg" {
+		t.Fatalf("unexpected websocket action order: %+v", actions)
+	}
+	params := actions[2]["params"].(map[string]any)
+	if params["group_id"] != float64(27234224) {
+		t.Fatalf("unexpected params: %+v", params)
+	}
+	message := params["message"].([]any)
+	imageSegment := message[1].(map[string]any)
+	imageData := imageSegment["data"].(map[string]any)
+	if imageData["file"] != "/app/.config/QQ/NapCat/temp/smoke.png" {
+		t.Fatalf("expected streamed image path, got %+v", imageData)
+	}
+	if result.ProviderMessageID != "77" || result.Provider != "onebot" {
+		t.Fatalf("unexpected dispatch result: %+v", result)
+	}
+}
+
+func TestOneBotAdapterDispatchesWebSocketPrivateFileViaStreamUpload(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(filePath, []byte("file-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var (
+		mu       sync.Mutex
+		actions  []map[string]any
+		connSeen int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		mu.Lock()
+		connSeen++
+		currentConn := connSeen
+		mu.Unlock()
+		switch currentConn {
+		case 1:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"message_id": 11,
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case 2:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"stream_id": actionRequest["echo"],
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case 3:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data": map[string]any{
+					"file_path": "/app/.config/QQ/NapCat/temp/note.txt",
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case 4:
+			var actionRequest map[string]any
+			if err := conn.ReadJSON(&actionRequest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			actions = append(actions, actionRequest)
+			mu.Unlock()
+			if err := conn.WriteJSON(map[string]any{
+				"status":  "ok",
+				"retcode": 0,
+				"echo":    actionRequest["echo"],
+				"data":    map[string]any{},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatalf("unexpected websocket connection #%d", currentConn)
+		}
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	adapter, err := onebotdelivery.NewAdapter(onebotdelivery.Config{
+		Endpoints: map[string]onebotdelivery.EndpointConfig{
+			"qq_2365524513": {WebSocketURL: wsURL},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.DispatchDeliveryStep(context.Background(), model.DeliveryDispatchStep{
+		StepIndex:        1,
+		Kind:             model.DeliveryDispatchStepFile,
+		Channel:          "qq_2365524513",
+		ChatID:           "1049511700",
+		ConversationType: model.ConversationTypePrivate,
+		Message:          "caption",
+		File:             filePath,
+	})
+	if err != nil {
+		t.Fatalf("dispatch websocket file: %v", err)
+	}
+
+	if len(actions) != 4 {
+		t.Fatalf("expected text + stream chunk + complete + upload actions, got %+v", actions)
+	}
+	if actions[0]["action"] != "send_private_msg" || actions[1]["action"] != "upload_file_stream" || actions[2]["action"] != "upload_file_stream" || actions[3]["action"] != "upload_private_file" {
+		t.Fatalf("unexpected websocket action order: %+v", actions)
+	}
+	uploadParams := actions[3]["params"].(map[string]any)
+	if uploadParams["file"] != "/app/.config/QQ/NapCat/temp/note.txt" || uploadParams["name"] != "note.txt" {
+		t.Fatalf("unexpected upload params: %+v", uploadParams)
+	}
+	if result.Attributes["text_message_id"] != "11" {
+		t.Fatalf("expected text message id attribute: %+v", result)
 	}
 }
 

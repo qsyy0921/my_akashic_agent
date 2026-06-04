@@ -60,8 +60,12 @@ func (s *OutboxService) LeaseNext(ctx context.Context, cmd command.LeaseNextOutb
 	}
 	ttl := time.Duration(cmd.TTLSeconds) * time.Second
 	delivery, ok, err := s.repository.FindLeaseableOutboxDelivery(ctx, outport.OutboxLeaseFilter{
-		Now:                cmd.Timestamp,
-		BlockedAccountKeys: outboxBlockedAccountKeySet(cmd.BlockedAccountKeys),
+		Now:                       cmd.Timestamp,
+		BlockedAccountKeys:        outboxBlockedAccountKeySet(cmd.BlockedAccountKeys),
+		AllowedStepKinds:          outboxAllowedStepKindSet(cmd.AllowedStepKinds),
+		AllowedStepKindsByAccount: outboxAllowedStepKindByAccountSet(cmd.AllowedStepKindsByAccount),
+		AllowedStepKindsByAccountConversationType: outboxAllowedStepKindByAccountConversationTypeSet(cmd.AllowedStepKindsByAccountConversationType),
+		AllowedStepKindsByAccountConversationID:   outboxAllowedStepKindByAccountConversationIDSet(cmd.AllowedStepKindsByAccountConversationID),
 	})
 	if err != nil {
 		return query.OutboxDeliveryView{}, err
@@ -97,6 +101,133 @@ func outboxBlockedAccountKeySet(items []string) map[string]struct{} {
 		return nil
 	}
 	return result
+}
+
+func outboxAllowedStepKindSet(items []string) map[model.DeliveryDispatchStepKind]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[model.DeliveryDispatchStepKind]struct{}, len(items))
+	for _, item := range items {
+		switch model.DeliveryDispatchStepKind(strings.ToLower(strings.TrimSpace(item))) {
+		case model.DeliveryDispatchStepText, model.DeliveryDispatchStepImage, model.DeliveryDispatchStepFile:
+			result[model.DeliveryDispatchStepKind(strings.ToLower(strings.TrimSpace(item)))] = struct{}{}
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func outboxAllowedStepKindByAccountSet(items map[string][]string) map[string]map[model.DeliveryDispatchStepKind]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[string]map[model.DeliveryDispatchStepKind]struct{}, len(items))
+	for accountID, kinds := range items {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" {
+			continue
+		}
+		normalized := outboxAllowedStepKindSet(kinds)
+		if len(normalized) == 0 {
+			continue
+		}
+		result[accountID] = normalized
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func outboxAllowedStepKindByAccountConversationTypeSet(items map[string]map[string][]string) map[string]map[model.ConversationType]map[model.DeliveryDispatchStepKind]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[string]map[model.ConversationType]map[model.DeliveryDispatchStepKind]struct{}, len(items))
+	for accountID, byConversationType := range items {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" || len(byConversationType) == 0 {
+			continue
+		}
+		normalizedByType := make(map[model.ConversationType]map[model.DeliveryDispatchStepKind]struct{})
+		for conversationType, kinds := range byConversationType {
+			normalizedConversationType := normalizeConversationType(conversationType)
+			if normalizedConversationType == "" {
+				continue
+			}
+			normalizedKinds := outboxAllowedStepKindSet(kinds)
+			if len(normalizedKinds) == 0 {
+				continue
+			}
+			normalizedByType[normalizedConversationType] = normalizedKinds
+		}
+		if len(normalizedByType) == 0 {
+			continue
+		}
+		result[accountID] = normalizedByType
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func outboxAllowedStepKindByAccountConversationIDSet(items map[string]map[string]map[string][]string) map[string]map[model.ConversationType]map[string]map[model.DeliveryDispatchStepKind]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make(map[string]map[model.ConversationType]map[string]map[model.DeliveryDispatchStepKind]struct{}, len(items))
+	for accountID, byConversationType := range items {
+		accountID = strings.TrimSpace(accountID)
+		if accountID == "" || len(byConversationType) == 0 {
+			continue
+		}
+		normalizedByType := make(map[model.ConversationType]map[string]map[model.DeliveryDispatchStepKind]struct{})
+		for conversationType, byConversationID := range byConversationType {
+			normalizedConversationType := normalizeConversationType(conversationType)
+			if normalizedConversationType == "" || len(byConversationID) == 0 {
+				continue
+			}
+			normalizedByID := make(map[string]map[model.DeliveryDispatchStepKind]struct{})
+			for conversationID, kinds := range byConversationID {
+				conversationID = strings.TrimSpace(conversationID)
+				if conversationID == "" {
+					continue
+				}
+				normalizedKinds := outboxAllowedStepKindSet(kinds)
+				if len(normalizedKinds) == 0 {
+					continue
+				}
+				normalizedByID[conversationID] = normalizedKinds
+			}
+			if len(normalizedByID) == 0 {
+				continue
+			}
+			normalizedByType[normalizedConversationType] = normalizedByID
+		}
+		if len(normalizedByType) == 0 {
+			continue
+		}
+		result[accountID] = normalizedByType
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeConversationType(raw string) model.ConversationType {
+	switch model.ConversationType(strings.ToLower(strings.TrimSpace(raw))) {
+	case model.ConversationTypePrivate:
+		return model.ConversationTypePrivate
+	case model.ConversationTypeGroup:
+		return model.ConversationTypeGroup
+	default:
+		return ""
+	}
 }
 
 func (s *OutboxService) Lease(ctx context.Context, cmd command.LeaseOutboxDeliveryCommand) (query.OutboxDeliveryView, error) {

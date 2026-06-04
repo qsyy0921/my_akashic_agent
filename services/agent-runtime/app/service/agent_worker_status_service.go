@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,6 +71,10 @@ func NewAgentWorkerStatusServiceWithRepository(
 		return nil, err
 	}
 	if repository != nil {
+		now := time.Now().UTC()
+		if service.clock != nil {
+			now = service.clock().UTC()
+		}
 		items, err := repository.ListAgentWorkerStatuses(ctx)
 		if err != nil {
 			return nil, err
@@ -78,7 +83,14 @@ func NewAgentWorkerStatusServiceWithRepository(
 			if err := item.Validate(); err != nil {
 				continue
 			}
-			service.workers[item.WorkerID] = item
+			projected, stale := staleAgentWorkerStatus(item, now, service.staleAfter)
+			if stale {
+				if err := repository.DeleteAgentWorkerStatus(ctx, item.WorkerID); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			service.workers[item.WorkerID] = projected
 		}
 	}
 	return service, nil
@@ -128,8 +140,12 @@ func (s *AgentWorkerStatusService) ReportAgentWorkerStatus(
 	}
 	if existing, ok := s.workers[status.WorkerID]; ok {
 		if err := rejectAgentWorkerStatusLeaseConflict(existing, status, timestamp); err != nil {
-			s.mu.Unlock()
-			return query.AgentWorkerStatusView{}, err
+			if canReplaceAgentWorkerLeaseConflict(existing, status, cmd.ReplaceExistingInstanceID) {
+				// allow controlled takeover after the caller proved the existing instance is gone
+			} else {
+				s.mu.Unlock()
+				return query.AgentWorkerStatusView{}, err
+			}
 		}
 	}
 	if s.repository != nil {
@@ -177,12 +193,83 @@ func (s *AgentWorkerStatusService) ListAgentWorkerStatuses(
 	return agentWorkerStatusesView(items, staleByWorkerID), nil
 }
 
+func (s *AgentWorkerStatusService) CleanupStaleAgentWorkerStatuses(
+	ctx context.Context,
+	cmd command.CleanupStaleAgentWorkerStatusesCommand,
+) (query.AgentWorkerStatusCleanupView, error) {
+	if err := ctx.Err(); err != nil {
+		return query.AgentWorkerStatusCleanupView{}, err
+	}
+	if s == nil {
+		return query.AgentWorkerStatusCleanupView{}, errors.New("agent worker status service is nil")
+	}
+
+	now := cmd.Timestamp
+	if now.IsZero() {
+		if s.clock != nil {
+			now = s.clock().UTC()
+		} else {
+			now = time.Now().UTC()
+		}
+	}
+	staleAfter := s.staleAfter
+	if cmd.StaleAfterSeconds > 0 {
+		staleAfter = agentWorkerStatusStaleAfter(cmd.StaleAfterSeconds)
+	}
+	workerIDFilter := strings.TrimSpace(cmd.WorkerID)
+	instanceIDFilter := strings.TrimSpace(cmd.InstanceID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.workers == nil {
+		s.workers = make(map[string]model.AgentWorkerStatus)
+	}
+
+	deletedProjected := make([]model.AgentWorkerStatus, 0)
+	for _, item := range model.SortedAgentWorkerStatuses(s.snapshotLocked()) {
+		if workerIDFilter != "" && item.WorkerID != workerIDFilter {
+			continue
+		}
+		if instanceIDFilter != "" && item.InstanceID != instanceIDFilter {
+			continue
+		}
+		projected, stale := staleAgentWorkerStatus(item, now, staleAfter)
+		if !stale {
+			continue
+		}
+		if s.repository != nil {
+			if err := s.repository.DeleteAgentWorkerStatus(ctx, item.WorkerID); err != nil {
+				return query.AgentWorkerStatusCleanupView{}, err
+			}
+		}
+		delete(s.workers, item.WorkerID)
+		deletedProjected = append(deletedProjected, projected)
+	}
+
+	remainingOriginal := s.snapshotLocked()
+	remainingProjected := make([]model.AgentWorkerStatus, len(remainingOriginal))
+	staleByWorkerID := make(map[string]bool)
+	for index, item := range remainingOriginal {
+		projected, stale := staleAgentWorkerStatus(item, now, staleAfter)
+		remainingProjected[index] = projected
+		if stale {
+			staleByWorkerID[item.WorkerID] = true
+		}
+	}
+	return agentWorkerStatusCleanupView(deletedProjected, remainingProjected, staleByWorkerID), nil
+}
+
 func (s *AgentWorkerStatusService) snapshotLocked() []model.AgentWorkerStatus {
 	items := make([]model.AgentWorkerStatus, 0, len(s.workers))
 	for _, item := range s.workers {
 		items = append(items, item)
 	}
 	return model.SortedAgentWorkerStatuses(items)
+}
+
+func staleAgentWorkerStatus(item model.AgentWorkerStatus, now time.Time, staleAfter time.Duration) (model.AgentWorkerStatus, bool) {
+	projected := item.WithStaleHeartbeat(now, staleAfter)
+	return projected, projected.Status != item.Status
 }
 
 func agentWorkerStatusesView(items []model.AgentWorkerStatus, staleByWorkerID map[string]bool) query.AgentWorkerStatusesView {
@@ -237,6 +324,34 @@ func agentWorkerStatusesView(items []model.AgentWorkerStatus, staleByWorkerID ma
 	}
 }
 
+func agentWorkerStatusCleanupView(
+	deleted []model.AgentWorkerStatus,
+	remaining []model.AgentWorkerStatus,
+	staleByWorkerID map[string]bool,
+) query.AgentWorkerStatusCleanupView {
+	deletedStaleByWorkerID := make(map[string]bool, len(deleted))
+	totals := map[string]int{
+		"deleted":         len(deleted),
+		"remaining":       len(remaining),
+		"remaining_stale": 0,
+	}
+	for _, item := range deleted {
+		deletedStaleByWorkerID[item.WorkerID] = true
+	}
+	for _, item := range remaining {
+		if staleByWorkerID[item.WorkerID] {
+			totals["remaining_stale"]++
+		}
+	}
+	return query.AgentWorkerStatusCleanupView{
+		Deleted:    assembler.ToAgentWorkerStatusViews(deleted, deletedStaleByWorkerID),
+		Remaining:  assembler.ToAgentWorkerStatusViews(remaining, staleByWorkerID),
+		Totals:     totals,
+		Notes:      []string{"side_effect=runtime_state_only", "stale_agent_worker_statuses_removed"},
+		SideEffect: "runtime_state_only",
+	}
+}
+
 func agentWorkerStatusStaleAfter(seconds int) time.Duration {
 	if seconds <= 0 {
 		seconds = defaultAgentWorkerStatusStaleSeconds
@@ -275,6 +390,23 @@ func rejectAgentWorkerStatusLeaseConflict(existing model.AgentWorkerStatus, inco
 		ExistingInstanceID: existing.InstanceID,
 		LeaseUntil:         existing.LeaseUntil,
 	}
+}
+
+func canReplaceAgentWorkerLeaseConflict(
+	existing model.AgentWorkerStatus,
+	incoming model.AgentWorkerStatus,
+	replaceExistingInstanceID string,
+) bool {
+	if replaceExistingInstanceID == "" {
+		return false
+	}
+	if existing.InstanceID == "" || incoming.InstanceID == "" {
+		return false
+	}
+	if existing.InstanceID == incoming.InstanceID {
+		return false
+	}
+	return existing.InstanceID == replaceExistingInstanceID
 }
 
 func agentWorkerStatusMetadataWithStale(items map[string]string, staleAfter time.Duration) map[string]string {

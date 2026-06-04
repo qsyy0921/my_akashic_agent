@@ -10,7 +10,8 @@ the invariants.
 
 0. **Iteration Contract**
    - At the start of a turn, read `TODO.md`, `DONE.md`, `LIVE_CHECKS.md`,
-     `PROBLEM_REGISTRY.md`, `OPEN_ISSUES.md`, `BACKLOG.md`, and `git status`.
+     `PROBLEM_REGISTRY.md`, `OPEN_ISSUES.md`, `BACKLOG.md`, `../atdd/README.md`,
+     `../tdd/README.md`, and `git status`.
    - `TODO.md` is the current iteration contract. Finish every unchecked item
      in it before ending the iteration.
    - If an item cannot be finished because of an external blocker, record the
@@ -30,6 +31,10 @@ the invariants.
    - Define inputs, outputs, event schemas, state transitions, and invariants.
    - Define failure behavior and observability.
    - Define acceptance tests before implementation.
+   - If the slice changes observable behavior, write or update an ATDD document
+     under `docs/atdd/`.
+   - Write or update a TDD document under `docs/tdd/` describing the automated
+     test matrix for the slice.
 
 3. **Architecture Check**
    - Verify the change fits existing module boundaries.
@@ -49,6 +54,7 @@ the invariants.
 
 6. **Acceptance**
    - Run listed tests.
+   - Run or update the ATDD scenarios and TDD commands listed for the slice.
    - Record any gaps or deferred work.
 
 ## Review Gate
@@ -56,6 +62,8 @@ the invariants.
 A change is not accepted if:
 
 - it has no spec for new cross-module behavior;
+- it changes observable behavior without an ATDD update;
+- it changes behavior or contracts without a TDD update;
 - it introduces routing or safety logic inside adapters;
 - it creates hidden coupling between Python and Go internals;
 - it lacks tests for loop prevention, dedupe, or retry behavior;

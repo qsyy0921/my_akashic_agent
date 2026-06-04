@@ -98,6 +98,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init inbox event repository: %v", err)
 	}
+	observeTargets, err := newObserveTargetService()
+	if err != nil {
+		log.Fatalf("init observe target service: %v", err)
+	}
 	knowledgeCheckpointRepository, err := newKnowledgeCheckpointRepository()
 	if err != nil {
 		log.Fatalf("init knowledge checkpoint repository: %v", err)
@@ -177,7 +181,12 @@ func main() {
 	imageJobs := appservice.NewImageJobServiceWithAgentJobs(store, store, store)
 	outbox := appservice.NewOutboxServiceWithEvents(outboxRepository, outboxQueue, outboxEventStore)
 	outboxEvents := appservice.NewOutboxDeliveryEventService(outboxEventStore)
-	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithAdapters(outboxRepository, deliveryAdapters...)
+	deliveryDispatch := appservice.NewDeliveryDispatchServiceWithObserveTargetsAdaptersAndPolicy(
+		outboxRepository,
+		observeTargets,
+		boolEnvDefault("AKASHIC_QQ_GROUP_SEND_ENABLED", true),
+		deliveryAdapters...,
+	)
 	agentJobs := appservice.NewAgentJobServiceWithEventsAndWorkQueue(
 		agentJobRepository,
 		agentJobEventStore,
@@ -209,6 +218,12 @@ func main() {
 			outbox,
 			deliveryDispatch,
 			appservice.WithExternalLeaseChannelByAccount(keyValueCSVEnv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT")),
+			appservice.WithExternalLeaseAllowedStepKinds(
+				outboxAllowedKindsFromEnv(),
+				outboxAllowedKindsByAccountFromEnv(),
+				outboxAllowedKindsByAccountConversationTypeFromEnv(),
+				outboxAllowedKindsByAccountConversationIDFromEnv(),
+			),
 			appservice.WithExternalLeaseAccountRateLimit(mustOutboxAccountRateLimitConfig()),
 			appservice.WithExternalLeaseWorker(
 				strings.TrimSpace(os.Getenv("AKASHIC_QUEUE_EXTERNAL_LEASE_WORKER_ID")),
@@ -294,10 +309,6 @@ func main() {
 		log.Fatalf("init agent worker status service: %v", err)
 	}
 	runtimeConfig := appservice.NewRuntimeConfigService(runtimeConfigFromEnv(addr, addrSource, botIDs))
-	observeTargets, err := newObserveTargetService()
-	if err != nil {
-		log.Fatalf("init observe target service: %v", err)
-	}
 	knowledgeJobPlannerPreview := appservice.NewKnowledgeJobPlannerService(observeTargets, agentJobs)
 	knowledgeJobPlannerPreviewDefaults := knowledgeJobPlannerPreviewCommandFromEnv()
 	knowledgeJobPlannerReadiness := appservice.NewKnowledgeJobPlannerReadinessService(appservice.KnowledgeJobPlannerReadinessDeps{
@@ -355,6 +366,19 @@ func main() {
 	agentJobExternalLeasePlan := appservice.NewAgentJobExternalLeasePlanService(appservice.AgentJobExternalLeasePlanDeps{
 		Readiness: agentJobExternalLeaseReadiness,
 	})
+	agentJobExternalLeasePreflight := appservice.NewAgentJobExternalLeasePreflightService(
+		agentJobExternalLeasePlan,
+		controlMutationPreflight,
+	)
+	agentJobExternalLeaseLauncherBundle := appservice.NewAgentJobExternalLeaseLauncherBundleService(
+		agentJobExternalLeasePlan,
+	)
+	agentJobExternalLeaseCutoverDiff := appservice.NewAgentJobExternalLeaseCutoverDiffService(
+		agentJobExternalLeaseLauncherBundle,
+		runtimeConfig,
+		queueBackend,
+		queueTopology,
+	)
 	agentJobCapacityPlan := appservice.NewAgentJobCapacityPlanService(appservice.AgentJobCapacityPlanDeps{
 		AgentJobs:    agentJobMetrics,
 		AgentWorkers: agentWorkerStatuses,
@@ -422,7 +446,7 @@ func main() {
 	httptrigger.RegisterAgentJobMetricsRoutes(mux, agentJobMetrics)
 	httptrigger.RegisterAgentJobCapacityRoutes(mux, agentJobCapacityPlan)
 	httptrigger.RegisterAgentJobPriorityRoutes(mux, agentJobPriorityPlan)
-	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, agentJobExternalLeaseReadiness, agentJobExternalLeasePlan)
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, agentJobExternalLeaseReadiness, agentJobExternalLeasePlan, agentJobExternalLeasePreflight, agentJobExternalLeaseLauncherBundle, agentJobExternalLeaseCutoverDiff)
 	httptrigger.RegisterOutboxEventRoutes(mux, outboxEvents)
 	httptrigger.RegisterOutboxMetricsRoutes(mux, outboxMetrics)
 	httptrigger.RegisterQueueBackendRoutes(mux, queueBackend)

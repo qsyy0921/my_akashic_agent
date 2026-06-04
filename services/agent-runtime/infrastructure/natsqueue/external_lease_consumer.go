@@ -22,35 +22,43 @@ const (
 )
 
 type ExternalLeaseConsumerConfig struct {
-	URL                 string
-	Stream              string
-	SubjectPrefix       string
-	Durable             string
-	WorkerID            string
-	LeaseTTLSeconds     int
-	NackDelay           time.Duration
-	Timeout             time.Duration
-	ConsumerConcurrency int
-	MaxInFlight         int
-	ChannelByAccount    map[string]string
-	IncludeAgentJobs    bool
+	URL                                       string
+	Stream                                    string
+	SubjectPrefix                             string
+	Durable                                   string
+	WorkerID                                  string
+	LeaseTTLSeconds                           int
+	NackDelay                                 time.Duration
+	Timeout                                   time.Duration
+	ConsumerConcurrency                       int
+	MaxInFlight                               int
+	ChannelByAccount                          map[string]string
+	AllowedStepKinds                          []string
+	AllowedStepKindsByAccount                 map[string][]string
+	AllowedStepKindsByAccountConversationType map[string]map[string][]string
+	AllowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
+	IncludeAgentJobs                          bool
 }
 
 type ExternalLeaseConsumer struct {
-	conn                *nats.Conn
-	js                  jetStreamConsumer
-	sub                 *nats.Subscription
-	stream              string
-	subjectPrefix       string
-	durable             string
-	workerID            string
-	leaseTTLSeconds     int
-	nackDelay           time.Duration
-	timeout             time.Duration
-	consumerConcurrency int
-	maxInFlight         int
-	channelByAccount    map[string]string
-	includeAgentJobs    bool
+	conn                                      *nats.Conn
+	js                                        jetStreamConsumer
+	sub                                       *nats.Subscription
+	stream                                    string
+	subjectPrefix                             string
+	durable                                   string
+	workerID                                  string
+	leaseTTLSeconds                           int
+	nackDelay                                 time.Duration
+	timeout                                   time.Duration
+	consumerConcurrency                       int
+	maxInFlight                               int
+	channelByAccount                          map[string]string
+	allowedStepKinds                          []string
+	allowedStepKindsByAccount                 map[string][]string
+	allowedStepKindsByAccountConversationType map[string]map[string][]string
+	allowedStepKindsByAccountConversationID   map[string]map[string]map[string][]string
+	includeAgentJobs                          bool
 }
 
 func NewExternalLeaseConsumer(config ExternalLeaseConsumerConfig) (*ExternalLeaseConsumer, error) {
@@ -68,19 +76,23 @@ func NewExternalLeaseConsumer(config ExternalLeaseConsumerConfig) (*ExternalLeas
 		return nil, err
 	}
 	consumer := &ExternalLeaseConsumer{
-		conn:                conn,
-		js:                  js,
-		stream:              config.Stream,
-		subjectPrefix:       config.SubjectPrefix,
-		durable:             config.Durable,
-		workerID:            config.WorkerID,
-		leaseTTLSeconds:     config.LeaseTTLSeconds,
-		nackDelay:           config.NackDelay,
-		timeout:             config.Timeout,
-		consumerConcurrency: config.ConsumerConcurrency,
-		maxInFlight:         config.MaxInFlight,
-		channelByAccount:    cloneMap(config.ChannelByAccount),
-		includeAgentJobs:    config.IncludeAgentJobs,
+		conn:                      conn,
+		js:                        js,
+		stream:                    config.Stream,
+		subjectPrefix:             config.SubjectPrefix,
+		durable:                   config.Durable,
+		workerID:                  config.WorkerID,
+		leaseTTLSeconds:           config.LeaseTTLSeconds,
+		nackDelay:                 config.NackDelay,
+		timeout:                   config.Timeout,
+		consumerConcurrency:       config.ConsumerConcurrency,
+		maxInFlight:               config.MaxInFlight,
+		channelByAccount:          cloneMap(config.ChannelByAccount),
+		allowedStepKinds:          cloneStrings(config.AllowedStepKinds),
+		allowedStepKindsByAccount: cloneStringSliceMap(config.AllowedStepKindsByAccount),
+		allowedStepKindsByAccountConversationType: cloneStringSliceMatrix(config.AllowedStepKindsByAccountConversationType),
+		allowedStepKindsByAccountConversationID:   cloneStringSliceTensor(config.AllowedStepKindsByAccountConversationID),
+		includeAgentJobs:                          config.IncludeAgentJobs,
 	}
 	if err := consumer.ensureStream(); err != nil {
 		conn.Close()
@@ -157,6 +169,10 @@ func (c *ExternalLeaseConsumer) handleMessage(ctx context.Context, executor inpo
 	cmd.WorkerID = c.workerID
 	cmd.LeaseTTLSeconds = c.leaseTTLSeconds
 	cmd.ChannelByAccount = cloneMap(c.channelByAccount)
+	cmd.AllowedStepKinds = cloneStrings(c.allowedStepKinds)
+	cmd.AllowedStepKindsByAccount = cloneStringSliceMap(c.allowedStepKindsByAccount)
+	cmd.AllowedStepKindsByAccountConversationType = cloneStringSliceMatrix(c.allowedStepKindsByAccountConversationType)
+	cmd.AllowedStepKindsByAccountConversationID = cloneStringSliceTensor(c.allowedStepKindsByAccountConversationID)
 	result, err := executor.ExecuteWorkQueueLease(ctx, cmd)
 	if err != nil {
 		_ = msg.Nak()
@@ -267,6 +283,10 @@ func normalizeExternalLeaseConsumerConfig(config ExternalLeaseConsumerConfig) Ex
 		config.MaxInFlight = config.ConsumerConcurrency
 	}
 	config.ChannelByAccount = cloneMap(config.ChannelByAccount)
+	config.AllowedStepKinds = cloneStrings(config.AllowedStepKinds)
+	config.AllowedStepKindsByAccount = cloneStringSliceMap(config.AllowedStepKindsByAccount)
+	config.AllowedStepKindsByAccountConversationType = cloneStringSliceMatrix(config.AllowedStepKindsByAccountConversationType)
+	config.AllowedStepKindsByAccountConversationID = cloneStringSliceTensor(config.AllowedStepKindsByAccountConversationID)
 	return config
 }
 
@@ -276,4 +296,112 @@ func externalLeaseSubscriptionSubject(subjectPrefix string, includeAgentJobs boo
 		return subjectPrefix + ".>"
 	}
 	return subjectPrefix + ".outbox.>"
+}
+
+func cloneStrings(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		cloned = append(cloned, item)
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceMap(items map[string][]string) map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(items))
+	for key, values := range items {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if normalized := cloneStrings(values); len(normalized) > 0 {
+			cloned[key] = normalized
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceMatrix(items map[string]map[string][]string) map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string][]string, len(items))
+	for outerKey, byInner := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byInner) == 0 {
+			continue
+		}
+		innerClone := make(map[string][]string)
+		for innerKey, values := range byInner {
+			innerKey = strings.TrimSpace(innerKey)
+			if innerKey == "" {
+				continue
+			}
+			if normalized := cloneStrings(values); len(normalized) > 0 {
+				innerClone[innerKey] = normalized
+			}
+		}
+		if len(innerClone) > 0 {
+			cloned[outerKey] = innerClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
+}
+
+func cloneStringSliceTensor(items map[string]map[string]map[string][]string) map[string]map[string]map[string][]string {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make(map[string]map[string]map[string][]string, len(items))
+	for outerKey, byMiddle := range items {
+		outerKey = strings.TrimSpace(outerKey)
+		if outerKey == "" || len(byMiddle) == 0 {
+			continue
+		}
+		middleClone := make(map[string]map[string][]string)
+		for middleKey, byInner := range byMiddle {
+			middleKey = strings.TrimSpace(middleKey)
+			if middleKey == "" || len(byInner) == 0 {
+				continue
+			}
+			innerClone := make(map[string][]string)
+			for innerKey, values := range byInner {
+				innerKey = strings.TrimSpace(innerKey)
+				if innerKey == "" {
+					continue
+				}
+				if normalized := cloneStrings(values); len(normalized) > 0 {
+					innerClone[innerKey] = normalized
+				}
+			}
+			if len(innerClone) > 0 {
+				middleClone[middleKey] = innerClone
+			}
+		}
+		if len(middleClone) > 0 {
+			cloned[outerKey] = middleClone
+		}
+	}
+	if len(cloned) == 0 {
+		return nil
+	}
+	return cloned
 }

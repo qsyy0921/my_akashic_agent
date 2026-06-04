@@ -78,6 +78,24 @@ execution.
 - `027-receiver-status-heartbeat.md`: durable receiver status storage and
   Python QQ/Telegram heartbeat reporting for restart-safe connectivity
   diagnostics.
+- `179-dashboard-outbox-pressure-table.md`: runtime overview dashboard
+  structured read model for Go-owned outbox account pressure diagnostics.
+- `180-dashboard-outbox-metrics-table.md`: runtime overview dashboard
+  structured read model for Go-owned outbox delivery throughput and dead-letter diagnostics.
+- `181-dashboard-send-ledger-metrics-table.md`: runtime overview dashboard
+  structured read model for Go-owned send ledger repeat and recent-send diagnostics.
+- `182-dashboard-inbox-metrics-table.md`: runtime overview dashboard
+  structured read model for Go-owned inbox capture, observe-only, and recent-event diagnostics.
+- `183-dashboard-inbound-dedupe-metrics-table.md`: runtime overview dashboard
+  structured read model for Go-owned inbound dedupe scope and duplicate-seen diagnostics.
+- `184-dashboard-observe-targets-table.md`: runtime overview dashboard
+  structured read model for Go-owned observe-target policy and observe-only coverage diagnostics.
+- `185-dashboard-observe-capture-table.md`: runtime overview dashboard
+  structured read model for Go-owned observe-capture coverage and media-readiness diagnostics.
+- `186-dashboard-delivery-adapters-table.md`: runtime overview dashboard
+  structured read model for Go-owned delivery-adapter configuration visibility.
+- `187-dashboard-agent-job-metrics-table.md`: runtime overview dashboard
+  structured read model for Go-owned AgentJob throughput, pressure, and dead-letter diagnostics.
 - `028-receiver-lease-persistence.md`: durable receiver lease storage and
   Telegram reacquire behavior after `agent-runtime` restarts.
 - `029-observe-capture-activity-inference.md`: Go observe-capture diagnostics
@@ -227,6 +245,16 @@ execution.
 - `089-dashboard-runtime-control-plane-details.md` through later runtime
   overview/dashboard specs keep Python as a read-only presentation layer for
   Go-owned control-plane details.
+- `142-local-knowledge-planner-bringup.md`: repo-local runtime start entrypoint
+  can explicitly enable the Go knowledge planner, and Python records skip-legacy
+  evidence when Go owns recurring admission.
+- `143-native-napcat-rich-media-comparison.md`: repo-local native NapCat/OneBot
+  rich-media smoke replays the same streamed upload path as Akashic so QQ
+  `rich media transfer failed` can be classified as platform/session parity or
+  adapter drift before default Go cutover.
+- `144-text-only-outbox-cutover-gate.md`: Python compatibility outbox worker
+  backs off while Go local outbox ownership is active, making repo-local
+  text-only QQ cutover real instead of partial.
 - `103-media-asset-retention-diagnostics.md`: Go exposes read-only media asset
   retention diagnostics with TTL and cleanup-due advisory fields.
 - `104-runtime-overview-media-retention.md`: Runtime overview aggregates media
@@ -258,6 +286,15 @@ execution.
 - `083-dashboard-runtime-overview-new-fields.md`: Python dashboard normalizes
   the latest Go-owned runtime overview delivery-smoke and media-asset-content
   fields without taking ownership of runtime state or AI processing.
+- `137-runtime-local-bringup-post-migration.md`: local migrated workspace bring-up
+  and runtime endpoint verification after session transfer.
+- `138-qq-live-send-smoke-runbook.md`: repo-owned private-text QQ live smoke
+  path through Go `delivery-dispatch/send`.
+- `139-qq-group-media-live-smoke-runbook.md`: repo-owned QQ group text/image/file
+  live smoke path plus WebSocket media-frame tolerance requirement.
+- `140-local-outbox-worker-success-state.md`: local outbox worker uses the lease
+  transition as the only dispatching state mutation so automatic success is not
+  mis-recorded as dead-lettered.
 - `084-knowledge-job-planner-cutover-plan.md`: Go exposes a read-only
   knowledge job planner cutover plan and runtime overview aggregate so
   observe-only memory/RAG admission can be enabled or rolled back deliberately
@@ -360,4 +397,307 @@ execution.
 - `136-dashboard-media-content-recovery-table.md`: Runtime overview dashboard
   renders `media_asset_content_recovery` as read-only KPI/link/audit tables
   while preserving raw JSON fallback and avoiding recovery execution.
+- `137-runtime-local-bringup-post-migration.md`: The migrated workspace keeps a
+  repo-owned local launcher and read-only preflight contract for bringing Go
+  `agent-runtime` back on `127.0.0.1:8780` without faking Telegram readiness or
+  triggering live send cutover.
+- `138-qq-live-send-smoke-runbook.md`: Repo-owned QQ private-text live smoke
+  entrypoint uses Go outbox plus `delivery-dispatch/send` for explicit local
+  verification without enabling full outbox cutover.
+- `139-qq-group-media-live-smoke-runbook.md`: repo-owned QQ group text/image/file
+  smoke records real text success and rich-media blockers without faking cutover.
+- `140-local-outbox-worker-success-state.md`: local outbox worker uses the lease
+  path correctly and can become the real execution owner for private-text smoke.
+- `141-onebot-websocket-stream-media-staging.md`: OneBot WebSocket local media
+  uses `upload_file_stream` staging so Docker path issues are separated from
+  real NapCat / QQ rich-media platform failures.
+- `145-native-napcat-cross-group-rich-media-verification.md`: Native NapCat
+  rich-media parity is repeated across additional QQ groups to distinguish a
+  single-group anomaly from a current session-wide blocker.
+- `146-napcat-session-refresh-rich-media-recheck.md`: Restarting the NapCat
+  container is used as the minimal session refresh attempt before escalating to
+  manual QQ re-login or session replacement.
+- `147-dual-account-rich-media-split-verification.md`: Native and Akashic
+  rich-media behavior is compared across both QQ accounts to split account-
+  specific file failures from cross-account image failures.
+- `148-account-kind-outbox-cutover-gate.md`: Go local outbox execution can be
+  narrowed by both delivery kind and QQ account so second-account file sending
+  is enabled without globally opening first-account rich-media.
+- `149-native-private-rich-media-route-verification.md`: Native and Akashic
+  private rich-media verification distinguishes cross-route image failure from
+  first-account group-file-only failure.
+- `150-account-conversation-kind-outbox-cutover-gate.md`: Go local outbox
+  execution can be narrowed by account, conversation type, and delivery kind so
+  first-account private file is enabled without opening first-account group
+  file or any image route.
+- `151-knowledge-planner-cutover-verification-runbook.md`: A repo-owned
+  read-only verification script re-checks live runtime and recent logs to prove
+  Go still owns recurring knowledge admission while Python only executes jobs.
+- `152-telegram-backend-verification-runbook.md`: A repo-owned read-only
+  verification script distinguishes Telegram token absence from later `getMe`
+  or receiver-chain failures.
+- `153-go-migration-goal-verification-runbook.md`: A repo-owned goal audit
+  script aggregates current QQ outbox scope, optional native rich-media probe,
+  Telegram backend state, knowledge planner health, and remaining residual
+  classification into one live JSON result for end-of-turn goal updates.
+- `154-go-outbox-scope-live-verification-runbook.md`: A repo-owned live smoke
+  script proves which outbox routes currently auto-succeed under Go owner and
+  which routes remain safely gated, and can be embedded into the goal verifier
+  only when explicitly requested.
+- `155-goal-verification-hardening.md`: Goal verification tolerates structured
+  OneBot websocket status fields, local runtime bring-up can explicitly enable
+  the outbox worker, and Telegram verification now proves config-declared but
+  unresolved token injection.
+- `156-local-runtime-account-channel-mapping.md`: The repo-local runtime
+  launcher injects per-account QQ channel mapping so second-account outbox smoke
+  uses the correct OneBot alias during gated Go cutover verification.
+- `157-observe-only-group-reply-hard-block.md`: Delivery dispatch refuses exact
+  observe-only QQ group routes with `reply_allowed=false`, making silent group
+  observation a runtime invariant instead of a config-only convention.
+- `158-goal-verifier-observe-only-silence.md`: The unified repo-owned goal
+  verifier includes live observe-only QQ group silence checks and reports stable
+  blockers if the hard block or private-route readiness regresses.
+- `159-qq-group-send-manual-toggle.md`: QQ group sending is now guarded by a
+  manual global toggle across both Go runtime and Python channel paths, with
+  the current local default set to disabled while private routes stay available.
+- `160-goal-verifier-scheduler-proactive-live-checks.md`: Unified goal
+  verification now uses live scheduler/proactive/dashboard evidence instead of
+  `not_current_turn` placeholders for those residual areas.
+- `161-agent-job-external-lease-live-verifier.md`: A repo-owned live verifier
+  explains whether agent-job external lease result-ack is blocked by config,
+  ownership, smoke evidence, or worker coverage.
+- `162-media-recovery-boundary-live-verifier.md`: A repo-owned live verifier
+  classifies the current media recovery boundary from runtime diagnostics,
+  recovery plans, preflight, and dashboard evidence, including whether the
+  active gap is operator content-root configuration or a broader private-source
+  executor/read-model follow-up.
+- `163-dashboard-media-recovery-runtime-overview-read-model.md`: The dashboard
+  runtime-overview reader now preserves `media_asset_content_recovery`
+  summary/detail and synthesizes the missing card, while using a realistic
+  timeout so live Go overview data does not silently degrade to fallback.
+- `164-agent-worker-status-restart-takeover.md`: Python worker-status reporting
+  can perform a single controlled stale-instance takeover after `main.py`
+  restart, while Go keeps default conflict fencing for active same-worker-id
+  leases.
+- `165-mq-adapter-boundary-dashboard-read-model.md`: The dashboard
+  runtime-overview reader now preserves queue-backend provider capability
+  details, and repo-owned live verification proves NATS remains the only
+  implemented recommended external MQ while Redis Streams and RabbitMQ stay
+  planned-only boundaries.
+- `166-dashboard-agent-job-external-lease-table.md`: The runtime overview
+  dashboard now renders `agent_job_external_lease_readiness` and
+  `agent_job_external_lease_plan` as structured read-only drilldowns instead of
+  leaving them raw-JSON-only.
+- `167-dashboard-runtime-plan-drilldowns.md`: The runtime overview dashboard
+  now renders capacity/priority/knowledge-cutover/outbound-cutover plan details
+  as structured read-only drilldowns instead of leaving them raw-JSON-only.
+- `168-dashboard-delivery-smoke-readiness-table.md`: The runtime overview
+  dashboard now renders `delivery_smoke_readiness` as a structured read-only
+  drilldown instead of leaving smoke case inspection to raw JSON.
+- `169-dashboard-queue-backend-table.md`: The runtime overview dashboard now
+  renders `queue_backend` as a structured read-only drilldown with provider,
+  execution-owner, and capability-matrix visibility instead of leaving MQ
+  boundary inspection to raw JSON.
+- `170-dashboard-receiver-statuses-table.md`: The runtime overview dashboard
+  now renders `receiver_statuses` as a structured read-only drilldown so QQ
+  connectivity and Telegram receiver absence are visible without reading raw
+  JSON.
+- `171-dashboard-receiver-leases-table.md`: The runtime overview dashboard now
+  renders `receiver_leases` as a structured read-only drilldown so single-
+  instance receiver ownership and expired-lease state are visible without
+  reading raw JSON.
+- `172-dashboard-knowledge-pipelines-table.md`: The runtime overview dashboard
+  now renders `knowledge_pipelines` as a structured read-only drilldown so
+  observe capture warnings, knowledge freshness, and worker coverage are
+  visible without reading raw JSON.
+- `173-dashboard-external-lease-diagnostics-table.md`: The runtime overview
+  dashboard now renders `external_lease_diagnostics` as a structured read-only
+  drilldown so provider capability, queue mode, and result-ack support are
+  visible without reading raw JSON.
+- `174-dashboard-scheduler-jobs-table.md`: The runtime overview dashboard now
+  renders `scheduler_jobs` as a structured read-only drilldown so trigger/tier
+  distribution and recent scheduler samples are visible without reading raw
+  JSON.
+- `175-dashboard-agent-workers-table.md`: The runtime overview dashboard now
+  renders `agent_workers` as a structured read-only drilldown so Python worker
+  liveness, stale state, and lease activity are visible without reading raw
+  JSON.
+- `176-dashboard-runtime-workers-table.md`: The runtime overview dashboard now
+  renders `runtime_workers` as a structured read-only drilldown so Go worker
+  enablement, running state, and queue-boundary settings are visible without
+  reading raw JSON.
+- `177-dashboard-agent-job-worker-coverage-table.md`: The runtime overview
+  dashboard now renders `agent_job_worker_coverage` as a structured read-only
+  drilldown so expected-worker coverage and stale/failed worker state are
+  visible without reading raw JSON.
+- `178-dashboard-agent-job-pressure-table.md`: The runtime overview dashboard
+  now renders `agent_job_pressure` as a structured read-only drilldown so
+  pressure, throughput, and dead-letter baselines are visible without reading
+  raw JSON.
+- `188-dashboard-worker-leases-table.md`: The runtime overview dashboard now
+  renders `worker_leases` as a structured read-only drilldown so lease
+  diagnostics, checkpoint prefixes, and stale lease counts are visible without
+  reading raw JSON.
+- `189-dashboard-runtime-config-table.md`: The runtime overview dashboard now
+  renders `runtime_config` as a structured read-only drilldown so runtime
+  address, delivery toggles, adapter endpoints, worker flags, and sanitized
+  environment visibility are available without reading raw JSON.
+- `190-dashboard-knowledge-planner-preview-readiness-table.md`: The runtime
+  overview dashboard now renders `knowledge_job_planner_preview` and
+  `knowledge_job_planner_readiness` as structured read-only drilldowns so
+  observe-only admission preview and planner/worker readiness are visible
+  without reading raw JSON.
+- `191-dashboard-media-asset-retention-plan-cleanup-table.md`: The runtime
+  overview dashboard now renders `media_asset_retention_plan` and
+  `media_asset_retention_cleanup` as structured read-only drilldowns so
+  retention candidates, required steps, cleanup totals, and notes are visible
+  without reading raw JSON.
+- `192-dashboard-media-asset-retention-table.md`: The runtime overview
+  dashboard now renders `media_asset_retention` as a structured read-only
+  drilldown so retention totals, recent assets, and diagnostics notes are
+  visible without reading raw JSON.
+- `193-dashboard-dead-letters-table.md`: The runtime overview dashboard now
+  renders `dead_letters` as a structured read-only drilldown so AgentJob and
+  outbox dead-letter aggregates are visible without reading raw JSON.
+- `194-dashboard-checkpoint-lag-table.md`: The runtime overview dashboard now
+  renders `checkpoint_lag` as a structured read-only drilldown so lagged
+  checkpoints and freshness diagnostics are visible without reading raw JSON.
+- `195-dashboard-runtime-health-stale-jobs-table.md`: The runtime overview
+  dashboard now renders `runtime_health` and `stale_jobs` as structured
+  read-only drilldowns so health snapshot fields, health errors, worker stale
+  diagnostics, and sampled stale jobs are visible without reading raw JSON.
+- `196-dashboard-job-events-outbox-events-table.md`: The runtime overview
+  dashboard now renders `job_events` and `outbox_events` as structured
+  read-only drilldowns so event totals and recent job/outbox event rows are
+  visible without reading raw JSON.
+- `197-dashboard-rag-eval-failures-table.md`: The runtime overview dashboard
+  now renders `rag_eval_failures` as a structured read-only drilldown so
+  failure totals, sampled failure rows, and notes are visible without reading
+  raw JSON.
+- `198-scheduler-runtime-mutation-live-smoke.md`: An isolated temp-runtime
+  verifier now proves Go-owned scheduler CRUD persistence, lease-fenced
+  completion mutation, and Python recovery reconciliation without mutating the
+  long-running local runtime.
+- `199-agent-job-external-lease-temp-nats-smoke-verifier.md`: A repo-owned
+  temp-NATS verifier now proves duplicate terminal ack and
+  pending/running/succeeded result-ack flow for `agent_job` external lease
+  without modifying the long-running local runtime.
+- `200-queue-topology-boundary-live-verifier.md`: A repo-owned live verifier
+  now proves `queue_topology`, `queue_backend`, and runtime-overview queue
+  summary agree on provider recommendation, execution owners, ack owner, and
+  external-lease readiness without executing MQ or AI work.
+- `201-worker-control-executor-boundary-live-verifier.md`: A repo-owned live
+  verifier now proves capacity/priority plan state, control-mutation policy,
+  runtime workers, and runtime-overview summary agree that Go has the control
+  plane but no worker-control executor yet.
+- `202-qq-cutover-route-matrix-live-verifier.md`: A repo-owned live verifier
+  now classifies the current QQ cutover routes into Go-owned scope, currently
+  sendable scope, group-send policy blocks, and unresolved rich-media blocker
+  routes.
+- `203-dashboard-qq-cutover-route-matrix-table.md`: The runtime overview
+  dashboard now renders `qq_cutover_route_matrix` as a structured read-only
+  drilldown so QQ cutover scope, currently sendable routes, policy-blocked
+  routes, and platform-blocker routes are visible without reading raw JSON.
+- `204-agent-worker-status-fencing-live-smoke.md`: A repo-owned temp-runtime
+  verifier now proves default worker-status lease fencing returns HTTP 409 for
+  a second live instance and only allows takeover when
+  `replace_existing_instance_id` matches the active lease owner.
+- `205-agent-worker-status-heartbeat-live-smoke.md`: A repo-owned temp-runtime
+  verifier now proves repeated heartbeats from the same worker instance keep
+  `updated_at/lease_until` advancing and do not mark the worker stale.
+- `206-agent-job-external-lease-cutover-preflight-live-verifier.md`: A
+  repo-owned isolated verifier now proves both the current blocked
+  state-store-owner semantics without external-lease flags and the ready
+  NATS/result-ack owner semantics once temp runtime flags and active knowledge
+  worker coverage are satisfied.
+- `207-control-audit-boundary-live-verifier.md`: A repo-owned isolated verifier
+  now proves operator-approval ledger, control-mutation audit ledger,
+  approval-bound preflight, policy allowlist, and runtime-overview
+  control-audit summaries stay aligned without introducing executor side
+  effects.
+- `208-dashboard-control-audit-boundary-live-verifier.md`: A repo-owned live
+  verifier now proves dashboard runtime-overview preserves `control_audit` and
+  `control_mutation_policy` summary/card/detail parity with the Go runtime
+  overview on the current turn.
+- `209-agent-worker-status-stale-cleanup-live-smoke.md`: Go now exposes an
+  explicit stale worker-status cleanup mutation plus a repo-owned verifier that
+  proves stale heartbeat residue can be removed without deleting active worker
+  state.
+- `210-goal-verifier-current-state-artifact.md`: The unified migration
+  verifier now writes a canonical repo-local JSON artifact and exposes a stable
+  `current_state` summary for current-turn cutover, Telegram, worker-stale, and
+  dashboard-fallback evidence.
+- `211-goal-verifier-migration-residuals.md`: The unified migration verifier
+  now emits a machine-readable `migration_residuals` section for QQ, Telegram,
+  external lease result-ack, scheduler, worker-control executors, media
+  recovery, dashboard read-models, and MQ adapter boundary.
+- `212-goal-verifier-migration-buckets.md`: The unified migration verifier now
+  normalizes each residual entry into one of the four exact migration buckets
+  and exposes a top-level bucket summary.
+- `213-proactive-runtime-flow-live-smoke.md`: A repo-owned isolated verifier
+  now proves Go-owned proactive deliveries, anyaction quota, seen/rejection
+  cleanup, context-only, drift, bg-context, and tick-log state transitions in
+  a temp runtime without triggering Python AI or platform sends.
+- `214-dashboard-proactive-tick-logs-runtime-fallback-live-verifier.md`: A
+  repo-owned isolated verifier now proves dashboard proactive tick-log
+  list/detail/steps can fall back to Go runtime state when the SQLite mirror is
+  empty, without writing fallback rows back into SQLite.
+- `215-goal-verifier-dashboard-read-model-checks-alias.md`: The unified goal
+  verifier now aliases `dashboard_read_models` under `checks.*` as well, so
+  machine readers can consume the canonical dashboard evidence from either path
+  without treating verified fields as missing.
+- `216-media-asset-content-recovery-http-executor-live-smoke.md`: A repo-owned
+  isolated verifier now proves approval-bound HTTP/HTTPS media recovery,
+  dry-run no-write semantics, registry update, local content readback, and
+  control-mutation audit in a temp Go runtime.
+- `217-dashboard-knowledge-rag-state-boundary-live-verifier.md`: A repo-owned
+  live verifier now proves dashboard runtime-overview preserves the Go
+  `knowledge_pipelines` card/top-level detail and the current
+  checkpoint-derived RAG dataset/index boundary.
+- `218-goal-verifier-dashboard-knowledge-rag-retry-hardening.md`: The unified
+  goal verifier now retries the dashboard knowledge/RAG live boundary verifier
+  once before downgrading current-turn dashboard fallback evidence.
+- `219-dashboard-media-asset-content-recovery-boundary-live-verifier.md`: A
+  repo-owned live verifier now proves dashboard runtime-overview preserves the
+  Go `media_asset_content_recovery` summary/card/detail, and fallback now
+  synthesizes that read-only view from control-mutation audit state instead of
+  dropping to `unknown`.
+- `220-dashboard-media-asset-content-boundary-live-verifier.md`: A repo-owned
+  live verifier now proves dashboard runtime-overview preserves the Go
+  `media_asset_content` summary/card/detail and sampled recovery/preflight
+  endpoints, and fallback now keeps that read-only view when direct overview
+  aggregation times out.
+- `221-goal-verifier-stdout-modes.md`: The unified goal verifier now writes the
+  full artifact first and exposes explicit `summary/full/none` stdout modes, so
+  current-turn verification no longer depends on streaming the entire artifact
+  JSON to stdout.
+- `222-receiver-status-cleanup-stale-live-smoke.md`: Go runtime now exposes an
+  explicit stale receiver-status cleanup mutation plus a repo-owned temp-runtime
+  live smoke that proves stale receiver records are removed without deleting the
+  active receiver record.
+- `223-dashboard-knowledge-pipelines-top-level-parity.md`: Dashboard
+  runtime-overview normalize paths now preserve top-level
+  `knowledge_pipelines`, so live dashboard parity checks no longer pass card
+  detail while dropping the top-level payload.
+- `224-agent-worker-status-startup-prune-live-smoke.md`: Go runtime now prunes
+  stale `agent-worker-statuses` during repository load, and a repo-owned
+  temp-runtime smoke proves stale heartbeat residue does not come back after
+  restart.
+- `225-agent-job-external-lease-approval-preflight.md`: Go runtime now exposes
+  a read-only approval-bound preflight endpoint for `agent_job` external lease
+  result-ack cutover, so callers no longer have to manually stitch together the
+  plan and control-mutation approval gate.
+- `226-agent-job-external-lease-launcher-preflight.md`: Repo-local launcher now
+  accepts the explicit external-lease/result-ack flags needed for an isolated
+  temp runtime, and a repo-owned launcher smoke proves those flags surface in
+  runtime-config, queue topology, and approval-bound preflight.
+- `227-agent-job-external-lease-launcher-bundle.md`: Go now exposes a read-only
+  canonical launcher bundle for `agent_job` external lease result-ack cutover,
+  and a repo-owned live smoke consumes that bundle to launch a temp runtime and
+  verify promoted ownership plus approval-bound preflight.
+- `228-agent-job-external-lease-cutover-diff.md`: Go now exposes a read-only
+  diff between the current runtime and the canonical launcher bundle for
+  `agent_job` external lease result-ack cutover, and a repo-owned live verifier
+  proves both the blocked live-runtime drift and the promoted temp-runtime
+  `zero drift -> worker coverage gate -> ready` chain.
 - Agent architecture boundary specs live under `../agent-architecture/`.

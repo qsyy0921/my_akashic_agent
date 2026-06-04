@@ -68,6 +68,7 @@ _TRACE_DEFAULT_ACTOR = "Akashic"
 _NCATBOT_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 _RUNTIME_ECHO_CHECK_TIMEOUT_S = 2.0
 _INBOUND_DEDUPE_TTL_SECONDS = 24 * 60 * 60
+_QQ_GROUP_SEND_DISABLED_MESSAGE = "qq group sends are disabled"
 
 
 @dataclass
@@ -91,6 +92,11 @@ def _session_key_for_chat(chat_id: str, channel: str = _CHANNEL) -> str:
 
 def _session_key(channel: str, chat_id: str) -> str:
     return f"{channel}:{chat_id}"
+
+
+def _ensure_group_send_allowed(chat_id: str, enabled: bool) -> None:
+    if not enabled and str(chat_id or "").startswith(_GROUP_PREFIX):
+        raise RuntimeError(_QQ_GROUP_SEND_DISABLED_MESSAGE)
 
 
 def _truncate_trace_text(text: str, limit: int) -> str:
@@ -490,6 +496,7 @@ class QQChannel:
         bot_peer_ids: list[str] | None = None,
         peer_trigger_prefixes: list[str] | None = None,
         groups: list[QQGroupConfig] | None = None,
+        group_send_enabled: bool = True,
         websocket_open_timeout_seconds: float = 5.0,
         group_filter: GroupMessageFilter | None = None,
         http_requester: HttpRequester | None = None,
@@ -512,6 +519,7 @@ class QQChannel:
         self._bot_uin = bot_uin
         self._channel = str(channel_name or _CHANNEL)
         self._send_ledger_client = send_ledger_client
+        self._group_send_enabled = bool(group_send_enabled)
         allowed_users = [str(user_id) for user_id in (allow_from or [])]
         self._allow_from: set[str] = set(allowed_users)
         self._bot_peer_ids: set[str] = {
@@ -1217,6 +1225,14 @@ class QQChannel:
             return
         chat_id = f"{_GROUP_PREFIX}{group_id}"
         if self._interrupt_controller is None:
+            if not self._group_send_enabled:
+                logger.info(
+                    "[qq] 群消息发送已禁用，跳过 group /stop 响应  channel=%s  group_id=%s  user_id=%s",
+                    self._channel,
+                    group_id,
+                    user_id,
+                )
+                return
             await self.send(chat_id, "当前未启用中断功能。")
             return
         result = self._interrupt_controller.request_interrupt(
@@ -1224,6 +1240,15 @@ class QQChannel:
             sender=user_id,
             command="/stop",
         )
+        if not self._group_send_enabled:
+            logger.info(
+                "[qq] 群消息发送已禁用，已执行 group /stop 中断但不回群  channel=%s  group_id=%s  user_id=%s  status=%s",
+                self._channel,
+                group_id,
+                user_id,
+                getattr(result, "status", ""),
+            )
+            return
         await self.send(chat_id, result.message)
 
     # ── 出站路由 ──────────────────────────────────────────────────────
@@ -1242,6 +1267,7 @@ class QQChannel:
         if msg.content.strip():
             try:
                 if msg.chat_id.startswith(_GROUP_PREFIX):
+                    _ensure_group_send_allowed(msg.chat_id, self._group_send_enabled)
                     group_id = msg.chat_id[len(_GROUP_PREFIX) :]
                     logger.info(f"[qq] 群聊回复  group_id={group_id}  内容: {preview!r}")
                     await self._run_on_bot_loop(
@@ -1353,6 +1379,7 @@ class QQChannel:
         if api is None:
             raise RuntimeError("QQChannel 尚未启动")
         if chat_id.startswith(_GROUP_PREFIX):
+            _ensure_group_send_allowed(chat_id, self._group_send_enabled)
             group_id = chat_id[len(_GROUP_PREFIX) :]
             await self._run_on_bot_loop(api.send_group_text(int(group_id), message))
         else:
@@ -1369,6 +1396,7 @@ class QQChannel:
             raise RuntimeError("QQChannel 尚未启动")
         uri = _local_to_base64(file_path) if _is_local(file_path) else file_path
         if chat_id.startswith(_GROUP_PREFIX):
+            _ensure_group_send_allowed(chat_id, self._group_send_enabled)
             group_id = chat_id[len(_GROUP_PREFIX) :]
             await self._run_on_bot_loop(api.send_group_file(int(group_id), uri, name))
         else:
@@ -1385,6 +1413,7 @@ class QQChannel:
             raise RuntimeError("QQChannel 尚未启动")
         uri = _local_to_base64(image) if _is_local(image) else image
         if chat_id.startswith(_GROUP_PREFIX):
+            _ensure_group_send_allowed(chat_id, self._group_send_enabled)
             group_id = chat_id[len(_GROUP_PREFIX) :]
             await self._run_on_bot_loop(api.send_group_image(int(group_id), uri))
         else:

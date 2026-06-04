@@ -64,6 +64,12 @@ class AgentGatewayOutboxWorker:
         )
 
     async def process_once(self) -> dict[str, Any]:
+        if await self._runtime_owns_outbox_execution():
+            await self._status.idle(reason="go_runtime_outbox_worker_active")
+            return {
+                "processed": False,
+                "reason": "go_runtime_outbox_worker_active",
+            }
         try:
             delivery = await self._client.lease_next_outbox(
                 worker_id=self._worker_id,
@@ -142,6 +148,31 @@ class AgentGatewayOutboxWorker:
 
     def stop(self) -> None:
         self._stopped.set()
+
+    async def _runtime_owns_outbox_execution(self) -> bool:
+        getter = getattr(self._client, "get_runtime_config", None)
+        if not callable(getter):
+            return False
+        try:
+            data = await getter()
+        except AgentGatewayError as exc:
+            logger.debug(
+                "[agent_runtime_outbox_worker] runtime config unavailable, keep compatibility outbox worker: %s",
+                exc,
+            )
+            return False
+        except Exception as exc:
+            logger.debug(
+                "[agent_runtime_outbox_worker] runtime config probe failed, keep compatibility outbox worker: %s",
+                exc,
+            )
+            return False
+        if not isinstance(data, dict):
+            return False
+        workers = data.get("workers")
+        if not isinstance(workers, dict):
+            return False
+        return bool(workers.get("outbox_delivery_worker_enabled"))
 
     async def _dispatch_delivery(self, delivery: dict[str, Any]) -> list[str]:
         if self._should_try_runtime_dispatch(delivery):

@@ -590,6 +590,75 @@ func TestAgentWorkerStatusEndpointReportsAndListsWorkers(t *testing.T) {
 	if conflict.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", conflict.Code, conflict.Body.String())
 	}
+
+	takeover := httptest.NewRecorder()
+	takeoverBody := strings.NewReader(`{
+		"worker_id":"worker-a",
+		"instance_id":"instance-b",
+		"replace_existing_instance_id":"instance-a",
+		"worker_type":"knowledge",
+		"status":"running",
+		"source":"python",
+		"lease_ttl_seconds":120,
+		"timestamp":"` + conflictAt.Add(time.Second).Format(time.RFC3339) + `"
+	}`)
+	mux.ServeHTTP(takeover, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/report", takeoverBody))
+	if takeover.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", takeover.Code, takeover.Body.String())
+	}
+}
+
+func TestAgentWorkerStatusCleanupStaleEndpoint(t *testing.T) {
+	manager := appservice.NewAgentWorkerStatusService()
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentWorkerStatusRoutes(mux, manager)
+
+	_, err := manager.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "worker-stale",
+		InstanceID:      "instance-stale",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		Source:          "python",
+		Timestamp:       time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC),
+		LeaseTTLSeconds: 120,
+	})
+	if err != nil {
+		t.Fatalf("report stale worker: %v", err)
+	}
+	_, err = manager.ReportAgentWorkerStatus(context.Background(), command.ReportAgentWorkerStatusCommand{
+		WorkerID:        "worker-active",
+		InstanceID:      "instance-active",
+		WorkerType:      "knowledge",
+		Status:          "running",
+		Source:          "python",
+		Timestamp:       time.Date(2026, 6, 3, 12, 2, 0, 0, time.UTC),
+		LeaseTTLSeconds: 120,
+	})
+	if err != nil {
+		t.Fatalf("report active worker: %v", err)
+	}
+
+	body := strings.NewReader(`{
+		"timestamp":"2026-06-03T12:02:00Z",
+		"stale_after_seconds":60
+	}`)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/agent-worker-statuses/cleanup-stale", body))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{
+		`"deleted":1`,
+		`"remaining":1`,
+		`"remaining_stale":0`,
+		`"worker_id":"worker-stale"`,
+		`"side_effect":"runtime_state_only"`,
+	} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("cleanup response missing %s: %s", expected, response.Body.String())
+		}
+	}
 }
 
 func TestRuntimeConfigEndpointReturnsSanitizedReadOnlyConfig(t *testing.T) {
@@ -928,6 +997,58 @@ func TestReceiverStatusEndpointReportsAndListsReceivers(t *testing.T) {
 	} {
 		if !bytes.Contains(listResponse.Body.Bytes(), []byte(expected)) {
 			t.Fatalf("list response missing %s: %s", expected, listResponse.Body.String())
+		}
+	}
+}
+
+func TestReceiverStatusCleanupStaleEndpoint(t *testing.T) {
+	manager, err := appservice.NewReceiverStatusServiceWithRepository(context.Background(), nil, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	httptrigger.RegisterReceiverStatusRoutes(mux, manager)
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+
+	for _, body := range []string{
+		`{
+			"kind": "qq",
+			"channel_name": "qq",
+			"account_id": "1049511700",
+			"status": "connected",
+			"source": "python_channel",
+			"timestamp": "` + now.Add(-5*time.Minute).Format(time.RFC3339Nano) + `"
+		}`,
+		`{
+			"kind": "telegram",
+			"channel_name": "telegram",
+			"account_id": "7689386159",
+			"status": "connected",
+			"source": "python_channel",
+			"timestamp": "` + now.Format(time.RFC3339Nano) + `"
+		}`,
+	} {
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/receiver-statuses/report", strings.NewReader(body)))
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected report 200, got %d: %s", response.Code, response.Body.String())
+		}
+	}
+
+	cleanupBody := []byte(`{"timestamp":"` + now.Format(time.RFC3339Nano) + `","stale_after_seconds":120}`)
+	cleanupResponse := httptest.NewRecorder()
+	mux.ServeHTTP(cleanupResponse, httptest.NewRequest(http.MethodPost, "/v1/receiver-statuses/cleanup-stale", bytes.NewReader(cleanupBody)))
+	if cleanupResponse.Code != http.StatusOK {
+		t.Fatalf("expected cleanup 200, got %d: %s", cleanupResponse.Code, cleanupResponse.Body.String())
+	}
+	for _, expected := range []string{
+		`"deleted":1`,
+		`"remaining":1`,
+		`"stale_receiver_statuses_removed"`,
+		`"receiver_id":"qq:1049511700:qq"`,
+	} {
+		if !bytes.Contains(cleanupResponse.Body.Bytes(), []byte(expected)) {
+			t.Fatalf("cleanup response missing %s: %s", expected, cleanupResponse.Body.String())
 		}
 	}
 }
@@ -1984,7 +2105,7 @@ func TestAgentJobExternalLeaseReadinessEndpointReturnsReadOnlyGate(t *testing.T)
 			Blockers:                []string{"agent_job_not_allowed_in_external_lease"},
 			SideEffect:              "none",
 		},
-	}, nil)
+	}, nil, nil, nil, nil)
 
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/readiness?stale_after_seconds=60", nil))
@@ -2034,7 +2155,7 @@ func TestAgentJobExternalLeasePlanEndpointReturnsReadOnlyPlan(t *testing.T) {
 			}},
 			SideEffect: "none",
 		},
-	})
+	}, nil, nil, nil)
 
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/plan?desired_execution_owner=nats_result_ack", nil))
@@ -2051,6 +2172,196 @@ func TestAgentJobExternalLeasePlanEndpointReturnsReadOnlyPlan(t *testing.T) {
 	} {
 		if !strings.Contains(bodyText, expected) {
 			t.Fatalf("agent job external lease plan response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
+func TestAgentJobExternalLeasePreflightEndpointReturnsApprovalBoundGate(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, nil, nil, staticAgentJobExternalLeasePreflightChecker{
+		view: query.AgentJobExternalLeasePreflightView{
+			Ready:                     false,
+			Reason:                    "missing_approval_id",
+			Blockers:                  []string{"missing_approval_id"},
+			TargetKind:                "agent_job_external_lease",
+			TargetID:                  "python_ai_worker_with_nats_result_ack",
+			Action:                    "enable",
+			DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+			CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+			RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+			OperatorID:                "qsyy",
+			Plan: query.AgentJobExternalLeasePlanView{
+				Ready:                     true,
+				Decision:                  "ready",
+				DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+				RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+				CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+				SideEffect:                "none",
+			},
+			ControlPreflight: query.ControlMutationPreflightView{
+				Ready:      false,
+				Reason:     "missing_approval_id",
+				Blockers:   []string{"missing_approval_id"},
+				TargetKind: "agent_job_external_lease",
+				TargetID:   "python_ai_worker_with_nats_result_ack",
+				Action:     "enable",
+				OperatorID: "qsyy",
+				SideEffect: "none",
+			},
+			SideEffect: "none",
+		},
+	}, nil, nil)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/preflight?desired_execution_owner=python_ai_worker_with_nats_result_ack&operator_id=qsyy", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job external lease preflight 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"missing_approval_id"`,
+		`"target_kind":"agent_job_external_lease"`,
+		`"desired_execution_owner":"python_ai_worker_with_nats_result_ack"`,
+		`"current_execution_owner":"python_ai_worker_state_store_lease"`,
+		`"action":"enable"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job external lease preflight response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
+func TestAgentJobExternalLeaseLauncherBundleEndpointReturnsReadOnlyBundle(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, nil, nil, nil, staticAgentJobExternalLeaseLauncherBundleViewer{
+		view: query.AgentJobExternalLeaseLauncherBundleView{
+			Ready:                     false,
+			Reason:                    "agent_job_external_lease_launcher_bundle_blocked",
+			Blockers:                  []string{"agent_job_external_lease_readiness_not_ready"},
+			DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+			RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+			CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+			Plan: query.AgentJobExternalLeasePlanView{
+				Ready:                     false,
+				Decision:                  "blocked",
+				DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+				RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+				CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+				SideEffect:                "none",
+			},
+			ScriptPath: ".\\scripts\\start-agent-runtime.ps1",
+			LauncherParameters: map[string]string{
+				"QueueBackend":                      "nats_jetstream",
+				"QueueExternalLeaseAgentJobEnabled": "true",
+				"QueueAgentJobFlowSmokePassed":      "true",
+				"AgentJobStrictLeaseToken":          "true",
+			},
+			EnvironmentOverrides: map[string]string{
+				"AKASHIC_QUEUE_BACKEND":                          "nats_jetstream",
+				"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED": "true",
+			},
+			RequiredExternalInputs: []query.AgentJobExternalLeaseLauncherBundleInputView{{
+				Name:           "NATS DSN",
+				Parameter:      "QueueDSN",
+				EnvironmentKey: "AKASHIC_QUEUE_DSN",
+				Required:       true,
+				Secret:         true,
+			}},
+			SideEffect: "none",
+		},
+	}, nil)
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/launcher-bundle?desired_execution_owner=python_ai_worker_with_nats_result_ack", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job external lease launcher bundle 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"agent_job_external_lease_launcher_bundle_blocked"`,
+		`"script_path":".\\scripts\\start-agent-runtime.ps1"`,
+		`"desired_execution_owner":"python_ai_worker_with_nats_result_ack"`,
+		`"QueueBackend":"nats_jetstream"`,
+		`"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED":"true"`,
+		`"parameter":"QueueDSN"`,
+		`"environment_key":"AKASHIC_QUEUE_DSN"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job external lease launcher bundle response missing %s: %s", expected, bodyText)
+		}
+	}
+}
+
+func TestAgentJobExternalLeaseCutoverDiffEndpointReturnsRuntimeDrift(t *testing.T) {
+	mux := http.NewServeMux()
+	httptrigger.RegisterAgentJobExternalLeaseRoutes(mux, nil, nil, nil, nil, staticAgentJobExternalLeaseCutoverDiffViewer{
+		view: query.AgentJobExternalLeaseCutoverDiffView{
+			Ready:                      false,
+			Reason:                     "agent_job_external_lease_cutover_diff_blocked",
+			Blockers:                   []string{"runtime_drift:AKASHIC_QUEUE_BACKEND", "runtime_drift:agent_job_execution_owner"},
+			DesiredExecutionOwner:      "python_ai_worker_with_nats_result_ack",
+			RecommendedExecutionOwner:  "python_ai_worker_with_nats_result_ack",
+			CurrentExecutionOwner:      "python_ai_worker_state_store_lease",
+			CurrentAckOwner:            "go_state_store_api",
+			ExpectedAckOwner:           "nats_external_lease_result_ack",
+			CurrentQueueProvider:       "local",
+			ExpectedQueueProvider:      "nats_jetstream",
+			CurrentQueueMode:           "local_state_store",
+			ExpectedQueueMode:          "external_lease",
+			CurrentExternalLeaseReady:  false,
+			ExpectedExternalLeaseReady: true,
+			Bundle: query.AgentJobExternalLeaseLauncherBundleView{
+				Ready:                     false,
+				Reason:                    "agent_job_external_lease_launcher_bundle_blocked",
+				DesiredExecutionOwner:     "python_ai_worker_with_nats_result_ack",
+				RecommendedExecutionOwner: "python_ai_worker_with_nats_result_ack",
+				CurrentExecutionOwner:     "python_ai_worker_state_store_lease",
+				ScriptPath:                ".\\scripts\\start-agent-runtime.ps1",
+				SideEffect:                "none",
+			},
+			Drift: []query.AgentJobExternalLeaseCutoverDiffItemView{
+				{
+					Name:       "AKASHIC_QUEUE_BACKEND",
+					Kind:       "environment_override",
+					Expected:   "nats_jetstream",
+					Status:     "missing",
+					RuntimeKey: "AKASHIC_QUEUE_BACKEND",
+					Endpoint:   "/v1/runtime-config",
+				},
+				{
+					Name:     "agent_job_execution_owner",
+					Kind:     "queue_topology",
+					Expected: "python_ai_worker_with_nats_result_ack",
+					Actual:   "python_ai_worker_state_store_lease",
+					Status:   "mismatch",
+					Endpoint: "/v1/queue-topology",
+				},
+			},
+			SideEffect: "none",
+		},
+	})
+
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/agent-job-external-lease/cutover-diff?desired_execution_owner=python_ai_worker_with_nats_result_ack", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected agent job external lease cutover diff 200, got %d: %s", response.Code, response.Body.String())
+	}
+	bodyText := response.Body.String()
+	for _, expected := range []string{
+		`"reason":"agent_job_external_lease_cutover_diff_blocked"`,
+		`"desired_execution_owner":"python_ai_worker_with_nats_result_ack"`,
+		`"current_execution_owner":"python_ai_worker_state_store_lease"`,
+		`"expected_ack_owner":"nats_external_lease_result_ack"`,
+		`"current_queue_provider":"local"`,
+		`"expected_queue_provider":"nats_jetstream"`,
+		`"name":"AKASHIC_QUEUE_BACKEND"`,
+		`"name":"agent_job_execution_owner"`,
+		`"side_effect":"none"`,
+	} {
+		if !strings.Contains(bodyText, expected) {
+			t.Fatalf("agent job external lease cutover diff response missing %s: %s", expected, bodyText)
 		}
 	}
 }
@@ -4268,6 +4579,30 @@ type staticAgentJobExternalLeasePlanner struct {
 }
 
 func (s staticAgentJobExternalLeasePlanner) PlanAgentJobExternalLease(context.Context, command.PlanAgentJobExternalLeaseCommand) (query.AgentJobExternalLeasePlanView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobExternalLeasePreflightChecker struct {
+	view query.AgentJobExternalLeasePreflightView
+}
+
+func (s staticAgentJobExternalLeasePreflightChecker) CheckAgentJobExternalLeasePreflight(context.Context, query.AgentJobExternalLeasePreflightFilter) (query.AgentJobExternalLeasePreflightView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobExternalLeaseLauncherBundleViewer struct {
+	view query.AgentJobExternalLeaseLauncherBundleView
+}
+
+func (s staticAgentJobExternalLeaseLauncherBundleViewer) GetAgentJobExternalLeaseLauncherBundle(context.Context, query.AgentJobExternalLeaseLauncherBundleFilter) (query.AgentJobExternalLeaseLauncherBundleView, error) {
+	return s.view, nil
+}
+
+type staticAgentJobExternalLeaseCutoverDiffViewer struct {
+	view query.AgentJobExternalLeaseCutoverDiffView
+}
+
+func (s staticAgentJobExternalLeaseCutoverDiffViewer) GetAgentJobExternalLeaseCutoverDiff(context.Context, query.AgentJobExternalLeaseCutoverDiffFilter) (query.AgentJobExternalLeaseCutoverDiffView, error) {
 	return s.view, nil
 }
 

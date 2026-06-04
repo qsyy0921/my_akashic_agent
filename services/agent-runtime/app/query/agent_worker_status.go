@@ -28,3 +28,11 @@ type AgentWorkerStatusesView struct {
 	Notes      []string                `json:"notes,omitempty"`
 	SideEffect string                  `json:"side_effect"`
 }
+
+type AgentWorkerStatusCleanupView struct {
+	Deleted    []AgentWorkerStatusView `json:"deleted"`
+	Remaining  []AgentWorkerStatusView `json:"remaining"`
+	Totals     map[string]int          `json:"totals"`
+	Notes      []string                `json:"notes,omitempty"`
+	SideEffect string                  `json:"side_effect"`
+}

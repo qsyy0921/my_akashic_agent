@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,9 +376,20 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	t.Setenv("AKASHIC_ONEBOT_ACCESS_TOKENS", "qq=NcatBot,qq_2365524513=NcatBot")
 	t.Setenv("AKASHIC_TELEGRAM_BOT_TOKEN", "telegram-token")
 	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token-fallback")
+	t.Setenv("AKASHIC_QQ_GROUP_SEND_ENABLED", "false")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT", "1049511700=text,2365524513=text|file")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE", "1049511700/private=text|file,2365524513/group=text|file")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID", "1049511700/group/391289439=text|file")
 	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER", "true")
+	t.Setenv("AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED", "true")
+	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED", "true")
+	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED", "true")
 
 	view := runtimeConfigFromEnv(":8780", "AKASHIC_RUNTIME_ADDR", []string{"1049511700", "2365524513"})
 
@@ -390,11 +402,29 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	if !view.Delivery.OneBotReadyForHealthProbe || !view.Delivery.OneBotReadyForDualAccountSmoke {
 		t.Fatalf("expected onebot readiness: %#v", view.Delivery)
 	}
+	if view.Delivery.QQGroupSendEnabled {
+		t.Fatalf("expected qq group send toggle to reflect false: %#v", view.Delivery)
+	}
 	if len(view.Delivery.OneBotMissingChannels) != 0 || len(view.Readiness.Blockers) != 0 {
 		t.Fatalf("unexpected blockers: %#v %#v", view.Delivery.OneBotMissingChannels, view.Readiness.Blockers)
 	}
 	if !view.Workers.OutboxDeliveryWorkerEnabled || !view.Workers.KnowledgeJobPlannerEnabled || !view.Workers.AgentJobStrictLeaseToken {
 		t.Fatalf("unexpected worker config flags: %#v", view.Workers)
+	}
+	if len(view.Workers.OutboxDeliveryAllowedKinds) != 1 || view.Workers.OutboxDeliveryAllowedKinds[0] != "text" {
+		t.Fatalf("unexpected outbox allowed kinds: %#v", view.Workers)
+	}
+	if len(view.Workers.OutboxDeliveryAllowedKindsByAccount) != 2 {
+		t.Fatalf("unexpected outbox allowed kinds by account: %#v", view.Workers.OutboxDeliveryAllowedKindsByAccount)
+	}
+	if got := strings.Join(view.Workers.OutboxDeliveryAllowedKindsByAccount["2365524513"], ","); got != "text,file" {
+		t.Fatalf("unexpected second account allowed kinds: %q", got)
+	}
+	if got := strings.Join(view.Workers.OutboxDeliveryAllowedKindsByAccountConversationType["1049511700"]["private"], ","); got != "text,file" {
+		t.Fatalf("unexpected first account private allowed kinds: %#v", view.Workers.OutboxDeliveryAllowedKindsByAccountConversationType)
+	}
+	if got := strings.Join(view.Workers.OutboxDeliveryAllowedKindsByAccountConversationID["1049511700"]["group"]["391289439"], ","); got != "text,file" {
+		t.Fatalf("unexpected first account group id allowed kinds: %#v", view.Workers.OutboxDeliveryAllowedKindsByAccountConversationID)
 	}
 	tokenEnv := findRuntimeEnvVar(t, view.Environment, "AKASHIC_ONEBOT_ACCESS_TOKENS")
 	if !tokenEnv.Present || !tokenEnv.Secret {
@@ -410,9 +440,37 @@ func TestRuntimeConfigFromEnvReportsSanitizedOneBotReadiness(t *testing.T) {
 	if strictTokenFlag.Secret || strictTokenFlag.ValueRedacted != "true" {
 		t.Fatalf("strict lease token flag is a boolean config, not a secret: %#v", strictTokenFlag)
 	}
+	cutoverFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER")
+	if cutoverFlag.Secret || cutoverFlag.ValueRedacted != "true" {
+		t.Fatalf("external lease cutover flag is a boolean config, not a secret: %#v", cutoverFlag)
+	}
+	dualReadFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED")
+	if dualReadFlag.Secret || dualReadFlag.ValueRedacted != "true" {
+		t.Fatalf("dual-read smoke flag is a boolean config, not a secret: %#v", dualReadFlag)
+	}
+	stateLeaseDisabledFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED")
+	if stateLeaseDisabledFlag.Secret || stateLeaseDisabledFlag.ValueRedacted != "true" {
+		t.Fatalf("state-store lease worker disable flag is a boolean config, not a secret: %#v", stateLeaseDisabledFlag)
+	}
+	externalLeaseAgentJobFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED")
+	if externalLeaseAgentJobFlag.Secret || externalLeaseAgentJobFlag.ValueRedacted != "true" {
+		t.Fatalf("agent-job external lease flag is a boolean config, not a secret: %#v", externalLeaseAgentJobFlag)
+	}
+	duplicateSmokeFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED")
+	if duplicateSmokeFlag.Secret || duplicateSmokeFlag.ValueRedacted != "true" {
+		t.Fatalf("agent-job duplicate smoke flag is a boolean config, not a secret: %#v", duplicateSmokeFlag)
+	}
+	flowSmokeFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED")
+	if flowSmokeFlag.Secret || flowSmokeFlag.ValueRedacted != "true" {
+		t.Fatalf("agent-job flow smoke flag is a boolean config, not a secret: %#v", flowSmokeFlag)
+	}
 	plannerFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED")
 	if plannerFlag.Secret || plannerFlag.ValueRedacted != "true" {
 		t.Fatalf("knowledge planner flag is a boolean config, not a secret: %#v", plannerFlag)
+	}
+	groupSendFlag := findRuntimeEnvVar(t, view.Environment, "AKASHIC_QQ_GROUP_SEND_ENABLED")
+	if groupSendFlag.Secret || groupSendFlag.ValueRedacted != "false" {
+		t.Fatalf("qq group send flag is a boolean config, not a secret: %#v", groupSendFlag)
 	}
 	telegramToken := findRuntimeEnvVar(t, view.Environment, "TELEGRAM_BOT_TOKEN")
 	if telegramToken.ValueRedacted != "redacted" {
@@ -484,6 +542,9 @@ func TestQueueBackendViewFromEnvDefaultsLocal(t *testing.T) {
 	}
 	if view.OutboxExecutionOwner != "go_state_store_api" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
 		t.Fatalf("unexpected default execution owners: %#v", view)
+	}
+	if view.OutboxExecutionScope != "compatibility_only" {
+		t.Fatalf("unexpected default outbox execution scope: %#v", view)
 	}
 	if view.SelectedProviderCapability == nil || view.SelectedProviderCapability.Provider != "local" {
 		t.Fatalf("expected selected local provider capability: %#v", view.SelectedProviderCapability)
@@ -672,6 +733,68 @@ func TestQueueBackendViewFromEnvBlocksExternalLeaseWhenLocalOutboxWorkerEnabled(
 	if view.OutboxExecutionOwner != "go_local_outbox_worker" || view.AgentJobExecutionOwner != "python_ai_worker_state_store_lease" {
 		t.Fatalf("local worker should retain execution owner while external lease is blocked: %#v", view)
 	}
+	if view.OutboxExecutionScope != "all_supported_kinds" {
+		t.Fatalf("unexpected local worker execution scope: %#v", view)
+	}
+}
+
+func TestQueueBackendViewFromEnvReportsTextOnlyLocalWorkerScope(t *testing.T) {
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+	if view.OutboxExecutionOwner != "go_local_outbox_worker" {
+		t.Fatalf("unexpected outbox execution owner: %#v", view)
+	}
+	if view.OutboxExecutionScope != "text_only" {
+		t.Fatalf("unexpected outbox execution scope: %#v", view)
+	}
+	if len(view.OutboxAllowedKinds) != 1 || view.OutboxAllowedKinds[0] != "text" {
+		t.Fatalf("unexpected outbox allowed kinds: %#v", view.OutboxAllowedKinds)
+	}
+}
+
+func TestQueueBackendViewFromEnvReportsAccountConversationLocalWorkerScope(t *testing.T) {
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE", "1049511700/private=text|file")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+	if view.OutboxExecutionOwner != "go_local_outbox_worker" {
+		t.Fatalf("unexpected outbox execution owner: %#v", view)
+	}
+	if view.OutboxExecutionScope != "account_conversation_kind_gated" {
+		t.Fatalf("unexpected outbox execution scope: %#v", view)
+	}
+	if got := strings.Join(view.OutboxAllowedKindsByAccountConversationType["1049511700"]["private"], ","); got != "text,file" {
+		t.Fatalf("unexpected route-scoped allowed kinds: %#v", view.OutboxAllowedKindsByAccountConversationType)
+	}
+}
+
+func TestQueueBackendViewFromEnvReportsAccountConversationIDLocalWorkerScope(t *testing.T) {
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID", "1049511700/group/391289439=text|file")
+
+	view, err := queueBackendViewFromEnv()
+	if err != nil {
+		t.Fatalf("queue backend view: %v", err)
+	}
+	if view.OutboxExecutionOwner != "go_local_outbox_worker" {
+		t.Fatalf("unexpected outbox execution owner: %#v", view)
+	}
+	if view.OutboxExecutionScope != "account_conversation_id_kind_gated" {
+		t.Fatalf("unexpected outbox execution scope: %#v", view)
+	}
+	if got := strings.Join(view.OutboxAllowedKindsByAccountConversationID["1049511700"]["group"]["391289439"], ","); got != "text,file" {
+		t.Fatalf("unexpected route-scoped allowed kinds by conversation id: %#v", view.OutboxAllowedKindsByAccountConversationID)
+	}
 }
 
 func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *testing.T) {
@@ -685,6 +808,8 @@ func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *tes
 	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED", "true")
 	t.Setenv("AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED", "true")
 	t.Setenv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN", "true")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID", "1049511700/group/391289439=text|file")
 
 	view, err := queueBackendViewFromEnv()
 	if err != nil {
@@ -708,6 +833,12 @@ func TestQueueBackendViewFromEnvAllowsAgentJobResultAckAfterExplicitGates(t *tes
 	if view.OutboxExecutionOwner != "nats_external_lease" ||
 		view.AgentJobExecutionOwner != "python_ai_worker_with_nats_result_ack" {
 		t.Fatalf("unexpected agent job result-ack execution owners: %#v", view)
+	}
+	if view.OutboxExecutionScope != "account_conversation_id_kind_gated" {
+		t.Fatalf("expected external lease to preserve route-scoped gate, got %#v", view)
+	}
+	if got := strings.Join(view.OutboxAllowedKindsByAccountConversationID["1049511700"]["group"]["391289439"], ","); got != "text,file" {
+		t.Fatalf("unexpected route-scoped allowed kinds by conversation id: %#v", view.OutboxAllowedKindsByAccountConversationID)
 	}
 }
 
@@ -813,6 +944,7 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", "60")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", "5")
 	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700,2365524513=qq_2365524513")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID", "1049511700/group/391289439=text|file")
 
 	config, enabled, err := outboxDeliveryWorkerConfigFromEnv()
 	if err != nil {
@@ -834,6 +966,9 @@ func TestOutboxDeliveryWorkerConfigFromEnv(t *testing.T) {
 	if config.ChannelByAccount["1049511700"] != "qq_1049511700" ||
 		config.ChannelByAccount["2365524513"] != "qq_2365524513" {
 		t.Fatalf("unexpected channel map: %#v", config.ChannelByAccount)
+	}
+	if got := strings.Join(config.AllowedStepKindsByAccountConversationID["1049511700"]["group"]["391289439"], ","); got != "text,file" {
+		t.Fatalf("unexpected allowed kinds by conversation id: %#v", config.AllowedStepKindsByAccountConversationID)
 	}
 }
 
@@ -902,10 +1037,12 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE", "3")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_ID", "runtime-outbox-a")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_WORKER_LEASE_TTL_SECONDS", "120")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS", "text")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MIN_INTERVAL_SECONDS", "3")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_WINDOW_SECONDS", "60")
 	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ACCOUNT_MAX_PER_WINDOW", "5")
 	t.Setenv("AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT", "1049511700=qq_1049511700")
+	t.Setenv("AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID", "1049511700/group/391289439=text|file")
 	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED", "true")
 	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS", "90")
 	t.Setenv("AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID", "planner-a")
@@ -937,6 +1074,12 @@ func TestRuntimeWorkerDiagnosticsFromEnvIncludesConfiguredWorkers(t *testing.T) 
 	}
 	if outbox.Attributes["1049511700"] != "qq_1049511700" {
 		t.Fatalf("unexpected outbox channel attributes: %#v", outbox.Attributes)
+	}
+	if outbox.Attributes["allowed_step_kinds"] != "text" {
+		t.Fatalf("unexpected outbox allowed-step-kinds attributes: %#v", outbox.Attributes)
+	}
+	if outbox.Attributes["allowed_step_kinds_by_account_conversation_id"] != "1049511700/group/391289439=text|file" {
+		t.Fatalf("unexpected outbox conversation-id gate attributes: %#v", outbox.Attributes)
 	}
 	if outbox.Attributes["account_min_interval_seconds"] != "3" ||
 		outbox.Attributes["account_window_seconds"] != "60" ||

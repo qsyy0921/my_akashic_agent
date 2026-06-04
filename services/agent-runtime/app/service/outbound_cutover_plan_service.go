@@ -174,7 +174,7 @@ func outboundCutoverRequiredChecks(desired string) []query.OutboundCutoverPlanSt
 		{
 			Phase:  "precheck",
 			Action: "run_manual_live_send_smoke",
-			Detail: "operator should verify QQ private text, group text, image and file sends on the intended accounts before broad cutover",
+			Detail: "operator should verify QQ private text, group text, image and file sends on the intended accounts before broad cutover; if local worker is text-only gated, rich media remains outside the cutover scope",
 		},
 	}
 	if desired == "nats_external_lease" {
@@ -229,10 +229,11 @@ func outboundCutoverEnableSteps(
 				Action: "enable_go_local_outbox_worker",
 				Env: map[string]string{
 					"AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED":    "true",
+					"AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS":     "text,image,file",
 					"AKASHIC_OUTBOX_DELIVERY_WORKER_BATCH_SIZE": "1",
 					"AKASHIC_DELIVERY_CHANNEL_BY_ACCOUNT":       channelByAccountHint(readiness),
 				},
-				Detail: "restart agent-runtime after enabling; keep NATS external lease cutover disabled to avoid two execution owners",
+				Detail: "restart agent-runtime after enabling; keep NATS external lease cutover disabled to avoid two execution owners. Set AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS=text for a text-only local cutover while rich media remains platform-blocked.",
 			},
 			{
 				Phase:    "enable",

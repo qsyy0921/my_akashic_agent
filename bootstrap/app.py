@@ -334,7 +334,7 @@ def _build_agent_runtime_image_worker_tasks(
     worker = AgentRuntimeImageWorker(
         client=client,
         image_tool=image_tool,
-        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        worker_id=_agent_runtime_worker_id(agent_runtime, "image"),
         lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
             getattr(agent_runtime, "poll_interval_seconds", 2.0)
@@ -397,7 +397,7 @@ def _build_agent_runtime_knowledge_worker_tasks(
             session_store=session_store,
             message_source=runtime_message_source,
         ),
-        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        worker_id=_agent_runtime_worker_id(agent_runtime, "knowledge"),
         group_accounts=group_accounts,
         ragflow_indexer=ragflow_indexer,
         ragflow_dataset_ids=ragflow_dataset_ids,
@@ -435,7 +435,7 @@ def _build_agent_runtime_rag_eval_worker_tasks(
     worker = AgentRuntimeRagEvalWorker(
         client=AgentRuntimeClient(agent_runtime),
         evaluator=GroupMemoryFixtureEvaluator(workspace=workspace),
-        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        worker_id=_agent_runtime_worker_id(agent_runtime, "rag_eval"),
         lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
         poll_interval_seconds=float(
             getattr(agent_runtime, "poll_interval_seconds", 2.0)
@@ -466,7 +466,7 @@ def _build_agent_runtime_outbox_worker_tasks(
     worker = AgentRuntimeOutboxWorker(
         client=AgentRuntimeClient(agent_runtime),
         push_tool=push_tool,
-        worker_id=str(getattr(agent_runtime, "worker_id", "akashic-python-worker")),
+        worker_id=_agent_runtime_worker_id(agent_runtime, "outbox"),
         channel_by_account=_outbox_channel_names_by_account(config),
         runtime_dispatch_channels=getattr(agent_runtime, "outbound_channels", None),
         lease_ttl_seconds=int(getattr(agent_runtime, "lease_ttl_seconds", 300)),
@@ -509,6 +509,16 @@ def _get_agent_runtime_config(config: Config):
         or getattr(config, "agent_gateway", None)
         or {}
     )
+
+
+def _agent_runtime_worker_id(agent_runtime, role: str) -> str:
+    base = str(getattr(agent_runtime, "worker_id", "akashic-python-worker")).strip()
+    role = str(role or "").strip()
+    if not base:
+        base = "akashic-python-worker"
+    if not role:
+        return base
+    return f"{base}:{role}"
 
 
 def _is_agent_runtime_enabled(config: Config) -> bool:

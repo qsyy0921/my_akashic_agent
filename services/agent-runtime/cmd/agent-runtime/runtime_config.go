@@ -27,6 +27,7 @@ func runtimeConfigFromEnv(addr string, addrSource string, botIDs []string) query
 			BotIDs:        append([]string(nil), botIDs...),
 		},
 		Delivery: query.RuntimeDeliveryConfigView{
+			QQGroupSendEnabled:           boolEnvDefault("AKASHIC_QQ_GROUP_SEND_ENABLED", true),
 			TelegramChannels:               telegramChannels,
 			TelegramTokenConfigured:        telegramBotTokenFromEnv() != "",
 			TelegramEndpoint:               redactQueueDSN(telegramEndpoint),
@@ -39,11 +40,15 @@ func runtimeConfigFromEnv(addr string, addrSource string, botIDs []string) query
 			OneBotReadyForDualAccountSmoke: len(onebotEndpoints) > 0 && len(missingOneBotChannels) == 0,
 		},
 		Workers: query.RuntimeWorkerConfigView{
-			AgentJobRecoveryEnabled:          boolEnv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED"),
-			OutboxDeliveryWorkerEnabled:      boolEnv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED"),
-			KnowledgeJobPlannerEnabled:       boolEnv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED"),
-			AgentJobStrictLeaseToken:         boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN"),
-			QueueExternalLeaseAgentJobEnable: boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED"),
+			AgentJobRecoveryEnabled:                             boolEnv("AKASHIC_AGENT_JOB_RECOVERY_ENABLED"),
+			OutboxDeliveryWorkerEnabled:                         boolEnv("AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED"),
+			OutboxDeliveryAllowedKinds:                          outboxAllowedKindsFromEnv(),
+			OutboxDeliveryAllowedKindsByAccount:                 outboxAllowedKindsByAccountFromEnv(),
+			OutboxDeliveryAllowedKindsByAccountConversationType: outboxAllowedKindsByAccountConversationTypeFromEnv(),
+			OutboxDeliveryAllowedKindsByAccountConversationID:   outboxAllowedKindsByAccountConversationIDFromEnv(),
+			KnowledgeJobPlannerEnabled:                          boolEnv("AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED"),
+			AgentJobStrictLeaseToken:                            boolEnv("AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN"),
+			QueueExternalLeaseAgentJobEnable:                    boolEnv("AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED"),
 		},
 		Environment: runtimeConfigEnvVars(),
 		Readiness: query.RuntimeConfigReadinessView{
@@ -134,6 +139,7 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 		"AKASHIC_RECEIVER_LEASES_PATH",
 		"AKASHIC_RECEIVER_STATUS_STALE_SECONDS",
 		"AKASHIC_BOT_IDS",
+		"AKASHIC_QQ_GROUP_SEND_ENABLED",
 		"AKASHIC_ONEBOT_EXPECTED_CHANNELS",
 		"AKASHIC_ONEBOT_WS_URLS",
 		"AKASHIC_ONEBOT_WEBSOCKET_URLS",
@@ -153,8 +159,15 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 		"AKASHIC_QUEUE_MODE",
 		"AKASHIC_QUEUE_CONSUMER_CONCURRENCY",
 		"AKASHIC_QUEUE_MAX_IN_FLIGHT",
+		"AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER",
+		"AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED",
+		"AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED",
 		"AKASHIC_AGENT_JOB_RECOVERY_ENABLED",
 		"AKASHIC_OUTBOX_DELIVERY_WORKER_ENABLED",
+		"AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS",
+		"AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT",
+		"AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_TYPE",
+		"AKASHIC_OUTBOX_DELIVERY_ALLOWED_KINDS_BY_ACCOUNT_CONVERSATION_ID",
 		"AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED",
 		"AKASHIC_KNOWLEDGE_JOB_PLANNER_INTERVAL_SECONDS",
 		"AKASHIC_KNOWLEDGE_JOB_PLANNER_WORKER_ID",
@@ -165,6 +178,8 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 		"AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START",
 		"AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN",
 		"AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED",
+		"AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED",
+		"AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED",
 	}
 	items := make([]query.RuntimeEnvVarView, 0, len(keys))
 	for _, key := range keys {
@@ -186,6 +201,12 @@ func runtimeConfigEnvVars() []query.RuntimeEnvVarView {
 
 func runtimeConfigSecretEnv(key string) bool {
 	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" ||
+		key == "AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER" ||
+		key == "AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED" ||
+		key == "AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED" ||
+		key == "AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED" ||
+		key == "AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED" ||
+		key == "AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START" {
@@ -197,6 +218,12 @@ func runtimeConfigSecretEnv(key string) bool {
 
 func runtimeConfigRedactedEnvValue(key string, value string) string {
 	if key == "AKASHIC_AGENT_JOB_STRICT_LEASE_TOKEN" ||
+		key == "AKASHIC_QUEUE_EXTERNAL_LEASE_CUTOVER" ||
+		key == "AKASHIC_QUEUE_DUAL_READ_SMOKE_PASSED" ||
+		key == "AKASHIC_QUEUE_STATE_LEASE_WORKERS_DISABLED" ||
+		key == "AKASHIC_QUEUE_EXTERNAL_LEASE_AGENT_JOB_ENABLED" ||
+		key == "AKASHIC_QUEUE_AGENT_JOB_DUPLICATE_SMOKE_PASSED" ||
+		key == "AKASHIC_QUEUE_AGENT_JOB_FLOW_SMOKE_PASSED" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_ENABLED" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RAG_PARSE" ||
 		key == "AKASHIC_KNOWLEDGE_JOB_PLANNER_RUN_ON_START" {
